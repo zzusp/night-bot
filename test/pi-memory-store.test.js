@@ -198,8 +198,26 @@ test('standard Markdown links resolve to actual portable filenames after URL dec
   const {store}=await fixture(t),topic='中文 Topic',key='Prefer Native Teams'
   await store.remember(scope,{topic,key,text:'Use the native feature first.',source:source('markdown-links')})
   const root=await readFile(join(store.directory(scope),'index.md'),'utf8'),rootLink=/^- \[[^\]]+\]\(([^)]+)\) — /m.exec(root)[1]
-  assert.equal(decodeURIComponent(rootLink),categoryPath(topic))
-  const category=await readFile(join(store.directory(scope),decodeURIComponent(rootLink)),'utf8'),entryLink=/^- \[[^\]]+\]\(([^)]+)\) — /m.exec(category)[1]
-  assert.equal(decodeURIComponent(entryLink),entryPath(topic,key).split('/').slice(-2).join('/'))
-  assert.match(await readFile(join(store.directory(scope),categoryPath(topic),'..',decodeURIComponent(entryLink)),'utf8'),/Use the native feature first/)
+  assert.equal(decodeURIComponent(rootLink),entryPath(topic,key))
+  assert.match(await readFile(join(store.directory(scope),decodeURIComponent(rootLink)),'utf8'),/Use the native feature first/)
+  assert.doesNotMatch(root,/^---|metadataSha256|bodySha256|"topics"|"entries"/m)
+  await assert.rejects(readFile(join(store.directory(scope),categoryPath(topic))),/ENOENT/)
+})
+
+test('pure Markdown is authoritative for index titles and summaries without a second copy',async t=>{
+  const {store}=await fixture(t);await store.remember(scope,item('1','style','Concise answers'))
+  const path=join(store.directory(scope),'index.md'),original=await readFile(path,'utf8')
+  await writeFile(path,original.replace('[style]','[回答风格]').replace('Concise answers','在回答问题时，保持简洁。'))
+  const index=await store.index(scope)
+  assert.equal(index.entries[0].title,'回答风格');assert.equal(index.entries[0].summary,'在回答问题时，保持简洁。')
+  assert.match(index.markdown,/回答风格/)
+  await store.remember(scope,item('2','unrelated','Other memory'))
+  const preserved=(await store.index(scope)).entries.find(row=>row.key==='style')
+  assert.equal(preserved.title,'回答风格');assert.equal(preserved.summary,'在回答问题时，保持简洁。')
+  const meta=JSON.parse(await readFile(join(store.directory(scope),'scope.json'),'utf8'))
+  assert.ok(meta.entryDescriptors.every(row=>!('summary'in row)&&!('title'in row)&&!('text'in row)))
+  for(const link of ['../outside.md','https://example.test/a.md','categories/preferences/index.md','%2E%2E/outside.md']){
+    await writeFile(path,original.replace(/\([^)]*\)/,'('+link+')'))
+    await assert.rejects(store.index(scope),/MEMORY_INDEX_INVALID/)
+  }
 })

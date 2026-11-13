@@ -1,7 +1,7 @@
 import {hash,label,checkedMemoryContext,renderRouterMemory,encodeTopic} from './format.js'
 import {failure} from '../runtime/files.js'
 
-export const LAYOUT_VERSION=3
+export const LAYOUT_VERSION=4
 // Portable even on case-insensitive filesystems and Windows reserved basenames.
 const encode=value=>{let part=Array.from(value,char=>/[a-z0-9_-]/.test(char)?char:char.codePointAt(0)<128?'%'+char.charCodeAt(0).toString(16).toUpperCase():encodeURIComponent(char)).join('');if(/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(part))part='%'+part.charCodeAt(0).toString(16).toUpperCase()+part.slice(1);if(part.length>120)part=part.slice(0,120).replace(/%(?:[0-9A-F])?$/,'')+'--'+hash(value).slice(0,24);return part}
 export const categoryPath=topic=>'categories/'+encode(topic)+'/index.md'
@@ -13,7 +13,7 @@ const escape=value=>String(value).replace(/[\\\[\]<>]/g,'\\$&').replace(/[\r\n]+
 const linkPath=value=>value.split('/').map(encodeURIComponent).join('/')
 const line=value=>String(value??'').replace(/\s+/g,' ').trim()
 const short=(value,max=240)=>{const text=line(value);return text.length>max?text.slice(0,max-1)+'…':text}
-export const entrySummary=entry=>short(entry.context?.summary??entry.text.replace(/^Summary:\s*/,'').split(/\n\s*\n/)[0])
+export const entrySummary=entry=>{const conclusion=entry.context?.summary??entry.text.replace(/^Summary:\s*/,'').split(/\n\s*\n/)[0],scenario=entry.context?.subject?.description??entry.context?.interpretation?.scenario;return short(scenario&&!conclusion.includes(scenario)?scenario+'：'+conclusion:conclusion)}
 const envelope=(meta,body)=>'---\n'+JSON.stringify({...meta,metadataSha256:hash(JSON.stringify(meta)),bodySha256:hash(body)},null,2)+'\n---\n\n'+body
 function decodeEnvelope(text,format){
   const match=/^---\n([\s\S]*?)\n---\n\n([\s\S]*)$/.exec(text??'')
@@ -29,7 +29,7 @@ const validHash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
 const validId=value=>typeof value==='string'&&/^[a-f0-9-]{36}$/.test(value)
 const validExpiry=value=>value===undefined||typeof value==='string'&&Number.isFinite(Date.parse(value))
 
-export function decodeRootIndex(text,scope){
+export function decodeLegacyRootIndex(text,scope){
   const {meta}=decodeEnvelope(text,'night-bot-memory-index-v3');checkScope(meta,scope)
   if(!validRevision(meta.revision)||!Array.isArray(meta.topics)||!Number.isSafeInteger(meta.candidateCount)||meta.candidateCount<0||!Array.isArray(meta.candidateExpiries))throw failure('MEMORY_INDEX_INVALID')
   const names=new Set()
@@ -49,6 +49,34 @@ export function decodeCategoryIndex(text,scope,topic){
     keys.add(row.key);ids.add(row.id)
   }
   return meta
+}
+/** The visible index is Markdown, never a JSON envelope. Transaction metadata
+ * is joined by canonical path from scope.json; titles and summaries live only here. */
+export function renderIndex(entries){
+  return '# Memory index\n\n'+entries.map(row=>`- [${escape(row.title)}](${linkPath(row.path)}) — ${escape(row.summary)}`).join('\n')+'\n'
+}
+export function decodeRootIndex(text,scope,meta){
+  if(typeof text!=='string'||text.startsWith('---')||!meta||meta.layoutVersion!==LAYOUT_VERSION||!Array.isArray(meta.entryDescriptors))throw failure('MEMORY_INDEX_INVALID')
+  const descriptors=new Map(),entries=[],seen=new Set()
+  for(const row of meta.entryDescriptors){
+    if(!label(row.topic)||!label(row.key)||row.path!==entryPath(row.topic,row.key)||!validId(row.id)||!validHash(row.sha256)||!validRevision(row.revision)||!validExpiry(row.expiresAt)||descriptors.has(row.path))throw failure('MEMORY_INDEX_INVALID')
+    descriptors.set(row.path,row)
+  }
+  const unescape=value=>value.replace(/\\([\\\[\]<>])/g,'$1')
+  for(const line of text.split(/\r?\n/)){
+    if(!line.trim()||/^#{1,6} /.test(line))continue
+    const match=/^- \[((?:\\.|[^\]\\])*)\]\(([^\s)]+)\) — (.*)$/.exec(line)
+    if(!match)throw failure('MEMORY_INDEX_INVALID')
+    let path;try{path=match[2].split('/').map(decodeURIComponent).join('/')}catch{throw failure('MEMORY_INDEX_INVALID')}
+    const descriptor=descriptors.get(path)
+    if(!descriptor||seen.has(path)||linkPath(path)!==match[2])throw failure('MEMORY_INDEX_INVALID')
+    seen.add(path);entries.push({...descriptor,title:unescape(match[1]),summary:unescape(match[3])})
+  }
+  if(seen.size!==descriptors.size)throw failure('MEMORY_INDEX_CHANGED')
+  if(!Number.isSafeInteger(meta.candidateCount)||meta.candidateCount<0||!Array.isArray(meta.candidateExpiries)||meta.candidateExpiries.length>meta.candidateCount||meta.candidateExpiries.some(value=>!validExpiry(value)))throw failure('MEMORY_INDEX_INVALID')
+  const topics=[]
+  for(const entry of entries){let topic=topics.find(row=>row.topic===entry.topic);if(!topic){topic={topic:entry.topic,count:0,expiries:[]};topics.push(topic)}topic.count++;if(entry.expiresAt)topic.expiries.push(entry.expiresAt)}
+  return {scope:scopeValue(scope),revision:meta.revision,entries,topics,candidateCount:meta.candidateCount,candidateExpiries:meta.candidateExpiries,markdown:renderIndex(entries)}
 }
 function splitSources(entry){
   const copy=structuredClone(entry),sources={}
@@ -90,7 +118,7 @@ export function entrySourceReference(text){return decodeEnvelope(text,'night-bot
 
 /** One Markdown library. Indices are derived only from canonical records; no Web
  * catalog, database or duplicate fact body is part of the storage contract. */
-export function buildLayeredWrites(scope,{meta,topics,candidates},now=Date.now()){
+export function buildLayeredWrites(scope,{meta,topics,candidates,indexEntries=[]},now=Date.now()){
   const writes=new Map(),rows=[]
   for(const [topic,value]of [...topics].sort(([a],[b])=>a.localeCompare(b))){
     if(!label(topic))throw failure('MEMORY_RECORD_INVALID')
@@ -100,15 +128,15 @@ export function buildLayeredWrites(scope,{meta,topics,candidates},now=Date.now()
       const encoded=encodeEntry(topic,entry,scope);writes.set(entryPath(topic,entry.key),encoded.text)
       if(encoded.sourceText)writes.set(sourcePath(entry.id),encoded.sourceText)
       const {id,key,revision,createdAt,updatedAt,expiresAt,provenance,origins,migration,source}=entry
-      descriptors.push({id,key,topic,title:key,summary:entrySummary(entry),path:'entries/'+encode(key)+'.md',sha256:hash(encoded.text),revision,createdAt,updatedAt,...expiresAt?{expiresAt}:{},...entry.context?.subject?{subject:entry.context.subject}:{},...source?.actor?{sourceActor:source.actor}:{},...provenance?{provenance}:{},...origins?{origins}:{},...migration?{migration}:{}})
+      const prior=indexEntries.find(row=>row.path===entryPath(topic,key)&&row.sha256===hash(encoded.text))
+      descriptors.push({id,key,topic,title:prior?.title??key,summary:prior?.summary??entrySummary(entry),path:'entries/'+encode(key)+'.md',sha256:hash(encoded.text),revision,createdAt,updatedAt,...expiresAt?{expiresAt}:{},...entry.context?.subject?{subject:entry.context.subject}:{},...source?.actor?{sourceActor:source.actor}:{},...provenance?{provenance}:{},...origins?{origins}:{},...migration?{migration}:{}})
     }
-    const category=envelope({format:'night-bot-memory-category-v3',scope:scopeValue(scope),topic,revision:meta.revision,entries:descriptors},'# '+topic+'\n\n'+descriptors.map(row=>`- [${escape(row.title)}](${linkPath(row.path)}) — ${escape(row.summary)}`).join('\n')+'\n')
-    const expiries=descriptors.filter(row=>row.expiresAt).map(row=>row.expiresAt)
-    writes.set(categoryPath(topic),category)
-    rows.push({topic,title:topic,summary:short(descriptors.slice(0,3).map(row=>row.title).join('、'))+'；按需打开条目。',path:categoryPath(topic),sha256:hash(category),count:descriptors.length,expiries})
+    rows.push(...descriptors.map(row=>({...row,path:entryPath(topic,row.key)})))
   }
-  const root=envelope({format:'night-bot-memory-index-v3',scope:scopeValue(scope),revision:meta.revision,topics:rows,candidateCount:candidates.length,candidateExpiries:candidates.filter(row=>row.expiresAt).map(row=>row.expiresAt)},'# Memory index\n\n'+rows.map(row=>`- [${escape(row.title)}](${linkPath(row.path)}) — ${escape(row.summary)}`).join('\n')+'\n')
-  writes.set('index.md',root);writes.set('scope.json',JSON.stringify({...meta,layoutVersion:LAYOUT_VERSION},null,2)+'\n')
+  writes.set('index.md',renderIndex(rows))
+  // No duplicate titles, summaries or body text in machine transaction state.
+  const entryDescriptors=rows.map(({title,summary,...row})=>row)
+  writes.set('scope.json',JSON.stringify({...meta,layoutVersion:LAYOUT_VERSION,entryDescriptors,candidateCount:candidates.length,candidateExpiries:candidates.filter(row=>row.expiresAt).map(row=>row.expiresAt)},null,2)+'\n')
   if(candidates.length)writes.set('candidates.md',encodeTopic('candidates',meta.revision,candidates,scopeValue(scope)))
   return writes
 }

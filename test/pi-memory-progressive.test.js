@@ -9,14 +9,14 @@ const fixture=()=>{
  memory.scope=async()=>scope;memory.binding=async()=>({actorId:'alice'});memory.recallSources=new WeakMap();memory.contexts=new WeakMap();memory.provenance=()=>null
  const calls=[],actor={};memory.recordUsage=async(...args)=>calls.push(['usage',...args])
  const entry={id:'one',key:'style',subject:{kind:'context'},context:{subject:{kind:'context'},evidence:[{quote:'SOURCE_ONLY'}],background:{quote:'SOURCE_ONLY',messageId:'original'}},origins:[{taskId:'original'}],originSource:{messageId:'original'},text:'BODY_ONLY'}
- memory.store={index:async(_scope,args)=>{calls.push(['index',args]);return {revision:1,...args.topic?{entries:[{id:entry.id,key:entry.key,subject:entry.subject}]}:{topics:[{topic:'preferences',count:1}]}}},read:async(_scope,args)=>{calls.push(['read',args]);return {revision:1,entries:[entry]}}}
+ memory.store={index:async(_scope,args)=>{calls.push(['index',args]);return {revision:1,entries:[{id:entry.id,key:entry.key,title:'Reports',path:'categories/preferences/entries/style.md',summary:'When writing reports, use concise text.',subject:entry.subject}]}},read:async(_scope,args)=>{calls.push(['read',args]);return {revision:1,entries:[entry]}}}
  const tools=new Map();apply({memory,tools:{register:tool=>tools.set(tool.name,tool)}})
  return {memory,calls,actor,tools}
 }
 test('public recall loads root, topic descriptors, exact entry, then explicitly saved sources',async()=>{
  const {tools,actor,calls}=fixture(),read=tools.get('memory_read')
- const root=await read.execute({},{agent:actor});assert.equal(root.stage,'root-index');assert.equal(calls.length,1)
- const index=await read.execute({topic:'preferences'},{agent:actor});assert.equal(index.stage,'topic-index');assert.equal(index.entries[0].applicability.status,'context-dependent');assert.doesNotMatch(JSON.stringify(index),/BODY_ONLY|SOURCE_ONLY/);assert.equal(calls.length,2)
+ const root=await read.execute({},{agent:actor});assert.equal(root.stage,'root-index');assert.equal(calls.length,1);assert.match(root.markdown,/\[Reports\]\(categories\/preferences\/entries\/style.md\)/);assert.doesNotMatch(root.markdown,/scopeToken|revision|BODY_ONLY/);assert.equal(read.output.render({},root)[0].text,root.markdown)
+ const index=await read.execute({topic:'preferences'},{agent:actor});assert.equal(index.stage,'filtered-index');assert.equal(index.entries[0].applicability.status,'context-dependent');assert.doesNotMatch(JSON.stringify(index),/BODY_ONLY|SOURCE_ONLY/);assert.equal(calls.length,2)
  const detail=await read.execute({topic:'preferences',key:'style'},{agent:actor});assert.equal(detail.entries[0].text,'BODY_ONLY');assert.doesNotMatch(JSON.stringify(detail),/SOURCE_ONLY|origins|originSource/);assert.equal(calls[2][1].includeSources,false)
  const sources=await read.execute({topic:'preferences',key:'style',includeSources:true},{agent:actor});assert.match(JSON.stringify(sources),/SOURCE_ONLY/);assert.equal(sources.includeSources,true)
 })
@@ -64,7 +64,7 @@ test('public progressive recall opens only the requested Markdown layers',async 
  const {memory,actor,tools}=fixture();memory.scope=async()=>scope;memory.store=store
  const read=tools.get('memory_read');reads.length=0
  await read.execute({},{agent:actor});assert.ok(reads.includes('index.md'));assert.ok(!reads.some(name=>name.startsWith('categories/')||name.startsWith('sources/')||name==='candidates.md'))
- reads.length=0;await read.execute({topic:'preferences'},{agent:actor});assert.deepEqual(reads.filter(name=>name.startsWith('categories/')),['categories/preferences/index.md']);assert.ok(!reads.some(name=>name.startsWith('sources/')))
+ reads.length=0;await read.execute({topic:'preferences'},{agent:actor});assert.deepEqual(reads.filter(name=>name.startsWith('categories/')),[]);assert.ok(!reads.some(name=>name.startsWith('sources/')))
  reads.length=0;const detail=await read.execute({topic:'preferences',key:'reports'},{agent:actor});assert.equal(detail.entries[0].text,'Concise reports');assert.deepEqual(reads.filter(name=>name.includes('/entries/')),['categories/preferences/entries/reports.md']);assert.ok(!reads.some(name=>name.startsWith('sources/')));assert.doesNotMatch(JSON.stringify(detail),/SOURCE_ONLY/)
  reads.length=0;const source=await read.execute({topic:'preferences',key:'reports',includeSources:true},{agent:actor});assert.equal(source.entries[0].context.background.quote,'SOURCE_ONLY');assert.equal(reads.filter(name=>name.startsWith('sources/')).length,1)
 })

@@ -121,12 +121,26 @@ test('generic model file tools cannot bypass the shared memory service through r
   let path,attempt=false
   const f=await memoryHost(t,()=>{if(attempt){attempt=false;return {tool:'read',args:{path:path}}}})
   const a=await f.agent('private-a',{actorId:'alice'}),b=await f.agent('private-b',{actorId:'bob'})
-  await f.say(a.agent,'记住 facts/value：PRIVATE_BODY_FROM_FILE')
   const scope=await f.host.ctx.memory.scope(a.agent,{})
-  path=join(f.host.ctx.memory.store.directory(scope),'topics',hash('facts')+'.md')
+  await f.host.ctx.memory.store.remember(scope,{topic:'facts',key:'value',text:'Shared navigation summary.\n\nPRIVATE_BODY_FROM_FILE',source:{sessionId:'private-a',messageId:'source'}})
+  path=join(f.host.ctx.memory.store.directory(scope),'categories','facts','entries','value.md')
   attempt=true;await f.say(b.agent,'try reading this raw application file')
+  assert.match(JSON.stringify(f.requests.at(-1)),/Shared navigation summary/)
   assert.doesNotMatch(JSON.stringify(f.requests.at(-1)),/PRIVATE_BODY_FROM_FILE/)
   assert.match(JSON.stringify(f.requests.at(-1)),/private|sandbox|denied/i)
+})
+
+test('full-access Pi native read opens an indexed memory leaf on demand',async t=>{
+  let path,attempt=false
+  const f=await memoryHost(t,()=>{if(attempt){attempt=false;return {tool:'read',args:{path}}}},{hostConfig:{permissionMode:'full'}})
+  const a=await f.agent('native-leaf',{actorId:'alice'}),scope=await f.host.ctx.memory.scope(a.agent,{})
+  await f.host.ctx.memory.store.remember(scope,{topic:'facts',key:'value',text:'Navigation summary.\n\nBODY_ONLY_NATIVE_READ',source:{sessionId:'native-leaf',messageId:'source'}})
+  const index=await f.host.ctx.memory.index(a.agent,{})
+  assert.doesNotMatch(index.markdown,/BODY_ONLY_NATIVE_READ/)
+  path=join(f.host.ctx.memory.store.directory(scope),index.entries[0].path)
+  attempt=true;await f.say(a.agent,'Read the indexed memory leaf.')
+  const tool=f.requests.at(-1).messages.findLast(message=>message.role==='tool')
+  assert.match(JSON.stringify(tool),/BODY_ONLY_NATIVE_READ/)
 })
 
 test('native memory tool accepts context with Host-bound subject and shares it as reference-only for another actor',async t=>{

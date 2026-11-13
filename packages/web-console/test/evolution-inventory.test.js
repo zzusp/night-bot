@@ -139,7 +139,7 @@ test('revision changes discard the whole snapshot rather than append mixed or du
 
 test('stable stale indices and interrupted layout migrations never publish an inventory',async t=>{
   const f=await fixture(t),path=join(f.directory,'scope.json'),original=await readFile(path,'utf8'),meta=JSON.parse(original)
-  await writeFile(path,JSON.stringify({...meta,revision:meta.revision+1}))
+  await writeFile(path,JSON.stringify({...meta,revision:meta.revision+1,entryDescriptors:[]}))
   await assert.rejects(readEvolutionInventory(f),{code:'EVOLUTION_UNAVAILABLE'})
   await writeFile(path,original)
   await writeFile(join(f.directory,'layout-migration.pending.json'),'{}')
