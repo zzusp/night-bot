@@ -68,6 +68,13 @@ test('task session API reads actual committed Pi source, todos and tool records 
     assert.equal(result.status, 200, JSON.stringify(result.body))
     assert.equal(result.body.status, 'ready'); assert.equal(result.body.scope, 'current-session-context')
     assert.equal(result.body.sessionId, task.session.sessionId)
+    assert.notEqual(f.host.ctx.sessionPersistence, f.host.ctx.sessionPersistence, 'Cordis returns a new service facade on each lookup')
+    assert.ok(result.body.liveProof, 'the actual routed Pi journal must issue a light proof')
+    const light = await api(endpoint + '?live=' + encodeURIComponent(result.body.liveProof))
+    assert.equal(light.status, 200)
+    assert.equal(light.body.historyChanged, false, 'a fresh Cordis facade is still the same persistence authority')
+    assert.deepEqual(light.body.items, [])
+
     assert.ok(result.body.items.some(row => row.role === 'user' && row.kind === 'instruction' && row.text.includes('USER_SESSION_MARKER')), 'the exact admitted task instruction must remain visible')
     assert.ok(result.body.items.some(row => row.kind === 'tool-call' && row.toolName === 'task_result'), 'actual Pi tool invocation must be visible')
     assert.ok(result.body.items.some(row => row.kind === 'tool-result' && row.toolName === 'task_result' && row.text.length > 0), 'actual Pi tool receipt must be visible')
