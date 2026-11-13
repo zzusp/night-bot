@@ -202,7 +202,7 @@ export async function apply(ctx,config={},dependencies={}){
       if(health.ingress?.paused)return {state:'paused',errorCode:null}
       const groups=health.groups??[]
       if(groups.some(group=>group.backfill?.state==='failed'))return {state:'error',errorCode:'DINGTALK_HISTORY_RECOVERY_FAILED'}
-      if(health.ingress?.recovering||!groups.length||groups.some(group=>group.listener?.state!=='ready'||group.backfill?.state!=='ok'||group.backfill?.inProgress||group.backfill?.recoveryRequired))return {state:'recovering',errorCode:null}
+      if(health.ingress?.recovering||!groups.length||groups.some(group=>group.listener?.state!=='ready'||group.backfill?.state!=='ok'||group.backfill?.recoveryRequired))return {state:'recovering',errorCode:null}
       return {state:'receiving',errorCode:null}
     },
     setPaused:paused=>serialize(async()=>{

@@ -240,6 +240,8 @@ Windows 默认 `dingtalk_account_mode:"system"`，使用当前 OS 用户受 DPAP
 
 同会话队列通知仍为 `starting` / `unknown` 且身份未决时，不能排除回声的 typed 入站以 `CHANNEL_NOTIFICATION_IDENTITY_PENDING` 暂缓，不能把超时、查询失败或未确认当作真人来源。bridge 沿既有持久 `recoveryFromAt` 补读水位恢复，水位写入失败保留错误，不靠注入或重放业务修补。本次 resolver 只接队列通知；原 native operation 的 send/status 分支未统一 typed scope/query 接线，不据此外推 shell 原生发送的通用回声能力或验收。有界等待只限制调用方等待时间，当前 observer 关闭不 join/cancel 在途状态查询，底层 CLI 仍可运行至 runner 自身超时；runner 超时后也未等待 child 的真实退出，不能从 bridge 消息/水位排空外推全部旁路进程已排空。正常退出只按本次实际可观察实例及资源逐项核实。上述为实现合同，不代表现场已通过；当前 DWS/profile 是否推送同账号在单成员群中的原始消息仍须实测。`dingtalk_listen:false` 下的 `acceptHistoryMessage`、SDK 注入和 fake 仅验证本地链路；真实订阅、原始入站、群内交付/回读和复盘须分项留证。
 
+钉钉接入状态区分恢复与日常轮询：首次历史补拉、监听未 ready、持久恢复界或 `recoveryRequired` 未解除时保留 `recovering`；已有成功历史且无恢复缺口的普通增量拉取，即使 `inProgress` 也保持 `receiving`。补拉失败仍报告错误，供应商完整性、身份校验、Host 接纳和耐久消费条件不变。
+
 已认证且因通知身份未决而暂缓的消息，须在该渠道原有串行 ingress 游标文件中持久保存消息 ID 与发生时间，不保存正文。该记录固定补读恢复下界；只有正式入站处理成功或经持久收据确认精确自通知回声后，才解除对应暂缓标识。供应商即使返回 `complete`，只要结果缺少已知暂缓消息（包括空页），仍以 `DINGTALK_DEFERRED_HISTORY_INCOMPLETE` 拒绝，不清恢复界或推进补拉完成水位。旧 bridge 快照只更新其暂停/恢复字段，不能覆盖较新的消费水位或暂缓消息记录。继续使用既有 timer、串行落盘、drain 和去重，不另建重放通道；持久化失败保留错误。此为当前冷恢复实现合同，修复后的真实补拉与无重放结果仍须由本轮对应版本验收，历史 PASS 不替代。
 
 `test/pi-channel-plugin.test.js` covers disabled/registered modes and the actual

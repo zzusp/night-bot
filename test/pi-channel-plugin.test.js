@@ -1233,6 +1233,21 @@ for(const type of ['chat-room','chat'])test('DWS receive pause retains sends, su
  assert.deepEqual(h.received,['during-pause']);assert.equal(JSON.parse(await readFile(h.file,'utf8')).paused,false)
 })
 
+test('DWS ordinary incremental history remains receiving while incomplete history still fails closed',{timeout:nativeTestTimeout(30000)},async t=>{
+ const gate=Promise.withResolvers();t.after(()=>gate.resolve())
+ const h=await ingressControlFixture(t)
+ await eventually(()=>h.plugin.ingressControl.getStatus().state==='receiving','initial history completes',t.signal)
+ h.state.historyGate=gate
+ const reads=h.reads.length
+ await eventually(()=>h.reads.length>reads&&h.plugin.health.conversations[0].backfill.inProgress===true,'real periodic history read is held',t.signal)
+ assert.equal(h.plugin.health.conversations[0].backfill.state,'ok')
+ assert.equal(h.plugin.health.ingress.recovering,false)
+ assert.deepEqual(h.plugin.ingressControl.getStatus(),{state:'receiving',errorCode:null})
+ h.state.partial=true;gate.resolve()
+ await eventually(()=>h.plugin.ingressControl.getStatus().state==='error','incomplete incremental history fails closed',t.signal)
+ assert.equal(h.plugin.ingressControl.getStatus().errorCode,'DINGTALK_HISTORY_RECOVERY_FAILED')
+})
+
 test('DWS pause drains direct and subscribed ingress before serial resume and rejects stale listeners',{timeout:20000},async t=>{
  const h=await ingressControlFixture(t)
  await eventually(()=>h.plugin.ingressControl.getStatus().state==='receiving','initial history complete',t.signal)
