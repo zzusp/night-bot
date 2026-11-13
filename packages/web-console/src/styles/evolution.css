@@ -32,6 +32,7 @@
 .evolution-item-icon { display: flex; flex: 0 0 18px; color: var(--board-muted); }
 .evolution-item-copy { display: block; min-width: 0; flex: 1; }
 .evolution-item-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 22px; font-weight: 500; }
+.evolution-item-summary { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--board-muted); font-size: 12px; line-height: 18px; margin-top: 2px; }
 .evolution-item-arrow { color: var(--board-muted); flex: 0 0 17px; }
 .evolution-table .evolution-action-cell { padding: 4px 8px 4px 0; text-align: right; }
 .evolution-table .evolution-entry-action { width: 36px; min-height: 36px; padding: 0; }
@@ -96,6 +97,7 @@
 .evolution-reader-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 20px 0; }
 .evolution-content-heading { padding: 24px 32px 18px; }
 .evolution-content-heading h2 { overflow-wrap: anywhere; font-size: 22px; font-weight: 600; line-height: 1.4; margin: 0; }
+.evolution-content-summary { margin: 8px 0 0; color: var(--board-muted); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .evolution-reader-tabs { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 32px; border-bottom: 1px solid var(--board-border); }
 .evolution-content-switch { display: flex; gap: 24px; }
 .evolution-content .evolution-content-switch .board-button { min-height: 44px; padding: 8px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: var(--board-surface); background-image: none; color: var(--board-muted); box-shadow: none; transition: none; }

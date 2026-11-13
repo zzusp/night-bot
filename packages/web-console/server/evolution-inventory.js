@@ -79,6 +79,16 @@ async function readScopeSnapshot(memory, scope) {
   return {revision: meta.revision, entries, candidates, state}
 }
 
+// The index owns human labels. Generated titles equal the storage key; in that
+// case promote its useful one-line summary instead of repeating a technical slug.
+export function memoryDisplayLabel(entry) {
+  const title = typeof entry.title === 'string' ? entry.title.trim() : ''
+  const summary = typeof entry.summary === 'string' ? entry.summary.trim() : ''
+  const fallback = entry.topic + '/' + entry.key
+  const name = title && title !== entry.key && title !== fallback ? title : summary || title || fallback
+  return {name, ...(summary && summary !== name ? {summary} : {})}
+}
+
 /** Authenticated, read-only current inventory. Private matching keys never enter the DTO. */
 export async function readEvolutionInventory({memory, reflection, binding, now = Date.now(), timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone}) {
   binding = bindingSchema.parse(binding)
@@ -93,7 +103,7 @@ export async function readEvolutionInventory({memory, reflection, binding, now =
     acceptedCount += snapshot.entries.length; memoryCandidates += snapshot.candidates.length
     for (const [status, records] of [['applied', snapshot.entries], ['candidate', snapshot.candidates]]) for (const entry of records) {
       const id = hash(JSON.stringify([scope.kind, scope.id, 'memory', status, entry.topic, entry.key]))
-      items.push({id, kind: 'memory', name: entry.topic + '/' + entry.key, scope: scope.kind, status, revision: entry.revision, updatedAt: stamp(entry.updatedAt), provenance: entry.provenance ?? null, origins: entry.origins ?? [], migration: entry.migration ?? null, memoryUse: null})
+      items.push({id, kind: 'memory', ...memoryDisplayLabel(entry), scope: scope.kind, status, revision: entry.revision, updatedAt: stamp(entry.updatedAt), provenance: entry.provenance ?? null, origins: entry.origins ?? [], migration: entry.migration ?? null, memoryUse: null})
       if (status === 'applied') memoryResources.push({itemId: id, scopeToken, storageId: entry.id})
     }
     for (const [key, value] of Object.entries(snapshot.state.skills)) {

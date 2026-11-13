@@ -116,3 +116,27 @@ test('最近使用来自每条记忆或技能的真实观测，缺失/非法不�
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect((await new AxeBuilder({page}).include('.evolution-library').analyze()).violations).toEqual([]);
 });
+
+for (const width of [1440, 1024, 390]) test(`记忆索引标题摘要单行省略，详情完整显示 ${width}px`, async ({page}) => {
+  const name = '文件验证与渠道交付', summary = '文件创建与读回验证通过，不等于已通过渠道送达。'.repeat(12);
+  const item = {...items[1], id: 'readable-memory', kind: 'memory', name, summary};
+  await page.setViewportSize({width, height: 960});
+  await page.route('**/api/evolution?*', route => route.fulfill({json: {...snapshot, items:[item], total:1}}));
+  await page.route('**/api/evolution/items/**', route => route.fulfill({json: {id:item.id, kind:'memory', name, revision:item.revision, current:{text:'正文另行读取。', revision:item.revision, updatedAt}, previous:null, comparison:{status:'no_previous', reason:'new_entry'}, redacted:false}}));
+  await page.goto('/#/evolution');
+  await page.getByLabel('访问令牌', {exact:true}).fill(FIXTURE_TOKEN);
+  await page.getByRole('button', {name:'连接工作空间', exact:true}).click();
+  const label = page.locator('.evolution-item-summary');
+  await expect(label).toHaveText(summary);
+  expect(await label.evaluate(el => {const css=getComputedStyle(el); return css.whiteSpace === 'nowrap' && css.textOverflow === 'ellipsis' && el.scrollWidth > el.clientWidth;})).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({path:test.info().outputPath(`memory-label-list-${width}.png`), fullPage:true});
+  await page.getByRole('button', {name:`查看内容：${name}`, exact:true}).click();
+  const full = page.locator('.evolution-content-summary');
+  await expect(full).toHaveText(summary);
+  expect(await full.evaluate(el => el.scrollHeight <= el.clientHeight && getComputedStyle(el).whiteSpace !== 'nowrap')).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({path:test.info().outputPath(`memory-label-detail-${width}.png`), fullPage:true});
+  await page.getByRole('button', {name:'返回列表',exact:true}).click();
+  await expect(page.getByRole('button', {name:`查看内容：${name}`,exact:true})).toBeFocused();
+});
