@@ -1,24 +1,34 @@
-case_id,case,platform,round_1_initial,round_1_final,evidence,notes,round_2_final,round_2_evidence,round_2_notes,round_3_final,round_3_evidence,round_3_notes
-cache-native-rename,旧目标与临时读句柄对照,Windows,EPERM,ROOT_CAUSE_CONFIRMED,round-1.md,只有目标读句柄阻止替换,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-cache-win,连续刷新冷读失败恢复鉴权撤销,Windows,FAIL,PASS_WITH_SKIPS,round-1.md,30项28通过2平台跳过；最终62项再次覆盖,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-cache-linux,缓存完整文件链接权限,Linux,NOT_RUN,PASS_WITH_SKIPS,round-1.md,30项29通过1Windows专属跳过,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-event-cursor,解除归档保持原增量游标,Windows/Linux,FAIL,PASS,round-1.md,真实SQLite先红后绿；完整归档两平台通过,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-feedback-secret,完整脱敏后截断,Windows/Linux,FAIL,PASS,round-1.md,输出48000且无合成密钥前缀,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-linux-content-feedback-archive,反馈正文授权归档完整文件,Linux,NOT_RUN,PASS,round-1.md,36通过0跳过；含真实symlink,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-windows-fixture-cleanup,keys与contention外部SQLite先关闭,Windows,FAIL,PASS,round-1.md,两文件25项通过；原28项命令因shared另有超时,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-windows-final-related,缓存inventory真实Web学习共享记忆复盘归档,Windows,FAIL,PASS_WITH_SKIPS,round-1.md,62项60通过2跳过0失败取消,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-router-handoff,全部交接阶段,Windows,TIMEOUT,PASS,round-1.md,7项全通过；精确Router闸门；原120秒不变,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-source-supplement,准确来源保留等待且无隐式任务回合,Windows/Linux,FAIL,PASS,round-1.md,各3项通过；持久来源作者原文问题状态与冷恢复去重,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-core-batch-initial,本批次变动核心文件初轮,Windows,FAIL,FAIL_THEN_TARGETED_RETEST,round-1.md,552项519通过29失败1取消3跳过；失败组已复验；未完整重跑,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-source-guards,来源哈希生产导入原生运行时,Windows,PASS,PASS,round-1.md,190retained及437JS；守卫不放宽,PASS,round-2.md,最新457585e发行守卫通过,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-web-build,Web构建,Windows,PASS,PASS,round-1.md,前端实现未改,PASS,round-2.md,最新457585e独立发行构建通过,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-browser-related,自进化计划任务进度执行滚动,Windows,PASS,PASS,round-1/evolution-light-390.png,47通过；fixture不替代正式实例,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-platform-native-skips,POSIXtoken及process-group及portable取消,Windows,SKIP,SKIP,round-1.md,3项平台限制；本轮未补跑独立Linux场景,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-live-deployment,正式发行与真实页面fresh终态,local-installation,NOT_RUN,BLOCKED,goal.md,需修复PR先合并且合并需明确授权；旧39实例未替换,DEPLOYED_WITH_ISSUES,round-2.md,最新发行与真实强刷通过；恢复告警与界面遗留单列,NOT_DEPLOYED,round-3.md,本轮代码待合并；安装仍457585e
-live-refresh,真实3080连续两次强刷与Store计数,Windows,NOT_RUN,NOT_RUN,round-2.md,第2轮新增部署场景,PASS,round-2.md,31已应用0候选；v3 revision42；两次无stale和error,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-latest-ui-targeted,最新合入聊天任务界面回归,Windows,NOT_RUN,NOT_RUN,round-2.md,第2轮新增部署场景,FAIL,round-2.md,7项5通过2失败；1024px页面溢出和深色待办对比度3.46,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
-live-channel-recovery,实际渠道连接与恢复终态,Windows,NOT_RUN,NOT_RUN,round-2.md,第2轮新增部署场景,PARTIAL,round-2.md,两路钉钉listening但ingress recovering；degraded有2项告警,PARTIAL,round-3.md,两路真实游标已推进且间歇receiving；普通轮询误报已修但未部署
-live-task-preservation,重启任务状态与投递账本观察,Windows,NOT_RUN,NOT_RUN,round-2.md,第2轮新增部署场景,PASS_WITH_LIVE_ACTIVITY,round-2.md,10任务9完成1等待且状态指纹一致；真实投递使账本73变75,PASS_READ_ONLY,round-3.md,10任务9完成1等待；未人工close或resume且无新测试消息
-ingress-poll-status,普通增量拉取接入状态,Windows,NOT_RUN,NOT_RUN,round-3.md,第3轮新增恢复场景,NOT_RUN,round-3.md,第3轮新增恢复场景,PASS_LOCAL,round-3.md,修复前1项明确断言失败；修复后真实plugin/bridge的6项fake DWS回归通过
-task-effect-recovery,原任务效果核验,Windows,NOT_RUN,NOT_RUN,round-3.md,第3轮新增恢复场景,NOT_RUN,round-3.md,第3轮新增恢复场景,BLOCKED,round-3.md,正式inspect返回TASK_EFFECT_DRAIN_CUT_CHANGED；未执行close或原写调用
-router-batch-recovery,原Router批次恢复,Windows,NOT_RUN,NOT_RUN,round-3.md,第3轮新增恢复场景,NOT_RUN,round-3.md,第3轮新增恢复场景,BLOCKED,round-3.md,aborted action未配对且有较新输入；现有续办合同拒绝；未改账本
+case_id,case,platform,round_1_initial,round_1_final,evidence,notes,round_2_final,round_2_evidence,round_2_notes,round_3_final,round_3_evidence,round_3_notes,round_4_final,round_4_evidence,round_4_notes
+cache-native-rename,旧目标与临时读句柄对照,Windows,EPERM,ROOT_CAUSE_CONFIRMED,round-1.md,只有目标读句柄阻止替换,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+cache-win,连续刷新冷读失败恢复鉴权撤销,Windows,FAIL,PASS_WITH_SKIPS,round-1.md,30项28通过2平台跳过；最终62项再次覆盖,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+cache-linux,缓存完整文件链接权限,Linux,NOT_RUN,PASS_WITH_SKIPS,round-1.md,30项29通过1Windows专属跳过,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+event-cursor,解除归档保持原增量游标,Windows/Linux,FAIL,PASS,round-1.md,真实SQLite先红后绿；完整归档两平台通过,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+feedback-secret,完整脱敏后截断,Windows/Linux,FAIL,PASS,round-1.md,输出48000且无合成密钥前缀,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+linux-content-feedback-archive,反馈正文授权归档完整文件,Linux,NOT_RUN,PASS,round-1.md,36通过0跳过；含真实symlink,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+windows-fixture-cleanup,keys与contention外部SQLite先关闭,Windows,FAIL,PASS,round-1.md,两文件25项通过；原28项命令因shared另有超时,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+windows-final-related,缓存inventory真实Web学习共享记忆复盘归档,Windows,FAIL,PASS_WITH_SKIPS,round-1.md,62项60通过2跳过0失败取消,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+router-handoff,全部交接阶段,Windows,TIMEOUT,PASS,round-1.md,7项全通过；精确Router闸门；原120秒不变,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+source-supplement,准确来源保留等待且无隐式任务回合,Windows/Linux,FAIL,PASS,round-1.md,各3项通过；持久来源作者原文问题状态与冷恢复去重,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+core-batch-initial,本批次变动核心文件初轮,Windows,FAIL,FAIL_THEN_TARGETED_RETEST,round-1.md,552项519通过29失败1取消3跳过；失败组已复验；未完整重跑,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+source-guards,来源哈希生产导入原生运行时,Windows,PASS,PASS,round-1.md,190retained及437JS；守卫不放宽,PASS,round-2.md,最新457585e发行守卫通过,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,PASS,round-4.md,最终发行和修复pnpm check通过；190 retained及439 runtime JS
+web-build,Web构建,Windows,PASS,PASS,round-1.md,前端实现未改,PASS,round-2.md,最新457585e独立发行构建通过,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,PASS,round-4.md,最终独立发行构建通过；大chunk提示保留
+browser-related,自进化计划任务进度执行滚动,Windows,PASS,PASS,round-1/evolution-light-390.png,47通过；fixture不替代正式实例,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+platform-native-skips,POSIXtoken及process-group及portable取消,Windows,SKIP,SKIP,round-1.md,3项平台限制；本轮未补跑独立Linux场景,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+live-deployment,正式发行与真实页面fresh终态,local-installation,NOT_RUN,BLOCKED,goal.md,需修复PR先合并且合并需明确授权；旧39实例未替换,DEPLOYED_WITH_ISSUES,round-2.md,最新发行与真实强刷通过；恢复告警与界面遗留单列,NOT_DEPLOYED,round-3.md,本轮代码待合并；安装仍457585e,DEPLOYED_WITH_ISSUES,round-4.md,0fa0c4f正式运行；正常IPC停机及进程核验；任务说明保留
+live-refresh,真实3080连续两次强刷与Store计数,Windows,NOT_RUN,NOT_RUN,round-2.md,第2轮新增部署场景,PASS,round-2.md,31已应用0候选；v3 revision42；两次无stale和error,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,PASS,round-4.md,最终Edge两次强刷31/0；v4 revision42；ready且无stale或error
+latest-ui-targeted,最新合入聊天任务界面回归,Windows,NOT_RUN,NOT_RUN,round-2.md,第2轮新增部署场景,FAIL,round-2.md,7项5通过2失败；1024px页面溢出和深色待办对比度3.46,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围,NOT_RERUN,round-4.md,保留历史结论；本轮未修改或重复验证
+live-channel-recovery,实际渠道连接与恢复终态,Windows,NOT_RUN,NOT_RUN,round-2.md,第2轮新增部署场景,PARTIAL,round-2.md,两路钉钉listening但ingress recovering；degraded有2项告警,PARTIAL,round-3.md,两路真实游标已推进且间歇receiving；普通轮询误报已修但未部署,PASS_LIVE,round-4.md,04:22Z两路listening及receiving；不代表全部业务完成
+live-task-preservation,重启任务状态与投递账本观察,Windows,NOT_RUN,NOT_RUN,round-2.md,第2轮新增部署场景,PASS_WITH_LIVE_ACTIVITY,round-2.md,10任务9完成1等待且状态指纹一致；真实投递使账本73变75,PASS_READ_ONLY,round-3.md,10任务9完成1等待；未人工close或resume且无新测试消息,PASS_WITH_LIVE_ACTIVITY,round-4.md,原发布任务completed及req6/control5不变；新消息正常推进关联任务
+ingress-poll-status,普通增量拉取接入状态,Windows,NOT_RUN,NOT_RUN,round-3.md,第3轮新增恢复场景,NOT_RUN,round-3.md,第3轮新增恢复场景,PASS_LOCAL,round-3.md,修复前1项明确断言失败；修复后真实plugin/bridge的6项fake DWS回归通过,PASS_LOCAL_AND_LIVE,round-4.md,原6/6保留；最终两路receiving无error
+task-effect-recovery,原任务效果核验,Windows,NOT_RUN,NOT_RUN,round-3.md,第3轮新增恢复场景,NOT_RUN,round-3.md,第3轮新增恢复场景,BLOCKED,round-3.md,正式inspect返回TASK_EFFECT_DRAIN_CUT_CHANGED；未执行close或原写调用,BLOCKED,round-4.md,旧未知写保留；前轮inspect切点过期；未close或重放
+router-batch-recovery,原Router批次恢复,Windows,NOT_RUN,NOT_RUN,round-3.md,第3轮新增恢复场景,NOT_RUN,round-3.md,第3轮新增恢复场景,BLOCKED,round-3.md,aborted action未配对且有较新输入；现有续办合同拒绝；未改账本,PASS_LIVE,round-4.md,原4consumed；原packet唯一及claim1；3项补充先接纳；实质回复送达
+router-shutdown-regressions,停机续办与失败关闭,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,PASS,round-4.md,最终恢复9/9；含晚到首答和取消；工厂13/13
+router-full-suite,完整路由原恢复版本,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,PASS_PRIOR_SOURCE,round-4.md,PR100原源码109/109；非最终并发增量全量验证
+router-triage-identity,首答进度与冻结身份,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,PASS,round-4.md,最终身份9/9；payload及来源变化仍拒绝
+memory-layout-no-backup,无备份CLI中断与篡改守卫,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,PASS,round-4.md,33/33；三个真实进程退出边界；默认备份不变
+memory-layout-live,官方v3到v4无备份迁移,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,PASS,round-4.md,离线39文件不变且无新增备份；运行后技能快照正常更新1文件
+memory-neighbor-regressions,共享记忆及退役数据库,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,PASS,round-4.md,记忆29/29及Host不写退役数据库1/1
+skill-inventory-link,技能链接盘点Windows夹具,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,ENVIRONMENT_FAILED,round-4.md,31项组合30pass及1fail；symlink EPERM在产品调用前；非skip
+live-router-no-replay,原历史及旧调用无重放,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,PASS,round-4.md,23条前缀hash不变；旧call无toolResult且operation无执行记录
+live-substantive-delivery,原群实质反馈送达,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,PASS,round-4.md,04:12:11Z delivered；真实messageId及厂商回读；非仅受理
+live-project-status,Project字段修改业务完成,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,NOT_COMPLETE,round-4.md,缺少选项反馈送达；后续真实群输入继续处理；不称外部修改完成
