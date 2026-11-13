@@ -28,6 +28,12 @@ test('three rendered lines, accessible disclosure, resize, polling, canvas gutte
   for (const width of [1440,1024,390]) {
     await page.setViewportSize({width,height:960});
     await expect(toggle).toBeVisible();
+    expect(await message.locator('.three-line-content').evaluate(el => {
+      const first = el.querySelector('p')!;
+      const range = document.createRange(); range.selectNodeContents(first);
+      const visible = [...range.getClientRects()].filter(rect => rect.bottom <= el.getBoundingClientRect().bottom + 1);
+      return visible.length;
+    })).toBe(3);
     for (const theme of ['light','dark']) {
       await page.evaluate(theme => document.documentElement.dataset.theme=theme,theme);
       const pane=page.locator('.task-workspace > .conversation-page');
