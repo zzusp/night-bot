@@ -279,6 +279,6 @@ check, and pending/unknown receipts and already-authorized delayed deliveries
 remain recoverable without replay. External channels keep their own identities;
 the recent-conversation list still includes retained Web histories and external conversations.
 
-### Router 空闲与任务完成延迟
+### Router 空闲交接与任务完成延迟（历史实现，已由上述持续会话方案替代）
 
-Router inbox 暂时为空、短答处理完或任务结清均不触发换代。后续消息和任务完成事件继续交给同一 Pi owner，避免额外交接模型轮；达到上下文水位时由 Pi 原生压缩，压缩本身仍可能耗时。旧部署已持久交接不能旁路，其恢复继续遵守唯一 owner 与提交证明。
+Router inbox 暂时为空不代表会话已空闲。会话仍有未归档的 active/active 任务时，保留当前 Pi generation，优先接纳后续补充和任务完成事件，不在每次安排结束后立即启动无工具交接。任务结清后仍经原来的耐久摘要、候选提交和唯一 owner 发布流程轮换；长会话的上下文仍由 Pi 管理。已开始的交接不能旁路，期间到达的事件继续耐久排队。此优化避免可预见的完成事件等待不必要轮换，不表示已开始的交接耗时已被消除。
