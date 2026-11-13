@@ -49,7 +49,6 @@ export function TaskDetail({ id }: { id: string }) {
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
   const [recordControls, setRecordControls] = useState<HTMLDivElement | null>(null);
-  const [progressTarget, setProgressTarget] = useState<HTMLDivElement | null>(null);
   const infoContent = useRef<HTMLDivElement>(null);
   useEffect(() => { if (infoContent.current) infoContent.current.scrollTop = 0; }, [tab]);
   useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
@@ -60,10 +59,9 @@ export function TaskDetail({ id }: { id: string }) {
     <ConversationFrame label="任务执行记录">
       {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
       {!task ? query.loading ? <Loading>正在读取任务…</Loading> : <EmptyState title="无法读取任务" /> :
-        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} controlsTarget={recordControls} progressTarget={progressTarget} /></div>}
+        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} controlsTarget={recordControls} /></div>}
     </ConversationFrame>
     <aside className="task-info-rail" aria-label="任务详情">
-      <div className="task-progress-slot" ref={setProgressTarget} />
       <nav className="filter-tabs task-info-nav" aria-label="任务信息分类">{sections.map(([value, label]) => <a key={value} href={`#/tasks/${encodeURIComponent(id)}${value === 'task' ? '' : `?view=${value}`}`} aria-current={tab === value ? 'page' : undefined}>{label}</a>)}</nav>
       <div className="task-info-content" ref={infoContent}>
         <section className="task-execution-overview" hidden={tab !== 'execution'} aria-label="执行状态">

@@ -465,7 +465,7 @@ Web 盘点允许与普通记忆 read/index/search 事务并发，不因其作用
 - Preserve Night Bot-specific blue user / white assistant borderless bubbles, single Web chat, channel input restrictions, inspection popover, true execution history and tool disclosures. Do not import unsupported new-chat, rename, speech, attachment, or copy actions.
 - 任务待办采用用户指定的 [Agent Progress](https://www.boardui.com/zh-hans/components/agent-progress) 公开预览与展开/收起参考图，取代之前的横铺状态清单。该组件为 Pro，未获取或复制受限源码，按截图独立实现。
 - 共享 owner 为 `ExecutionHistory` → `AgentProgress`；任务详情与聊天内执行阅读器复用。展开为 300px 中性表面圆角卡，收起为 340px 单行块，最大不超过容器。标题是「还剩 N 步」，收起时显示箭头和当前事项，展开后显示勾选圆、进行中圆环、待办虚线圆与当前行细描边；不再显示更新时间和逐行状态文字，读屏仍保留状态。长标题展开可完整换行，清单内部可滚动；无待办和全部完成显示准确状态，完成不自动消失。
-- 任务详情中的待办卡片放在右侧任务信息栏顶部，位于分类导航之前，使用右栏可用宽度；不再独占左侧执行记录的顶部区域，也不以浮层遮挡消息。窄屏随右侧信息栏进入自然文档流；聊天内的执行阅读器仍原位内联。由同一执行流通过 portal 提供，不新增读取、不复制一份卡片；轮询及切换信息分类保留折叠状态，撤权仍隐藏。
+- 任务进度卡片必须留在执行内容区域内，不放右侧信息栏。卡片靠内容区右侧，与执行记录的内容边界对齐，采用正常流布局，不覆盖执行记录；窄屏随内容宽度收缩。聊天内卡片保留既有位置，同一执行数据流提供状态，不额外请求。切换右侧 tab 和轮询更新不得重置收折状态，撤权即隐藏。
 - 卡片与 hover 表面使用 `--board-radius-card`：显式设置 summary 内缘圆角，展开时只保留上方两角，收起时四角一致；卡片裁切背景、键盘焦点环内收，避免直角色块越出外框。
 - 数量与当前步骤只根据最新已提交回执计算；不复制示例的定时推进、模拟步骤耗时或自动完成。更新保持收起状态，撤权隐藏内容。圆环仅表示记录中的进行中状态，减弱动效时静止；浅深色消费原有 token。消息气泡配色、工具记录、任务调度和数据权限不变。
 
