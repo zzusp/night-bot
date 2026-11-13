@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {FIXTURE_TOKEN} from './preview.mjs';
 
-test('real live snapshot contract replaces provisional output, commits once and clears on revoked access',async({page})=>{
+test('HTTP live snapshot contract replaces provisional output, commits once and clears on revoked access',async({page})=>{
  let phase='first';
  const live=(text:string)=>({id:'live-message',role:'assistant',text,status:'running',transient:true});
  await page.route('**/api/tasks/task-research/session?*',r=>{
@@ -31,14 +31,20 @@ test('real live snapshot contract replaces provisional output, commits once and 
 test('live tool result replaces each snapshot without accumulating partial copies',async({page})=>{
  let tick=1;
  const call={id:'call',role:'tool',kind:'tool-call',toolName:'bash',callId:'tool-one',text:JSON.stringify({command:'example'}),status:'pending',source:{sessionId:'authorized'}};
- await page.route('**/api/tasks/task-research/session?*',r=>r.fulfill({json:{status:'ready',scope:'current-context',items:[call],total:1,checkpoint:'call',revision:'same',live:{active:true,items:[{...call,id:'live-result',kind:'tool-result',text:`line ${tick}\n`,status:'running',transient:true}]}}}));
+ const prior=[{...call,id:'prior',callId:'prior'},{...call,id:'prior-result',callId:'prior',kind:'tool-result',text:'previous',status:'completed'}];
+ await page.route('**/api/tasks/task-research/session?*',r=>{const finished=tick===3;const items=[...prior,call,...(finished?[{...call,id:'final-result',kind:'tool-result',text:'line 3\n',status:'completed'}]:[])];return r.fulfill({json:{status:'ready',scope:'current-context',items,total:items.length,checkpoint:'call',revision:'same',live:{active:!finished,items:finished?[]:[{...call,id:'live-result',kind:'tool-result',text:`line ${tick}\n`,status:'running',transient:true}]}}});});
  await page.goto('/#/tasks/task-research');
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
- const tool=page.locator('.pi-tool-step');await tool.locator('summary').click();
+ const tool=page.locator('[data-message-id="call"] .pi-tool-step');await tool.locator('summary').click();
  await expect(tool).toContainText('line 1');
  tick=2;await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await expect(tool).toContainText('line 2');await expect(tool).not.toContainText('line 1');
- await expect(page.locator('.pi-tool-step')).toHaveCount(1);
+ await expect(page.locator('.pi-tool-step')).toHaveCount(2);
  await expect(tool).toHaveAttribute('open');
+ tick=3;await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await expect(page.locator('.execution-tool-group')).toHaveAttribute('open');
+ await expect(tool).toHaveAttribute('open');
+ await expect(tool).toContainText('line 3');
+ await expect(page.locator('.pi-tool-frame.is-running')).toHaveCount(0);
 });

@@ -46,14 +46,27 @@ export function createPiLiveOutputBuffer(sessionId, {clock=Date.now}={}) {
  }
  return {accept(event){expire();accept(event);trim();clearTimeout(expiry);if(active)expiry=setTimeout(()=>{active=false;current=undefined;tools.clear();revision++},TTL).unref()},snapshot(){expire();return structuredClone({sessionId,active,revision:`${epoch}:${revision}`,assistant:current?{id:current.id,message:current.message}:null,tools:[...tools.values()]})},close(){clearTimeout(expiry);active=false;current=undefined;tools.clear();revision++}}
 }
+const validations=new WeakMap(),withdrawers=new WeakMap()
+export function setPiLiveToolValidation(actor,callId,validator){
+ if(!withdrawers.has(actor))return true
+ let checks=validations.get(actor);if(!checks){checks=new Map();validations.set(actor,checks)}
+ if(checks.size>=64&&!checks.has(callId))return false
+ checks.set(callId,validator);return true
+}
+export function withdrawPiLiveTool(actor,callId){withdrawers.get(actor)?.(callId)}
 export function bindPiLiveOutput(actor) {
  const session=actor?.piSession
  if(!(session instanceof AgentSession)||actor.id!==session.sessionId)throw new TypeError('Official Pi session required')
  const buffer=createPiLiveOutputBuffer(actor.id)
- const observe=event=>{try{buffer.accept(event)}catch{buffer.close()}}
+ const observe=event=>{try{buffer.accept(event);if(event.type==='message_end'&&event.message?.role==='toolResult')validations.get(actor)?.delete(event.message.toolCallId);if(event.type==='agent_end'||event.type==='agent_settled')validations.get(actor)?.clear()}catch{buffer.close();validations.get(actor)?.clear()}}
  const off=session.agent.subscribe(observe)
  const offSession=session.subscribe(event=>{if(event.type==='agent_settled')observe(event)})
- readers.set(actor,()=>buffer.snapshot())
- return {close(){off();offSession();buffer.close();readers.delete(actor)}}
+ withdrawers.set(actor,callId=>buffer.accept({type:'message_end',message:{role:'toolResult',toolCallId:callId}}))
+ readers.set(actor,()=>{
+  const snapshot=buffer.snapshot(),checks=validations.get(actor)
+  for(const tool of snapshot.tools){const check=checks?.get(tool.toolCallId);if(check){let valid=false;try{valid=check()===true}catch{}if(!valid)withdrawPiLiveTool(actor,tool.toolCallId)}}
+  return buffer.snapshot()
+ })
+ return {close(){off();offSession();buffer.close();readers.delete(actor);validations.delete(actor);withdrawers.delete(actor)}}
 }
 export function readPiLiveOutput(actor) {return readers.get(actor)?.()??null}

@@ -373,6 +373,7 @@ function defineTool(options) {
       return execute(args, execution);
     }
   };
+  if (options.partialResult !== undefined) tool.partialResult = options.partialResult;
   if (options.deferLoading === true) tool.deferLoading = true;
   if (timeoutMs !== undefined) tool.timeoutMs = timeoutMs;
   if (presentationMeta !== undefined) tool.output.presentationMeta = (...args) => presentationMeta(...args);

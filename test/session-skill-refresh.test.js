@@ -100,3 +100,12 @@ test('real working-directory changes preserve canonical reference ownership and 
  await h.run([{tool:'read',args:{path}}]);assert.equal((await h.receipts()).length,3)
  const clean=await h.run();assert.doesNotMatch(JSON.stringify(clean.messages.filter(message=>message.role==='system')),/本会话已读技能或引用有变化/)
 })
+
+test('default installed skill-refresh terminal policy explicitly permits same-actor shell preview only',async t=>{
+ let accepted
+ const h=await officialSkillRefreshFixture(t,{setup:async ctx=>ctx.get('tools').register({name:'bash',description:'Preview fixture',parameters:{type:'object',properties:{}},partialResult:{version:1,project:v=>v.content},output:{schema:{type:'object'},render:()=>[{type:'text',text:'final shell'}]},execute:async(_args,exec)=>{accepted=await exec.publishPartial({content:[{type:'text',text:'real in-progress snapshot'}]});return{}}})})
+ let count=0;h.handle.actor.piSession.subscribe(e=>{if(e.type==='tool_execution_update')count++})
+ await h.observation();await h.run([{tool:'bash',args:{}}]);assert.equal(accepted,true);assert.equal(count,1)
+ h.handle.actor.ctx.on('tools/post-execute',async(_exec,_result,next)=>next())
+ await h.run([{tool:'bash',args:{}}]);assert.equal(accepted,false);assert.equal(count,1)
+})

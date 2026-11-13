@@ -1,3 +1,4 @@
+import {setPiLiveToolValidation,withdrawPiLiveTool} from './pi-live-output.js'
 import {createHash} from 'node:crypto'
 import {snapshotJsonValue,deepFreeze} from '../native-values.js'
 import {validateJsonSchemaValue,ToolArgsError} from '../native-tool-protocol.js'
@@ -92,7 +93,7 @@ export function createPiOfficialTools({registry,owner,businessAudit,maxParallelT
   // captured raw JSON type contract and never default or coerce model inputs.
   prepareArguments(input){const args=snapshotJsonValue(input);const issues=args===undefined?['arguments must be lossless JSON']:validateJsonSchemaValue(schema.parameters,args,'');if(issues.length)throw new ToolArgsError(issues);return deepFreeze(args)},
   executionMode:'parallel',replay:'never',
-  async execute(callId,args,signal){
+  async execute(callId,args,signal,onUpdate){
    const operation=async()=>{
    const combined=signal?AbortSignal.any([signal,lifetime.signal]):lifetime.signal
    if(concluded||fenced||!businessAudit.isLive())return resultFor('Tool effect admission closed for this business turn')
@@ -102,7 +103,7 @@ export function createPiOfficialTools({registry,owner,businessAudit,maxParallelT
     if(concluded||fenced||!businessAudit.isLive())return resultFor('Tool effect admission closed for this business turn')
     // All durable effect receipts must settle inside this awaited pipeline. An
     // unawaited SDK event/result observer is not a receipt or an admission proof.
-    const result=await registry.execute({agent:owner,name:schema.name,callId,arguments:args,signal:combined,businessAudit})
+    const result=await registry.execute({agent:owner,name:schema.name,callId,arguments:args,signal:combined,businessAudit,onPartialValidator:check=>setPiLiveToolValidation(owner,callId,check),onPartialWithdraw:()=>withdrawPiLiveTool(owner,callId),onPartial:async result=>{if(combined.aborted||concluded||fenced||!businessAudit.isLive())return;await onUpdate?.(result)}})
     if(result.concludesTurn)concluded=true
     if(result.additionalContexts?.length){
      try{

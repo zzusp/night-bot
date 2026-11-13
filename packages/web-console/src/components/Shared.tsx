@@ -159,9 +159,9 @@ function readOutputPresentation(text: string, offset: number, input?: string): R
   return <pre className="tool-content pi-read-output"><code>{lines.map((line, index) => <span className="pi-code-line" key={index}>{offset === 0 && <span className="pi-line-number" data-line={start + index} aria-hidden="true" />}<span>{line}{index < lines.length - 1 ? '\n' : ''}</span></span>)}</code></pre>;
 }
 
-function ToolActivity({ item, history, compact = false }: { item: ToolItem; history?: HistoryReader; compact?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const [opened, setOpened] = useState(false);
+function ToolActivity({ item, history, compact = false, disclosures }: { item: ToolItem; history?: HistoryReader; compact?: boolean; disclosures?: Map<string, boolean> }) {
+  const [open, setOpen] = useState(() => disclosures?.get(item.id) ?? false);
+  const [opened, setOpened] = useState(() => disclosures?.get(item.id) ?? false);
   const [summaryHidden, setSummaryHidden] = useState(false);
   const frame = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -185,6 +185,7 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
     <details className="pi-tool-step" open={open} onToggle={event => {
       if (event.target !== event.currentTarget) return;
       setOpen(event.currentTarget.open);
+      disclosures?.set(item.id, event.currentTarget.open);
       if (event.currentTarget.open) setOpened(true);
     }}>
       <summary className={running ? 'pi-tool-shimmer' : undefined}>
@@ -208,6 +209,7 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
     <div className="message-body"><details className="tool-message" open={open} onToggle={event => {
       if (event.target !== event.currentTarget) return;
       setOpen(event.currentTarget.open);
+      disclosures?.set(item.id, event.currentTarget.open);
       if (event.currentTarget.open) setOpened(true);
     }}>
       <summary>{item.call ? '查看工具输入与结果' : '查看工具结果'}</summary>
@@ -220,8 +222,13 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
     </details></div>
   </article>;
 }
-function ToolActivityGroup({ tools, history, compact = false, anchorId }: { tools: ToolItem[]; history?: HistoryReader; compact?: boolean; anchorId?: string }) {
-  const [open, setOpen] = useState(false);
+function ToolActivityGroup({ tools, history, compact = false, anchorId, disclosures }: { tools: ToolItem[]; history?: HistoryReader; compact?: boolean; anchorId?: string; disclosures?: Map<string, boolean> }) {
+  const [open, setOpen] = useState(() => tools.some(tool => disclosures?.get(tool.id)));
+  const previousTools = useRef(new Set(tools.map(tool => tool.id)));
+  useEffect(() => {
+    if (tools.some(tool => !previousTools.current.has(tool.id) && disclosures?.get(tool.id))) setOpen(true);
+    previousTools.current = new Set(tools.map(tool => tool.id));
+  }, [tools, disclosures]);
   const failures = tools.filter(item => ['error', 'failed'].includes(toolState(item))).length;
   const categories: Record<string, string> = { read: '读取', read_window: '读取', read_image: '读取',
     bash: '脚本', pwsh: '脚本', grep: '检索', find: '检索', web_search: '搜索', web_fetch: '网页', write: '写入', edit: '编辑' };
@@ -236,11 +243,12 @@ function ToolActivityGroup({ tools, history, compact = false, anchorId }: { tool
     if (event.target === event.currentTarget) setOpen(event.currentTarget.open);
   }}>
     <summary>{compact ? <PiIcon path={mdiCheck} className="pi-tool-status is-complete" size={14} /> : <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="pi-tool-count">{tools.length} 项工具调用</span><span className="execution-tool-group-summary sr-only">{summary}</span><span className="pi-tool-breakdown">{[...counts].map(([label, count]) => { const icon = label === '读取' ? mdiFileDocumentOutline : label === '脚本' ? mdiConsoleLine : label === '编辑' || label === '写入' ? mdiPencil : label === '检索' || label === '搜索' ? mdiMagnify : mdiWrenchOutline; return <span key={label} title={label} aria-label={`${label} ${count} 次`}><PiIcon path={icon} size={12} /><span>{count}</span></span>; })}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /><span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
-    <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} compact={compact} />)}</div>
+    <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} compact={compact} disclosures={disclosures} />)}</div>
   </details>;
 }
 type OlderHistory = {hasMore: boolean; loading: boolean; error: Error | null; disabled: boolean; onLoad: () => void};
 export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat', older }: { presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void; older?: OlderHistory }) {
+  const disclosures = useRef(new Map<string, boolean>()).current;
   const brand = useAssistantBrand();
   const compact = presentation === 'execution';
   const ref = useRef<HTMLDivElement>(null);
@@ -330,8 +338,8 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
     <div className={`message-column${messages.length ? '' : ' is-empty'}`}>
       {older && messages.length > 0 && <div className="execution-history-start" role="status">{older.error ? <Notice error={older.error} onRetry={older.onLoad} /> : older.loading ? '正在载入更早记录…' : older.hasMore ? '向上滚动载入更早记录' : '已到当前上下文的开始'}</div>}
       {!messages.length ? empty ?? <EmptyState title="暂无消息" /> : keyedItems.map(({item, key}) => {
-        if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} />;
-        if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} />;
+        if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} disclosures={disclosures} />;
+        if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} disclosures={disclosures} />;
         const message = item.message;
         return <article data-message-id={message.id} className={`message message-${message.role}${message.transient ? ' pi-live-message' : ''}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
