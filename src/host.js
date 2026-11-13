@@ -18,7 +18,7 @@ import { mkdir,realpath } from 'node:fs/promises'
 import { resolve, join,dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {portablePaths} from './runtime/portable.js'
-import {runtimePaths,prepareRuntimePaths,environmentPaths,inside} from './runtime/paths.js'
+import {runtimePaths,prepareRuntimePaths,environmentPaths,inside,bundledSkillDir} from './runtime/paths.js'
 import {acquireLock,readRegular,failure} from './runtime/files.js'
 import {createPrivacy,installProcessPrivacy} from './memory/privacy.js'
 
@@ -304,7 +304,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
           { name: new URL(paths.mode==='portable'?'./memory/private-fs.js':'./native-fs-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-working-directory.js', import.meta.url).href, config: { defaultDirectory: workspace } },
           { name: new URL('./native-shell-env.js', import.meta.url).href }, { name: new URL('./native-tool-fs-search.js', import.meta.url).href }, { name: new URL('./native-fs-observation-policy.js', import.meta.url).href },
           { name: new URL('./native-tool-' + shell + '.js', import.meta.url).href, config: { enableRunInBackground: true, promoteOnTimeout: true } },
-          { name: new URL('./native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: paths.mode!=='portable', customSkillDirs: paths.mode==='portable'?[paths.skills,join(paths.agentsHome,'skills'),join(paths.harnessHome,'skills'),...(config.skillDirs??[]).map(path=>resolve(paths.installRoot,path))]:(config.skillDirs??[]), watch: config.skillWatch ?? true, agentsHome:paths.agentsHome } }, { name: new URL('./native-tool-skill.js', import.meta.url).href },
+          { name: new URL('./native-skill-filesystem.js', import.meta.url).href, config: { includeDefaultRoots: paths.mode!=='portable', customSkillDirs: paths.mode==='portable'?[paths.skills,join(paths.agentsHome,'skills'),join(paths.harnessHome,'skills'),...(config.skillDirs??[]).map(path=>resolve(paths.installRoot,path))]:(config.skillDirs??[]), watch: config.skillWatch ?? true, agentsHome:paths.agentsHome, bundledSkillDir } }, { name: new URL('./native-tool-skill.js', import.meta.url).href },
           { name: new URL('./native-agent-instructions.js', import.meta.url).href, config: { maxBytes: 65536, instructionHome:paths.harnessHome,agentsHome:paths.agentsHome } }, { name: new URL('./native-tool-working-directory.js', import.meta.url).href },
           { name: new URL('./native-tool-todo.js', import.meta.url).href, config: { allowParallelInProgress: true } }, { name: new URL('./native-tool-web.js', import.meta.url).href, config: config.webTools ?? {} },
           { name: new URL('./native-tool-schedule.js', import.meta.url).href },

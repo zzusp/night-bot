@@ -1,6 +1,7 @@
 # 来源与许可
 
 - 仓库既有 `LICENSE`（MIT）原样保留。
+- `skills/skill-creator/` 导入 Anthropic 官方 Claude 插件 `skill-creator` 的用户指定版本 `e0ab6e51219e`，保留上游 Apache-2.0 `LICENSE.txt`；`SKILL.md` 增加 Night Bot 单执行会话、工作目录、离线依赖及外部 CLI 边界说明。来源、原文摘要与修改声明见 `skills/skill-creator/UPSTREAM.md`，不改授 MIT，不包含其他私有技能或业务数据。
 - `packages/dingtalk-core`、原有 `test`（不含 `pi-*`）、上游 `scripts` 移植自用户指定的百部插件项目 `HiQ-AI/dingtalk-dsh-assistant`，提交 `93e431a2a76938d32aefc070b093fcfb65691c70`。源项目声明 `UNLICENSED`；移植不将其自动改授 MIT。核心 package 及本仓库 package 保守地保留 `UNLICENSED`，且 `private: true`，不执行 npm 发布。
 - `docs/acceptance/resident-conversation-routing/fixtures/test-contract-baselines/` 保存 5 份跨轮复用的静态原始核验输入：`7ca36c26` 下的 3 份原测试来自既有授权只读源仓，`bbb7508d` 下的 2 份 helper 来自 Night Bot 原提交，均保留原 `test/` 相对路径。它们仅供读取、哈希与合同对照，不执行、不恢复旧 driver/ABI；原 `sourceCommit`、SHA 与分类沿用 `test/mixed-test-contracts.json`。原文无法从当前代码独立重建，故保留冻结输入；来源继续按既有 `UNLICENSED` / `private` 管理，不改授 MIT，不用于存放业务数据或私有 Skill。
 - 已退休的 `src/pi-loop.js` 及专属循环/重试实现不再随源码分发；对应专属许可证在源码及测试副本核查后移除。历史来源与保留副本见 `docs/retired-notice-copy-audit.json`。

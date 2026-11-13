@@ -61,7 +61,7 @@ ARG DEBIAN_SECURITY_URL
 RUN node --input-type=module -e "import {rootCertificates} from 'node:tls'; import {writeFileSync} from 'node:fs'; writeFileSync('/tmp/night-debian-roots.pem',rootCertificates.join('\n')+'\n',{mode:0o644})" \
     && node --input-type=module -e "import {readFileSync,writeFileSync} from 'node:fs'; const p='/etc/apt/sources.list.d/debian.sources'; let s=readFileSync(p,'utf8'); for(const [key,path] of [['DEBIAN_ARCHIVE_URL','debian'],['DEBIAN_SECURITY_URL','debian-security']]){const u=new URL(process.env[key]); if(u.protocol!=='https:'||u.username||u.password||/[?#]/.test(process.env[key]))throw Error('Invalid Debian HTTPS mirror'); const from='URIs: http://deb.debian.org/'+path; if(!s.split('\n').includes(from))throw Error('Unexpected Debian source'); s=s.replace(from+'\n','URIs: '+u.href.replace(/\/$/,'')+'\n');} writeFileSync(p,s);" \
     && apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true update \
-    && apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true install -y --no-install-recommends bash bubblewrap ca-certificates findutils gh git grep procps tini util-linux \
+    && apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true install -y --no-install-recommends bash bubblewrap ca-certificates findutils gh git grep procps python3 python3-yaml tini util-linux \
     && rm -f /tmp/night-debian-roots.pem \
     && rm -rf /var/lib/apt/lists/* \
     && chmod u-s /usr/bin/bwrap
@@ -82,6 +82,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml config.example.json LICENSE
 COPY licenses ./licenses
 COPY bin ./bin
 COPY src ./src
+COPY skills ./skills
 COPY packages/dingtalk-core ./packages/dingtalk-core
 COPY packages/web-console/night-channel.json packages/web-console/package.json ./packages/web-console/
 COPY packages/web-console/server ./packages/web-console/server

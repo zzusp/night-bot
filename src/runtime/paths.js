@@ -4,6 +4,7 @@ import {lstat,realpath,readdir,chmod} from 'node:fs/promises'
 import {privateDirectory,failure} from './files.js'
 
 export const packageRoot=resolve(dirname(fileURLToPath(import.meta.url)),'../..')
+export const bundledSkillDir=join(packageRoot,'skills')
 export const inside=(root,path)=>{const p=relative(root,path);return p===''||p!=='..'&&!p.startsWith('..'+sep)&&!isAbsolute(p)}
 /** New installs are portable. Explicit legacy absolute roots remain untouched. */
 export function runtimePaths(config,configPath){
