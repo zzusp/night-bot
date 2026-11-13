@@ -535,3 +535,5 @@ Thinking display correction: use original neutral board-text/board-muted colors,
 所有页面共用内容面板外的独立 Header：左侧导航和面包屑，右侧保持全局连接、权限、刷新、主题工具；桌面高52px、窄屏48px，横向内边距复用页面的24px/16px。内容区域不再重复面包屑或页面 Header。任务详情与普通页从独立 Header 下方开始；三行消息折叠、对称留白和画布内悬浮 TODO 保持。聊天活动面板开关仍位于内容区右上，只作为浮动工具，不再占据第二条 Header；首屏消息留出安全空间，读写与滚动行为不变。
 
 任务消息内容宽度与对话页复用同一 `--board-content-width`（消息列上限800px，两侧内边距默认16px、1600px以上28px）和滚动条占位；居中，不再采用任务专属全宽消息列。用户/助手正文气泡沿用对话的90%上限、窄屏96%及自然短文宽度。工具与思考仍使用执行记录展示，不改变其内容。悬浮TODO随该阅读区域右边界定位。
+
+- Right-hand message bubbles keep symmetric vertical body padding. Markdown first/last block margins are trimmed only at the bubble boundaries; disclosure controls never use negative bottom margins. Interior paragraph spacing remains intact.
