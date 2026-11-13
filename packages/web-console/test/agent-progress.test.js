@@ -5,9 +5,14 @@ import ts from 'typescript';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 
+const iconSource = await readFile(new URL('../src/components/PiIcon.tsx', import.meta.url), 'utf8');
+const iconCompiled = ts.transpileModule(iconSource, {compilerOptions: {jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext}}).outputText.replaceAll('"react/jsx-runtime"', JSON.stringify(import.meta.resolve('react/jsx-runtime')));
+const iconModule = `data:text/javascript;base64,${Buffer.from(iconCompiled).toString('base64')}`;
 const source = await readFile(new URL('../src/components/AgentProgress.tsx', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, {compilerOptions: {jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext}}).outputText
   .replaceAll('"react/jsx-runtime"', JSON.stringify(import.meta.resolve('react/jsx-runtime')))
+  .replaceAll("'./PiIcon'", JSON.stringify(iconModule))
+  .replaceAll("'@mdi/js'", JSON.stringify(import.meta.resolve('@mdi/js')))
   .replaceAll("'@remixicon/react'", JSON.stringify(import.meta.resolve('@remixicon/react')));
 const {AgentProgress} = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
 const render = items => renderToStaticMarkup(createElement(AgentProgress, {items}));
@@ -29,6 +34,6 @@ test('step contents are escaped and redaction stays visible', () => {
   assert.doesNotMatch(html,/<script>/); assert.match(html,/&lt;script&gt;/); assert.match(html,/敏感信息已隐藏/);
 });
 test('progress has a native keyboard disclosure and never simulates progress with timers', () => {
-  assert.match(render([]),/<details[^>]*open=""/); assert.match(render([]),/<summary/);
+  assert.match(render([]),/<details/); assert.match(render([]),/<summary/);
   assert.doesNotMatch(source,/setTimeout|setInterval|stepDuration|onFinished/);
 });

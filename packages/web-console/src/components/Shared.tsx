@@ -2,11 +2,14 @@ import {useAssistantBrand, brandGlyph} from './AssistantBrand';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine } from '@remixicon/react';
+import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiArrowRightSLine, RiLightbulbLine, RiFileTextLine, RiTerminalBoxLine, RiPencilLine, RiToolsLine } from '@remixicon/react';
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
-import { ApiError, errorText, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
+import { ApiError, errorText, type ExecutionLive, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
 import { dateTime, useResource } from '../hooks';
 import { executionItems, toolState, type ToolItem } from '../execution-items';
+import { mdiCheck, mdiAlertCircle, mdiLoading, mdiChevronRight, mdiHeadLightbulb, mdiFileDocumentOutline, mdiConsoleLine, mdiPencil, mdiMagnify, mdiWrenchOutline } from '@mdi/js';
+import { PiIcon } from './PiIcon';
+import { codeLanguage, highlightedLines } from './PiPresentation';
 import '../styles/execution-groups.css';
 
 const states: Record<string, [string, 'neutral' | 'success' | 'warning' | 'danger' | 'info']> = {
@@ -63,7 +66,7 @@ function MessageProvenance({ source }: { source?: MessageSource }) {
     {source.callId && <><dt>工具调用</dt><dd><code>{source.callId}</code></dd></>}
   </dl></details> : null;
 }
-function MessageBody({ message, history, plain = false, showSource = true, disclosure }: { message: Message; history?: HistoryReader; plain?: boolean; showSource?: boolean; disclosure?: { kind: 'input' | 'output'; name: string; state?: string } }) {
+function MessageBody({ message, history, plain = false, showSource = true, disclosure, onUnavailable, formatText }: { formatText?: (text: string, offset: number) => ReactNode; onUnavailable?: () => void; message: Message; history?: HistoryReader; plain?: boolean; showSource?: boolean; disclosure?: { kind: 'input' | 'output'; name: string; state?: string } }) {
   const [bodyOpen, setBodyOpen] = useState(false);
   const [bodyOpened, setBodyOpened] = useState(false);
   const [cursor, setCursor] = useState<{ offsets: number[]; revision?: string }>({ offsets: [0] });
@@ -78,7 +81,7 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
   const reset = () => setCursor({ offsets: [0] });
   const forbidden = query.error instanceof ApiError && ([401, 403, 404].includes(query.error.status) || query.error.code === 'SESSION_RESOURCE_UNAVAILABLE');
   const [denied, setDenied] = useState(false);
-  useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
+  useEffect(() => { if (forbidden) { setDenied(true); onUnavailable?.(); } }, [forbidden]);
   // Only a fresh successful read of this same page clears revocation. Resetting
   // to the cached first fragment would reveal text without rechecking access.
   useEffect(() => { if (query.updatedAt && !query.error) setDenied(false); }, [query.updatedAt]);
@@ -91,7 +94,7 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
   const body = <>
     {query.error && <Notice error={query.error} stale={!!page} onRetry={reset} />}
     {offset && !page ? query.loading ? <Loading>正在读取正文…</Loading> : <p className="message-scope">这一段正文暂不可读，可回到首段重新获取。</p>
-      : plain ? <pre className="tool-content" tabIndex={0}><code>{text || '此记录没有可展示的文字。'}</code></pre> : <Markdown text={text || ''} />}
+      : plain && formatText ? formatText(text || '', offset) : plain ? <pre className="tool-content" tabIndex={0}><code>{text || '此记录没有可展示的文字。'}</code></pre> : <Markdown text={text || ''} />}
     {((nextOffset != null && history) || offset > 0) && <nav className="body-pagination" aria-label="正文分页">
       <span>{text !== undefined ? `正文 ${text.length ? offset + 1 : offset}–${offset + text.length}${total !== undefined ? ` / ${total}` : ''}` : '正文读取中'}</span><div>
         <Button variant="ghost" disabled={!offset} onClick={() => setCursor(previous => ({ ...previous, offsets: previous.offsets.slice(0, -1) }))}>上一段</Button>
@@ -123,20 +126,87 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
 
 }
 
-function ToolActivity({ item, history, compact = false }: { item: ToolItem; history?: HistoryReader; compact?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const [opened, setOpened] = useState(false);
+// Summaries use only already-redacted public input; never inspect raw Pi files.
+function toolSummary(item: ToolItem): string {
+  const name = (item.call || item.results[0]).toolName || '工具';
+  if (!item.call || item.call.truncated) return name;
+  try {
+    const args = JSON.parse(item.call.text);
+    const field = ['bash', 'pwsh'].includes(name) ? args.command : ['read', 'write', 'edit'].includes(name) ? args.path : ['grep', 'find'].includes(name) ? args.pattern || args.glob : undefined;
+    return typeof field === 'string' ? `${['bash', 'pwsh'].includes(name) ? '$' : name} ${field.replace(/\s+/g, ' ').slice(0, 180)}` : name;
+  } catch { return name; }
+}
+
+// Specialized read/bash presentation uses the same public body reader, so
+// pagination, redaction and denied-read behavior still apply to every field.
+function toolInputPresentation(name: string, text: string): ReactNode {
+  try {
+    const args = JSON.parse(text);
+    const allowed = ['path', 'offset', 'limit'];
+    if (!args || typeof args !== 'object' || Array.isArray(args) || (name === 'read' && Object.keys(args).some(key => !allowed.includes(key)))) throw new Error('generic');
+    if (name === 'read' && typeof args.path === 'string') return <div className="pi-read-path"><code>{args.path}</code>{Number.isInteger(args.offset) && <small>从第 {args.offset} 行</small>}{Number.isInteger(args.limit) && <small>{args.limit} 行</small>}</div>;
+    if (['bash', 'pwsh'].includes(name) && typeof args.command === 'string') {
+      const timeout = typeof args.timeoutMs === 'number' ? args.timeoutMs / 1000 : args.timeout;
+      return <div className="pi-shell-command"><span aria-hidden="true">$</span><code>{args.command}</code>{typeof timeout === 'number' && <small>(timeout: {timeout}s)</small>}</div>;
+    }
+  } catch { /* Unknown/public custom tools retain complete input. */ }
+  return <pre className="tool-content"><code>{text}</code></pre>;
+}
+function plainOutputPresentation(text: string): ReactNode {
+  const lines = text.split('\n');
+  return <pre className="tool-content pi-plain-output"><code>{lines.map((line, index) => <span className="pi-code-line" key={index}><span>{line}{index < lines.length - 1 ? '\n' : ''}</span></span>)}</code></pre>;
+}
+function readOutputPresentation(text: string, offset: number, input?: string): ReactNode {
+  let start = 1;
+  let language: string | undefined;
+  try { const args = JSON.parse(input || '{}'); language = codeLanguage(args.path); const n = args.offset; if (Number.isInteger(n) && n > 0) start = n; } catch { /* no supplied source offset */ }
+  // Subsequent body pages use character offsets, not source line offsets.
+  // Do not invent a line number when the preceding fragments are unavailable.
+  const lines = highlightedLines(text, language);
+  return <pre className="tool-content pi-read-output"><code>{lines.map((line, index) => <span className="pi-code-line" key={index}>{offset === 0 && <span className="pi-line-number" data-line={start + index} aria-hidden="true" />}<span>{line}{index < lines.length - 1 ? '\n' : ''}</span></span>)}</code></pre>;
+}
+
+function ToolActivity({ item, history, compact = false, disclosures }: { item: ToolItem; history?: HistoryReader; compact?: boolean; disclosures?: Map<string, boolean> }) {
+  const [open, setOpen] = useState(() => disclosures?.get(item.id) ?? false);
+  const [opened, setOpened] = useState(() => disclosures?.get(item.id) ?? false);
+  const [summaryHidden, setSummaryHidden] = useState(false);
+  const frame = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!frame.current || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(entries => { for (const entry of entries) entry.target.classList.toggle('pi-offscreen', !entry.isIntersecting); });
+    observer.observe(frame.current);
+    return () => observer.disconnect();
+  }, []);
   const message = item.call || item.results[0];
   const result = item.results.at(-1);
   const state = toolState(item);
-  if (compact) return <article className="message message-tool" data-message-id={item.id}>
-    <div className="message-body">
-      <section className="execution-tool-input-row"><h4 className="sr-only">输入</h4>{item.call
-        ? <MessageBody message={item.call} history={history} plain disclosure={{ kind: 'input', name: message.toolName || '工具', state }} />
-        : <div className="execution-tool-missing"><strong>{message.toolName || '工具'}</strong> · {item.inputElsewhere ? '输入见上方调用。' : '本页无输入记录。'} <span className="execution-tool-state">{states[state]?.[0] || state}</span></div>}</section>
-      {item.results.map(output => <section className="execution-tool-output-row" key={output.id}><h4 className="sr-only">输出</h4><MessageBody message={output} history={history} plain disclosure={{ kind: 'output', name: message.toolName || '工具' }} /></section>)}
-      {!result && <section className="execution-tool-output-row"><h4 className="sr-only">输出</h4><span className="execution-tool-missing">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</span></section>}
-    </div>
+  const running = ['running', 'active'].includes(state);
+  const failed = ['error', 'failed'].includes(state);
+  const previousState = useRef(state);
+  const [completionCue, setCompletionCue] = useState(false);
+  useEffect(() => {
+    if (['running', 'active'].includes(previousState.current) && !running && (failed || !!result)) setCompletionCue(true);
+    previousState.current = state;
+  }, [state, running, failed, result]);
+  if (compact) return <article ref={frame} className={`message message-tool pi-tool-frame${running ? ' is-running' : ''}`} data-message-id={item.id}>
+    <details className="pi-tool-step" open={open} onToggle={event => {
+      if (event.target !== event.currentTarget) return;
+      setOpen(event.currentTarget.open);
+      disclosures?.set(item.id, event.currentTarget.open);
+      if (event.currentTarget.open) setOpened(true);
+    }}>
+      <summary className={running ? 'pi-tool-shimmer' : undefined}>
+        <span key={state} className={`pi-tool-status${completionCue ? ' pi-motion-cue' : ''}${running ? ' is-running' : failed ? ' is-error' : result ? ' is-complete' : ''}`} aria-hidden="true">{running ? <PiIcon path={mdiLoading} size={14} /> : failed ? <PiIcon path={mdiAlertCircle} size={14} /> : result ? <PiIcon path={mdiCheck} size={14} /> : <span>·</span>}</span>
+        <span className="pi-tool-title">{summaryHidden ? message.toolName || '工具' : toolSummary(item)}</span>
+        {!result && <span className="pi-tool-state">{states[state]?.[0] || state}</span>}
+        <PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} />
+      </summary>
+      {opened && <div className={`pi-tool-body${['read', 'bash', 'pwsh'].includes(message.toolName || '') ? ' pi-specialized-tool' : ''}`}>
+        <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain formatText={['read', 'bash', 'pwsh'].includes(message.toolName || '') ? text => toolInputPresentation(message.toolName!, text) : undefined} onUnavailable={() => setSummaryHidden(true)} /> : <span className="execution-tool-missing">{item.inputElsewhere ? '输入见上方调用。' : '本页无输入记录。'}</span>}</section>
+        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出</h4><MessageBody message={output} history={history} plain formatText={message.toolName === 'read' ? (text, offset) => readOutputPresentation(text, offset, item.call?.text) : text => plainOutputPresentation(text)} onUnavailable={() => setSummaryHidden(true)} /></section>)}
+        {!result && <section className="tool-part"><h4>输出</h4><span className="execution-tool-missing">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</span></section>}
+      </div>}
+    </details>
   </article>;
   return <article className="message message-tool">
     <div className="message-meta"><span className="message-avatar" aria-hidden="true" /><strong>{message.toolName || '工具'}</strong>
@@ -146,20 +216,26 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
     <div className="message-body"><details className="tool-message" open={open} onToggle={event => {
       if (event.target !== event.currentTarget) return;
       setOpen(event.currentTarget.open);
+      disclosures?.set(item.id, event.currentTarget.open);
       if (event.currentTarget.open) setOpened(true);
     }}>
       <summary>{item.call ? '查看工具输入与结果' : '查看工具结果'}</summary>
       {opened && <>
         <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain />
           : <p className="message-scope">{item.inputElsewhere ? '见上方调用。' : '本页无输入记录。'}</p>}</section>
-        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain /></section>)}
+        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain formatText={message.toolName === 'read' ? (text, offset) => readOutputPresentation(text, offset, item.call?.text) : text => plainOutputPresentation(text)} onUnavailable={() => setSummaryHidden(true)} /></section>)}
         {!result && <section className="tool-part"><h4>输出</h4><p className="message-scope">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</p></section>}
       </>}
     </details></div>
   </article>;
 }
-function ToolActivityGroup({ tools, history, compact = false, anchorId }: { tools: ToolItem[]; history?: HistoryReader; compact?: boolean; anchorId?: string }) {
-  const [open, setOpen] = useState(false);
+function ToolActivityGroup({ tools, history, compact = false, anchorId, disclosures }: { tools: ToolItem[]; history?: HistoryReader; compact?: boolean; anchorId?: string; disclosures?: Map<string, boolean> }) {
+  const [open, setOpen] = useState(() => tools.some(tool => disclosures?.get(tool.id)));
+  const previousTools = useRef(new Set(tools.map(tool => tool.id)));
+  useEffect(() => {
+    if (tools.some(tool => !previousTools.current.has(tool.id) && disclosures?.get(tool.id))) setOpen(true);
+    previousTools.current = new Set(tools.map(tool => tool.id));
+  }, [tools, disclosures]);
   const failures = tools.filter(item => ['error', 'failed'].includes(toolState(item))).length;
   const categories: Record<string, string> = { read: '读取', read_window: '读取', read_image: '读取',
     bash: '脚本', pwsh: '脚本', grep: '检索', find: '检索', web_search: '搜索', web_fetch: '网页', write: '写入', edit: '编辑' };
@@ -173,12 +249,30 @@ function ToolActivityGroup({ tools, history, compact = false, anchorId }: { tool
   return <details className="execution-tool-group" data-message-id={anchorId} open={open} onToggle={event => {
     if (event.target === event.currentTarget) setOpen(event.currentTarget.open);
   }}>
-    <summary>{!compact && <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="execution-tool-group-summary">{summary}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
-    <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} compact={compact} />)}</div>
+    <summary>{compact ? <PiIcon path={mdiCheck} className="pi-tool-status is-complete" size={14} /> : <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="pi-tool-count">{tools.length} 项工具调用</span><span className="execution-tool-group-summary sr-only">{summary}</span><span className="pi-tool-breakdown">{[...counts].map(([label, count]) => { const icon = label === '读取' ? mdiFileDocumentOutline : label === '脚本' ? mdiConsoleLine : label === '编辑' || label === '写入' ? mdiPencil : label === '检索' || label === '搜索' ? mdiMagnify : mdiWrenchOutline; return <span key={label} title={label} aria-label={`${label} ${count} 次`}><PiIcon path={icon} size={12} /><span>{count}</span></span>; })}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /><span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
+    <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} compact={compact} disclosures={disclosures} />)}</div>
   </details>;
 }
 type OlderHistory = {hasMore: boolean; loading: boolean; error: Error | null; disabled: boolean; onLoad: () => void};
-export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat', older }: { presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void; older?: OlderHistory }) {
+function LiveElapsed({startedAt}: {startedAt?: string}) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => { if (!startedAt) return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [startedAt]);
+  const start = Date.parse(startedAt || '');
+  return Number.isFinite(start) ? <span className="pi-live-elapsed">{Math.max(0, Math.floor((now - start) / 1000))}s</span> : null;
+}
+function LivePhase({live}: {live?: ExecutionLive}) {
+  if (!live?.active || !live.phase) return null;
+  const labels = {waiting: '等待模型响应', thinking: '思考中', text: '生成中', tool: '工具执行中'};
+  return <div className={`pi-live-phase phase-${live.phase}`} role="status"><PiIcon path={mdiLoading} className="pi-live-spinner" size={14} /><span>{labels[live.phase]}</span><LiveElapsed startedAt={live.phaseStartedAt} /></div>;
+}
+function ThinkingMessage({message, history, compact, live}: {message: Message; history?: HistoryReader; compact: boolean; live?: ExecutionLive}) {
+  const [open, setOpen] = useState(!!message.transient);
+  const isThinking = !!message.transient && live?.active && live.phase === 'thinking';
+  return <details className="thinking-message" open={open} onToggle={event => {if(event.target === event.currentTarget)setOpen(event.currentTarget.open);}}><summary><span>{isThinking ? '思考中' : '模型思考'}</span>{isThinking && <LiveElapsed startedAt={live?.phaseStartedAt} />}<PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /></summary><MessageBody message={message} history={history} showSource={!compact} /></details>;
+}
+
+export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat', older, live }: { live?: ExecutionLive; presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void; older?: OlderHistory }) {
+  const disclosures = useRef(new Map<string, boolean>()).current;
   const brand = useAssistantBrand();
   const compact = presentation === 'execution';
   const ref = useRef<HTMLDivElement>(null);
@@ -265,13 +359,13 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
     captureAnchor();
     if (el.scrollTop < 160) loadOlder();
   }} role="region" aria-label="消息记录" tabIndex={0}>
-    <div className={`message-column${messages.length ? '' : ' is-empty'}`}>
+    <div className={`message-column${messages.length || live?.active ? '' : ' is-empty'}`}>
       {older && messages.length > 0 && <div className="execution-history-start" role="status">{older.error ? <Notice error={older.error} onRetry={older.onLoad} /> : older.loading ? '正在载入更早记录…' : older.hasMore ? '向上滚动载入更早记录' : '已到当前上下文的开始'}</div>}
-      {!messages.length ? empty ?? <EmptyState title="暂无消息" /> : keyedItems.map(({item, key}) => {
-        if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} />;
-        if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} />;
+      {!messages.length ? (live?.active ? null : empty ?? <EmptyState title="暂无消息" />) : keyedItems.map(({item, key}) => {
+        if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} disclosures={disclosures} />;
+        if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} disclosures={disclosures} />;
         const message = item.message;
-        return <article data-message-id={message.id} className={`message message-${message.role}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
+        return <article data-message-id={message.id} className={`message message-${message.role}${message.transient ? ' pi-live-message' : ''}${message.transient && live?.active && ((message.kind === 'thinking' && live.phase === 'thinking') || (message.kind !== 'thinking' && live.phase === 'text')) ? ' pi-model-streaming' : ''}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
           // The visually hidden native button makes the bubble keyboard accessible without adding a separate action label.
           const target = event.target as HTMLElement;
@@ -284,9 +378,10 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>}
-          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <details className="thinking-message"><summary>模型思考</summary><MessageBody message={message} history={history} showSource={!compact} /></details> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
+          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <ThinkingMessage message={message} history={history} compact={compact} live={live} /> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
         </article>;
       })}
+      {live?.active && !(live.phase === 'thinking' && messages.some(message => message.transient && message.kind === 'thinking')) && <LivePhase live={live} />}
       {pending && <div className="thinking" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>Bot 正在处理，完成后会更新回复</div>}
       {footer}
     </div>

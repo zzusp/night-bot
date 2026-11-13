@@ -593,3 +593,54 @@ html, body, #root { width: 100%; min-width: 0; }
 }
 
 .conversation-global-topbar { justify-content: flex-end; min-height: 44px; padding-top: 4px; padding-bottom: 4px; }
+
+/* SessionCard surface and running sweep adapted from pi-agent-dashboard (MIT,
+ * Robert Csakany, 2026). No fabricated model, cost, duration or queue controls. */
+.pi-session-card { position: relative; isolation: isolate; border: 1px solid var(--board-border); border-radius: 12px; background: var(--board-surface); box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 4px 8px rgb(0 0 0 / 6%); transition: transform 200ms ease, box-shadow 200ms ease; }
+.pi-session-card:hover { transform: translateY(-2px); box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 6px 12px rgb(0 0 0 / 8%); }
+.pi-session-card.is-running::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit; background: rgb(234 179 8 / 5%); }
+.pi-session-card.is-running::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit; background: repeating-linear-gradient(90deg, transparent 0px, transparent 60px, rgb(234 179 8 / 16%) 230px, transparent 400px, transparent 460px); background-size: 460px 100%; animation: pi-card-sweep 3.4s linear infinite; }
+@keyframes pi-card-sweep { to { background-position: 460px 0; } }
+.agent-progress, .agent-progress[open] { width: 340px; color: var(--board-text); }
+.agent-progress-heading { min-height: 42px; padding: 8px 12px; }
+.agent-progress-label { font-size: 14px; font-weight: 600; }
+.agent-progress-heading:hover { background: transparent; }
+.agent-progress-step { border-radius: 6px; }
+.agent-progress-step.todo-in_progress { border-color: var(--board-border); background: transparent; color: var(--board-text); }
+.agent-progress-step.todo-completed { color: var(--board-muted); }
+.agent-progress-collapse { display: flex; }
+.chat-execution-group.pi-session-card { overflow: hidden; margin: 10px 0; }
+.chat-execution-group.pi-session-card > summary { padding: 8px 18px 8px 6px; }
+.chat-execution-group.pi-session-card .chat-execution-label strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-execution-group.pi-session-card .chat-execution-meta { font-size: 11px; }
+@media(prefers-reduced-motion: reduce) { .pi-session-card { transition: none; } .pi-session-card:hover { transform: none; } .pi-session-card.is-running::after { animation: none; } }
+
+/* Current SessionCard title/status → secondary metadata → live action hierarchy. */
+.agent-progress-heading { display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 8px 12px; }
+.pi-task-heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pi-task-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.pi-task-status { flex-shrink: 0; padding: 1px 5px; border: 1px solid var(--board-border); border-radius: 4px; font-size: 10px; line-height: 16px; color: var(--board-muted); }
+.pi-task-status.is-running { border-color: rgb(234 179 8 / 30%); color: #a57812; }
+.pi-task-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--board-muted); }
+.pi-task-meta .agent-progress-label { font-size: 11px; font-weight: 400; }
+.agent-progress .agent-progress-current { display: flex; font-size: 12px; line-height: 18px; color: var(--board-muted); }
+.agent-progress-collapse { padding: 0; background: transparent; transform: rotate(-90deg); }
+.agent-progress[open] .agent-progress-collapse { transform: none; }
+.agent-progress-steps { border-top: 1px solid var(--board-border); padding-top: 6px; }
+.agent-progress-heading { border-radius: 11px; }
+.agent-progress[open] > .agent-progress-heading { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+/* Upstream compositor-only layer: clipping stays stationary; only the band moves. */
+.pi-session-card.is-running::before, .pi-session-card.is-running::after { content: none; }
+.pi-card-sweep-layer { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: -1; }
+.pi-card-sweep-layer::before { content: ''; position: absolute; top: 0; bottom: 0; left: -460px; right: -460px; background-image: repeating-linear-gradient(90deg, transparent 0 60px, rgb(234 179 8 / 16%) 230px, transparent 400px 460px), linear-gradient(rgb(234 179 8 / 5%),rgb(234 179 8 / 5%)); animation: pi-card-translate 3.4s linear infinite; }
+@keyframes pi-card-translate { to { transform: translateX(460px); } }
+@media(prefers-reduced-motion:reduce) { .pi-card-sweep-layer::before { animation: none; } }
+.pi-task-status { position: relative; display: inline-flex; align-items: center; justify-content: center; padding: 2px; width: 20px; height: 20px; border-radius: 50%; border: none; background: var(--board-hover); }
+.pi-task-status-dot { position: absolute; right: -2px; bottom: -2px; width: 6px; height: 6px; border: 1px solid var(--board-surface); border-radius: 50%; background: var(--board-muted); }
+.pi-task-status.is-running .pi-task-status-dot { background: #eab308; }
+.pi-task-meta, .agent-progress .agent-progress-current { margin-left: 26px; }
+
+/* TODO card keeps the original Night Bot palette, not the session amber sweep. */
+.agent-progress.pi-session-card { color: var(--board-muted); background: var(--board-surface); }
+.agent-progress .pi-task-status.is-running { color: var(--board-muted); border-color: var(--board-border); }
+.agent-progress-heading:hover, .agent-progress-heading:active { background: var(--board-hover); }

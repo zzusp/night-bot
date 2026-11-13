@@ -1,3 +1,4 @@
+import {bindPiLiveOutput} from './pi-live-output.js'
 import {skillCommand} from './pi-skill-command-input.js'
 import {bindBusinessTurnYield} from './pi-business-turn-yield.js'
 import {bindPiToolCallBatchGuard} from './pi-tool-call-batch.js'
@@ -32,7 +33,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
  const audit=Object.freeze({...methods,flush:async()=>{if(failure)throw failure;try{await sourceAudit.flush()}catch(cause){throw fence(cause)}}})
  actor.audit=audit
  const unbindApproval=bindApprovalAudit(actor,audit)
- let session,imageBudget,toolBatchGuard,businessYield
+ let session,imageBudget,toolBatchGuard,businessYield,liveOutput
  try {
   // Initial permission selection in application setup must see its exact
   // approval capability, before any scoped resource is resolved or tool copied.
@@ -64,6 +65,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
   if(onToolResult!==undefined)businessYield=bindBusinessTurnYield({session,actor,onToolResult,fence})
   durability=bindOfficialDurability({session,store,tools,measurePhase,beforeStoreClose:()=>beforeStoreClose?.(actor),beforeRequest:async(...args)=>{if(failure)throw failure;await beforeRequest?.(actor,...args);if(imageBudget?.failure)throw imageBudget.failure
     if(bridge.policyFailure)throw bridge.policyFailure}})
+  liveOutput=bindPiLiveOutput(actor)
   tools.bindContextDelivery(createOfficialToolContextDelivery({session,actor,fence}))
   if(!deferResources){await bridge.refreshResources();await bridge.reloadResources()}
   return {actor,session,tools,bridge,durability,get requestImageFailure(){return imageBudget?.failure},
@@ -121,10 +123,10 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     if(durability.requestFailure)throw durability.requestFailure
     if(failure)throw failure
    },
-   async close(){await durability.close();businessYield?.close();imageBudget?.close();toolBatchGuard?.close();unbindApproval()},
+   async close(){try{await durability.close()}finally{liveOutput?.close()}businessYield?.close();imageBudget?.close();toolBatchGuard?.close();unbindApproval()},
   }
  }catch(cause){
-  unbindApproval();businessYield?.close();imageBudget?.close();toolBatchGuard?.close();await session?.abort();await tools?.close();session?.dispose()
+  liveOutput?.close();unbindApproval();businessYield?.close();imageBudget?.close();toolBatchGuard?.close();await session?.abort();await tools?.close();session?.dispose()
   // No SDK execution has been admitted during construction. Preserve any
   // independently owned store for its caller to inspect and close explicitly.
   throw cause

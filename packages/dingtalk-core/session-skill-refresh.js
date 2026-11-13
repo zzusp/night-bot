@@ -1,3 +1,4 @@
+import {registerPartialCompatiblePostPolicy} from '../../src/runtime/tool-partial-policy.js'
 import {createHash} from 'node:crypto'
 import {z} from 'zod'
 import {isNativeSkillLoader} from '../../src/native-tool-skill.js'
@@ -70,7 +71,7 @@ export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
  disposers.push(ctx.on('fs/observed',(target,observation,exec)=>{
   if(exec?.agent===actor&&readers.has(exec.name)&&tools.get(exec.name,actor)===readers.get(exec.name)&&observation.kind==='present'&&typeof observation.version==='string')observations.set(exec,{path:filesystem.processPath(target),version:observation.version})
  }))
- disposers.push(ctx.on('tools/post-execute',async(exec,result,next)=>{
+ disposers.push(registerPartialCompatiblePostPolicy(ctx,async(exec,result,next)=>{
   const decision=await next(),observation=observations.get(exec);observations.delete(exec)
   if(exec.agent!==actor||result.isError||decision.kind!=='accept')return decision
   alive();let record
@@ -81,7 +82,7 @@ export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
   }
   if(record)prepared.set(exec,{record:recordSchema.parse(record),valueDigest:resultDigest(result)})
   return decision
- }))
+ },exec=>{alive();return exec.agent===actor&&['bash','pwsh'].includes(exec.name)}))
  disposers.push(ctx.on('tools/result',(exec,result)=>{
   const item=prepared.get(exec);prepared.delete(exec)
   if(!item||exec.agent!==actor||result.isError||resultDigest(result)!==item.valueDigest)return

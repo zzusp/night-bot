@@ -72,7 +72,8 @@ export function useExecutionStream(endpoint: string) {
           if (next) void read(next);
           else if (catchUp) void read('newer');
           else if (failures < 3 && !(current.error instanceof ApiError && (current.error.status === 409 || revoked(current.error)))) {
-            timer = setTimeout(() => void read('newer'), 2500 * Math.max(1, 2 ** failures));
+            const interval = current.data?.live?.active ? 250 : 2500;
+            timer = setTimeout(() => void read('newer'), interval * Math.max(1, 2 ** failures));
           }
         }
       }

@@ -21,8 +21,8 @@ function ChatExecutionGroup({ endpoint, taskId, metadata }: { endpoint: string; 
   const question = typeof result?.question === 'string' ? result.question : '';
   const limitations = Array.isArray(result?.limitations) ? result.limitations.filter((value): value is string => typeof value === 'string') : [];
   const sessionEndpoint = `${endpoint}${taskId ? `/tasks/${encodeURIComponent(taskId)}` : ''}/session`;
-  return <details className={`chat-execution-group${taskId ? '' : ' execution-routing-records'}`} data-task-id={taskId} open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary><RiArrowDownSLine className="chat-execution-chevron" size={18} aria-hidden="true" />
+  return <details className={`chat-execution-group${taskId ? ' pi-session-card' : ' execution-routing-records'}${(task?.state || visibleMetadata?.state) === 'running' ? ' is-running' : ''}`} data-task-id={taskId} open={open} onToggle={event => { if (event.target === event.currentTarget) setOpen(event.currentTarget.open); }}>
+    <summary>{(task?.state || visibleMetadata?.state) === 'running' && <span className="pi-card-sweep-layer" aria-hidden="true" />}<RiArrowDownSLine className="chat-execution-chevron" size={18} aria-hidden="true" />
       <span className="chat-execution-label"><strong>{taskId ? (task?.title || visibleMetadata?.title || (revoked || denied ? '任务暂不可读' : '任务名称未记录')) : '会话安排记录'}</strong>
         {taskId && <span className="chat-execution-meta">{(task?.updatedAt || visibleMetadata?.updatedAt) ? `更新于 ${dateTime(task?.updatedAt || visibleMetadata?.updatedAt)}` : '更新时间未记录'}</span>}
       </span>

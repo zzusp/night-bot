@@ -193,6 +193,13 @@ function taskInstruction(input) {
     requirements.length ? '要求：\n' + requirements.map(value => '- ' + value).join('\n') : ''].filter(Boolean).join('\n\n')
 }
 
+// A credential may span semantic blocks, not only provider chunks. Apply the
+// existing redactor to their joined, individually sanitized text as well.
+function crossBlockSensitive(blocks, secrets) {
+  const joined = (Array.isArray(blocks) ? blocks : []).filter(b => b.type === 'text' || b.type === 'thinking').map(b => visibleText(b.text ?? b.thinking ?? '', secrets, {maxLength: Infinity, preservePaths: true}).text).join('')
+  return visibleText(joined, secrets, {maxLength: Infinity, preservePaths: true}).text !== joined
+}
+
 function projectEntries(snapshot, identity, secrets) {
   const {taskId, sessionId, conversationId, generation} = identity
   const items = [], sources = new Set(), calls = new Map()
@@ -216,7 +223,9 @@ function projectEntries(snapshot, identity, secrets) {
     for (const [index, message] of projected.messages.entries()) {
       if (message.role === 'assistant') {
         const blocks = typeof message.content === 'string' ? [{type: 'text', text: message.content}] : message.content
+        const suppressBodies = crossBlockSensitive(blocks, secrets)
         for (const [blockIndex, block] of (Array.isArray(blocks) ? blocks : []).entries()) {
+          if (suppressBodies && (block.type === 'text' || block.type === 'thinking')) continue
           if (block.type === 'text' && typeof block.text === 'string') {
             add(entry, 'assistant-' + index + '-' + blockIndex, 'assistant', block.text, {kind: 'message', ...(['stop', 'length', 'toolUse', 'error', 'aborted'].includes(message.stopReason) ? {status: message.stopReason} : {})}, message)
           } else if (block.type === 'thinking' && typeof block.thinking === 'string' && block.redacted !== true) {
@@ -294,6 +303,78 @@ function taskTodos(snapshot, identity, secrets) {
     updatedAt: stamp(null, entry), source: {sessionId: identity.sessionId, entryId: digest(JSON.stringify([identity.sessionId, entry.id]))}}}
 }
 
+// Incremental output is cumulative, never a raw delta. Keep an unfinished tail
+// (at least 512 chars and every configured secret's maximum length) so a secret
+// split over provider chunks cannot leak its earlier prefix. Credential-shaped
+// unfinished content is withheld as a whole until its native block ends.
+export function visibleLiveText(value, secrets = [], complete = false, {shortProse = false} = {}) {
+  const text = String(value ?? '')
+  if(shortProse&&!complete){
+    // Narrow incremental prose lane: Chinese natural-language characters and
+    // punctuation only. ASCII/structured/opaque values wait for block_end,
+    // rather than guessing whether an incomplete credential is harmless.
+    if(/密码|密钥|令牌|口令|凭据|私钥|验证码/.test(text))return ''
+    if(!/^[\p{Script=Han}\s，。！？、；：（）《》“”‘’…—·]*$/u.test(text))return ''
+    const visible=visibleText(text,secrets,{maxLength:Infinity,preservePaths:true})
+    if(visible.redacted)return ''
+    let end=text.length
+    const word=text.match(/[A-Za-z0-9_./:=+@\\-]+$/)
+    if(word)end=Math.min(end,text.length-word[0].length)
+    for(const secret of secrets)for(let n=Math.min(text.length,secret.length-1);n>0;n--)if(text.endsWith(secret.slice(0,n))){end=Math.min(end,text.length-n);break}
+    // Do not split a UTF-16 surrogate when an event ends mid-character.
+    if(end>0&&/[\uD800-\uDBFF]/.test(text[end-1]))end--
+    return text.slice(0,end)
+  }
+  if (complete) {
+    // A completed block is not the whole assistant turn. Withhold a configured
+    // secret prefix at its tail until a later complete snapshot can disambiguate.
+    for (const secret of secrets) for (let n = Math.min(text.length, secret.length - 1); n > 0; n--) if (text.endsWith(secret.slice(0, n))) return ''
+    return visibleText(text, secrets, {maxLength: Infinity, preservePaths: true}).text
+  }
+  if (credentialName.test(text) || /-----BEGIN|\bBearer\b|\b(?:sk-|gh[pousr]_|github_pat_|eyJ)/i.test(text)) return ''
+  const reserve = Math.max(512, ...secrets.map(value => value.length))
+  const cut = text.lastIndexOf('\n', Math.max(-1, text.length - reserve - 1))
+  if (cut < 0) return ''
+  // Redact the cumulative value BEFORE selecting its safe prefix. Suppress
+  // rather than guessing offsets when redaction has changed its length.
+  const visible = visibleText(text, secrets, {maxLength: Infinity, preservePaths: true})
+  if (visible.redacted) return ''
+  return text.slice(0, cut + 1)
+}
+function projectLive(snapshot, identity, secrets, raw) {
+  if (!raw || raw.sessionId !== identity.sessionId || typeof raw.active !== 'boolean' || typeof raw.revision !== 'string') return {active:false,items:[]}
+  if (!raw.active) return {active:false,revision:raw.revision,items:[]}
+  const extra = [], native = snapshot.context.projection.entries
+  if (raw.assistant?.message?.role === 'assistant' && typeof raw.assistant.id === 'string') {
+    const message = raw.assistant.message
+    const blocks = (crossBlockSensitive(message.content, secrets) ? [] : message.content ?? []).flatMap(block => {
+      if (block.type !== 'text' && block.type !== 'thinking') return [{type:'omitted'}]
+      const field = block.type === 'text' ? 'text' : 'thinking'
+      const text = visibleLiveText(block[field], secrets, block.complete === true, {shortProse:true})
+      return text ? [{type:block.type,[field]:text}] : [{type:'omitted'}]
+    })
+    if (blocks.length) extra.push({sourceEntry:{id:raw.assistant.id},messages:[{role:'assistant',timestamp:message.timestamp,content:blocks}]})
+  }
+  // Only the exact currently pending official call can lend its public result
+  // schema to a live tool update; tools never self-authorize by naming a tool.
+  const pending = new Map()
+  for (const row of native) for (const message of row.messages ?? []) {
+    if (message.role === 'assistant') for (const block of message.content ?? []) if(block.type === 'toolCall' && typeof block.id === 'string') pending.set(block.id,pending.has(block.id)?null:block.name)
+    if (message.role === 'toolResult') pending.delete(message.toolCallId)
+  }
+  for (const tool of raw.tools ?? []) {
+    if (typeof tool.id !== 'string' || pending.get(tool.toolCallId) !== tool.toolName || !Array.isArray(tool.content) || !tool.content.length) continue
+    if (!(identity.taskId && taskTextTools.has(tool.toolName)) && !Object.hasOwn(toolOutputs,tool.toolName)) continue
+    if (!(identity.taskId && taskTextTools.has(tool.toolName)) && !tool.complete) continue
+    const text=visibleLiveText(texts(tool.content),secrets,tool.complete===true)
+    if (!text) continue
+    extra.push({sourceEntry:{id:tool.id},messages:[{role:'toolResult',toolCallId:tool.toolCallId,toolName:tool.toolName,isError:tool.isError===true,content:[{type:'text',text}]}]})
+  }
+  const liveEntryIds = new Set(extra.map(row=>digest(JSON.stringify([identity.sessionId,row.sourceEntry.id]))))
+  const combined={...snapshot,context:{...snapshot.context,projection:{...snapshot.context.projection,entries:[...native,...extra]}}}
+  return {active:true,revision:raw.revision,...(['waiting','thinking','text','tool'].includes(raw.phase)?{phase:raw.phase}:{}),...(typeof raw.phaseStartedAt==='string'&&Number.isFinite(Date.parse(raw.phaseStartedAt))?{phaseStartedAt:raw.phaseStartedAt}:{}),items:projectEntries(combined,identity,secrets).filter(row=>liveEntryIds.has(row.source.entryId)).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
+}
+
 async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = []}) {
   const {sessionId} = identity
   if (!sessionId || !persistence?.readNative) return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
@@ -306,7 +387,8 @@ async function projection({base, identity, persistence, validIdentity, notStarte
   if (snapshot.header?.id !== sessionId || !Array.isArray(snapshot.entries) || !Array.isArray(snapshot.context?.projection?.entries) || !validIdentity(snapshot)) fail('SESSION_IDENTITY_INVALID', 503)
   const currentRevision = digest(JSON.stringify([sessionId, snapshot.entries.at(-1)?.id]))
   if (revision && revision !== currentRevision) fail('SESSION_PAGE_STALE', 409)
-  return {...base, status: 'ready', revision: currentRevision, ...taskTodos(snapshot, identity, secrets), items: projectEntries(snapshot, identity, secrets)}
+  const live = persistence.readLive ? projectLive(snapshot, identity, secrets, await persistence.readLive(sessionId)) : undefined
+  return {...base, status: 'ready', revision: currentRevision, ...taskTodos(snapshot, identity, secrets), items: projectEntries(snapshot, identity, secrets), ...(live ? {live} : {})}
 }
 function sessionPage(value, options) {
   const {offset, limit} = pageOptions(options)

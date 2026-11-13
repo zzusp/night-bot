@@ -1,3 +1,4 @@
+import {startShellLivePreview} from './runtime/shell-live-preview.js';
 import {createBashToolDefinition,createPowerShellToolDefinition,truncateTail} from '@earendil-works/pi-coding-agent';
 import {constants as osConstants} from 'node:os';
 import {authorizedProcessPolicy} from './process/contracts.js';
@@ -404,7 +405,7 @@ export function applyShellTool(ctx, config = {},toolName="bash") {
 		const background = jobs !== void 0;
 		const promote = background && promoteOnTimeout;
 		/** Register the command as a job; the process spawns inside the starter, after admission. */
-		const startJob = async (registry, args, exec, spec) => {
+		const startJob = async (registry, args, exec, spec, onProcess) => {
 			let proc;
 			let stopped;
 			let ready;
@@ -419,6 +420,7 @@ export function applyShellTool(ctx, config = {},toolName="bash") {
 								...spec,
 								signal
 							});
+							onProcess?.(proc);
 							return proc;
 						}, (started) => processOutcome(started, escalationModes), args.run_in_background === true ? exec.signal : void 0);
 						ready = hooks.ready;
@@ -689,6 +691,10 @@ export function applyShellTool(ctx, config = {},toolName="bash") {
 				}],
 				presentationMeta: (_args, value) => ({ cwd: value.cwd })
 			},
+            partialResult:{version:1,project(value){
+             if(!value||!Array.isArray(value.content))throw new TypeError('Shell preview needs text content')
+             return value.content
+            }},
 			async execute(args, exec) {
 				const standingPolicy = resolveSandboxPolicy(exec);
 				validateBashArgs(args, standingPolicy?.mode,toolName);
@@ -708,6 +714,8 @@ export function applyShellTool(ctx, config = {},toolName="bash") {
 					...policy !== void 0 ? { sandboxPolicy: policy } : {}
 				};
     const baseSpec=ctx.shell.resolve(request);
+    let liveProcess;
+    const preview=args.run_in_background===true?undefined:startShellLivePreview(exec,()=>liveProcess);
     const run=async()=>{
 				if (args.run_in_background === true) {
 					if (!backgroundEnabled) throw new Error("run_in_background is disabled for this deployment (enableRunInBackground: false)");
@@ -724,7 +732,7 @@ export function applyShellTool(ctx, config = {},toolName="bash") {
 					const spec = {...baseSpec,onExpiry:"none"};
 					let attached;
 					try {
-						attached = await startJob(jobs, args, exec, spec);
+						attached = await startJob(jobs, args, exec, spec, proc=>{liveProcess=proc});
 					} catch (error) {
 						if (!["background jobs unavailable: no job controller serves this agent", "background job limit reached for this owner"].includes(error.message)) throw error;
 						ctx.logger.warn(`${toolName}: job registration refused, running in the foreground with the timeout kill instead: ${String(error)}`);
@@ -732,14 +740,15 @@ export function applyShellTool(ctx, config = {},toolName="bash") {
 					if (attached !== void 0) return waitOnJob(jobs, attached, exec, spec);
 				}
 				const spec = {...baseSpec,signal:exec.signal};
-				const result = await (await ctx.shell.execute(spec)).result();
+				liveProcess=await ctx.shell.execute(spec);
+				const result = await liveProcess.result();
 				if (result.aborted) throw toolAborted();
 				return {
 					kind: "foreground",
 					...canonicalBashResult(result, spec.workdir)
 				};
     };
-    return executeOfficialShell(createOfficialTool,args,exec,baseSpec,run);
+    try{return await executeOfficialShell(createOfficialTool,args,exec,baseSpec,run)}finally{await preview?.close()}
 			},
 			presentCall: presentBashCall,
 			presentResult: presentBashResult

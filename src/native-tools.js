@@ -1,3 +1,4 @@
+import {partialPoliciesCompatible} from './runtime/tool-partial-policy.js'
 import {nativeCodeTransport} from './native-code-transport.js'
 import {captureToolSchema} from './runtime/tool-schema-value.js'
 import {Service} from '@deepseek-ai/cordis'
@@ -62,6 +63,10 @@ export default class NativeTools extends Service {
     if(rejection?.status!=='invalid-arguments'||!Array.isArray(rejection.issues)||!rejection.issues.length||rejection.issues.some(issue=>typeof issue?.code!=='string'||!issue.code))throw new TypeError('argumentRejection must be a static invalid-arguments result with issue codes')
     if(validateJsonSchemaValue(contract.output,rejection).length)throw new TypeError('argumentRejection must satisfy the tool output contract')
     contract.argumentRejection=rejection
+   }
+   if(definition.partialResult!==undefined){
+    if(definition.partialResult?.version!==1||typeof definition.partialResult.project!=='function')throw new TypeError('Partial result requires an explicit versioned stream-safe projector')
+    contract.partialResult=definition.partialResult.project.bind(definition)
    }
    this.contracts.set(definition,contract)
   }
@@ -146,16 +151,34 @@ export default class NativeTools extends Service {
  inspectProcessAuthorization(request){return this.ctx.get('toolPermissions')?.inspectProcessAuthorization(request)}
  resolveProcessAuthorization(request){return this.ctx.get('toolPermissions')?.resolveProcessAuthorization(request)}
  resolveFileAuthorization(request){return this.ctx.get('toolPermissions')?.resolveFileAuthorization(request)}
+ partialValid(exec){
+  const state=this.states.get(exec)
+  try{return !!(state&&state.validationRegistered!==false&&this.executionIdentity(exec)&&this.guardReason(exec)===undefined&&(!state.businessAudit||state.businessAudit.isLive())&&!state.projector&&!state.finalizer&&state.executionDefinition===this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined)&&this.contracts.get(state.executionDefinition)?.partialResult&&partialPoliciesCompatible(this.ctx,scopeTarget(this,exec.agent),exec))}catch{return false}
+ }
+ async publishPartial(exec,value){
+  const state=this.states.get(exec)
+  const reject=()=>{try{state?.partialWithdraw?.()}catch{}return false}
+  if(typeof state?.partialSink!=='function'||!this.partialValid(exec))return reject()
+  const definition=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined),project=this.contracts.get(definition)?.partialResult
+  try{
+   const content=await project(value,exec)
+   if(!Array.isArray(content)||content.length>4||content.some(b=>b?.type!=='text'||typeof b.text!=='string')||content.reduce((n,b)=>n+b.text.length,0)>65536)return reject()
+   const result=deepFreeze({content:content.map(b=>({type:'text',text:b.text})),details:{}})
+   if(!this.partialValid(exec)||definition!==this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined))return reject()
+   await state.partialSink(result);return true
+  }catch{return reject()}
+ }
  async prepare(input){
-  const state={callerSignal:input.signal,businessAudit:input.businessAudit,started:false,deferred:[],concluded:false},definition=this.get(input.name,input.agent)
-  const exec={token:Symbol('night.tool.execution'),callId:input.callId,rootCallId:input.rootCallId??input.callId,name:input.name,signal:input.signal,...input.agent===undefined?{}:{agent:input.agent},...input.parent===undefined?{}:{parent:input.parent},...input.schema===undefined?{}:{schema:input.schema},deferContext:context=>state.deferred.push(context),concludeTurn:()=>{state.concluded=true}}
+  const state={partialSink:input.onPartial,partialWithdraw:input.onPartialWithdraw,callerSignal:input.signal,businessAudit:input.businessAudit,started:false,deferred:[],concluded:false},definition=this.get(input.name,input.agent)
+  const exec={token:Symbol('night.tool.execution'),callId:input.callId,rootCallId:input.rootCallId??input.callId,name:input.name,signal:input.signal,...input.agent===undefined?{}:{agent:input.agent},...input.parent===undefined?{}:{parent:input.parent},...input.schema===undefined?{}:{schema:input.schema},withdrawPartial:()=>{try{state.partialWithdraw?.()}catch{}},publishPartial:value=>this.publishPartial(exec,value),deferContext:context=>state.deferred.push(context),concludeTurn:()=>{state.concluded=true}}
   const collapsed=this.modeFor(input.agent)==='ptc'&&input.parent===undefined&&input.name!=='run_code'
   state.finalizer=collapsed&&!input.signal.aborted?undefined:definition?.finalizeContent?.bind(definition);state.projector=collapsed?undefined:definition?.projectContent?.bind(definition);this.states.set(exec,state)
+  state.validationRegistered=input.onPartialValidator?.(()=>this.partialValid(exec))
   return this.permissionExecutions.run(exec,async()=>{try{
    exec.arguments=deepFreeze(snapshot(input.arguments));state.arguments=exec.arguments;state.identity={token:exec.token,agent:exec.agent,callId:exec.callId,rootCallId:exec.rootCallId,name:exec.name}
    // Middleware may wrap cancellation, but cannot replace the admitted capability,
    // owner, RPC parent or captured parameters before an effect.
-   for(const key of ['token','agent','callId','rootCallId','name','arguments','parent','schema'])Object.defineProperty(exec,key,{value:exec[key],writable:false,configurable:false,enumerable:Object.hasOwn(exec,key)})
+   for(const key of ['token','agent','callId','rootCallId','name','arguments','parent','schema','publishPartial','withdrawPartial'])Object.defineProperty(exec,key,{value:exec[key],writable:false,configurable:false,enumerable:Object.hasOwn(exec,key)})
    if(state.callerSignal.aborted)return{kind:'final-result',exec,result:aborted(false)}
    if(this.modeFor(exec.agent)==='ptc'&&exec.parent===undefined&&exec.name!=='run_code')return{kind:'final-result',exec,result:failure(new ToolNotFoundError(exec.name,'use run_code instead'))}
    let gate=await this.ctx.waterfall(scopeTarget(this,exec.agent),'tools/pre-execute',exec,()=>Promise.resolve({kind:'allow'}))
@@ -190,7 +213,7 @@ export default class NativeTools extends Service {
   const state=this.states.get(exec),wrapper=exec.signal,fused=fusedSignals(state.callerSignal,wrapper),signal=fused.signal
   if(signal.aborted){fused.close();return aborted(false)}
   exec.signal=signal
-  try{const definition=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);if(!definition)throw new ToolNotFoundError(exec.name);state.started=true;const result=this.success(exec,definition,await this.permissionExecutions.run(exec,()=>definition.execute(exec.arguments,exec)));return signal.aborted?aborted(true,result):result}catch(error){return failure(error)}finally{fused.close();exec.signal=wrapper}
+  try{const definition=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);if(!definition)throw new ToolNotFoundError(exec.name);state.executionDefinition=definition;state.started=true;const result=this.success(exec,definition,await this.permissionExecutions.run(exec,()=>definition.execute(exec.arguments,exec)));return signal.aborted?aborted(true,result):result}catch(error){return failure(error)}finally{fused.close();exec.signal=wrapper}
  }
  normalize(exec,result){if(this.canonical.get(result)===exec.token)return result;if(result.isError)return this.mark(exec,{isError:true,error:result.error,content:result.content,...result.meta===undefined?{}:{meta:result.meta},...result.additionalContexts===undefined?{}:{additionalContexts:result.additionalContexts}});const definition=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);if(!definition)throw new ToolNotFoundError(exec.name);return this.mark(exec,{...this.success(exec,definition,result.value),...result.additionalContexts===undefined?{}:{additionalContexts:result.additionalContexts}})}
  async flushSession(agent,businessAudit){if(businessAudit){if(typeof businessAudit.isLive!=='function'||!businessAudit.isLive())throw new Error('Business tool actor is not live');await businessAudit.flush();if(!businessAudit.isLive())throw new Error('Business tool actor is not live');return}const sessions=this.ctx.get('sessions');if(agent&&sessions)await sessions.flush(agent.session)}

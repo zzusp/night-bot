@@ -60,7 +60,7 @@ export function TaskDetail({ id, header }: { id: string; header?: ReactNode }) {
       {header}
       {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
       {!task ? query.loading ? <Loading>正在读取任务…</Loading> : <EmptyState title="无法读取任务" /> :
-        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} controlsTarget={recordControls} /></div>}
+        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={recordControls} /></div>}
     </ConversationFrame>
     <aside className="task-info-rail" aria-label="任务详情">
       <nav className="filter-tabs task-info-nav" aria-label="任务信息分类">{sections.map(([value, label]) => <a key={value} href={`#/tasks/${encodeURIComponent(id)}${value === 'task' ? '' : `?view=${value}`}`} aria-current={tab === value ? 'page' : undefined}>{label}</a>)}</nav>
