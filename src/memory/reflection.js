@@ -16,7 +16,7 @@ export default class Reflection extends Service {
   static inject=['memory','skills','agents','nativePiProvider','runtimePaths']
   constructor(ctx,config={}){
     super(ctx,'reflection');this.host=ctx;this.config=config;this.jobs=new Set();this.sources=new Set();this.abort=new AbortController();this.closed=false;this.lastError=null
-    ctx.skills.registerProvider(()=>({name:'learned',list:async options=>({candidates:await this.catalog(options?.scope),complete:!!options?.scope||!this.host.agents.currentInitiator()}),get:async(candidate,options)=>this.skill(candidate,options?.scope)}))
+    ctx.skills.registerProvider(()=>({name:'learned',list:async options=>({candidates:await this.catalog(options?.scope),complete:!!options?.scope||!this.host.agents.currentInitiator()}),get:async(candidate,options)=>this.skill(candidate,options?.scope,{resourceOnly:options?.resourceOnly===true})}))
     ctx.effect(()=>async()=>{this.closed=true;this.abort.abort();await this.whenIdle()},'reflection drain')
   }
   async [Service.init](){
@@ -306,11 +306,11 @@ export default class Reflection extends Service {
     }
     return result
   }
-  async skill(candidate,agent){
+  async skill(candidate,agent,{resourceOnly=false}={}){
     const allowed=(await this.catalog(agent)).find(row=>row.name===candidate.name&&row.locator.scope.id===candidate.locator.scope.id);if(!allowed)return
     const {scope,key}=allowed.locator,state=await this.state(scope),value=state.skills[key],revision=(await this.host.memory.store.index(scope)).revision
     const content=this.renderSkill(scope,key,value,revision)
-    await this.host.memory.recordUsage(scope,'loadCount')
+    if(!resourceOnly)await this.host.memory.recordUsage(scope,'loadCount')
     return {...allowed,content}
   }
   async whenIdle(){while(this.jobs.size)await Promise.allSettled([...this.jobs])}

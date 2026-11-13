@@ -54,15 +54,27 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
   // selection is absent, never retry through a broader inherited filesystem.
   const presets=service(actorCtx,'agentPresets'),fs=typeof presets?.serviceFor==='function'?presets.serviceFor(actor,'fs'):service(actorCtx,'fs')
   if(!registry||!systemPrompt||!skills||!fs)fail('PI_OFFICIAL_RESOURCE_SERVICES_REQUIRED')
-  async function currentSkill(summary){
+  async function readSkillFile(path){
    assertCurrent()
-   const current=await withActor(()=>skills.get(summary.name,{scope:actor,cwd,signal}))
+   const target=await withActor(()=>fs.resolve(path,{signal})),info=await withActor(()=>fs.stat(target,signal))
+   if(info?.type!=='file')fail('PI_OFFICIAL_SKILL_FILE_REQUIRED')
+   const content=await withActor(()=>fs.readText(target,signal)),canonical=fs.processPath(target)
+   if(typeof canonical!=='string'||!isAbsolute(canonical)||![cwd,...roots].some(root=>inside(root,canonical)))fail('PI_OFFICIAL_SKILL_FILE_REQUIRED')
+   await safePath(canonical,{file:true});if(await realpath(canonical)!==canonical)fail('PI_OFFICIAL_RESOURCE_PATH_UNSAFE')
+   assertCurrent();return {content,path:canonical}
+  }
+  async function currentSkill(summary,{resource=false}={}){
+   assertCurrent()
+   let prepared,current
+   if(resource&&typeof skills.officialResource==='function'){prepared=await withActor(()=>skills.officialResource(summary.name,{scope:actor,cwd,signal},readSkillFile));current=prepared?.skill}
+   else current=await withActor(()=>skills.get(summary.name,{scope:actor,cwd,signal,resourceOnly:true}))
    assertCurrent()
    if(!current||['name','provider','source','description'].some(key=>current[key]!==summary[key])||summary.path!==undefined&&current.path!==summary.path||['modelInvocable','userInvocable'].some(key=>current.invocation?.[key]!==summary.invocation?.[key])||typeof current.content!=='string')fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
-   return current
+   return resource?{current,fileValidated:prepared?.fileValidated===true}:current
   }
   async function skillFile(summary){
-   const current=await currentSkill(summary)
+   const {current,fileValidated}=await currentSkill(summary,{resource:true})
+   if(fileValidated)return current.path
    if(current.path!==undefined){
     const target=await withActor(()=>fs.resolve(current.path,{signal})),info=await withActor(()=>fs.stat(target,signal))
     if(info?.type!=='file')fail('PI_OFFICIAL_SKILL_FILE_REQUIRED')

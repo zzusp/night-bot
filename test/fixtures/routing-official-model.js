@@ -102,7 +102,7 @@ export function topicTaskCalls(request, { title = '原消息交办', objective, 
     const completed=input.events.find(event=>event.taskEvent?.kind==='task.completed'&&!calls.some(call=>call.name==='resident_router_reply'&&call.arguments.operationId==='fixture-completion:'+event.taskEventId))
     if(!sourceEvents.length&&completed){
       const values=modelToolValues(request),row=values.findLast(value=>value.task?.taskId===completed.taskId&&value.task.requirementRevision===completed.taskEvent.requirementRevision)?.task
-      if(!calls.some(call=>call.name==='resident_task_query'&&call.arguments.taskId===completed.taskId))return [{name:'resident_task_query',args:{taskId:completed.taskId}}]
+      if(!calls.some(call=>call.name==='resident_task_query'&&call.arguments.taskId===completed.taskId))return [{name:'resident_task_query',args:{taskId:completed.taskId,detail:'full'}}]
       if(!row)throw Error('Completion reply requires the actual current task result')
       const sourceId=row.sourceRefs[0],source=values.findLast(value=>value.sourceId===sourceId)
       if(!calls.some(call=>call.name==='resident_source_get'&&call.arguments.sourceId===sourceId))return [{name:'resident_source_get',args:{sourceId}}]
