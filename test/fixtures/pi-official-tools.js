@@ -11,7 +11,7 @@ import {createPiOfficialTools} from '../../src/runtime/pi-official-tools.js'
 
 export const definition=(name,execute,extra={})=>({name,description:name,parameters:{type:'object',additionalProperties:false},output:{schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},execute,...extra})
 const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
-export async function officialToolsFixture(t,register){
+export async function officialToolsFixture(t,register,extraTools=[]){
  const root=await mkdtemp(join(tmpdir(),'night-official-tools-')),agentDir=join(root,'agent');await mkdir(agentDir)
  const ctx=new Context(),requests=[],receipts=[],results=[],cleanups=[]
  ctx.provide('systemPrompt',{tools:()=>()=>{},section:()=>()=>{},getSectionOrder:()=>0,context:()=>()=>{},getContextOrder:()=>0})
@@ -39,7 +39,7 @@ export async function officialToolsFixture(t,register){
  }})
  const settings=SettingsManager.inMemory({compaction:{enabled:false},retry:{enabled:false}})
  const loader=new DefaultResourceLoader({cwd:root,agentDir,settingsManager:settings,noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true});await loader.reload()
- ;({session}=await createAgentSession({cwd:root,agentDir,modelRuntime:runtime,model,thinkingLevel:'off',settingsManager:settings,resourceLoader:loader,sessionManager:manager,noTools:'builtin',tools:adapter.customTools.map(tool=>tool.name),customTools:adapter.customTools}))
+ ;({session}=await createAgentSession({cwd:root,agentDir,modelRuntime:runtime,model,thinkingLevel:'off',settingsManager:settings,resourceLoader:loader,sessionManager:manager,noTools:'builtin',tools:[...adapter.customTools,...extraTools].map(tool=>tool.name),customTools:[...adapter.customTools,...extraTools]}))
  owner.piSession=session
  session.agent.toolExecution='parallel';session.agent.finishTurn=adapter.finishTurn
  session.subscribe(event=>{if(event.type==='tool_execution_end')results.push(event)})

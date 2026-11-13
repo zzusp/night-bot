@@ -154,3 +154,7 @@
 [data-theme="dark"] .pi-read-output .token.pi-token-string, [data-theme="dark"] .pi-read-output .token.pi-token-attr-value { color: #98c379; }
 [data-theme="dark"] .pi-read-output .token.pi-token-number, [data-theme="dark"] .pi-read-output .token.pi-token-function { color: #d19a66; }
 [data-theme="dark"] .pi-read-output .token.pi-token-property, [data-theme="dark"] .pi-read-output .token.pi-token-tag { color: #61afef; }
+/* Actual provisional Pi snapshots only. No local typing replay or fake progress. */
+.execution-transcript .pi-live-message:not(:has(.thinking-message)) > .message-body { position: relative; overflow: hidden; }
+.execution-transcript .pi-live-message:not(:has(.thinking-message)) > .message-body::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(100deg,transparent 20%,rgb(96 165 250 / 9%) 45%,rgb(96 165 250 / 15%) 50%,rgb(96 165 250 / 9%) 55%,transparent 80%); animation: pi-tool-sweep 1.6s linear infinite; }
+@media(prefers-reduced-motion:reduce) { .execution-transcript .pi-live-message > .message-body::after { animation:none; background:none; } }

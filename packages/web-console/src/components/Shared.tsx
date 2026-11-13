@@ -178,9 +178,9 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
   const previousState = useRef(state);
   const [completionCue, setCompletionCue] = useState(false);
   useEffect(() => {
-    if (['running', 'active'].includes(previousState.current) && (failed || !!result)) setCompletionCue(true);
+    if (['running', 'active'].includes(previousState.current) && !running && (failed || !!result)) setCompletionCue(true);
     previousState.current = state;
-  }, [state, failed, result]);
+  }, [state, running, failed, result]);
   if (compact) return <article ref={frame} className={`message message-tool pi-tool-frame${running ? ' is-running' : ''}`} data-message-id={item.id}>
     <details className="pi-tool-step" open={open} onToggle={event => {
       if (event.target !== event.currentTarget) return;
@@ -333,7 +333,7 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
         if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} />;
         if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} />;
         const message = item.message;
-        return <article data-message-id={message.id} className={`message message-${message.role}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
+        return <article data-message-id={message.id} className={`message message-${message.role}${message.transient ? ' pi-live-message' : ''}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
           // The visually hidden native button makes the bubble keyboard accessible without adding a separate action label.
           const target = event.target as HTMLElement;

@@ -42,7 +42,7 @@ export function ExecutionHistory({ endpoint, router = false, status, taskTitle, 
       : blocked || (!query.data && query.error) ? <EmptyState title="执行记录暂不可读" />
       : query.data?.status === 'pending' ? <EmptyState title={query.data.reason === 'SESSION_NOT_STARTED' ? router ? '暂无已提交的会话安排' : '执行尚未开始' : '执行记录正在提交'} />
       : query.data?.status === 'unavailable' ? <EmptyState title="执行记录暂不可读" action={<Button variant="secondary" onClick={latest}>重新获取</Button>} />
-      : <MessageList key={`${endpoint}:${query.epoch}:${readerEpoch}`} messages={query.data?.items || []} userLabel="用户" presentation="execution" older={{ hasMore: !!query.data?.before, loading: query.loadingOlder, error: query.olderError, disabled: !!query.error, onLoad: query.loadOlder }} history={query.data?.revision ? { endpoint, revision: query.data.revision, onRecover: recoverBody } : undefined}
+      : <MessageList key={`${endpoint}:${query.epoch}:${readerEpoch}`} messages={[...(query.data?.items || []), ...(!query.error && query.data?.status === 'ready' ? query.data.live?.items || [] : [])]} userLabel="用户" presentation="execution" older={{ hasMore: !!query.data?.before, loading: query.loadingOlder, error: query.olderError, disabled: !!query.error, onLoad: query.loadOlder }} history={query.data?.revision ? { endpoint, revision: query.data.revision, onRecover: recoverBody } : undefined}
         empty={<EmptyState title="暂无可展示的执行记录" />} />}
   </div>;
 }
