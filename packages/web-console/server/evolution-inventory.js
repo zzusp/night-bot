@@ -115,14 +115,22 @@ export async function readEvolutionInventory({memory, reflection, binding, now =
   items.push(...inventory.items.map(({contentVersion, resource, ...item}) => ({...item, modelUseCount: null, userUseCount: null, fileReadCount: null, lastUsedAt: null})))
   const todayUpdatedCount = countSkillsUpdatedToday(items, {now, timeZone})
   return {items, memoryResources, skillResources, allowedScopeTokens,
-    memory: {acceptedCount, candidateCount: memoryCandidates},
+    memory: {acceptedCount, candidateCount: memoryCandidates, todayUpdatedCount: countMemoryUpdatedToday(items, {now, timeZone})},
     skills: {todayUpdatedCount, activeCount, candidateCount: skillCandidates, contentTrackingStatus: memory.installedPrevious?.error ? 'degraded' : 'ready', coverage: 'bot-installed-and-learned', installedCount: inventory.items.length, installedAvailableCount: inventory.items.filter(item => item.status === 'applied').length, inventoryComplete: inventory.complete, inventoryIssues: inventory.issues}}
 }
 
 // Web-only derived metric: a skill counts once, not once per edit or invocation.
 // Use the Bot process timezone, never the visiting browser's timezone.
 export function countSkillsUpdatedToday(items, {now = Date.now(), timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone} = {}) {
+  return countUpdatedToday(items.filter(item => item.kind === 'skill' && item.status !== 'shadowed'), {now, timeZone})
+}
+
+export function countMemoryUpdatedToday(items, options = {}) {
+  return countUpdatedToday(items.filter(item => item.kind === 'memory' && item.status === 'applied'), options)
+}
+
+function countUpdatedToday(items, {now = Date.now(), timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone} = {}) {
   const day = new Intl.DateTimeFormat('en-CA', {timeZone, year: 'numeric', month: '2-digit', day: '2-digit'})
   const today = day.format(new Date(now))
-  return new Set(items.filter(item => item.kind === 'skill' && item.status !== 'shadowed' && stamp(item.updatedAt) && Date.parse(item.updatedAt) <= now && day.format(new Date(item.updatedAt)) === today).map(item => item.id)).size
+  return new Set(items.filter(item => stamp(item.updatedAt) && Date.parse(item.updatedAt) <= now && day.format(new Date(item.updatedAt)) === today).map(item => item.id)).size
 }

@@ -6,7 +6,7 @@ import {join} from 'node:path'
 import {setTimeout as delay} from 'node:timers/promises'
 import {writeFileSync} from 'node:fs'
 import {acquireLock} from '../../../src/runtime/files.js'
-import {readEvolutionInventory, countSkillsUpdatedToday} from '../server/evolution-inventory.js'
+import {readEvolutionInventory, countSkillsUpdatedToday, countMemoryUpdatedToday} from '../server/evolution-inventory.js'
 import {openEvolutionCache} from '../server/evolution-cache.js'
 import {entryPath} from '../../../src/memory/layered-format.js'
 import {MarkdownMemoryStore} from '../../../src/memory/store.js'
@@ -249,4 +249,22 @@ test('today updates follow calendar days across daylight-saving changes, not a 2
     skill('first-one', '2026-11-01T08:30:00Z'),
     skill('second-one', '2026-11-01T09:30:00Z'),
   ], {now: Date.parse('2026-11-02T07:59:59Z'), timeZone: 'America/Los_Angeles'}), 3)
+})
+
+test('memory today updates derive distinct applied records, not reads or candidates', () => {
+  const now = Date.parse('2026-11-13T00:30:00Z')
+  const row = (id, updatedAt, extra = {}) => ({id, kind: 'memory', status: 'applied', updatedAt, ...extra})
+  const items = [row('new', '2026-11-12T16:00:00Z'), row('new', '2026-11-13T00:00:00Z'), row('edited', '2026-11-13T00:00:00Z'), row('old', '2026-11-12T15:59:59Z'), row('bad', null), row('future', '2026-11-13T01:00:00Z'), row('candidate', '2026-11-13T00:00:00Z', {status: 'candidate'}), row('skill', '2026-11-13T00:00:00Z', {kind: 'skill'})]
+  assert.equal(countMemoryUpdatedToday(items, {now, timeZone: 'Asia/Shanghai'}), 2)
+  assert.equal(countMemoryUpdatedToday(items, {now, timeZone: 'America/Los_Angeles'}), 3)
+  assert.equal(countMemoryUpdatedToday([], {now, timeZone: 'UTC'}), 0)
+})
+
+test('memory today updates come from the full read-only inventory before list pagination', async t => {
+  const f = await fixture(t), before = await tree(f.root)
+  const current = await readEvolutionInventory(f)
+  assert.equal(current.memory.todayUpdatedCount, 2)
+  const previous = await readEvolutionInventory({...f, now: Date.now() - 86400000})
+  assert.equal(previous.memory.todayUpdatedCount, 0)
+  assert.deepEqual(await tree(f.root), before)
 })

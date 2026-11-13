@@ -6,7 +6,7 @@ import { FIXTURE_TOKEN } from './preview.mjs';
 // server.test.js, pi-evolution.test.js and the real Host reflection tests.
 const snapshot = {
   status: 'ready', coverage: 'bot-shared-current-state',
-  memory: { acceptedCount: 21, candidateCount: 1, readCount: 7, searchCount: 2, lastUsedAt: '2026-11-09T03:00:00Z', trackingSince: '2026-11-08T03:00:00Z' },
+  memory: { acceptedCount: 21, candidateCount: 1, todayUpdatedCount: 3, readCount: 7, searchCount: 2, lastUsedAt: '2026-11-09T03:00:00Z', trackingSince: '2026-11-08T03:00:00Z' },
   skills: { activeCount: 1, candidateCount: 0, loadCount: 3, lastUsedAt: '2026-11-09T03:00:00Z', trackingSince: '2026-11-08T03:00:00Z', coverage: 'bot-installed-and-learned', installedCount:2,installedAvailableCount:2,modelUseCount:2,userUseCount:1,todayUpdatedCount:2,fileReadCount:4,callTrackingSince:'2026-11-09T00:00:00Z',inventoryComplete:true },
   items: Array.from({ length: 23 }, (_, index) => ({ id: `fixture-${index}`, name: index === 22 ? 'learned-验收技能' : `工作偏好/验收记忆-${index + 1}`, kind: index === 22 ? 'skill' : 'memory', scope: 'bot', status: index === 21 ? 'candidate' : 'applied', revision: 2, updatedAt: '2026-11-09T02:00:00Z' })),
   total: 23, offset: 0, limit: 10, nextOffset: 10, revision: 'fixture-v1',
@@ -34,8 +34,8 @@ test('自进化菜单、真实语义、筛选分页和返回保留 URL', async (
   await expect(page.locator('.evolution-table tbody tr')).toHaveCount(10);
   await expect(page.locator('.evolution-card')).toHaveCount(2);
   await expect(page.locator('.evolution-card h2')).toHaveText(['记忆', 'Skills']);
-  await expect(page.locator('.evolution-card dt')).toHaveText(['已应用', '候选', '读取次数', '搜索次数', '目录技能', '模型 Skill 调用', '今日更新', '技能文件读取']);
-  await expect(page.locator('.evolution-card dd')).toHaveText(['21', '1', '7', '2', '2', '2', '2', '4']);
+  await expect(page.locator('.evolution-card dt')).toHaveText(['已应用', '读取次数', '今日更新', '搜索次数', '目录技能', '模型 Skill 调用', '今日更新', '技能文件读取']);
+  await expect(page.locator('.evolution-card dd')).toHaveText(['21', '7', '3', '2', '2', '2', '2', '4']);
   await expect(page.locator('.evolution-card p, .evolution-coverage')).toHaveCount(0);
   await expect(page.getByRole('navigation', {name: '自进化记录类型'}).getByRole('link')).toHaveText(['记忆', 'Skills']);
   await expect(page.locator('.evolution-table th')).toHaveText(['名称', '使用次数', '最近使用', '最近更新', '查看内容']);

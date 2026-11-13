@@ -101,7 +101,7 @@ export interface EvolutionReady extends Page<EvolutionItem> {
   cache?: {updatedAt: string | null; stale: boolean; refreshing: boolean; error?: string};
   usageCoverage?: {status: 'ready'|'partial'|'unrecorded'; sessionsRead?:number};
   status: 'ready'; coverage: 'authorized-scopes-current-state'|'bot-shared-current-state'; offset: number; limit: number;
-  memory: {trackingStatus?:string;entryTrackingSince?:string|null; acceptedCount: number; candidateCount: number; readCount: number | null; searchCount: number | null; lastUsedAt: string | null; trackingSince: string | null;lastAccess?:{counter:string;at:string;provenance:MemoryProvenance|null}|null };
+  memory: {todayUpdatedCount?:number;trackingStatus?:string;entryTrackingSince?:string|null; acceptedCount: number; candidateCount: number; readCount: number | null; searchCount: number | null; lastUsedAt: string | null; trackingSince: string | null;lastAccess?:{counter:string;at:string;provenance:MemoryProvenance|null}|null };
   skills: { todayUpdatedCount?:number; contentTrackingStatus?: 'ready' | 'degraded'; activeCount: number; candidateCount: number; loadCount: number | null; lastUsedAt: string | null; trackingSince: string | null; coverage: 'learned-skills-only'|'bot-installed-and-learned';installedCount?:number;installedAvailableCount?:number;modelUseCount?:number|null;userUseCount?:number|null;fileReadCount?:number|null;callTrackingSince?:string|null;lastInvocationAt?:string|null;trackingStatus?:string;inventoryComplete?:boolean;inventoryIssues?:string[] };
 }
 export type Evolution = EvolutionReady | { status: 'unavailable'; reason?: string };
