@@ -180,6 +180,8 @@ Router 批次已经 `admitted`、随后模型轮失败且事件尚未 `settled` 
 
 续办前重新校验 active owner、原官方会话 idle、来源权限、packet/历史一致性及未结事件全集。原事件必须仍是队列前缀；较新事件全部经原业务 admission 校验，写成真实 `night.business-input` 后才触发推理，current 来源同时绑定原 packet 与新 packet。模型先统筹新取消/延期/变更，不能只沿旧请求执行。原 packet 不重复 enqueue/admit，控制消息不是来源或新授权。联合批次仍至多15条用户消息、30事件及原编码预算；pending 总数必须与已读取全集一致，分页外较新输入或超限仍拒绝，不能忽略后续取消以求恢复。
 
+原批次身份比较忽略可变的来源观测计时，以及独立首答通知的发送/回读进度（如 prepared→delivered）；通知ID、种类、冻结正文/载荷摘要、来源/版本和撤销状态仍须一致。比较不改写原packet或Pi历史，不把旧packet中的发送状态当作当前送达权威；真实效果仍以Host投递账本和回读为准。
+
 固定 Pi 1.5.0 在生成 `aborted` assistant 后先结束回合，尚未进入工具派发，因此只允许最后中断消息里的生成调用不要求 toolResult；之前 `toolUse` 的未配对/错误结果、未决 job 或 task effect-intent 仍阻断。不修改历史、不补造工具结果，也不据此宣称外部世界完全无效果。
 
 Host 经公开 Pi 生命周期接口先持久消费原失败 checkpoint 的非业务 claim，复核后接纳较新真实输入，再沿同一历史继续；推理前再次校验完整队列、来源版本和 owner。并发、重复/过期 checkpoint、外来会话及未知效果均拒绝。失败保留 journal 和未结事件，已领取的检查点不自动循环重试；只有联合批次全部事件真正 `settled`，才继续正常排空/交接并清除对应 Router 告警。

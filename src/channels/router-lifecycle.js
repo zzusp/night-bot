@@ -10,15 +10,17 @@ import {pendingBusinessInputs} from '../runtime/pi-business-inputs.js'
 const fail=code=>{throw Object.assign(new Error(code),{code})}
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const withoutTiming=source=>{if(!source)return source;const {stages,...value}=source;return value}
-// Timing is mutable Host telemetry, never business input identity. Old journals
-// keep their exact packet for authorization; compare only this neutral field.
+const triageDeliveryFields=new Set('state ack ackedAt deliveredAt deliveryError dispatchToken evidenceRef lastReadbackError nextAttemptAt readbackAttemptCount receipt recoveryToken sendAttemptCount sendPermit sendStartedAt updatedAt'.split(' '))
+const triageReplyIdentity=reply=>reply?.kind==='triage-reply'?Object.fromEntries(Object.entries(reply).filter(([key])=>!triageDeliveryFields.has(key))):reply
+// 观测计时与首答发送/回读进度不改变原输入身份；冻结载荷及撤销状态仍须完全一致。
+// 仅比较副本，原 journal/packet 和投递账本继续保留真实原貌。
 function comparableRouterPacket(packet){
   if(packet?.source?.kind!=='conversation-router')return packet
   const copy=structuredClone(packet)
   delete copy.source.traceSources;delete copy.source.traceTaskEvents
   for(const block of copy.content??[]){
     if(block.type!=='text'||!block.text.startsWith('Router 请求：'))continue
-    try{const body=JSON.parse(block.text.slice('Router 请求：'.length));if(!Array.isArray(body.events))continue;body.events=body.events.map(event=>({...event,...event.source?{source:withoutTiming(event.source)}:{}}));block.text='Router 请求：'+JSON.stringify(body)}catch{}
+    try{const body=JSON.parse(block.text.slice('Router 请求：'.length));if(!Array.isArray(body.events))continue;body.events=body.events.map(event=>({...event,...event.source?{source:withoutTiming(event.source)}:{},...event.triageReply?{triageReply:triageReplyIdentity(event.triageReply)}:{}}));block.text='Router 请求：'+JSON.stringify(body)}catch{}
   }
   return copy
 }

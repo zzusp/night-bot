@@ -87,3 +87,13 @@ test('late append invalidates a preceding settled proof instead of ending its ne
   f.tick(4000);f.event('agent_settled');await f.observed.finishIfSettled()
   assert.equal(f.records.find(row=>row.ref.sourceId==='source-b-v1'&&row.stage.completedAt)?.stage.completedAt,iso(4000));f.stop()
 })
+
+test('Router packet identity survives independent triage delivery but not frozen reply changes',()=>{
+  const reply={id:'triage-reply',kind:'triage-reply',payloadDigest:'frozen-digest',payload:{sourceId:'source',sourceVersion:1,text:'Short first reply'},createdAt:iso(1),state:'prepared'}
+  const packet=notice=>({id:'packet',source:{kind:'conversation-router',generation:1,eventIds:['event']},content:[{type:'text',text:'Router 请求：'+JSON.stringify({events:[{id:'event',source:{sourceId:'source',messageId:'message',version:1,text:'original'},triageReply:notice}]})}]})
+  const old=packet(reply),before=structuredClone(old),delivered={...reply,state:'delivered',ack:{messageId:'visible'},ackedAt:iso(2),deliveredAt:iso(3),dispatchToken:'fence',evidenceRef:'readback',nextAttemptAt:null,readbackAttemptCount:1,receipt:{visible:true},sendAttemptCount:1,sendPermit:{payloadDigest:'frozen-digest'},sendStartedAt:iso(2),updatedAt:iso(3),recoveryToken:'recovery',lastReadbackError:{code:'RETRY'},deliveryError:{phase:'send'}}
+  assert.equal(sameRouterPacket(old,packet(delivered)),true);assert.deepEqual(old,before)
+  for(const change of [{id:'foreign'},{kind:'router-reply'},{payloadDigest:'changed'},{payload:{...reply.payload,text:'changed'}},{payload:{...reply.payload,sourceVersion:2}},{retirement:{reason:'revoked'}}])assert.equal(sameRouterPacket(old,packet({...delivered,...change})),false,'frozen identity, payload and revocation remain authoritative')
+  const removed=packet(delivered),body=JSON.parse(removed.content[0].text.slice('Router 请求：'.length));delete body.events[0].triageReply;removed.content[0].text='Router 请求：'+JSON.stringify(body)
+  assert.equal(sameRouterPacket(old,removed),false)
+})

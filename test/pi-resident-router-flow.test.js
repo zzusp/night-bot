@@ -1285,19 +1285,20 @@ for(const cut of ['prepared-only','journal-committed'])test(`Router resumes thro
   assert.ok(!(await h.query('source.list')).some(row=>row.requestIdentity?.effectAuthorization))
 })
 
-for(const scenario of ['newer-cancellation','committed-reply','failed-tool'])test('normal Router shutdown resumes an aborted generation safely: '+scenario,{timeout:nativeTestTimeout(60000)},async t=>{
-  const entered=Promise.withResolvers(),release=Promise.withResolvers()
-  t.after(()=>release.resolve())
+for(const scenario of ['newer-cancellation','committed-reply','failed-tool','late-triage-receipt'])test('normal Router shutdown resumes an aborted generation safely: '+scenario,{timeout:nativeTestTimeout(60000)},async t=>{
+  const entered=Promise.withResolvers(),release=Promise.withResolvers(),replyRelease=Promise.withResolvers()
+  const withCancellation=scenario==='newer-cancellation'||scenario==='late-triage-receipt'
+  t.after(()=>{release.resolve();replyRelease.resolve()})
   let recovering=false,first=true,resumedSources=[]
   const h=await residentRouterHost(t,async body=>{
     const summary=handoff(body);if(summary)return summary
-    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),source=>({needsHandling:true,...scenario==='late-triage-receipt'&&source.messageId==='shutdown-'+scenario?{reply:'A separately delivered first reply.'}:{}}))
     if(!requestTools(body).includes('resident_router_settle'))return {text:'No business task is needed'}
     const input=router(body),source=input.events.find(event=>event.source)?.source
     if(recovering){
       const current=await h.host.ctx.agents.get((await h.query('router.get',{conversationId:input.conversationId})).activeSessionId).admission.current()
       resumedSources=current.messages.flatMap(packet=>packet.source.eventIds)
-      if(scenario==='newer-cancellation'){
+      if(withCancellation){
         assert.equal(current.messages.length,2,'the real later input, not a Host control, supplies cancellation context')
         assert.ok(requestText(body).some(text=>text.includes('Do not release; postpone until next week.')))
       }
@@ -1315,13 +1316,14 @@ for(const scenario of ['newer-cancellation','committed-reply','failed-tool'])tes
     })
     t.after(unsubscribe)
     return {tool:'resident_task_action',args:{operationId:'must-never-dispatch-aborted-call',sourceId:source.sourceId,messageVersion:source.version,kind:'reopen',taskId:'not-a-task-in-this-conversation',expectedRequirementRevision:1,expectedControlRevision:1},beforeFinish:()=>release.promise}
-  })
+  },scenario==='late-triage-receipt'?{send:async()=>{await replyRelease.promise;return {messageId:'triage-visible-once'}}}:{})
   const message=channelMessage('shutdown-'+scenario,{text:'Prepare a release only after checking current instructions.'}),conversationId=h.host.ctx.channels.identity(message).sessionId
   await h.receive(message);await entered.promise
-  if(scenario==='newer-cancellation'){
+  if(withCancellation){
     await h.receive(channelMessage('shutdown-cancel',{text:'Do not release; postpone until next week.'}))
     await eventually(async()=>await h.query('router.inbox-count',{conversationId})===2,'later cancellation is committed before shutdown',t.signal)
   }
+  if(scenario==='late-triage-receipt'){replyRelease.resolve();await eventually(async()=>(await h.query('notification.list')).some(reply=>reply.kind==='triage-reply'&&reply.state==='delivered'),'independent short reply becomes delivered after original Router input',t.signal)}
   if(scenario==='committed-reply')await eventually(()=>h.sent.length===1,'the original reply reaches fake transport',t.signal)
   const row=await h.query('router.get',{conversationId}),sessionId=row.activeSessionId
   await h.close();release.resolve()
@@ -1339,10 +1341,10 @@ for(const scenario of ['newer-cancellation','committed-reply','failed-tool'])tes
     return
   }
   assert.equal((await h.query('router.inbox',{conversationId})).length,0)
-  assert.equal(resumedSources.length,scenario==='newer-cancellation'?2:1)
+  assert.equal(resumedSources.length,withCancellation?2:1)
   assert.ok(!h.service.listAlerts().some(alert=>alert.detail==='ROUTER_BATCH_UNSETTLED'))
   assert.equal(h.results.filter(result=>result.name==='resident_task_action').length,0)
-  assert.equal(h.sent.length,scenario==='committed-reply'?1:0,'committed delivery is not replayed')
+  assert.equal(h.sent.length,['committed-reply','late-triage-receipt'].includes(scenario)?1:0,'committed delivery is not replayed')
   const after=await h.host.ctx.sessionPersistence.readNative(sessionId,{requireComplete:true})
   assert.deepEqual(after.entries.slice(0,before.entries.length),before.entries)
   const original=before.entries.find(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')
