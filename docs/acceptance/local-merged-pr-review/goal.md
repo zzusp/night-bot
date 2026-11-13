@@ -2,7 +2,7 @@
 
 > 状态：BLOCKED
 > Goal ID：local-merged-pr-review
-> 最近维护：2026-11-13T02:14:12.547745+00:00
+> 最近维护：2026-11-13T02:16:54.121386+00:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -39,7 +39,7 @@
 ## 当前检查点
 
 - 当前子目标：SG6
-- 唯一下一步：取得原未结效果与旧 owner 后续增量的可信核验及明确处置，并经可覆盖该现场的正式 Host 维护能力恢复；现有 close/resume 前置条件不满足，不改守卫消警。接入状态修复已实跑，待新 PR 合并授权后才可部署。
+- 唯一下一步：取得原未结效果与旧 owner 后续增量的可信核验及明确处置，并经可覆盖该现场的正式 Host 维护能力恢复；现有 close/resume 前置条件不满足，不改守卫消警。接入状态修复 PR #100 已回读为 OPEN / MERGEABLE（main ← worktree-local-recovery-status）；待该新 PR 的明确合并授权后才可部署。
 - 未闭环项：两个最新界面回归、usageCoverage=partial、钉钉ingress recovering、resident degraded的原任务阻塞与新增ROUTER_BATCH_UNSETTLED；不宣称全系统健康或全绿。
 
 生产修复原提交210b521，最后来源测试blob e7f5d2d909bb18dd768548240216e5d9f39da750；修复与验收增量4297f39已随PR96合并。第1轮历史保留，不用最终提交替代原整批加载版本。
@@ -51,3 +51,5 @@
 最新界面专项7项5通过2失败：1024px页面横向溢出、深色待办对比度3.46:1。用户知悉后重申部署最新代码，未回退PR96合并点。主仓指纹与开工一致；运行发行/监督器保留。当前为带遗留项的已部署，不标全绿DONE，不新增report.md。详细证据仅在round-1.md、round-2.md与matrix.csv维护。
 
 第3轮确认真实回填游标推进且两路多次 receiving；普通增量拉取的 inProgress 引起周期误报，已修复并通过6项相关回归和 pnpm check。原任务正式 inspect 返回 TASK_EFFECT_DRAIN_CUT_CHANGED；原 Router 为 aborted 检查点、未配对 action 且有3项较新输入。未执行 close/resume、未重放或清警，实际 degraded 仍为2项。已整合主线77acd68，修复提交3164123与实跑源码blob一致且项目守卫复跑通过；安装保持457585e。完整证据和处置比较仅见 round-3.md；SG6未完成。
+
+修复交付：[PR #100](https://github.com/zzusp/night-bot/pull/100)，标题“fix(channels): 修复普通增量拉取误报恢复中”。已核实 OPEN、base=main、head=worktree-local-recovery-status、MERGEABLE；未合并、未部署，SG6仍为BLOCKED。
