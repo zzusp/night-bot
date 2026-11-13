@@ -40,7 +40,14 @@ test('three rendered lines, accessible disclosure, resize, polling, canvas gutte
       const paneBox=(await pane.boundingBox())!;
       const headerBox=(await page.locator('.main-frame > .workspace-topbar').boundingBox())!;
       expect(headerBox.height).toBe(width <= 520 ? 48 : 52);
-      expect(paneBox.y).toBe(headerBox.y + headerBox.height);
+      const main=page.locator('.main-panel.task-workspace-panel');
+      const mainBox=(await main.boundingBox())!;
+      expect(mainBox.y).toBe(headerBox.y + headerBox.height);
+      const scroll=await main.evaluate(el=>({top:el.scrollTop,overflowY:getComputedStyle(el).overflowY}));
+      expect(paneBox.y + scroll.top).toBe(mainBox.y);
+      expect(['auto','hidden','scroll']).toContain(scroll.overflowY);
+      expect(await page.evaluate(({x,y})=>Boolean(document.elementFromPoint(x,y)?.closest('.workspace-topbar')),
+        {x:paneBox.x + Math.min(paneBox.width / 2,200),y:headerBox.y + headerBox.height - 1})).toBe(true);
       await expect(pane.locator('.header-location')).toHaveCount(0);
       const body=(await message.locator('.message-body').boundingBox())!;
       expect(paneBox.x+paneBox.width-body.x-body.width).toBeGreaterThanOrEqual(16);
@@ -57,6 +64,8 @@ test('three rendered lines, accessible disclosure, resize, polling, canvas gutte
       const steps=page.locator('.agent-progress-steps');
       expect(await steps.evaluate(el=>getComputedStyle(el).overflowY)).toBe('auto');
       await page.locator('.agent-progress-heading').click();
+      // This screenshot represents the first screen, not retained outer scroll after resizing.
+      await main.evaluate(el=>{el.scrollTop=0;});
       await page.screenshot({path:test.info().outputPath(`task-compact-${width}-${theme}.png`)});
     }
   }
