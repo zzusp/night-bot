@@ -227,7 +227,8 @@ const platformScheduleFields = {
   prompt: z.string().min(1).max(8000), at: z.string().datetime().optional(), everySeconds: z.number().int().min(60).optional(),
   stopWhen: z.strictObject({taskIds:z.array(z.string().min(1)).min(1).max(30)}).optional(),
   lastOccurrenceAt:z.string().datetime().optional(), scheduleId: z.string().optional(),
-  outcome: z.enum(['replied', 'expired', 'superseded', 'completed']).optional(), completedAt: z.string().optional(),
+  nativeAt:z.string().datetime().optional(), managementCompleted:z.boolean().optional(), managementKey:z.string().optional(), replacementSessionId:z.string().optional(), replacementOfSessionId:z.string().optional(),
+  outcome: z.enum(['replied', 'expired', 'superseded', 'completed', 'cancelled']).optional(), completedAt: z.string().optional(),
 }
 const platformScheduleSchema = z.union([
   z.strictObject({...platformScheduleFields,sourceMode:z.literal('direct'),sourceId:z.string().min(1),actorId:z.string().min(1)}),
@@ -688,16 +689,21 @@ export async function openResidentStore(storageDomain) {
       const value = platformScheduleSchema.parse(input), key = `platform-schedule:${value.sessionId}`
       const current = scheduler.get(key)?.platformSchedule
       if (current) {
-        const { scheduleId, outcome, completedAt, lastOccurrenceAt, ...identity } = current
-        if (!isDeepStrictEqual(identity, value)) throw new Error('platform_schedule_identity_conflict')
+        const { scheduleId, outcome, completedAt, lastOccurrenceAt, nativeAt, managementKey, managementCompleted, replacementSessionId, ...identity } = current
+        const {nativeAt: _nativeAt, ...expectedIdentity}=value
+        if (!isDeepStrictEqual(identity, expectedIdentity)) throw new Error('platform_schedule_identity_conflict')
       } else await scheduler.put(key, { tasks: [], platformSchedule: value })
       return scheduler.get(key).platformSchedule
     }),
     updatePlatformSchedule: async (sessionId, changes) => {
-      if (Object.keys(changes).some(key => !['scheduleId', 'outcome', 'completedAt', 'lastOccurrenceAt'].includes(key))) throw new Error('platform_schedule_update_invalid')
+      if (Object.keys(changes).some(key => !['scheduleId', 'outcome', 'completedAt', 'lastOccurrenceAt', 'nativeAt', 'managementKey', 'managementCompleted', 'replacementSessionId'].includes(key))) throw new Error('platform_schedule_update_invalid')
       await scheduler.update(`platform-schedule:${sessionId}`, current => {
         if (!current?.platformSchedule) throw new Error('platform_schedule_missing')
-        return { ...current, platformSchedule: platformScheduleSchema.parse({ ...current.platformSchedule, ...changes }) }
+        // A late in-flight reply may record its occurrence, but must never undo a
+        // durable management cancellation/replacement fence.
+        const patch=current.platformSchedule.managementKey&&!changes.managementKey
+          ? Object.fromEntries(Object.entries(changes).filter(([key])=>!['outcome','completedAt'].includes(key))) : changes
+        return { ...current, platformSchedule: platformScheduleSchema.parse({ ...current.platformSchedule, ...patch }) }
       })
     },
     setAgentSettings: async patch => {
