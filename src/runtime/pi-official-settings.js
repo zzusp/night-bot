@@ -25,13 +25,16 @@ export function officialRetrySettings(input) {
 // window. Pi owns threshold checks, summarization, recent-tail retention and
 // journal projection. This is not a hard input/output limit.
 export const ROUTER_CONTEXT_TOKENS = 256 * 1024
-export function officialRouterCompactionSettings(model) {
+export const TRIAGE_CONTEXT_TOKENS = 64 * 1024
+export const officialRouterCompactionSettings = model => officialConversationCompactionSettings(model, ROUTER_CONTEXT_TOKENS, 'ROUTER')
+export const officialTriageCompactionSettings = model => officialConversationCompactionSettings(model, TRIAGE_CONTEXT_TOKENS, 'TRIAGE')
+function officialConversationCompactionSettings(model, contextTokens, role) {
  const defaults = SettingsManager.inMemory().getCompactionSettings(model)
  if (!model || !Number.isSafeInteger(model.contextWindow) || model.contextWindow <= defaults.reserveTokens ||
      typeof model.provider !== 'string' || !model.provider || typeof model.id !== 'string' || !model.id) {
-  fail('PI_ROUTER_CONTEXT_WINDOW_INVALID', 'Router requires a model with a valid context window larger than Pi reserve tokens')
+  fail(`PI_${role}_CONTEXT_WINDOW_INVALID`, `${role} requires a model with a valid context window larger than Pi reserve tokens`)
  }
- const budget = Math.min(ROUTER_CONTEXT_TOKENS, model.contextWindow)
+ const budget = Math.min(contextTokens, model.contextWindow)
  // Model-keyed settings cannot accidentally apply a large-window reserve to a
  // smaller model. A newly resolved create/resume route gets its own override.
  return {enabled: true, modelOverrides: {[`${model.provider}/${model.id}`]: {

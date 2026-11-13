@@ -256,7 +256,7 @@ test('parallel skill mapping rechecks catalog revision after all scoped reads be
 })
 
 
-test('Router alone gets the native 256K compaction budget on create and resume without rewriting model metadata',async t=>{
+test('Router gets the native 256K compaction budget on create and resume without rewriting model metadata',async t=>{
  const f=await fixture(t)
  f.a.header.runtimeOwner='conversation-router'
  const resource=await f.resolve(f.a),model=resource.resolved.model
@@ -267,4 +267,14 @@ test('Router alone gets the native 256K compaction budget on create and resume w
  const resumed=await f.resolve({...f.a,mode:'resume',store:{manager:{buildSessionProjection:()=>({model:{provider:'saved',modelId:'saved'}})}}})
  assert.equal(resumed.settingsManager.getCompactionSettings(resumed.resolved.model).reserveTokens,154240)
  assert.equal(resumed.settingsManager.getCompactionSettings({provider:'other',id:'smaller',contextWindow:128000}).reserveTokens,16384,'another model cannot inherit a large reserve')
+})
+
+
+test('triage alone gets the native 64K budget on create and resume',async t=>{
+ const f=await fixture(t);f.a.header.runtimeOwner='channel-triage'
+ for(const input of [f.a,{...f.a,mode:'resume',store:{manager:{buildSessionProjection:()=>({})}}}]){
+  const resource=await f.resolve(input),model=resource.resolved.model
+  assert.equal(model.contextWindow,400000)
+  assert.deepEqual(resource.settingsManager.getCompactionSettings(model),{enabled:true,reserveTokens:350848,keepRecentTokens:20000})
+ }
 })

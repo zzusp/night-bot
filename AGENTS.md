@@ -16,7 +16,8 @@ fields and are not mechanically renamed or migrated; retained compatibility
 helpers for historical message/receipt formatting do not mean DWS is loaded or
 running, and other static-loading claims require test evidence.
 Each task has one execution session; no separate task Owner/coordinator or split
-execution team. First-tier triage only decides per-source handling and optional
+execution team. First-tier triage keeps one durable Pi session per authenticated conversation,
+with a 64K effective context budget and native automatic compaction. It only decides per-source handling and optional
 short replies; it never splits, creates or controls tasks. Each authenticated
 conversation has one durable Router identity for task arrangement and result
 assessment, separate from task execution and tool-free retrospectives. Router is

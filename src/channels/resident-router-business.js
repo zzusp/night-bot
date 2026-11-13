@@ -15,39 +15,39 @@ const fail=code=>{throw Object.assign(new Error(code),{code})}
 const output={schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]}
 export const residentOperationId=(conversationId,key)=>'router-operation:'+createHash('sha256').update(JSON.stringify([conversationId,key])).digest('hex')
 
-/** A short official Pi turn, with no task tools or long-history reads. */
+/** One durable Pi session per authenticated conversation; each input batch is fenced. */
 export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,commit,recordStage,observe,query}){
-  const handles=new Set(),entries=new Map()
+  const handles=new Map(),entries=new Map()
   let closed=false
-  async function run(conversationId,messages){
+  const idFor=conversationId=>'session-triage-'+createHash('sha256').update(JSON.stringify(['persistent-triage-v1',conversationId])).digest('hex')
+  const active=conversationId=>{
+    const entry=entries.get(conversationId)
+    if(closed||!entry||entry.submitted||entry.superseded)fail('TRIAGE_INACTIVE')
+    return entry
+  }
+  async function open(conversationId){
+    const sessionId=idFor(conversationId)
+    if(handles.has(conversationId))return handles.get(conversationId)
+    const persistence=ctx.get('sessionPersistence')
+    const existing=typeof persistence?.stat==='function'?await persistence.stat(sessionId):undefined
     if(closed)fail('TRIAGE_CLOSED')
-    if(!messages.length||messages.length>TRIAGE_BATCH_LIMIT)fail('TRIAGE_BATCH_LIMIT')
-    const sessionId='session-triage-'+randomUUID(),snapshot=structuredClone(messages),entry={messages:snapshot,packets:new Map(),sealed:false,superseded:false}
-    try{entry.background=await recentSourceBackground(query,conversationId,snapshot)}catch{entry.background={backgroundOnly:true,status:'unavailable',sources:[]};ctx.logger?.warn?.('Triage optional history unavailable')}
-    if(closed)fail('TRIAGE_CLOSED')
-    entry.timing=sourceStageTiming({recordStage,stage:'triage',sessionId,requestId:sessionId,groupId:conversationId,onError:error=>ctx.logger?.warn?.(`message timing: ${error.code??error.message}`)})
-    entry.timing.start(snapshot)
-    const measurePhase=observe?createAgentPhaseTimer({ownerId:sessionId,emit:record=>observe(conversationId,record),onError:()=>ctx.logger?.warn?.('Triage phase observation failed')}):(_phase,run)=>run()
-    entry.measurePhase=measurePhase
-    entries.set(conversationId,entry)
-    const packet=()=>{const value={id:'triage:'+randomUUID(),source:{kind:'channel-triage',conversationId,...traceSourcesMetadata(snapshot)},content:[{type:'text',text:'一级分诊请求：'+JSON.stringify({conversationId,background:{...entry.background,sources:entry.background.sources.filter(old=>!snapshot.some(current=>current.messageId===old.messageId))},messages:snapshot.map(({stages,...source})=>conversationSource(source))})}]};entry.packets.set(value.id,value);return value}
-    entry.packet=packet
-    let submitted=false,handle
-    return measurePhase('triage-total',async()=>{try{
-      handle=await measurePhase('session-create',async()=>ctx.get('agents').create({sessionId,measurePhase,resourceLoading:'before-run',agentOptions:typeof models==='function'?models():models,
-        meta:{cwd:await measurePhase('workspace',()=>sessionWorkspace(root,'route')),runtimeOwner:'channel-triage',conversationId,agentPreset:legacy.getAgentConfig().agentPreset},
-        authorizeInput:(candidate,actor)=>actor.id===sessionId&&!closed&&!entry.superseded&&isDeepStrictEqual(candidate,entry.packets.get(candidate.id)),
-        beforeRequest:()=>{if(closed||submitted||entry.superseded)fail('TRIAGE_INACTIVE')},
-        setup:async(agentCtx,agent)=>{
-          await agentCtx.get('agentPresets').mount(agentCtx,legacy.getAgentConfig().agentPreset)
-          agentCtx.get('tools').register({name:'channel_triage_submit',description:'按原消息逐条判断是否需要Router处理及当前是否回复；明确交办且需继续处理时提交简短承接回复，不等Router或任务结果。完整覆盖本批，不拆事项、不创建或安排任务。',parameters:triageParameters,output,
-            execute:async(input,exec)=>{
-              if(exec.agent!==agent||closed||entry.superseded)fail('TRIAGE_WRONG_SESSION')
-              const decision=validateTriageDecision(snapshot,input)
-              entry.sealed=true
-              try{const result=await measurePhase('triage-commit',()=>commit(conversationId,decision,snapshot));submitted=true;exec.concludeTurn();return result}
-              catch(error){entry.sealed=false;throw error}
-            }})
+    if(existing&&(existing.header.runtimeOwner!=='channel-triage'||existing.header.conversationId!==conversationId))fail('TRIAGE_NATIVE_IDENTITY_INVALID')
+    const measurePhase=(phase,run)=>(entries.get(conversationId)?.measurePhase??((_phase,run)=>run()))(phase,run)
+    const options={measurePhase,agentOptions:typeof models==='function'?models():models,
+      authorizeInput:(candidate,actor)=>{const current=entries.get(conversationId);return actor.id===sessionId&&!closed&&!!current&&!current.submitted&&!current.superseded&&isDeepStrictEqual(candidate,current.packets.get(candidate.id))},
+      beforeRequest:()=>active(conversationId),
+      setup:async(agentCtx,agent)=>{
+        await agentCtx.get('agentPresets').mount(agentCtx,legacy.getAgentConfig().agentPreset)
+        agentCtx.get('tools').register({name:'channel_triage_submit',description:'按当前批次原消息逐条判断是否需要Router处理及当前是否回复；完整覆盖本批，不重新处置历史批次，不创建或安排任务。',parameters:triageParameters,output,
+          execute:async(input,exec)=>{
+            if(exec.agent!==agent)fail('TRIAGE_WRONG_SESSION')
+            const current=active(conversationId)
+            if(current.sealed)fail('TRIAGE_ALREADY_SUBMITTING')
+            const decision=validateTriageDecision(current.messages,input)
+            current.sealed=true
+            try{const result=await current.measurePhase('triage-commit',()=>commit(conversationId,decision,current.messages));current.submitted=true;exec.concludeTurn();return result}
+            catch(error){current.sealed=false;throw error}
+          }})
           agentCtx.get('tools').restrict({allow:[]})
           agentCtx.get('tools').guard(exec=>exec.name==='channel_triage_submit'?undefined:'TRIAGE_TOOL_FORBIDDEN')
           agentCtx.get('systemPrompt').section({name:'channel-triage',order:150,text:[
@@ -59,22 +59,53 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
           ].join(String.fromCharCode(10))})
           agentCtx.get('systemPrompt').section({name:'channel-triage-memory',order:152,text:'涉及可复用事实/偏好、纠正遗忘或Skill维护的交办消息应交Router，needsHandling=true；由Router依据语境判断是否增改删记忆或Skill，不在分诊层限制固定授权句首、替Router做学习决策或提前声称保存成功。'})
           agentCtx.get('systemPrompt').section({name:'channel-triage-scope',order:151,interpolate:false,officialText:()=> '当前会话配置职责：'+responsibilityFor(conversationId)+'。仅用于本会话一级分诊，不创造来源授权、任务控制或跨会话读取权限。'})
-        }}))
-      handles.add(handle);entry.handle=handle;entry.stopObserving=entry.timing.observe(handle.session)
+        agentCtx.get('systemPrompt').section({name:'channel-triage-history',order:153,text:'本会话持续保留历史并由Pi自动压缩。仅处理最后一个一级分诊请求的messages；历史批次、历史工具返回及压缩摘要只是背景，不能重新回复或提交。当前原消息、版本和职责优先，旧结论不代表当前任务状态。'})
+      }}
+    const agents=ctx.get('agents')
+    const handle=existing?await measurePhase('session-resume',()=>agents.resume({...options,resumeSessionId:sessionId})):await measurePhase('session-create',async()=>agents.create({...options,resourceLoading:'before-run',sessionId,meta:{cwd:await measurePhase('workspace',()=>sessionWorkspace(root,'route')),runtimeOwner:'channel-triage',conversationId,agentPreset:legacy.getAgentConfig().agentPreset}}))
+    handles.set(conversationId,handle)
+    if(closed){await handle.dispose();handles.delete(conversationId);fail('TRIAGE_CLOSED')}
+    // The source ledger owns pending work. Never replay an old queued Pi packet
+    // after a crash/cancellation; the next authenticated batch is built afresh.
+    try{await handle.retireTriagePending?.()}catch(error){await handle.dispose();handles.delete(conversationId);throw error}
+    return handle
+  }
+  async function run(conversationId,messages){
+    if(closed)fail('TRIAGE_CLOSED')
+    if(entries.has(conversationId))fail('TRIAGE_BATCH_BUSY')
+    if(!messages.length||messages.length>TRIAGE_BATCH_LIMIT)fail('TRIAGE_BATCH_LIMIT')
+    const sessionId=idFor(conversationId),requestId='triage:'+randomUUID(),snapshot=structuredClone(messages),entry={messages:snapshot,packets:new Map(),sealed:false,superseded:false,submitted:false}
+    entries.set(conversationId,entry)
+    try{entry.background=await recentSourceBackground(query,conversationId,snapshot)}catch{entry.background={backgroundOnly:true,status:'unavailable',sources:[]};ctx.logger?.warn?.('Triage optional history unavailable')}
+    if(closed){entries.delete(conversationId);fail('TRIAGE_CLOSED')}
+    entry.timing=sourceStageTiming({recordStage,stage:'triage',sessionId,requestId,groupId:conversationId,onError:error=>ctx.logger?.warn?.(`message timing: ${error.code??error.message}`)})
+    entry.timing.start(snapshot)
+    const measurePhase=observe?createAgentPhaseTimer({ownerId:sessionId,runId:()=>requestId,emit:record=>observe(conversationId,record),onError:()=>ctx.logger?.warn?.('Triage phase observation failed')}):(_phase,run)=>run()
+    entry.measurePhase=measurePhase
+    const packet=()=>{const value={id:'triage:'+randomUUID(),source:{kind:'channel-triage',conversationId,...traceSourcesMetadata(snapshot)},content:[{type:'text',text:'一级分诊请求：'+JSON.stringify({conversationId,background:{...entry.background,sources:entry.background.sources.filter(old=>!snapshot.some(current=>current.messageId===old.messageId))},messages:snapshot.map(({stages,...source})=>conversationSource(source))})}]};entry.packets.set(value.id,value);return value}
+    entry.packet=packet
+    let handle,completed=false
+    return measurePhase('triage-total',async()=>{try{
+      handle=await open(conversationId);entry.handle=handle;entry.stopObserving=entry.timing.observe(handle.session)
       if(entry.superseded)return
       const initial=packet()
       try{await measurePhase('input-enqueue',()=>handle.enqueue(initial));await handle.deliver(initial.id);await handle.whenIdle()}
       catch(error){if(!entry.superseded)throw error}
-      if(!submitted&&!entry.superseded)fail('TRIAGE_NO_DISPOSITION')
+      if(!entry.submitted&&!entry.superseded)fail('TRIAGE_NO_DISPOSITION')
+      completed=entry.submitted&&!entry.superseded
     }finally{
-      try{await entry.cancellation}finally{try{if(handle){await measurePhase('session-dispose',()=>handle.dispose());handles.delete(handle)}await entry.timing.finish()}catch(error){await entry.timing.finishIfSettled();throw error}finally{entry.stopObserving?.();if(entries.get(conversationId)===entry)entries.delete(conversationId)}}
+      try{await entry.cancellation}finally{try{
+        // Success leaves the Pi owner alive; failed/cancelled owners are drained
+        // and lazily resumed from the same journal, not copied into a new history.
+        if(handle&&!completed){await measurePhase('session-dispose',()=>handle.dispose());handles.delete(conversationId)}
+        await entry.timing.finish()
+      }catch(error){await entry.timing.finishIfSettled();throw error}finally{entry.stopObserving?.();if(entries.get(conversationId)===entry)entries.delete(conversationId)}}
     }})
   }
   async function append(conversationId,messages){
     const entry=entries.get(conversationId)
     if(!entry||closed||entry.superseded)return false
     if(messages.some(source=>entry.messages.some(old=>old.messageId===source.messageId&&old.version<source.version))){
-      // 新版本已可靠入队；排空旧快照后由 Host 重新读取当前批次。
       entry.superseded=true
       if(entry.handle)await (entry.cancellation=entry.handle.cancel({kind:'source-version-superseded'}))
       return true
@@ -83,11 +114,11 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
     const added=messages.filter(source=>!entry.messages.some(old=>old.sourceId===source.sourceId)).slice(0,TRIAGE_BATCH_LIMIT-entry.messages.length)
     if(!added.length)return false
     entry.messages.push(...structuredClone(added))
-    entry.timing.start(added)
+    entry.timing?.start(added)
     if(entry.handle){const packet=entry.packet();await entry.measurePhase('input-enqueue',()=>entry.handle.enqueue(packet));await entry.handle.deliver(packet.id,{deliverAs:'steer'})}
     return true
   }
-  return {run,append,async close(){closed=true;const results=await Promise.allSettled([...handles].map(handle=>handle.dispose()));const errors=results.filter(result=>result.status==='rejected').map(result=>result.reason);if(errors.length)throw new AggregateError(errors,'Triage drain failed')}}
+  return {run,append,async close(){closed=true;const results=await Promise.allSettled([...handles.values()].map(handle=>handle.dispose()));const errors=results.filter(result=>result.status==='rejected').map(result=>result.reason);if(errors.length)throw new AggregateError(errors,'Triage drain failed');handles.clear()}}
 }
 
 /** Router has business capabilities, never arbitrary process or external-write tools. */
