@@ -1,4 +1,4 @@
-import {officialRetrySettings} from './runtime/pi-official-settings.js'
+import {officialRetrySettings,officialRouterCompactionSettings} from './runtime/pi-official-settings.js'
 import {SettingsManager} from '@earendil-works/pi-coding-agent'
 import {createHash} from 'node:crypto'
 import {isAbsolute,join,dirname,resolve} from 'node:path'
@@ -48,7 +48,7 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
   assertCurrent()
   const agentDir=join(privateRoot,'pi-agents',hash(actor.id));await safePath(agentDir);await privateDirectory(agentDir);assertCurrent()
   if(!resolved.retrySettings)fail('PI_OFFICIAL_RETRY_SETTINGS_REQUIRED')
-  const settingsManager=SettingsManager.inMemory({packages:[],retry:structuredClone(officialRetrySettings(resolved.retrySettings).retry)})
+  const settingsManager=SettingsManager.inMemory({packages:[],retry:structuredClone(officialRetrySettings(resolved.retrySettings).retry),...(header.runtimeOwner==='conversation-router'?{compaction:officialRouterCompactionSettings(resolved.model)}:{})})
   const registry=service(actorCtx,'tools'),systemPrompt=service(actorCtx,'systemPrompt'),skills=service(actorCtx,'skills'),memory=service(actorCtx,'memory')
   // A mounted preset's narrower FS is the resource capability too. If that
   // selection is absent, never retry through a broader inherited filesystem.

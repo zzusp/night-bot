@@ -20,3 +20,22 @@ export function officialRetrySettings(input) {
  const defaults=SettingsManager.inMemory()
  return Object.freeze({retry:Object.freeze({...defaults.getRetrySettings(),...input,provider:Object.freeze({...defined(defaults.getProviderRetrySettings()),...provider})})})
 }
+
+// Router's operational budget is independent of the provider's real model
+// window. Pi owns threshold checks, summarization, recent-tail retention and
+// journal projection. This is not a hard input/output limit.
+export const ROUTER_CONTEXT_TOKENS = 256 * 1024
+export function officialRouterCompactionSettings(model) {
+ const defaults = SettingsManager.inMemory().getCompactionSettings(model)
+ if (!model || !Number.isSafeInteger(model.contextWindow) || model.contextWindow <= defaults.reserveTokens ||
+     typeof model.provider !== 'string' || !model.provider || typeof model.id !== 'string' || !model.id) {
+  fail('PI_ROUTER_CONTEXT_WINDOW_INVALID', 'Router requires a model with a valid context window larger than Pi reserve tokens')
+ }
+ const budget = Math.min(ROUTER_CONTEXT_TOKENS, model.contextWindow)
+ // Model-keyed settings cannot accidentally apply a large-window reserve to a
+ // smaller model. A newly resolved create/resume route gets its own override.
+ return {enabled: true, modelOverrides: {[`${model.provider}/${model.id}`]: {
+  reserveTokens: model.contextWindow - budget + defaults.reserveTokens,
+  keepRecentTokens: Math.min(defaults.keepRecentTokens, Math.floor((budget - defaults.reserveTokens) / 2)),
+ }}}
+}

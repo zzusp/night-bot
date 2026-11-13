@@ -36,8 +36,9 @@ triage and Router user-message batches at most 15; overflow queues. Preserve
 same-session steer, direct source/version/actor links, durable delivery
 deduplication and unknown-send readback. Task dependencies are Host-enforced;
 completion alone grants neither authorization nor dependent-task execution.
-Router handoff is tool-free; Pi generation rotation must preserve committed
-history, one business owner and durable pending inputs. Topic is historical audit,
+Router retains its Pi session across idle periods; Pi native compaction owns context
+reduction with a Router-only 256K effective budget. Retained pre-upgrade generation
+recovery must preserve committed history, one business owner and durable pending inputs. Topic is historical audit,
 not an active routing entity. See docs/CHANNELS.md.
 Do not turn repetition counts into a universal gate for skill creation: the model
 assesses evidence/value/applicability, including strong single-task lessons; program

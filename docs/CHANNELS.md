@@ -164,13 +164,18 @@ Router 的业务工具按实际职责区分：
 
 既有已冻结的 `fixed-topic-reply` 及按原 unit 身份保存的平台排期可沿原来源、版本、正文和收据校验恢复，不重新调用 Topic 做决定。若缺少 SQL 发送账但已有开始发送、尝试次数、已送达 ID 或 unknown 等证据，保持 `fixed_topic_reply_delivery_unproven` 阻断，不能重建一条新发送掩盖未知结果。通知真正送达仍以 transport 收据/回读为准。
 
-## 无工具交接与恢复
+## 持续 Router 会话、Pi 压缩与旧交接恢复
 
-Router 常驻的是逻辑身份和业务记录，Pi 物理会话按 generation 管理。处理过新业务且当前轮次与待输入均排空后，Router 执行一次无工具交接：保留当前意图、未决问题、必要指代、标记为推测的假设、证据引用和截止游标。任务状态/依赖/回执仍由 SQLite 权威保存；大日志、附件正文和旧讨论留在原存储，不复制整个记忆或 Skill scope。
+每个认证 conversation 持续复用自己的 Pi 会话，队列排空或任务结清不再触发额外无工具交接/换代。任务状态、依赖、来源和回执仍以 SQLite 账本为准，原始 Pi journal 留存；压缩仅改变后续模型上下文投影，不删除历史，不授予新权限。
 
-交接 JSON 总量限制为 **32 KiB UTF-8**；`currentIntent` 非空且最多 4000 个字符串长度单位，`unresolvedQuestions`、`referents`、`assumptions` 各最多 16 项、每项非空且最多 2000，`evidenceRefs` 最多 128 条、sourceId/taskId 最多 512。字段长度按 JavaScript UTF-16 `string.length` 计算，非 UTF-8 字节数。超限、截断或引用不全拒绝轮换，不裁剪关键语义，不清空原 journal；这些预算不等于语义保真证明。
+Router 单独采用 **256K = 262,144 token** 的有效预算，通过 Pi 1.5.0 的原生 `compaction.modelOverrides[provider/model]` 配置，不伪造模型真实 `contextWindow`。模型窗口为 C 时预算 B = min(C, 262144)，`reserveTokens = C - B + 16384`；Pi 在估算 token **大于 B - 16384** 时触发自动压缩。窗口不小于 256K 时水位是 **245,760 token**。这是检查水位，不是每次输入或工具返回的硬上限；超大单批仍可超过预算，真实上下文溢出仍由 Pi 处理。
 
-交接先通过应用 admission 完成模型请求与 Pi 提交，再进入维护/排空边界、准备下一代并 CAS 发布 active 指针。新代提交前不能处理业务；发布后旧代失去业务权。切换期间的新消息继续耐久排队，只交给有权的 generation。尚在执行的任务不妨碍 Router 自身空闲交接，纯短回复/静默、交接本身和空新代不触发连续换代。
+`keepRecentTokens` 使用 Pi 默认约 20,000 token，较小窗口降为不超过 `(B - 16384) / 2`，让摘要和后续输入仍有空间。更小模型不能被扩成 256K；窗口无效或不大于原生 16,384 预留时明确报错。一级分诊和任务执行不继承 Router 的配置，保持各自 Pi 默认值。模型选择在创建/恢复时重新解析并建立该 provider/model 的覆盖；其它模型不会误继承大模型的 reserve。模型配置仍遵循现有 `restartRequired` 契约：设置保存后重启 Host 生效，再恢复同一 Router journal 并重算预算。当前 Host 无运行中模型切换入口，若以后增加，必须同步重算其覆盖。
+
+Pi 保留最近原始尾部和较早内容的模型摘要；不会机械保证摘要语义完整，也不保证压缩耗时。压缩期间当前 Router 仍可能等待。生产应观察压缩耗时、前后 token 和消息等待，不把本地脚本验证称为真实模型性能验收。
+
+旧部署可能留下 `handoff`、`summarized`、`candidate-committed` 或 `published` 记录。本版本仍恢复这些记录：未完成摘要按严格 journal 证明恢复原 owner；已提交摘要/候选验证旧提交、准备/发布新 owner；保留原历史和迟到输入且不重放业务。不再生成新的日常交接摘要或累计本代全量 source 引用。
+
 
 摘要失败、截断、必要引用缺失或新代提交不完整时，不清空旧 journal，不回滚已完成业务，不重放动作。只有旧代提交、owner 和排空仍可信时才可恢复普通处理；SQL/Pi 不一致、旧实例已 fence 或效果不确定时保持阻断，依既有严格 journal 解码和维护证据恢复。连续流量未排空时继续处理，不假装空闲；Pi 原生阈值压缩仍保留。
 
@@ -184,9 +189,9 @@ Router 批次已经 `admitted`、随后模型轮失败且事件尚未 `settled` 
 
 固定 Pi 1.5.0 在生成 `aborted` assistant 后先结束回合，尚未进入工具派发，因此只允许最后中断消息里的生成调用不要求 toolResult；之前 `toolUse` 的未配对/错误结果、未决 job 或 task effect-intent 仍阻断。不修改历史、不补造工具结果，也不据此宣称外部世界完全无效果。
 
-Host 经公开 Pi 生命周期接口先持久消费原失败 checkpoint 的非业务 claim，复核后接纳较新真实输入，再沿同一历史继续；推理前再次校验完整队列、来源版本和 owner。并发、重复/过期 checkpoint、外来会话及未知效果均拒绝。失败保留 journal 和未结事件，已领取的检查点不自动循环重试；只有联合批次全部事件真正 `settled`，才继续正常排空/交接并清除对应 Router 告警。
+Host 经公开 Pi 生命周期接口先持久消费原失败 checkpoint 的非业务 claim，复核后接纳较新真实输入，再沿同一历史继续；推理前再次校验完整队列、来源版本和 owner。并发、重复/过期 checkpoint、外来会话及未知效果均拒绝。失败保留 journal 和未结事件，已领取的检查点不自动循环重试；只有联合批次全部事件真正 `settled`，才继续正常排空并清除对应 Router 告警。
 
-普通 `recover()` 的 phase 恢复和已 `published` 交接的旧 owner 清理，也经同一 conversation 的 tail 串行执行；排队后重新读取当前 row/rotation，不把仍在途的交接当作冷中断。不暂停恢复 timer、不因 busy 静默跳过，也不放宽 live owner 守卫。原批次已经 `settled` 时不再调用 `resumeRouterBatch`，只由正式普通恢复推进该 Router 尚待完成的无工具交接/换代，不重跑原任务或业务输入。
+普通 `recover()` 的 phase 恢复和已 `published` 交接的旧 owner 清理，也经同一 conversation 的 tail 串行执行；排队后重新读取当前 row/rotation，不把仍在途的交接当作冷中断。不暂停恢复 timer、不因 busy 静默跳过，也不放宽 live owner 守卫。原批次已经 `settled` 时不再调用 `resumeRouterBatch`，只由正式普通恢复推进该 Router 旧部署尚待完成的交接/换代，不重跑原任务或业务输入。
 
 不满足上述中止恢复条件时，冷启动仍将确定的 `ROUTER_BATCH_UNSETTLED` 保留为任务服务 `recover()` 的 `degraded` 结果及现有 `listAlerts` 恢复告警，以保留上述 Host 入口；不代表恢复完成或消息已消费。其它 journal、owner、store 恢复错误仍失败关闭，不能被另一个 conversation 的未结告警遮蔽。正常关闭的结果不证明错误关闭已安全释放全部资源；Host/Application 异常关闭及未证排空时的依赖保留规则见下文。
 
@@ -274,7 +279,7 @@ check, and pending/unknown receipts and already-authorized delayed deliveries
 remain recoverable without replay. External channels keep their own identities;
 the recent-conversation list still includes retained Web histories and external conversations.
 
-### Router 空闲交接与任务完成延迟
+### Router 空闲交接与任务完成延迟（历史实现，已由上述持续会话方案替代）
 
 Router inbox 暂时为空不代表会话已空闲。会话仍有未归档的 active/active 任务时，保留当前 Pi generation，优先接纳后续补充和任务完成事件，不在每次安排结束后立即启动无工具交接。任务结清后仍经原来的耐久摘要、候选提交和唯一 owner 发布流程轮换；长会话的上下文仍由 Pi 管理。已开始的交接不能旁路，期间到达的事件继续耐久排队。此优化避免可预见的完成事件等待不必要轮换，不表示已开始的交接耗时已被消除。
 

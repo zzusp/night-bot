@@ -54,7 +54,7 @@ All other optional provider integrations retain their own explicit admission.
 
 当前消息入口按“认证来源 → 轻量一级分诊 → conversation Router → 唯一任务执行会话”分工。分诊只决定转交/短回复；Router 通过受控动作安排事项并评估结果，不能直接执行业务脚本。Topic 不再作为活动路由实体，旧 Owner/团队路径不因更换会话而恢复。
 
-Host/SQLite 保持直接来源、依赖、动作收据、内部事件和 active generation 的权威。依赖满足必须绑定当前授权、任务版本与证据，`completed` 和通知送达各自独立。Router 空闲交接时先通过 admission 完成无工具总结及 Pi 提交，再维护、准备新代并 CAS 发布；禁止在暂停 admission 后才请求模型，禁止绕过 admission 直接投递 custom message。旧 journal、未知效果阻断和严格提交证明继续保留。
+Host/SQLite 保持直接来源、依赖、动作收据、内部事件和 active generation 的权威。依赖满足必须绑定当前授权、任务版本与证据，`completed` 和通知送达各自独立。Router 持续复用当前 Pi 会话，空闲和任务完成不再触发交接模型轮；Pi 原生自动压缩采用 Router 独立 256K 有效预算。旧部署已持久交接仍经严格提交证明、候选准备及 CAS 发布恢复；新代提交前不得处理业务。旧 journal、未知效果阻断和唯一业务 owner 继续保留。
 
 完整职责与失败恢复见 [CHANNELS](CHANNELS.md)，本次版本的实际验收见 [任务入口](acceptance/resident-conversation-routing/goal.md)；此前阶段计数和 Topic 测试不替代本轮证据。
 

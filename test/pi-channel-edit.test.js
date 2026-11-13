@@ -252,6 +252,8 @@ test('已接纳未落SQL的create/reopen阻止切换，跨await旧请求在激�
  pause(q=>q.kind==='task.get'&&q.taskId===created.taskId)
  const stale=service.reopenTask({taskId:created.taskId,requestId:'edit-before-activation',context:'Must not cross target activation'});pending.push(stale)
  await entered.promise
+ const persistentRouter=await originalQuery({kind:'router.get',conversationId:groupId})
+ assert.ok(persistentRouter.cursor>persistentRouter.lastHandoffCursor,'idle persistent history is not unprocessed work')
  const nextTarget={type:'chat-room',conversationId:'new-room'}
  await service.withChannelTargetSwitch({channelId,nextTarget},async()=>{}, {activate:true})
  assert.equal(channels.activeTargets.get(channelId).conversationId,'new-room');assert.equal(channels.targetHolds.size,0)
