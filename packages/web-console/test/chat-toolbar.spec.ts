@@ -18,6 +18,7 @@ for (const width of [1440, 1024, 390]) test(`内容内工具栏与面板切换 $
   const frameBox = await page.locator('.main-frame').boundingBox(), panelBox = await panel.boundingBox()
   expect(panelBox!.y - frameBox!.y).toBeLessThanOrEqual(48)
   await expect(header.getByRole('heading', {level: 1})).toBeVisible()
+  expect((await header.boundingBox())!.height).toBe(width <= 520 ? 48 : 52)
   const composer = page.locator('.board-composer textarea')
   await composer.fill('未发送草稿')
   const toggle = header.locator('.rail-toggle')
