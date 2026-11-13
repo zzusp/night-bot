@@ -4,11 +4,12 @@ import {memoryHost} from './fixtures/memory-host.js'
 const message=(type,conversationId,senderId,messageId,text)=>({type,channelId:'adapter-fixture',conversationId,senderId,messageId,text})
 test('chat and chat-room preserve sender identity, isolate conversation context while sharing Bot memory and deduplicate across cold restart',async t=>{
   const f=await memoryHost(t),api=f.host.ctx.channels
-  const personal=await api.receive(message('chat','dm','alice','1','记住 facts/private：ALICE_PRIVATE'))
+  await api.receive(message('chat','dm','alice','private-transcript','PRIVATE_TRANSCRIPT_ONLY'))
+  const personal=await api.receive(message('chat','dm','alice','1','记住 facts/shared-note：BOT_SHARED_FACT'))
   const room=await api.receive(message('chat-room','room-one','alice','1','记住 本群 facts/shared：ROOM_ONE_ONLY'))
   const bob=await api.receive(message('chat-room','room-one','bob','2','read the group context'))
   assert.equal(room.sessionId,bob.sessionId);assert.notEqual(personal.sessionId,room.sessionId)
-  const request=JSON.stringify(f.requests.at(-1));assert.match(request,/alice/);assert.match(request,/bob/);assert.doesNotMatch(request,/ALICE_PRIVATE/)
+  const request=JSON.stringify(f.requests.at(-1));assert.match(request,/alice/);assert.match(request,/bob/);assert.doesNotMatch(request,/PRIVATE_TRANSCRIPT_ONLY/);assert.match(request,/BOT_SHARED_FACT/)
   const roomAgent=f.host.ctx.agents.get(room.sessionId);assert.equal((await f.host.ctx.memory.read(roomAgent,{topic:'facts',key:'shared'})).entries[0].text,'ROOM_ONE_ONLY')
   assert.equal((await f.host.ctx.memory.read(roomAgent,{scope:'personal',topic:'facts'})).entries.length,2)
   const separate=await api.receive(message('chat-room','room-two','alice','1','look at this room')),other=await api.receive(message('chat','dm','bob','1','read my memory'))
