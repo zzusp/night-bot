@@ -55,8 +55,14 @@ test('known secrets, URLs, identifiers and private paths are scrubbed',()=>{
 test('bounded log evidence exposes only allowlisted code counts, not paths or lines',async t=>{
  const root=await mkdtemp(join(tmpdir(),'feedback-'));t.after(()=>rm(root,{recursive:true,force:true}));await mkdir(join(root,'logs'))
  await writeFile(join(root,'logs','a.log'),'secretvalue person@example.com SQLITE_BUSY CUSTOM_SECRET_CODE\n')
- await writeFile(join(root,'private.log'),'ETIMEDOUT');await symlink(join(root,'private.log'),join(root,'logs','link.log'))
+
  const result=await feedbackErrorCodes(join(root,'logs'));assert.deepEqual(result.counts,{SQLITE_BUSY:1});assert.equal(result.files,1);assert.ok(!JSON.stringify(result).includes('secret'))
+})
+test('symbolic log files cannot introduce external error evidence',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'feedback-link-'));t.after(()=>rm(root,{recursive:true,force:true}));await mkdir(join(root,'logs'))
+ await writeFile(join(root,'private.log'),'ETIMEDOUT')
+ try{await symlink(join(root,'private.log'),join(root,'logs','link.log'))}catch(error){if(process.platform==='win32'&&error.code==='EPERM'){t.skip('当前 Windows 账号无文件 symlink 权限；此边界另在 Linux 实跑');return}throw error}
+ const result=await feedbackErrorCodes(join(root,'logs'));assert.deepEqual(result.counts,{});assert.equal(result.files,0)
 })
 test('edited preview is sanitized and old confirmation payload cannot publish',async()=>{
  const f=fixture(),r=await ready(f)
@@ -104,4 +110,13 @@ test('manual draft cancellation, validation and capacity remain bounded',async()
  const r=f.service.draft('owner',input);await f.service.cancel('owner',r.id);assert.throws(()=>f.service.read('owner',r.id),{code:'FEEDBACK_NOT_FOUND'})
  for(let i=0;i<16;i++)f.service.draft('owner',input)
  assert.throws(()=>f.service.draft('owner',input),{code:'FEEDBACK_LIMIT'});await f.service.close();assert.throws(()=>f.service.draft('owner',input),{code:'FEEDBACK_CLOSED'})
+})
+
+
+test('registered feedback secrets are redacted before the output length limit cuts through them',()=>{
+ const secret='opaque-private-value-for-feedback-check'
+ const text=redactFeedback('x'.repeat(47993)+secret+' tail',[secret])
+ assert.equal(text.length,48000)
+ assert.ok(!text.includes(secret.slice(0,7)))
+ assert.ok(text.includes('[已脱敏]'))
 })

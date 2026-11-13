@@ -19,14 +19,15 @@ async function completed(store,root,id){
 test('slow reflection inference and archive do not block consistent inventory; completed events are not rescanned',async t=>{
  const entered=Promise.withResolvers(),release=Promise.withResolvers(),archiving=Promise.withResolvers(),archiveRelease=Promise.withResolvers()
  t.after(()=>{release.resolve();archiveRelease.resolve()})
- let analyses=0,archives=0,store,failArchive=false,lastArchive
- const f=await memoryHost(t,async body=>{
+ let analyses=0,archives=0,store,failArchive=false,lastArchive,f
+ const cleanups=[]
+ t.after(async()=>{try{await f?.close()}finally{try{await store?.close()}finally{for(const cleanup of cleanups.reverse())await cleanup()}}})
+ f=await memoryHost({after:cleanup=>cleanups.push(cleanup)},async body=>{
   if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return
   analyses++;entered.resolve();await release.promise
   const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content)
   return {text:JSON.stringify({lessons:[{key:'inspect-first',summary:'Inspect current evidence',why:'Avoid stale assumptions',howToApply:'Read current state before editing',evidenceIds:[input.eventId]}]})}
  })
- t.after(async()=>{await f.close();await store?.close()})
  const ctx=f.host.ctx,scope=memoryScope({actorId:'owner'}),directory=ctx.reflection.directory(scope)
  store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'contention.sqlite'),instanceId:'contention',initialize:true})
  await completed(store,ctx.runtimePaths.workspaces,'one')
@@ -62,14 +63,15 @@ test('slow reflection inference and archive do not block consistent inventory; c
 
 test('forgetting during unlocked inference revokes that generation and never replays its lessons',async t=>{
  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
- let analyses=0,store
- const f=await memoryHost(t,async body=>{
+ let analyses=0,store,f
+ const cleanups=[]
+ t.after(async()=>{try{await f?.close()}finally{try{await store?.close()}finally{for(const cleanup of cleanups.reverse())await cleanup()}}})
+ f=await memoryHost({after:cleanup=>cleanups.push(cleanup)},async body=>{
   if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return
   analyses++;entered.resolve();await release.promise
   const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content)
   return {text:JSON.stringify({lessons:[{key:'forgotten',summary:'Old result',why:'Old evidence',howToApply:'Inspect before editing',evidenceIds:[input.eventId]}]})}
  })
- t.after(async()=>{await f.close();await store?.close()})
  const ctx=f.host.ctx,scope=memoryScope({actorId:'owner'})
  store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'revoke.sqlite'),instanceId:'revoke',initialize:true})
  await completed(store,ctx.runtimePaths.workspaces,'one')

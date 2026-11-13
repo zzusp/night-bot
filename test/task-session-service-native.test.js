@@ -181,16 +181,13 @@ test('Router reopens completed work from an ordinary message without execution a
  assert.equal(h.requests.length,count);assert.equal((await h.query('task.get',{taskId:original.taskId})).requirementRevision,3)
 }))
 
-for(const [ownEcho,actor]of [[true,'native-user'],[true,'colleague'],[false,'native-user']])test(`Router supplements only the admitted source; historical context is not authority: echo=${ownEcho}, actor=${actor}`,{timeout:nativeLifecycleTimeout(30000)},nativeLifecycle(30000,async t=>{
+for(const [ownEcho,actor]of [[true,'native-user'],[true,'colleague'],[false,'native-user']])test(`Router supplements only the admitted source and preserves waiting without another task turn: echo=${ownEcho}, actor=${actor}`,{timeout:nativeLifecycleTimeout(30000)},nativeLifecycle(30000,async t=>{
  const f=await officialCase(t,'task-direct-source-',false);let h,original,taskTurns=0
  h=await f.host(request=>{
   const routed=topicTaskCalls(request,{task:original});if(routed)return routed
-  const input=latestInput(request);taskTurns++
-  if(!original)return[singleResult('blocked','原问题仍待明确答复',{audience:'requester',question:'是否批准原范围内的例外？',attemptedActions:['核对原始交办']})]
-  assert.ok(input.humanReview);assert.equal(input.task.sessionId,original.sessionId)
-  assert.ok(input.sources.some(source=>source.messageId==='manual-followup'&&source.actorId===actor&&source.text==='先核对分支，不是批准例外'))
-  assert.ok(input.sources.every(source=>!['native-notification-1','unadmitted-history'].includes(source.messageId)))
-  return[singleResult('wait','定位补充不代表批准，保留原待答问题')]
+  taskTurns++
+  assert.equal(original,undefined,'supplement 保存补充并保留等待，不隐式再次调用任务模型')
+  return[singleResult('blocked','原问题仍待明确答复',{audience:'requester',question:'是否批准原范围内的例外？',attemptedActions:['核对原始交办']})]
  })
  await t.beginBusiness();await h.service.ingest(message);await h.service.whenIdle();[original]=await h.query('task.list')
  assert.ok(original.humanRequests.length===1)
@@ -201,7 +198,11 @@ for(const [ownEcho,actor]of [[true,'native-user'],[true,'colleague'],[false,'nat
  await h.service.ingest(input);await h.service.whenIdle()
  const [current]=await h.query('task.list');assert.equal((await h.query('task.list')).length,1)
  assert.equal(current.sessionId,original.sessionId);assert.equal(current.requirementRevision,1);assert.equal(current.humanRequests[0].status,'waiting-reply');assert.equal(current.humanRequests[0].requestId,original.humanRequests[0].requestId)
- assert.equal(taskTurns,2);assert.ok(!(await h.query('source.list')).some(source=>source.messageId===historical.messageId))
+ assert.equal(taskTurns,1);assert.equal(current.contextRevision,(original.contextRevision??0)+1)
+ const sources=await h.query('source.list'),followup=sources.find(source=>source.messageId==='manual-followup')
+ assert.ok(followup);assert.equal(followup.actorId,actor);assert.equal(followup.text,input.text)
+ assert.deepEqual(current.sourceRefs,[...original.sourceRefs,followup.sourceId]);assert.deepEqual(current.humanRequests,original.humanRequests)
+ assert.equal(current.supplements.at(-1).text,input.text);assert.ok(!sources.some(source=>source.messageId===historical.messageId))
  const count=h.requests.length;await h.service.ingest(input);await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,count)
  assert.deepEqual(await h.query('execution.list'),[])
 }))

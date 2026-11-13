@@ -66,13 +66,30 @@ for(const phase of ['model','preflight','before-run','validation','foreign-abort
     }
     return {text:'No work'}
   },{wrapStore:store=>({...store,query:async q=>{const result=await store.query(q);return q.kind==='task.list'&&q.groupId&&q.archived===undefined&&hideActive?[]:result}})})
-  if(phase==='preflight'){
-    const skills=h.host.ctx.get('skills'),snapshot=skills.snapshot.bind(skills)
-    skills.snapshot=async(...args)=>{if(!held&&inHandoff){held=true;handoffEntered.resolve();await handoffRelease.promise}return snapshot(...args)}
-  }
   if(phase!=='model'){
     const agents=h.host.ctx.get('agents'),create=agents.create.bind(agents)
-    agents.create=async(...args)=>{const handle=await create(...args);if(handle.runToolFreeHandoff){const run=handle.runToolFreeHandoff.bind(handle);handle.runToolFreeHandoff=async(packet,validate,options)=>{inHandoff=true;handoffSignal=options.signal;if(phase==='before-run'&&!held){held=true;handoffEntered.resolve();await handoffRelease.promise}const result=await run(packet,async text=>{const value=await validate(text);if(['validation','foreign-abort'].includes(phase)&&!held){held=true;handoffEntered.resolve();await handoffRelease.promise;if(phase==='foreign-abort')throw foreignError}return value},options).catch(error=>{caughtHandoffError=error;throw error});if(phase==='prepared'&&!held){held=true;handoffEntered.resolve();await handoffRelease.promise}return result}}return handle}
+    agents.create=async(...args)=>{
+      const handle=await create(...args)
+      if(handle.agent.metadata.runtimeOwner!=='conversation-router')return handle
+      if(phase==='preflight'){
+        const skills=h.host.ctx.agentPresets.serviceFor(handle.agent,'skills')??handle.agent.ctx.get('skills'),snapshot=skills.snapshot.bind(skills)
+        // 只冻结本 Router 的资源预检，不能把并发任务的准备也锁住。
+        skills.snapshot=async(...values)=>{if(!held&&inHandoff&&values[0]?.scope===handle.agent){held=true;handoffEntered.resolve();await handoffRelease.promise}return snapshot(...values)}
+      }
+      const run=handle.runToolFreeHandoff.bind(handle)
+      handle.runToolFreeHandoff=async(packet,validate,options)=>{
+        inHandoff=true;handoffSignal=options.signal
+        if(phase==='before-run'&&!held){held=true;handoffEntered.resolve();await handoffRelease.promise}
+        const result=await run(packet,async text=>{
+          const value=await validate(text)
+          if(['validation','foreign-abort'].includes(phase)&&!held){held=true;handoffEntered.resolve();await handoffRelease.promise;if(phase==='foreign-abort')throw foreignError}
+          return value
+        },options).catch(error=>{caughtHandoffError=error;throw error})
+        if(phase==='prepared'&&!held){held=true;handoffEntered.resolve();await handoffRelease.promise}
+        return result
+      }
+      return handle
+    }
   }
   const message=channelMessage('preempt-'+phase);await h.receive(message);await taskEntered.promise;await handoffEntered.promise
   const conversationIdAtHandoff=h.host.ctx.channels.identity(message).sessionId

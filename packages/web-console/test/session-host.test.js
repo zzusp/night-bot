@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {openDynamicTaskStore} from '../../../packages/dingtalk-core/dynamic-task-store.js'
 import {memoryScope} from '../../../src/memory/scope.js'
-import {memoryHost} from '../../../test/fixtures/memory-host.js'
+import {memoryHost,initializeMemoryTaskWorkspace} from '../../../test/fixtures/memory-host.js'
 import {nativeTestTimeout} from '../../../test/fixtures/native-lifecycle.js'
 import {apply as applyApplication, inject} from '../../../src/application.js'
 import {createWebConsole} from '../server/plugin.js'
@@ -111,6 +111,7 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
   try {
     const command = (id, kind, args) => store.command({id, kind, args})
     await command('create', 'task.create', {taskId: 'learn-one', request: '核对隔离任务', ownerActorId: owner})
+  await initializeMemoryTaskWorkspace(store,f.host.ctx.runtimePaths.workspaces,'learn-one')
     const binding = (await command('claim', 'task.claim', {taskId: 'learn-one'})).result.binding
     const completion = (await command('complete', 'task.complete', {binding, summary: '核对已完成'})).completionEvent
     const reflection = f.host.ctx.reflection
@@ -169,6 +170,7 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
     assert.deepEqual(await readFile(stateFile), before); assert.equal(f.requests.length, requestCount)
     const skill = index.body.changes.find(row => row.kind === 'skill')
     await command('create-next', 'task.create', {taskId: 'learn-two', request: '核对第二份独立证据', ownerActorId: owner})
+    await initializeMemoryTaskWorkspace(store,f.host.ctx.runtimePaths.workspaces,'learn-two')
     const nextBinding = (await command('claim-next', 'task.claim', {taskId: 'learn-two'})).result.binding
     await command('complete-next', 'task.complete', {binding: nextBinding, summary: '第二份证据已核对'})
     reflection.scan(); await reflection.whenIdle()

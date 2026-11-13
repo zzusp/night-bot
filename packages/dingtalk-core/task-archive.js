@@ -92,8 +92,12 @@ export function archiveTaskRows(db, taskId) {
 export function unarchiveTaskRows(db, taskId) {
   for (const name of ['tasks','executions','operations','wakes','notifications','task_events']) {
     const condition=name==='tasks'?'id=?':"json_extract(body,'$.taskId')=?"
-    const rows=db.prepare(`SELECT id,body FROM dynamic_archived_${name} WHERE ${condition} ORDER BY sequence`).all(taskId)
-    for(const row of rows)db.prepare(`INSERT INTO dynamic_${name}(id,body) VALUES (?,?)`).run(row.id,row.body)
+    const rows=db.prepare(`SELECT sequence,id,body FROM dynamic_archived_${name} WHERE ${condition} ORDER BY sequence`).all(taskId)
+    // Incremental consumers have already observed archived events at these cursors.
+    const insert=name==='task_events'
+      ? db.prepare('INSERT INTO dynamic_task_events(sequence,id,body) VALUES (?,?,?)')
+      : db.prepare(`INSERT INTO dynamic_${name}(id,body) VALUES (?,?)`)
+    for(const row of rows)insert.run(...name==='task_events'?[row.sequence,row.id,row.body]:[row.id,row.body])
     db.prepare(`DELETE FROM dynamic_archived_${name} WHERE ${condition}`).run(taskId)
   }
   const receipts=db.prepare(`SELECT id,body FROM dynamic_archived_receipts WHERE ${receiptOwnerSql}=?`).all(taskId)

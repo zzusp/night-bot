@@ -1,5 +1,6 @@
-import {receiptOwnerSql} from '../packages/dingtalk-core/task-archive.js'
+import {receiptOwnerSql,unarchiveTaskRows} from '../packages/dingtalk-core/task-archive.js'
 import test from 'node:test'
+import {initializeMemoryTaskWorkspace} from './fixtures/memory-host.js'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -24,6 +25,7 @@ async function fixture(t) {
   }
   const create = async taskId => {
     await command('task.create', { taskId, groupId: 'g', ownerActorId: 'u', request: `Synthetic outcome ${taskId}` })
+    await initializeMemoryTaskWorkspace(store,join(root,'workspaces'),taskId)
     return (await command('task.claim', { taskId })).result
   }
   const finish = async (taskId, id = `complete-${taskId}`) => {
@@ -129,6 +131,7 @@ test('archived prerequisite keeps its formal completion proof readable without a
   const f = await fixture(t)
   for (const taskId of ['A', 'B']) await f.command('task.create', { taskId, groupId: 'g', ownerActorId: 'u', request: `Synthetic outcome ${taskId}` })
   const otherTask = await f.query('task.get', { taskId: 'B' }), otherWakes = await f.query('wake.list', { taskId: 'B' })
+  await initializeMemoryTaskWorkspace(f.store,join(f.root,'workspaces'),'A')
   const completed = await f.finish('A')
   const events = (await f.query('task.events')).events
   await f.command('task.archive', { taskId: 'A', actorId: 'operator' })
@@ -214,4 +217,26 @@ test('archive owner and immutable event lookups use the task and sequence indexe
  assert(plans.receipts.some(row=>row.detail.includes('SEARCH')&&row.detail.includes('dynamic_receipt_owner')))
  assert(plans.events.some(row=>row.detail.includes('SEARCH')&&row.detail.includes('dynamic_archived_task_events_task')))
  assert(plans.feed.some(row=>row.detail.includes('SEARCH')&&row.detail.includes('INTEGER PRIMARY KEY')))
+})
+
+
+test('unarchiving keeps original event sequences and does not republish history after a saved cursor', async t => {
+  const f = await fixture(t)
+  await f.create('history'); await f.finish('history')
+  await f.command('task.archive',{taskId:'history',actorId:'operator'})
+  const original = await f.query('task.events',{after:0,limit:100})
+  const cursor = original.nextCursor
+  await f.create('later'); await f.finish('later')
+  const newEvents = await f.query('task.events',{after:cursor,limit:100})
+  const allBefore = await f.query('task.events',{after:0,limit:100})
+  f.mutate(db => {
+    db.exec('BEGIN IMMEDIATE')
+    try {unarchiveTaskRows(db,'history'); db.exec('COMMIT')}
+    catch (error) {db.exec('ROLLBACK'); throw error}
+  })
+  assert.deepEqual(await f.query('task.events',{after:0,limit:100}),allBefore)
+  assert.deepEqual(await f.query('task.events',{after:cursor,limit:100}),newEvents)
+  assert.ok(newEvents.events.every(event=>event.taskId==='later'))
+  await f.restart()
+  assert.deepEqual(await f.query('task.events',{after:cursor,limit:100}),newEvents)
 })

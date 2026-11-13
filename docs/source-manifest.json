@@ -826,8 +826,8 @@
       "source": "task-archive.js",
       "sourceSha256": "7b59c08f3722e7ddb5a903597735ff167deacce8b9433ccbbc94db31f4daf202",
       "status": "adapted",
-      "sha256": "19b60f03536410acaf8d5e9f41c1b65b607491b637f32dbdd9646b4da37ce77c",
-      "adaptation": "冷归档保留Router账本v4版本，禁止归档操作降回旧二进制可读的v3。 Router 显式再激活时在同一 SQLite 事务恢复本地真实归档行及原收据正文/ID，不读取 JSON 快照、不重放历史输入或通知。"
+      "sha256": "7feb39deef2d810a0d483bea9e2f176da7817e7e10a7315de89ae3b9a70e4d10",
+      "adaptation": "冷归档保留Router账本v4版本，禁止归档操作降回旧二进制可读的v3。 Router 显式再激活时在同一 SQLite 事务恢复本地真实归档行及原收据正文/ID，不读取 JSON 快照、不重放历史输入或通知。 解除归档保留 task_events 原 sequence，增量游标不把历史完成事件重新发布。"
     },
     {
       "source": "task-artifact-files.js",

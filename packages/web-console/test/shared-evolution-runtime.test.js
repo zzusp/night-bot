@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdir,writeFile,readFile} from 'node:fs/promises'
 import {join} from 'node:path'
-import {memoryHost} from '../../../test/fixtures/memory-host.js'
+import {memoryHost,initializeMemoryTaskWorkspace} from '../../../test/fixtures/memory-host.js'
+import {nativeTestTimeout} from '../../../test/fixtures/native-lifecycle.js'
 import {eventually} from '../../../test/fixtures/resident-router-host.js'
 import {memoryScope} from '../../../src/memory/scope.js'
 import {openDynamicTaskStore} from '../../../packages/dingtalk-core/dynamic-task-store.js'
@@ -10,7 +11,7 @@ import {createWebConsole} from '../server/plugin.js'
 import {readEvolutionInventory} from '../server/evolution-inventory.js'
 import {queryEvolutionUsage} from '../server/evolution-usage.js'
 const doc=(name,body,extra='')=>`---\nname: ${name}\ndescription: Real local shared resource\n${extra}---\n${body}\n`
-test('真实 Bot 公共记忆跨渠道共享且保留来源，目录盘点/真实调用/用户引用/文件读取与更新分别核实',{timeout:45000},async t=>{
+test('真实 Bot 公共记忆跨渠道共享且保留来源，目录盘点/真实调用/用户引用/文件读取与更新分别核实',{timeout:nativeTestTimeout(45000)},async t=>{
  let mode='none',issued=false,file
  const f=await memoryHost(t,body=>{
   if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')){const input=JSON.parse(body.messages.findLast(row=>row.role==='user').content);return {text:JSON.stringify({lessons:[{key:'shared-evidence',summary:'复盘来源与真实任务对应',why:'证据核对步骤可复用',howToApply:'先读取来源',evidenceIds:[input.eventId],skill:{steps:['读取真实来源','核对返回结果'],reason:'任务中有直接证据',applicability:'来源核对',evidenceBacked:true}}]})}}
@@ -39,9 +40,9 @@ test('真实 Bot 公共记忆跨渠道共享且保留来源，目录盘点/真�
   let view=await inspect();assert.equal(view.coverage,'bot-shared-current-state');assert.equal(view.memory.acceptedCount,1);assert.equal(view.skills.installedCount,4);assert.equal(view.skills.installedAvailableCount,2);assert.equal(view.skills.modelUseCount,null);assert.equal(view.skills.userUseCount,null);assert.equal(view.items.find(row=>row.name==='second-check').lastUsedAt,null)
   assert.ok(view.items.some(row=>row.name==='invalid-check'&&row.status==='invalid'));assert.ok(view.items.some(row=>row.name==='disabled-check'&&row.status==='disabled'))
   mode='skill';issued=false;await f.host.ctx.channels.receive(source('channel-beta','chat-room','room-two','skill-one','加载并使用 common-check'));await f.host.ctx.memory.whenIdle()
-  await eventually(async()=>{view=await inspect();return view.skills.modelUseCount===1},'successful native skill invocation committed')
+  await eventually(async()=>{view=await inspect();return view.skills.modelUseCount===1},'successful native skill invocation committed',t.signal)
   mode='file';issued=false;await f.host.ctx.channels.receive(source('channel-beta','chat-room','room-two','file-one','读取技能文件'));await f.host.ctx.memory.whenIdle()
-  await eventually(async()=>{view=await inspect();return view.skills.fileReadCount===1},'actual native read of the exact skill file committed')
+  await eventually(async()=>{view=await inspect();return view.skills.fileReadCount===1},'actual native read of the exact skill file committed',t.signal)
   mode='none';await f.host.ctx.channels.receive(source('channel-alpha','chat','direct-one','user-skill','/skill:common-check inspect locally'));await f.host.ctx.memory.whenIdle()
   view=await inspect();assert.equal(view.skills.userUseCount,1);assert.equal(view.skills.modelUseCount,1);assert.equal(view.skills.fileReadCount,1)
   const used=view.items.find(row=>row.name==='common-check');assert.equal(used.modelUseCount,1);assert.equal(used.userUseCount,1);assert.equal(used.fileReadCount,1);assert.equal(used.updatedSinceUse,false);assert.ok(Number.isFinite(Date.parse(used.lastUsedAt)))
@@ -51,12 +52,13 @@ test('真实 Bot 公共记忆跨渠道共享且保留来源，目录盘点/真�
   assert.ok(Number.isFinite(Date.parse(memoryRow.memoryUse.lastAccess.at)));assert.equal(memoryRow.memoryUse.readCount,1);assert.ok(memoryRow.memoryUse.lastAccess)
   taskStore=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'shared-evolution-tasks.sqlite'),instanceId:'shared-evolution',initialize:true})
   await taskStore.command({id:'create-source-task',kind:'task.create',args:{taskId:'source-task',title:'真实来源核对',request:'核对真实来源',ownerActorId:'member',groupId:b.sessionId,metadata:{channelType:'chat-room',memoryGroupId:f.host.ctx.channels.groupContext(b.sessionId).memoryGroupId}}})
+  await initializeMemoryTaskWorkspace(taskStore,f.host.ctx.runtimePaths.workspaces,'source-task')
   const claim=await taskStore.command({id:'claim-source-task',kind:'task.claim',args:{taskId:'source-task'}})
   await taskStore.command({id:'complete-source-task',kind:'task.complete',args:{binding:claim.result.binding,summary:'已核对真实来源'}})
   detach=f.host.ctx.reflection.attachStore(taskStore,{ownerActorId:'member',model:f.config.model});await f.host.ctx.reflection.whenIdle()
   const reflected=await inspect(),fromTask=reflected.items.find(row=>row.kind==='memory'&&row.provenance?.taskId==='source-task');assert.ok(fromTask);assert.equal(fromTask.provenance.channelId,'channel-beta');assert.equal(fromTask.provenance.conversationType,'chat-room');assert.equal(fromTask.provenance.conversationName,'真实项目群')
   mode='learned';issued=false;await f.host.ctx.channels.receive(source('channel-alpha','chat','direct-one','learned-use','使用公共学习技能核对来源'));await f.host.ctx.memory.whenIdle()
-  await eventually(async()=>{const current=await inspect();return current.skills.modelUseCount===2},'public learned skill used from another channel')
+  await eventually(async()=>{const current=await inspect();return current.skills.modelUseCount===2},'public learned skill used from another channel',t.signal)
   mode='none';await f.host.ctx.channels.receive(source('channel-alpha','chat','direct-one','user-learned','/skill:learned-shared-evidence inspect locally'));await f.host.ctx.memory.whenIdle()
   const userLearned=await inspect();assert.equal(userLearned.skills.userUseCount,2);assert.equal(userLearned.items.find(row=>row.name==='learned-shared-evidence').updatedSinceUse,false)
   await f.host.ctx.channels.receive(source('channel-beta','chat-room','room-two','correct-shared','修改记忆 公共 facts/shared：以已确认的真实来源核对结果'))

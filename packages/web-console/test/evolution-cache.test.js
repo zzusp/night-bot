@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp, rm, readFile, writeFile, readdir, chmod, symlink, link, stat} from 'node:fs/promises'
+import {mkdtemp, rm, readFile, writeFile, readdir, chmod, symlink, link, stat, open} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {createHash} from 'node:crypto'
@@ -104,16 +104,23 @@ test('different identity never replays prior snapshot', async t => {
   assert.equal((await readdir(f.directory)).length,2)
 })
 
-test('unsafe symlinks and hardlinks are rejected without modifying their targets', async t => {
-  const f=await setup(t); await f.cache.close()
-  const source=join(f.directory,'source.json'), path=join(f.directory,filename('reader'))
-  await writeFile(source,'private source',{mode:0o600})
-  for(const create of [symlink,link]) {
-    await create(source,path)
+for (const [name, create] of [['hardlinks',link],['file symlinks',symlink]]) {
+  test(`unsafe ${name} are rejected without modifying their targets`, async t => {
+    const f=await setup(t); await f.cache.close()
+    const source=join(f.directory,'source.json'), path=join(f.directory,filename('reader'))
+    await writeFile(source,'private source',{mode:0o600})
+    try {await create(source,path)}
+    catch (error) {
+      if (create === symlink && process.platform === 'win32' && error.code === 'EPERM') {
+        t.skip('Windows 当前账号无文件 symlink 权限；硬链接与目录 junction 独立验证，文件 symlink 由 Linux 实跑验证')
+        return
+      }
+      throw error
+    }
     await assert.rejects(openEvolutionCache({directory:f.directory,identity:'reader',collect:()=>dto('never')}),{code:'EVOLUTION_CACHE_PATH_UNSAFE'})
     assert.equal(await readFile(source,'utf8'),'private source'); await rm(path)
-  }
-})
+  })
+}
 
 test('unsafe file replacement after opening cannot overwrite linked source', async t => {
   const f=await setup(t); await f.cache.read()
@@ -177,7 +184,7 @@ test('oversized cache is ignored using bounded reads and recollected', async t =
 test('a symlinked cache directory is rejected without writes', async t => {
   const f=await setup(t); await f.cache.close()
   const alias=join(f.directory,'alias')
-  await symlink(f.directory,alias)
+  await symlink(f.directory,alias,process.platform === 'win32' ? 'junction' : 'dir')
   await assert.rejects(openEvolutionCache({directory:alias,identity:'reader',collect:()=>dto('never')}),{code:'EVOLUTION_CACHE_PATH_UNSAFE'})
   assert.deepEqual(await readdir(f.directory),['alias'])
 })
@@ -353,4 +360,44 @@ test('authorization revoked during a page read prevents the in-flight response',
   const refresh=f.cache.read({force:true})
   await assert.rejects(refresh,{code:'EVOLUTION_FORBIDDEN',status:403})
   await assert.rejects(reading,{code:'EVOLUTION_FORBIDDEN',status:403})
+})
+
+
+test('a cache loaded after restart can force-refresh repeatedly and publish updated counts', async t => {
+  const f = await setup(t)
+  await f.cache.read(); await f.cache.close()
+  let round = 1
+  const cache = await openEvolutionCache({directory:f.directory,identity:'reader',now:()=>1000 + round,
+    collect:()=>({...dto(String(++round)),memory:{acceptedCount:round,candidateCount:0}})})
+  t.after(()=>cache.close())
+  assert.equal((await cache.read()).snapshot.memory.acceptedCount,1)
+  for (const count of [2,3]) {
+    const result = await cache.read({force:true})
+    assert.equal(result.snapshot.items[0].name,String(count))
+    assert.equal(result.snapshot.memory.acceptedCount,count)
+    assert.equal(result.cache.stale,false); assert.equal(result.cache.refreshing,false)
+    assert.equal(result.cache.error,undefined)
+  }
+  await cache.close()
+  const restored = await openEvolutionCache({directory:f.directory,identity:'reader',now:()=>1004,
+    collect:()=>{throw Error('published generation must survive restart')}})
+  t.after(()=>restored.close())
+  assert.equal((await restored.read()).snapshot.memory.acceptedCount,3)
+})
+
+test('Windows replacement failure restores old pages and recovers after the external reader closes', {skip:process.platform!=='win32'}, async t => {
+  const f = await setup(t)
+  await f.cache.read()
+  const path = join(f.directory,filename('reader')), before = await readFile(path)
+  const held = await open(path,'r')
+  try {
+    const failed = await f.cache.read({force:true})
+    assert.equal(failed.cache.error,'EVOLUTION_CACHE_REFRESH_FAILED')
+    assert.equal(failed.cache.stale,true); assert.equal(failed.snapshot.items[0].name,'1')
+    assert.deepEqual(await readFile(path),before)
+    assert.equal((await f.cache.read()).snapshot.items[0].name,'1')
+  } finally {await held.close()}
+  const recovered = await f.cache.read({force:true})
+  assert.equal(recovered.cache.stale,false); assert.equal(recovered.cache.error,undefined)
+  assert.equal(recovered.snapshot.items[0].name,'3')
 })
