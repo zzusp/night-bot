@@ -735,7 +735,7 @@
       "source": "platform-schedule.js",
       "sourceSha256": "2e3da4accc1654b8eff117b3df8db8cdfab5d88f1df53c86f27ad1d345f400ac",
       "status": "adapted",
-      "sha256": "51730436a7045e1e9330409c1b6b74c79c5291cd43df1bdcb28ab1bd80e40422",
+      "sha256": "8e2fc269e2e5534b6616e9fe6f44da4386bafd0b917dd0ef5f1cb5fe2b9c92c1",
       "adaptation": "Official typed schedule admission and tools; Host scheduler and actual admitted-packet/settled recovery close the inactive-record-before-enqueue window without replay. 原生平台排期支持直接消息来源及认证作者，保留旧持久排期恢复而不创建虚拟Topic。 SG10：当前schedule提示/通知工具采用中性会话和actor合同，保留原提醒文本与精确冷恢复匹配。 托管渠道目标切换在真实提交、恢复和发送前校验当前作用域，并暴露按群在途证明；保留既有调度器和结果落账，不增加调度机制。"
     },
     {
@@ -813,7 +813,7 @@
       "source": "store.js",
       "sourceSha256": "642f453d7baf48c065c8f504028a59e5052d027487b6433d916ab87c522bcfe2",
       "status": "adapted",
-      "sha256": "42e5c38fa5feaa1e06ac3adf793909ca858604a08fc4c21f184784f767036b5a",
+      "sha256": "2dbfe01b68541e853b1247179215e3e341da62fd9f4c3d6a89ab903a3d92ad0b",
       "adaptation": "Persist typed triage batch membership/session/generation and preliminary reply provenance in existing authoritative domains. Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation. 持久平台身份区分直接source与历史unit的互斥结构；保留消息及通知旧记录可读。 增加按群只读枚举现有平台提醒绑定，包含 native 建立前的半提交记录，不增加表或 schema。"
     },
     {

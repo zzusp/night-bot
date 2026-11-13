@@ -342,3 +342,21 @@ always choose the right context. Very large histories can still incur SQLite
 search work; keyword matching is not semantic/vector retrieval. Already-admitted
 model context is a snapshot, so current source versions must be rechecked before
 relying on facts after a later edit or withdrawal.
+
+
+### 周期进度检查
+
+Router 的 `platform_schedule_submit` 使用互斥的 `at`（一次）或
+`every_seconds`（至少 60 秒的持续间隔）。例如“每 10 分钟检查进度直到工作完成”
+使用 `every_seconds: 600` 与 `stopWhen: {taskIds: [...]}`，不是一次性 `at`。
+Router 先安排/查明本会话实际工作任务，保留工作验收定义，不创建空监控任务。
+Host 核实任务属于本会话；每期从当前任务账本取新快照。只有指定任务全部存在、
+无技术阻塞、状态为 completed 且完成记录对应当前需求/控制/执行轮次时，
+才在完成期汇报后停止；等待、暂停、失败、旧轮次完成不满足条件。
+没有 stopWhen 的显式周期请求持续运行，停止条件不明时不能声称自动停止已安排。
+
+Native Schedule 仍是唯一计时与冷启动投递者，停机后只补最新一期。平台桥接
+按真实 occurrence 建独立出站身份，已处理期不能重发；源消息失效或终止后
+拒绝后续输入，冷恢复清理已终止但尚未来得及撤销的 native 排期。桥接检查与
+发送只限原会话。任务 completed 是任务账本完成证据，不替代生产现场验收；
+原任务必须完整保留用户要求的上线条件。旧一次性排期不会凭文本自动升级。

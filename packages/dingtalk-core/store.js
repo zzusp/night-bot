@@ -224,13 +224,15 @@ const taskSchema = z.object({
 const platformScheduleFields = {
   sessionId: z.string().min(1), requestId: z.string().min(1), groupId: z.string().min(1), messageId: z.string().min(1),
   messageVersion: z.number().int().positive(), timezone: z.string().min(1), title: z.string().min(1).max(120),
-  prompt: z.string().min(1).max(8000), at: z.string().datetime(), scheduleId: z.string().optional(),
-  outcome: z.enum(['replied', 'expired', 'superseded']).optional(), completedAt: z.string().optional(),
+  prompt: z.string().min(1).max(8000), at: z.string().datetime().optional(), everySeconds: z.number().int().min(60).optional(),
+  stopWhen: z.strictObject({taskIds:z.array(z.string().min(1)).min(1).max(30)}).optional(),
+  lastOccurrenceAt:z.string().datetime().optional(), scheduleId: z.string().optional(),
+  outcome: z.enum(['replied', 'expired', 'superseded', 'completed']).optional(), completedAt: z.string().optional(),
 }
 const platformScheduleSchema = z.union([
   z.strictObject({...platformScheduleFields,sourceMode:z.literal('direct'),sourceId:z.string().min(1),actorId:z.string().min(1)}),
   z.strictObject({...platformScheduleFields,unitId:z.string().min(1),unitRevision:z.number().int().positive()}),
-])
+]).refine(value=>(value.at!==undefined)!==(value.everySeconds!==undefined), 'exactly one schedule timing').refine(value=>!value.stopWhen||value.everySeconds!==undefined,'stop condition requires recurring schedule')
 const messageIngressSchema = z.strictObject({ paused: z.boolean(), pausedAt: z.iso.datetime().optional(), recoveryFromAt: z.iso.datetime().optional() })
 const schedulerSchema = z.object({
   messageIngress: messageIngressSchema.optional(),
@@ -686,13 +688,13 @@ export async function openResidentStore(storageDomain) {
       const value = platformScheduleSchema.parse(input), key = `platform-schedule:${value.sessionId}`
       const current = scheduler.get(key)?.platformSchedule
       if (current) {
-        const { scheduleId, outcome, completedAt, ...identity } = current
+        const { scheduleId, outcome, completedAt, lastOccurrenceAt, ...identity } = current
         if (!isDeepStrictEqual(identity, value)) throw new Error('platform_schedule_identity_conflict')
       } else await scheduler.put(key, { tasks: [], platformSchedule: value })
       return scheduler.get(key).platformSchedule
     }),
     updatePlatformSchedule: async (sessionId, changes) => {
-      if (Object.keys(changes).some(key => !['scheduleId', 'outcome', 'completedAt'].includes(key))) throw new Error('platform_schedule_update_invalid')
+      if (Object.keys(changes).some(key => !['scheduleId', 'outcome', 'completedAt', 'lastOccurrenceAt'].includes(key))) throw new Error('platform_schedule_update_invalid')
       await scheduler.update(`platform-schedule:${sessionId}`, current => {
         if (!current?.platformSchedule) throw new Error('platform_schedule_missing')
         return { ...current, platformSchedule: platformScheduleSchema.parse({ ...current.platformSchedule, ...changes }) }

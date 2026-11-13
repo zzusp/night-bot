@@ -17,16 +17,16 @@ async function fixture(t){
   const root=await mkdtemp(join(tmpdir(),'platform-schedule-contract-'))
   let domains=await openNativeDomains({root:join(root,'domains')})
   let store=await openResidentStore(domains),bridge,clock=Date.parse('2026-10-21T00:00:00Z'),createCount=0
-  const records=[]
+  const records=[],tasks=[]
   // A Host-owned session was already persisted; native scheduling belongs to the
   // injected service. We test persistence/identity calls, not its clock algorithm.
   const native={catalog:async()=>structuredClone(records),async create(sessionId,args){
-    createCount++;const record={id:'native-'+createCount,sessionId,kind:'at',scheduledAt:args.at,title:args.title,prompt:args.prompt,status:'active'}
+    createCount++;const record={id:'native-'+createCount,sessionId,kind:args.every_seconds?'every':'at',...(args.every_seconds?{everySeconds:args.every_seconds}:{}),scheduledAt:args.at??new Date(clock+args.every_seconds*1000).toISOString(),title:args.title,prompt:args.prompt,status:'active'}
     records.push(record);return structuredClone(record)}}
   const ctx={get:name=>name==='schedule'?native:name==='sessionController'?{}:undefined,
     sessionPersistence:{stat:async()=>({})},on:()=>()=>{}}
   const open=()=>bridge=createPlatformSchedules({ctx,store,root,legacy:{getAgentConfig:()=>({agentPreset:'synthetic'})},
-    now:()=>clock,readTasks:async()=>[],notify:()=>assert.fail('submission must not deliver')})
+    now:()=>clock,readTasks:async()=>structuredClone(tasks),notify:()=>assert.fail('submission must not deliver')})
   await store.subscribe({groupId:'g',timezone:'Asia/Shanghai'})
   const text='At the agreed time report current progress'
   await store.ingest({groupId:'g',messageId:'m',text,senderOpenDingTalkId:'author',occurredAt:new Date(clock).toISOString()})
@@ -37,7 +37,7 @@ async function fixture(t){
     requestId:fixedUnitRequestId('g',message,unit)}
   open()
   t.after(async()=>{await bridge.close();await store.close();await domains.closeAll();await rm(root,{recursive:true,force:true})})
-  return {source,records,native,ctx,args:{title:'Progress report',prompt:'Report current progress to the group',at:'2026-10-21T09:00:00+08:00'},
+  return {source,records,tasks,native,ctx,args:{title:'Progress report',prompt:'Report current progress to the group',at:'2026-10-21T09:00:00+08:00'},
     get store(){return store},get creates(){return createCount},submit:(args,identity=source)=>bridge.submit(identity,args),
     tick:ms=>{clock+=ms},setTime:at=>{clock=Date.parse(at)},
     async restart(){await bridge.close();await store.close();await domains.closeAll();domains=await openNativeDomains({root:join(root,'domains')});store=await openResidentStore(domains);open()}}
@@ -164,4 +164,23 @@ test('retained historical time summarizer counts multi-year UTC slots exactly wi
   assert.deepEqual(summarizeTimeSlots({kind:'daily',time:'09:00'},'Asia/Shanghai',
     Date.parse('2024-01-01T01:00:00Z'),Date.parse('2026-01-01T01:00:00Z')),
     {latest:'2026-01-01T01:00:00.000Z',count:732})
+})
+
+
+test('periodic platform contract preserves native interval and stop references across retry/restart',async t=>{
+ const f=await fixture(t);f.tasks.push({taskId:'work',groupId:'g'})
+ const args={title:'Progress',prompt:'Check every ten minutes until this work finishes',every_seconds:600,stopWhen:{taskIds:['work']}}
+ const first=await f.submit(args);assert.equal(f.records[0].kind,'every');assert.equal(f.records[0].everySeconds,600)
+ assert.equal(first.every_seconds,600);assert.deepEqual(first.stopWhen,{taskIds:['work']})
+ await f.restart();assert.deepEqual(await f.submit(args),first);assert.equal(f.creates,1)
+ for(const patch of [{at:f.args.at},{every_seconds:60},{stopWhen:{taskIds:['other']}}])await assert.rejects(f.submit({...args,...patch}))
+ assert.equal(f.creates,1);assert.deepEqual(f.store.listTasks(),[])
+})
+
+test('periodic platform rejects ambiguous timing, invalid interval and unbound stop criteria',async t=>{
+ const f=await fixture(t),base={title:'Progress',prompt:'Monitor work'}
+ for(const args of [{...base},{...base,at:f.args.at,every_seconds:600},{...base,every_seconds:0},{...base,every_seconds:59},{...base,every_seconds:60.1},{...base,every_seconds:600,stopWhen:{taskIds:[]}},{...base,every_seconds:600,stopWhen:{taskIds:['missing']}},{...base,at:f.args.at,stopWhen:{taskIds:['work']}}])await assert.rejects(f.submit(args))
+ f.tasks.push({taskId:'foreign',groupId:'another-group'})
+ await assert.rejects(f.submit({...base,every_seconds:600,stopWhen:{taskIds:['foreign']}}),/platform_schedule_task_forbidden/)
+ assert.equal(f.creates,0)
 })

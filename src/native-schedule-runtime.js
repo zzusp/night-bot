@@ -9,7 +9,7 @@ const identity=occurrences=>'schedule-message-'+createHash('sha256').update(JSON
  * batch before task receipts or the official business input outbox are touched.
  * Pi owns custom-message queueing, inference and admitted-entry recovery. */
 export class ScheduleRuntime {
- constructor(ctx,tasks,transact,commit,retention,{deliveries,saveDelivery}){Object.assign(this,{ctx,tasks,transact,commit,retention,deliveries,saveDelivery});this.stopping=false;this.requested=false}
+ constructor(ctx,tasks,transact,commit,retention,{deliveries,saveDelivery}){Object.assign(this,{ctx,tasks,transact,commit,retention,deliveries,saveDelivery});this.stopping=false;this.requested=false;this.platformSends=new Map()}
  requestDrive(){
   if(this.stopping)return
   this.requested=true;clearTimeout(this.timer)
@@ -23,6 +23,11 @@ export class ScheduleRuntime {
     for(const send of sends)void send()
    }
   }).catch(error=>this.ctx.logger.warn('schedule: dispatch stopped: '+error.message)).finally(()=>{this.running=undefined;if(this.requested&&!this.stopping)this.requestDrive()})
+ }
+ async serializePlatformDelivery(sessionId,send){
+  const prior=this.platformSends.get(sessionId)??Promise.resolve()
+  const work=prior.catch(()=>{}).then(send);this.platformSends.set(sessionId,work)
+  try{return await work}finally{if(this.platformSends.get(sessionId)===work)this.platformSends.delete(sessionId)}
  }
  async dispose(){this.stopping=true;clearTimeout(this.timer);await this.running}
  async acknowledged(row){
@@ -69,7 +74,22 @@ export class ScheduleRuntime {
     if(typeof agent.input?.enqueue!=='function'||typeof agent.input?.deliver!=='function')throw new Error('NIGHT_SCHEDULE_OFFICIAL_INPUT_REQUIRED')
     await agent.input.enqueue(row.packet)
     if(!row.queued)await this.saveDelivery({...row,queued:true})
-    sends.push(async()=>{if(this.stopping)return;try{await agent.input.deliver(row.packet.id,{deliverAs:'followUp'})}catch(error){this.warn(row.packet.id,error)}})
+    sends.push(async()=>{
+     const send=async()=>{
+      if(this.stopping)return
+      try{
+       // Platform per-occurrence query/reply tools bind admission.current. Do not
+       // replace it while an earlier occurrence is still using those tools.
+       // Native delivery rows are already durable; no schedule mutation lock is held.
+       if(agent.metadata?.runtimeOwner==='platform-schedule')await agent.whenIdle().catch(()=>{})
+       if(this.stopping)return
+       await agent.input.deliver(row.packet.id,{deliverAs:'followUp'})
+       if(agent.metadata?.runtimeOwner==='platform-schedule')await agent.whenIdle()
+      }catch(error){this.warn(row.packet.id,error)}
+     }
+     if(agent.metadata?.runtimeOwner!=='platform-schedule')return send()
+     return this.serializePlatformDelivery(row.sessionId,send)
+    })
    }catch(error){for(const item of row.packet.source.occurrences)failed.add(item.id);this.warn(row.packet.id,error)}
   }
   if(!this.stopping){const targets=this.tasks().filter(task=>task.status==='active'&&!failed.has(task.record.id)&&!covered.has(JSON.stringify([task.sessionId,task.record.id,task.record.scheduledAt]))).map(task=>Date.parse(task.record.scheduledAt));if(targets.length){this.timer=setTimeout(()=>this.requestDrive(),Math.max(0,Math.min(Math.min(...targets)-Date.now(),MAX_DELAY)));this.timer.unref()}}

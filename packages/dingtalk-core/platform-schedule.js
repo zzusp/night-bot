@@ -13,8 +13,8 @@ import {conversationNotificationInstructions,conversationMessageActorId} from '.
 
 const fail=code=>Object.assign(new Error(code),{code})
 const output = { schema: { type: 'object' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] }
-const deliveryPrompt = binding => `执行原群已授权的一次平台事项：${binding.prompt}\n约定时间 ${binding.at}，原群 ${binding.groupId}。必须先使用 platform_task_query 核对本群事实，再用 platform_reply_submit 提交；这两个工具未就绪时等待宿主恢复，不自行发群、不改排时间、不创建业务任务。已过期时判断补报或失去意义而静默，不能把入站提醒当已交付。`
-const matchesNative = (binding, record) => record?.kind === 'at' && record.sessionId === binding.sessionId && record.scheduledAt === binding.at
+const deliveryPrompt = binding => binding.everySeconds ? `按原消息持续执行平台检查：${binding.prompt}。每 ${binding.everySeconds} 秒一次，检查范围 ${JSON.stringify(binding.stopWhen??null)}。每次先 platform_task_query 读取当前任务快照，再 platform_reply_submit 汇报本次，不另建提醒或业务任务。只有宿主核实指定任务当前版本全部完成后才停止；等待、失败、阻塞不是完成。` : `执行原群已授权的一次平台事项：${binding.prompt}\n约定时间 ${binding.at}，原群 ${binding.groupId}。必须先使用 platform_task_query 核对本群事实，再用 platform_reply_submit 提交；这两个工具未就绪时等待宿主恢复，不自行发群、不改排时间、不创建业务任务。已过期时判断补报或失去意义而静默，不能把入站提醒当已交付。`
+const matchesNative = (binding, record) => (binding.everySeconds ? record?.kind === 'every' && record.everySeconds === binding.everySeconds : record?.kind === 'at' && record.scheduledAt === binding.at) && record.sessionId === binding.sessionId
   && record.prompt === deliveryPrompt(binding) && record.title === binding.title && (!binding.scheduleId || binding.scheduleId === record.id)
 
 const recoveryInput=(binding,record)=>({id:`${record.id}-platform-recovery:${record.lastDelivery.messageId}`,source:{kind:'platform-schedule-recovery',scheduleId:record.id,originalPacketId:record.lastDelivery.messageId,requestId:binding.requestId},content:`[SCHEDULE REMINDER]\n原生定时已在 ${record.lastDelivery.deliveredAt} 投入本会话，平台工具现已就绪。沿原事项补报或判断过期，只通过 platform_reply_submit 结清；不要创建新的 schedule。`})
@@ -38,14 +38,14 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
   }
   const assertTarget=groupId=>ctx.get?.('channels')?.assertGroupTarget(groupId)
   const settle = (binding, outcome) => store.updatePlatformSchedule(binding.sessionId, { outcome, completedAt: new Date(now()).toISOString() })
-  async function deliver(binding, decision) {
+  async function deliver(binding, decision, occurrenceAt) {
     assertTarget(binding.groupId)
     const current = source(binding)
     if (!current) throw new Error('platform_schedule_source_stale')
-    const outboundId = outboundKey(binding.requestId), message = current.message
+    const outboundId = outboundKey(binding.requestId + (occurrenceAt ? ':'+occurrenceAt : '')), message = current.message
     await notify({ groupId: binding.groupId, outboundId, message, unit: current.unit, directSource:binding.sourceMode==='direct'?{sourceId:binding.sourceId,actorId:binding.actorId}:undefined, decision, sessionId: binding.sessionId,
       preflight: () => { assertTarget(binding.groupId);if (!source(binding)) throw new Error('platform_schedule_source_stale') } })
-    await settle(binding, 'replied')
+    if(!binding.everySeconds)await settle(binding, 'replied')
   }
   const mount = async agent => {
     const binding = store.getPlatformSchedule?.(agent.id)
@@ -53,7 +53,16 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
     if(agent.metadata?.id!==agent.id||scopeOf(agent.ctx)!==agent||agent.lifecycle?.isLive()!==true||officialWorkingDirectoryOrigin(agent)!==agent.metadata.cwd||agent.metadata.origin==='subagent'||(agent.metadata.delegationDepth??0)>0)throw fail('platform_schedule_actor_unbound')
     if(agent.piSession&&ctx.get('agents').get(agent.id)!==agent)throw fail('platform_schedule_actor_unbound')
     const agentCtx = agent.ctx, disposers = [], pages = new Map()
-    let snapshot, submission = Promise.resolve()
+    let snapshot, occurrenceAt, submission = Promise.resolve()
+    const dueOutboundId=()=>outboundKey(binding.requestId+(occurrenceAt?':'+occurrenceAt:''))
+    const checkComplete=tasks=>!!binding.stopWhen&&binding.stopWhen.taskIds.every(id=>{const task=tasks.find(row=>row.taskId===id&&row.groupId===binding.groupId);return task?.status==='completed'&&!task.technicalFailure&&!!task.completion&&['requirementRevision','controlRevision','runSequence'].every(key=>task.completion[key]===task[key])})
+    const finishOccurrence=async({reported=true}={})=>{
+      if(!binding.everySeconds)return
+      if(!occurrenceAt)throw fail('platform_schedule_delivery_unproven')
+      const tasks=await readTasks(binding.groupId)
+      await store.updatePlatformSchedule(binding.sessionId,{lastOccurrenceAt:occurrenceAt})
+      if(reported&&checkComplete(snapshot?.tasks??[])&&checkComplete(tasks)&&binding.stopWhen.taskIds.every(id=>isDeepStrictEqual(snapshot.tasks.find(task=>task.taskId===id)?.completion,tasks.find(task=>task.taskId===id)?.completion))){await settle(binding,'completed');await ctx.get('schedule').delete({sessionId:binding.sessionId,id:store.getPlatformSchedule(binding.sessionId).scheduleId})}
+    }
     disposers.push(bindPlatformScheduleSource(agent,{isReady:()=>!closed&&mounted.get(agent)?.prepared===true}))
     const assert = exec => {
       assertTarget(binding.groupId)
@@ -68,7 +77,7 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
         const key = JSON.stringify([args.state ?? 'all', args.day ?? null, args.limit ?? 50]), consumed = pages.get(key)?.consumed ?? 0
         if ((args.offset ?? 0) > consumed) throw new Error('platform_task_page_gap')
         pages.set(key, { consumed: Math.max(consumed, page.nextOffset), total: page.total })
-        return page
+        return {...page,...(binding.everySeconds?{stopWhen:binding.stopWhen??null,stopConditionMet:checkComplete(snapshot.tasks)}:{})}
       } }))
     disposers.push(agentCtx.get('tools').register({ name: 'platform_reply_submit', description: '提交本次到期结果到原群可靠发件箱。仅失去意义的过期提醒用 text=null 静默结清；有价值的汇报仍补报并注明实际时间。',
       parameters: platformReplyParameters, output,
@@ -77,12 +86,14 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
         assert(exec)
         const saved = store.getPlatformSchedule(binding.sessionId)
         if (saved.outcome) {exec.concludeTurn();return { status: saved.outcome }}
-        if (text === null) { await settle(binding, 'expired'); exec.concludeTurn(); return { status: 'expired' } }
-        if (typeof text !== 'string' || !text.trim()) throw new Error('platform_reply_empty')
         if ([...pages.values()].some(page => page.consumed < page.total)) throw new Error('platform_task_pages_unread')
-        await deliver(binding, decision)
+        if (text === null) { if(binding.everySeconds){if(!snapshot)throw fail('platform_task_query_required');await finishOccurrence({reported:false})}else await settle(binding, 'expired'); exec.concludeTurn(); return { status: binding.everySeconds?'occurrence-settled':'expired' } }
+        if (typeof text !== 'string' || !text.trim()) throw new Error('platform_reply_empty')
+        if(binding.everySeconds&&!snapshot)throw fail('platform_task_query_required')
+        await deliver(binding, decision, occurrenceAt)
+        await finishOccurrence()
         exec.concludeTurn()
-        return { status: 'accepted', outboundId: outboundKey(binding.requestId) }
+        return { status: 'accepted', outboundId: dueOutboundId() }
       }) }))
     if(typeof agent.requestPolicy?.addBeforeRequest!=='function')throw fail('platform_schedule_request_policy_required')
     disposers.push(agent.requestPolicy.addBeforeRequest(async ({actor,signal})=>{
@@ -96,18 +107,25 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
       const schedule=ctx.get('schedule'),native=(await schedule.catalog()).find(record=>matchesNative(saved,record))
       if(!native){await settle(binding,'superseded');throw fail('platform_schedule_superseded')}
       if(!saved.scheduleId){await store.updatePlatformSchedule(binding.sessionId,{scheduleId:native.id});saved=store.getPlatformSchedule(binding.sessionId)}
-      const originalId=native.lastDelivery?.messageId,original=agent.admission.lookupPacket(originalId)
-      if(!originalId||!original||!await schedule.authorizeInput(original,agent))throw fail('platform_schedule_delivery_unproven')
       const current=await agent.admission.current(),packet=current?.messages?.length===1?current.messages[0]:undefined
       if(!packet||!isDeepStrictEqual(packet,agent.admission.lookupPacket(packet.id)))throw fail('platform_schedule_delivery_unproven')
-      if(packet.id!==originalId){
-        const recoveryPacket=recoveryInput(binding,native)
-        if(!isDeepStrictEqual(packet,recoveryPacket)||!(await agent.receipts.read()).some(receipt=>receipt.domain==='admission'&&receipt.kind==='enqueued-internal'&&isDeepStrictEqual(receipt.payload,packet)))throw fail('platform_schedule_delivery_unproven')
+      let original=packet
+      if(packet.source?.kind==='platform-schedule-recovery'){
+        original=agent.admission.lookupPacket(packet.source.originalPacketId)
+        if(!isDeepStrictEqual(packet,recoveryInput(binding,native))||!(await agent.receipts.read()).some(receipt=>receipt.domain==='admission'&&receipt.kind==='enqueued-internal'&&isDeepStrictEqual(receipt.payload,packet)))throw fail('platform_schedule_delivery_unproven')
       }
-      const previous=store.getGroup(binding.groupId).outbox.find(item=>item.outboundId===outboundKey(binding.requestId))
-      if(previous){await deliver(binding);throw fail('platform_schedule_settled')}
+      if(!original||!await schedule.authorizeInput(original,agent))throw fail('platform_schedule_delivery_unproven')
+      const occurrence=original.source?.occurrences?.find(item=>item.id===native.id)
+      if(!occurrence||original.source.occurrences.length!==1)throw fail('platform_schedule_delivery_unproven')
+      if(binding.everySeconds){
+        if(Date.parse(occurrence.occurrenceAt)>now())throw fail('platform_schedule_not_due')
+        if(saved.lastOccurrenceAt&&occurrence.occurrenceAt<=saved.lastOccurrenceAt)throw fail('platform_schedule_settled')
+        if(occurrenceAt!==occurrence.occurrenceAt){occurrenceAt=occurrence.occurrenceAt;snapshot=undefined;pages.clear()}
+      }else if(original.id!==native.lastDelivery?.messageId)throw fail('platform_schedule_delivery_unproven')
+      const previous=store.getGroup(binding.groupId).outbox.find(item=>item.outboundId===dueOutboundId())
+      if(previous){await deliver(binding,undefined,occurrenceAt);await finishOccurrence();throw fail('platform_schedule_settled')}
     }))
-    disposers.push(agentCtx.get('systemPrompt').section({ name: 'conversation-platform-schedule', order: 120, officialText: ({actor}) => {if(actor!==agent)throw fail('platform_schedule_actor_mismatch');return `这是宿主持有的独立平台定时会话，仅执行原用户已交办的一次事项，不创建业务任务，不重新安排同一提醒。原群=${binding.groupId}；约定时间=${binding.at}；默认时区=${binding.timezone}；本次恢复时刻=${new Date(now()).toISOString()}。原消息=${JSON.stringify(source(binding)?.unit?.sourceRanges ?? [{sourceId:binding.sourceId,text:source(binding)?.message.text}])}。事项：${binding.prompt}。到期汇报先调用 platform_task_query 读取本群最新事实，分页读全，再调用 platform_reply_submit 提交原群答复，普通自然语言不会发送。结合原消息的明确时区与实际执行时刻重新核对目标；已过期的有价值汇报补报一次并注明实际时间和延迟，失去意义的定点提醒可 text=null 静默结清，不得改排明天。只有不确定且影响执行才澄清。宿主的 schedule 送入会话回执不代表汇报已发送；只有原群通知账确认才称送达。`} }))
+    disposers.push(agentCtx.get('systemPrompt').section({ name: 'conversation-platform-schedule', order: 120, officialText: ({actor}) => {if(actor!==agent)throw fail('platform_schedule_actor_mismatch');return `这是宿主持有的独立平台定时会话，仅执行原用户已交办的事项，不创建业务任务，不重新安排同一提醒。${binding.everySeconds?'这是周期检查，每次必须重新查询当前事实；首次回复不结束周期。宿主仅在指定任务当前版本全部完成时停止。':''}原群=${binding.groupId}；约定时间=${binding.at}；默认时区=${binding.timezone}；本次恢复时刻=${new Date(now()).toISOString()}。原消息=${JSON.stringify(source(binding)?.unit?.sourceRanges ?? [{sourceId:binding.sourceId,text:source(binding)?.message.text}])}。事项：${binding.prompt}。到期汇报先调用 platform_task_query 读取本群最新事实，分页读全，再调用 platform_reply_submit 提交原群答复，普通自然语言不会发送。结合原消息的明确时区与实际执行时刻重新核对目标；已过期的有价值汇报补报一次并注明实际时间和延迟，失去意义的定点提醒可 text=null 静默结清，不得改排明天。只有不确定且影响执行才澄清。宿主的 schedule 送入会话回执不代表汇报已发送；只有原群通知账确认才称送达。`} }))
     disposers.push(agentCtx.get('systemPrompt').section({ name: 'conversation-reply', order: 119, officialText: ({actor}) => actor===agent?conversationReplyInstructions:'' }))
     disposers.push(agentCtx.get('systemPrompt').section({ name: 'conversation-notification', order: 121,
       officialText: ({actor}) => {if(actor!==agent)throw fail('platform_schedule_actor_mismatch');return `${conversationNotificationInstructions}\n受信原请求与近期群上下文（不代表全部都要通知）：${JSON.stringify(platformNotificationContext(store.getGroup(binding.groupId), source(binding)?.message ?? {}))}`} }))
@@ -125,7 +143,8 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
       if (!schedule || !controller) return
       for (const record of await schedule.catalog()) {
         const binding = store.getPlatformSchedule?.(record.sessionId)
-        if (!binding || binding.outcome || !matchesNative(binding, record) || record.status !== 'inactive' || !record.lastDelivery || recovered.has(record.id)) continue
+        if(binding?.everySeconds&&binding.outcome&&matchesNative(binding,record)){await schedule.delete({sessionId:binding.sessionId,id:record.id});continue}
+        if (!binding || binding.outcome || !matchesNative(binding, record) || (!binding.everySeconds&&record.status !== 'inactive') || !record.lastDelivery || (binding.everySeconds&&binding.lastOccurrenceAt&&record.lastDelivery.scheduledAt<=binding.lastOccurrenceAt) || recovered.has(record.id+':'+record.lastDelivery.messageId)) continue
         assertTarget(binding.groupId);recoveryGroups.add(binding.groupId)
         try{
         let result=await controller.resolveAgent(record.sessionId)
@@ -148,7 +167,8 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
         watch(actor)
         if(!mounted.get(actor)?.prepared)throw fail('platform_schedule_prepared_tools_required')
         try{await actor.whenIdle()}catch(error){if(!['platform_schedule_settled','platform_schedule_superseded'].includes(error.code))throw error}
-        if(closed||store.getPlatformSchedule(record.sessionId).outcome)continue
+        const latest=store.getPlatformSchedule(record.sessionId)
+        if(closed||latest.outcome||(binding.everySeconds&&latest.lastOccurrenceAt&&record.lastDelivery.scheduledAt<=latest.lastOccurrenceAt))continue
         const original=actor.admission.lookupPacket(record.lastDelivery.messageId)
         if(!original)continue
         if(!await schedule.authorizeInput(original,actor))throw fail('platform_schedule_delivery_unproven')
@@ -156,11 +176,19 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
         if(status==='pending')continue
         if(status==='cancelled')continue
         if(status!=='admitted')throw fail('platform_schedule_delivery_unproven')
-        recovered.add(record.id)
+        recovered.add(record.id+':'+record.lastDelivery.messageId)
         const packet=recoveryInput(binding,record)
         assertTarget(binding.groupId)
-        await enqueueBusinessNotice(actor,packet)
-        try{await actor.input.deliver(packet.id,{deliverAs:'followUp'})}catch(error){if(!['platform_schedule_settled','platform_schedule_superseded'].includes(error.code))throw error}
+        const sendRecovery=async()=>{
+          if(closed)return
+          await actor.whenIdle().catch(()=>{})
+          const saved=store.getPlatformSchedule(record.sessionId)
+          if(closed||saved.outcome||(binding.everySeconds&&saved.lastOccurrenceAt&&record.lastDelivery.scheduledAt<=saved.lastOccurrenceAt))return
+          await enqueueBusinessNotice(actor,packet)
+          try{await actor.input.deliver(packet.id,{deliverAs:'followUp'});await actor.whenIdle()}catch(error){if(!['platform_schedule_settled','platform_schedule_superseded'].includes(error.code))throw error}
+        }
+        if(binding.everySeconds)await schedule.runtime.serializePlatformDelivery(record.sessionId,sendRecovery)
+        else await sendRecovery()
         }finally{recoveryGroups.delete(binding.groupId)}
       }
   }
@@ -182,12 +210,13 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
     // Recover a native create committed before its local receipt, including an
     // already-fired entry. Never recreate a deleted, previously accepted record.
     const existing = store.getPlatformSchedule(binding.sessionId)
-    if (existing && ['title', 'prompt', 'at', 'timezone'].some(key => existing[key] !== binding[key])) throw new Error('platform_schedule_identity_conflict')
+    if (existing && ['title', 'prompt', 'at', 'timezone','everySeconds','stopWhen'].some(key => !isDeepStrictEqual(existing[key],binding[key]))) throw new Error('platform_schedule_identity_conflict')
+    if(existing?.outcome)return {status:existing.outcome,scheduleId:existing.scheduleId}
     const native = existing ? (await schedule.catalog()).find(item => item.sessionId === binding.sessionId) : null
     if (native) {
       if (!matchesNative(existing, native)) throw new Error('platform_schedule_identity_conflict')
       await store.updatePlatformSchedule(binding.sessionId, { scheduleId: native.id })
-      return { status: native.status === 'active' ? 'scheduled' : 'triggered', scheduleId: native.id, at: native.scheduledAt }
+      return { status: native.status === 'active' ? 'scheduled' : 'triggered', scheduleId: native.id, at: native.scheduledAt,...(binding.everySeconds?{every_seconds:binding.everySeconds,stopWhen:binding.stopWhen??null}:{}) }
     }
     if (existing?.scheduleId || existing?.outcome) return { status: existing.outcome ?? 'cancelled', scheduleId: existing.scheduleId }
     if (Date.parse(binding.at) <= now()) return { status: 'expired', at: binding.at }
@@ -211,17 +240,24 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
       } finally { await handle.dispose() }
     }
     if (!source(binding)) throw new Error('platform_schedule_source_stale')
-    const record = await schedule.create(binding.sessionId, { title: binding.title, prompt: deliveryPrompt(binding), at: binding.at })
+    const record = await schedule.create(binding.sessionId, { title: binding.title, prompt: deliveryPrompt(binding), ...(binding.everySeconds?{every_seconds:binding.everySeconds}:{at:binding.at}) })
     await store.updatePlatformSchedule(binding.sessionId, { scheduleId: record.id })
-    return { status: 'scheduled', scheduleId: record.id, at: record.scheduledAt }
+    return { status: 'scheduled', scheduleId: record.id, at: record.scheduledAt,...(binding.everySeconds?{every_seconds:binding.everySeconds,stopWhen:binding.stopWhen??null}:{}) }
   }
   return {
     hasInflight:groupId=>[...flightGroups.values()].includes(groupId)||recoveryGroups.has(groupId),
-    async submit(sourceBinding, { title, prompt, at }) {
-      if (typeof at !== 'string' || !/(?:Z|[+-]\d{2}:\d{2})$/.test(at) || !Number.isFinite(Date.parse(at))) throw new Error('platform_schedule_time_requires_offset')
-      if (!z.string().datetime({ offset: true }).safeParse(at).success) throw new Error('platform_schedule_time_invalid')
+    async submit(sourceBinding, { title, prompt, at, every_seconds, stopWhen }) {
+      if((at!==undefined)+(every_seconds!==undefined)!==1)throw fail('platform_schedule_timing_required')
+      if(every_seconds!==undefined&&(!Number.isSafeInteger(every_seconds)||every_seconds<60))throw fail('platform_schedule_interval_invalid')
+      if(stopWhen!==undefined){
+        if(every_seconds===undefined||!stopWhen||Object.keys(stopWhen).length!==1||!Array.isArray(stopWhen.taskIds)||!stopWhen.taskIds.length||stopWhen.taskIds.length>30||new Set(stopWhen.taskIds).size!==stopWhen.taskIds.length||stopWhen.taskIds.some(id=>typeof id!=='string'||!id))throw fail('platform_schedule_stop_invalid')
+        const tasks=await readTasks(sourceBinding.groupId)
+        if(stopWhen.taskIds.some(id=>!tasks.some(task=>task.taskId===id&&task.groupId===sourceBinding.groupId)))throw fail('platform_schedule_task_forbidden')
+      }
+      if (every_seconds===undefined&&(typeof at !== 'string' || !/(?:Z|[+-]\d{2}:\d{2})$/.test(at) || !Number.isFinite(Date.parse(at)))) throw new Error('platform_schedule_time_requires_offset')
+      if (every_seconds===undefined&&!z.string().datetime({ offset: true }).safeParse(at).success) throw new Error('platform_schedule_time_invalid')
       if (typeof title !== 'string' || !title.trim() || title.trim().length > 120 || typeof prompt !== 'string' || !prompt.trim() || prompt.length > 8000) throw new Error('platform_schedule_invalid')
-      const binding = { ...sourceBinding, sessionId: sessionKey(sourceBinding.requestId), title: title.trim(), prompt: prompt.trim(), at: new Date(at).toISOString() }
+      const binding = { ...sourceBinding, sessionId: sessionKey(sourceBinding.requestId), title: title.trim(), prompt: prompt.trim(), ...(every_seconds!==undefined?{everySeconds:every_seconds,...(stopWhen?{stopWhen}:{})}:{at:new Date(at).toISOString()}) }
       assertTarget(binding.groupId)
       const previous = flights.get(binding.sessionId) ?? Promise.resolve()
       const work = previous.catch(() => {}).then(() => prepare(binding))
