@@ -144,3 +144,18 @@ test('filtered thinking keeps following text identity stable and phases follow n
  buffer.accept({type:'message_end',message:{role:'toolResult',toolCallId:'one'}});assert.equal(buffer.snapshot().phase,'tool')
  buffer.accept({type:'message_end',message:{role:'toolResult',toolCallId:'two'}});assert.equal(buffer.snapshot().phase,'waiting');buffer.close()
 })
+
+test('live tool IDs match nonzero official block positions and reject ambiguous reused pending IDs',async()=>{
+ const snapshot=fixture(),buffer=createPiLiveOutputBuffer('pi-live')
+ snapshot.context.projection.entries[0].messages[0].content.unshift({type:'text',text:'先核对材料'})
+ buffer.accept({type:'agent_start'});buffer.accept({type:'tool_execution_start',toolCallId:'call',toolName:'bash'})
+ buffer.accept({type:'tool_execution_update',toolCallId:'call',toolName:'bash',partialResult:{content:[{type:'text',text:'授权输出\n'+'x'.repeat(600)}]}})
+ const persistence={readNative:async()=>snapshot,readLive:()=>buffer.snapshot()}
+ let view=await taskSessionView({task,persistence,stream:true})
+ assert.equal(view.live.items[0].callId,view.items.find(item=>item.kind==='tool-call').callId)
+ snapshot.context.projection.entries.push(row('duplicate',{role:'assistant',content:[{type:'toolCall',id:'call',name:'bash',arguments:{command:'echo duplicate'}}]}))
+ view=await taskSessionView({task,persistence,stream:true});assert.deepEqual(view.live.items,[])
+ snapshot.context.projection.entries.splice(1,0,row('settled',{role:'toolResult',toolCallId:'call',toolName:'bash',content:[{type:'text',text:'此前调用已结束'}]}))
+ view=await taskSessionView({task,persistence,stream:true})
+ assert.equal(view.live.items[0].callId,view.items.filter(item=>item.kind==='tool-call').at(-1).callId)
+})

@@ -480,7 +480,7 @@ Skills 摘要卡的「今日更新」替代「用户显式引用」：Web 只读
 
 ### 会话内容区工具栏
 
-Web 与渠道会话共用 `App` 的会话壳：面包屑与工作动态折叠入口嵌入圆角内容区顶部，全局工具仍位于内容区外的紧凑顶部栏。消息与输入区使用剩余高度、保持独立滚动；非会话页仍使用既有顶部栏与自然内容滚动。标题单行省略，完整名称保留在 DOM，右上活动面板切换按钮有中文名称和展开状态；不添加无行为的装饰操作。桌面侧栏默认打开，窄屏默认关闭且仍可切换，打开时在内容下方有限高堆叠并内部滚动，不覆盖消息或输入。切换面板不重挂对话，不清空草稿、不重新发送。浅深色使用原有 token。
+Web 与渠道会话共用 `App` 的会话壳：面包屑与工作动态折叠入口嵌入圆角内容区顶部，全局工具仍位于内容区外的紧凑顶部栏。消息与输入区使用剩余高度、保持独立滚动；非会话页面包屑同样位于内容面板内，保留自然内容滚动。标题单行省略，完整名称保留在 DOM，右上活动面板切换按钮有中文名称和展开状态；不添加无行为的装饰操作。桌面侧栏默认打开，窄屏默认关闭且仍可切换，打开时在内容下方有限高堆叠并内部滚动，不覆盖消息或输入。切换面板不重挂对话，不清空草稿、不重新发送。浅深色使用原有 token。
 
 - 会话页全局工具（连接状态、权限、概览刷新、主题）保留在内容区外的顶部右侧；内容区右上只放工作动态折叠入口，面包屑仍在内容区内。外部工具条使用紧凑高度。
 
@@ -516,3 +516,24 @@ TODO-card color correction: retain the approved card structure and real TODO sta
 Model streaming feedback follows actual Pi phase events: waiting, thinking, text generation, and tools. The active view polls single-flight every 250ms, stops when hidden, and clears provisional feedback on authorization/error. This is live cumulative SDK output, not fake typing or a token-rate estimate. Phase elapsed time uses the received native phase start; no token counter is invented. Already-public thinking blocks open while live and respect the user's manual collapse; redacted/hidden reasoning remains unavailable. Safe short Chinese natural prose can update before block_end. Structured/ASCII or potentially sensitive text remains buffered until safely projectable; status feedback continues even when no body can be exposed. Tool preview safety is unchanged.
 
 Thinking display correction: use original neutral board-text/board-muted colors, no purple rail or purple panel. Remove stacked left indents: thinking header/body share the normal message text inset (16px plus its 1px border offset), without a leading icon, with no nested body margin or padding. Streaming state, timestamps, disclosure and safety remain unchanged.
+
+### 任务内容区紧凑展示（2026-11-13）
+
+右侧消息以实际排版行盒判断：超过三行默认只显示前三行，提供「展开 / 收起」；三行以内不添加控制。随容器宽度及字体重新测量，普通轮询不重置手动展开。原文、Markdown、授权和正文续读保持不变，不生成摘要，不改写历史累计输入；收起时裁切区域内的链接不进入键盘焦点顺序。
+
+任务详情桌面左执行面板直接顶齐页面外框，全局工具仍在右元信息栏上方；窄屏保留独立工具栏避免遮挡。执行记录左右对称内边距，桌面24px、窄屏16px，滚动条两侧对称占位。TODO卡片在执行画布右上悬浮，不随消息滚走，展开不推动记录；首屏预留紧凑卡片安全空间，展开时只保留标题与可滚动清单，浮层最高120px，不遮住首条记录或开始提示；不挤压下方记录。颜色继续使用既有中性色和蓝色用户消息。
+
+### 所有页面的内容内导航
+
+所有已登录路由共用 App 的位置标题：聊天、渠道会话、任务详情沿用各自内容内头部；任务列表、定时任务、渠道列表、自进化、设置、报错反馈及不存在页面均在主内容圆角面板内部显示一次面包屑。外部紧凑工具栏只承载全局工具，不重复页面标题。普通页面头部与正文水平内边距一致，顶部正文间距收紧；自然滚动、权限、加载失败状态不改变。
+
+所有页面共享 `content-topbar`：桌面头部最小高度52px、内容横向内边距24px；760px以下内边距16px、520px以下头部48px。普通页面正文与面包屑对齐，不再由设置/反馈页面各自居中限宽造成列线错位。表单内部控件及对话消息的阅读宽度不机械拉齐；聊天仍独立滚动，任务详情保持顶齐外框、右侧工具与悬浮TODO的专属布局。
+
+内容头部按钮统一44px点击目标，纵向padding桌面4px/窄屏2px，实际总高52px/48px（不是仅min-height）；不改变图标大小或全局工具栏。
+
+### 独立页面 Header（2026-11-13，取代此前内容区面包屑方案）
+所有页面共用内容面板外的独立 Header：左侧导航和面包屑，右侧保持全局连接、权限、刷新、主题工具；桌面高52px、窄屏48px，横向内边距复用页面的24px/16px。内容区域不再重复面包屑或页面 Header。任务详情与普通页从独立 Header 下方开始；三行消息折叠、对称留白和画布内悬浮 TODO 保持。聊天活动面板开关仍位于内容区右上，只作为浮动工具，不再占据第二条 Header；首屏消息留出安全空间，读写与滚动行为不变。
+
+任务消息内容宽度与对话页复用同一 `--board-content-width`（消息列上限800px，两侧内边距默认16px、1600px以上28px）和滚动条占位；居中，不再采用任务专属全宽消息列。用户/助手正文气泡沿用对话的90%上限、窄屏96%及自然短文宽度。工具与思考仍使用执行记录展示，不改变其内容。悬浮TODO随该阅读区域右边界定位。
+
+- Right-hand message bubbles keep symmetric vertical body padding. Markdown first/last block margins are trimmed only at the bubble boundaries; disclosure controls never use negative bottom margins. Interior paragraph spacing remains intact.

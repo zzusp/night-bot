@@ -25,7 +25,7 @@ export function AgentProgress({ items, title, status }: { items: ProgressItem[];
         <span className="pi-task-meta"><span className="agent-progress-label">{label}</span><span>{completed} / {items.length}</span></span>
         <span className="sr-only">任务待办，{completed} / {items.length} 步已完成，展开或收起</span>
       </summary>
-      {!!items.length && <ol className="agent-progress-steps">{items.map((item, index) => <li className={`agent-progress-step todo-${item.status}`} key={index} aria-current={item.status === 'in_progress' ? 'step' : undefined}>
+      {!!items.length && <ol className="agent-progress-steps" tabIndex={0} aria-label="任务步骤">{items.map((item, index) => <li className={`agent-progress-step todo-${item.status}`} key={index} aria-current={item.status === 'in_progress' ? 'step' : undefined}>
         <span className={`agent-progress-marker ${item.status === 'completed' ? 'is-completed' : item.status === 'in_progress' ? 'is-active' : 'is-pending'}`} aria-hidden="true">{item.status === 'completed' && <RiCheckLine size={10} />}</span>
         <span className="sr-only">{item.status === 'completed' ? '已完成' : item.status === 'in_progress' ? '进行中' : '待处理'}：</span>
         <span className="agent-progress-text">{item.text}{item.redacted && <small>敏感信息已隐藏</small>}</span>

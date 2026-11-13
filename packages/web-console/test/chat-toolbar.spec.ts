@@ -5,7 +5,7 @@ async function login(page: Page) {
   await page.goto('/#/chat')
   await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN)
   await page.getByRole('button', {name: '连接工作空间', exact: true}).click()
-  await expect(page.locator('.chat-panel .conversation-topbar')).toBeVisible()
+  await expect(page.locator('.chat-panel .conversation-tools')).toBeVisible()
 }
 
 for (const width of [1440, 1024, 390]) test(`内容内工具栏与面板切换 ${width}px`, async ({page}) => {
@@ -13,14 +13,16 @@ for (const width of [1440, 1024, 390]) test(`内容内工具栏与面板切换 $
   await login(page)
   await expect(page.locator('.main-frame > .topbar')).toBeVisible()
   await expect(page.locator('.main-frame > .topbar').getByRole('button', {name: '刷新概览'})).toBeVisible()
-  await expect(page.locator('.conversation-topbar').getByRole('button', {name: '刷新概览'})).toHaveCount(0)
-  const panel = page.locator('.chat-panel'), header = panel.locator('.conversation-topbar')
+  await expect(page.locator('.conversation-tools').getByRole('button', {name: '刷新概览'})).toHaveCount(0)
+  const panel = page.locator('.chat-panel'), header = page.locator('.main-frame > .workspace-topbar')
   const frameBox = await page.locator('.main-frame').boundingBox(), panelBox = await panel.boundingBox()
-  expect(panelBox!.y - frameBox!.y).toBeLessThanOrEqual(48)
+  expect(panelBox!.y - frameBox!.y).toBe(width <= 520 ? 48 : 52)
+  await expect(panel.locator('.header-location')).toHaveCount(0)
   await expect(header.getByRole('heading', {level: 1})).toBeVisible()
+  expect((await header.boundingBox())!.height).toBe(width <= 520 ? 48 : 52)
   const composer = page.locator('.board-composer textarea')
   await composer.fill('未发送草稿')
-  const toggle = header.locator('.rail-toggle')
+  const toggle = panel.locator('.rail-toggle')
   for (let i = 0; i < 4; i++) {
     const open = await toggle.getAttribute('aria-expanded') === 'true'
     await toggle.focus(); await page.keyboard.press('Enter')
@@ -36,7 +38,7 @@ for (const width of [1440, 1024, 390]) test(`内容内工具栏与面板切换 $
     await page.getByRole('dialog', {name: '导航'}).getByRole('link', {name: '设置', exact: true}).click()
   } else await page.goto('/#/settings')
   await expect(page.locator('.main-frame > .topbar')).toBeVisible()
-  await expect(page.locator('.main-panel .conversation-topbar')).toHaveCount(0)
+  await expect(page.locator('.main-panel .conversation-tools')).toHaveCount(0)
   await page.goto('/#/chat')
   await expect(composer).toHaveValue('未发送草稿')
   await page.locator('.main-frame > .topbar').getByRole('button', {name: '切换深色外观'}).click()

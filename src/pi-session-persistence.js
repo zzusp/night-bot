@@ -12,6 +12,7 @@ import {
 } from './native-persistence-protocol.js'
 
 const owners = new Map()
+const READ_CACHE_BYTES = 32 * 1024 * 1024
 const digest = value => createHash('sha256').update(value).digest('hex')
 const fail = code => Object.assign(new Error(code), { code })
 const clean = value => structuredClone(value)
@@ -97,8 +98,8 @@ export default class PiSessionPersistence extends Service {
   static inject=['piAuthority']
   identity=Symbol('native-pi-session-persistence')
   constructor(ctx,config) {
-    super(ctx,'sessionPersistence');this.taskRoutes=ctx.get('taskSessionRoutes');this.config={...config,root:resolve(config.root)};this.closed=false;this.handles=new Set();this.writers=new Map()
-    ctx.effect(()=>async()=>{this.closed=true;const results=await Promise.allSettled([...this.handles].map(h=>h.close()));const errors=results.filter(r=>r.status==='rejected').map(r=>r.reason);if(errors.length)throw new AggregateError(errors,'Pi persistence close failed')})
+    super(ctx,'sessionPersistence');this.taskRoutes=ctx.get('taskSessionRoutes');this.config={...config,root:resolve(config.root)};this.closed=false;this.handles=new Set();this.writers=new Map();this.readCache=new Map();this.readCacheBytes=0
+    ctx.effect(()=>async()=>{this.closed=true;this.readCache.clear();this.readCacheBytes=0;const results=await Promise.allSettled([...this.handles].map(h=>h.close()));const errors=results.filter(r=>r.status==='rejected').map(r=>r.reason);if(errors.length)throw new AggregateError(errors,'Pi persistence close failed')})
   }
   async checkedRoot(create=false,root=this.config.root) {
     const paths=[];let cursor=root
@@ -162,15 +163,38 @@ export default class PiSessionPersistence extends Service {
   async readNative(id,options={}) {
     options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED')
     await this.checkedFile(id)
-    const data=await load(this.path(id),id,this.ctx.get('portablePaths'),options.requireComplete===true)
+    const path=this.path(id),codec=this.ctx.get('portablePaths')
+    const before=await lstat(path)
+    const bytes=await readFile(path).catch(error=>{if(error.code==='ENOENT')throw new SessionPersistenceNotFoundError(id);throw error})
+    const after=await lstat(path)
+    await this.checkedFile(id)
+    if(this.path(id)!==path||fileStamp(before)!==fileStamp(after)||before.isSymbolicLink()||!before.isFile()||before.nlink!==1)throw fail('PI_SESSION_CHANGED')
+    const journalDigest=fileStamp(after)+':'+digest(bytes)
+    options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED')
+    const cached=this.readCache.get(id)
+    // 每次读取真实字节；mtime/size 相同也不能绕过提交链和物理尾校验。
+    if(cached&&cached.path===path&&cached.codec===codec&&cached.bytes.equals(bytes)){
+      this.readCache.delete(id);this.readCache.set(id,cached)
+      return clean({...cached.snapshot,journalDigest})
+    }
+    if(cached){this.readCache.delete(id);this.readCacheBytes-=cached.bytes.length}
+    const data=decode(bytes,id,codec,options.requireComplete===true)
     if(data.format!=='pi-native-v1')throw fail('PI_SESSION_NATIVE_UPGRADE_REQUIRED')
     options.signal?.throwIfAborted()
     const nameManager=SessionManager.inMemory(data.header.cwd,undefined,[data.piHeader,...data.entries])
     const nameEntry=data.entries.findLast(entry=>entry.type==='session_info')
-    return clean({format:data.format,journalDigest:data.journalDigest,header:data.header,entries:data.entries,audit:data.audit,
+    const snapshot={format:data.format,journalDigest,header:data.header,entries:data.entries,audit:data.audit,
       sessionName:{name:nameManager.getSessionName(),nameEntryId:nameEntry?.id},
       auditEntries:data.entries.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit').map((entry,index)=>({entryId:entry.id,parentId:entry.parentId,data:data.audit[index]})),
-      context:committedContext(data)})
+      context:committedContext(data)}
+    if(data.committedBytes===bytes.length&&bytes.length<=READ_CACHE_BYTES){
+      while(this.readCacheBytes+bytes.length>READ_CACHE_BYTES){
+        const oldest=this.readCache.keys().next().value
+        this.readCacheBytes-=this.readCache.get(oldest).bytes.length;this.readCache.delete(oldest)
+      }
+      this.readCache.set(id,{path,codec,bytes,snapshot});this.readCacheBytes+=bytes.length
+    }
+    return clean(snapshot)
   }
   async openNative(id,options={}) {
     options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED')
