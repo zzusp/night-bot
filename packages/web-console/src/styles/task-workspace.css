@@ -80,3 +80,6 @@
   .task-info-rail { flex-shrink: 0; padding: 0 18px 12px; }
   .task-info-content { overflow: visible; padding-right: 0; }
 }
+
+/* Keep progress inside the execution canvas, aligned with the record content. */
+.task-dialogue .execution-todos { display: flex; justify-content: flex-end; background: transparent; }

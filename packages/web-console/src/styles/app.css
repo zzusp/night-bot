@@ -15,12 +15,13 @@ svg { flex-shrink: 0; }
 /* BoardUI agent-log row rhythm; shared by chat and task execution. */
 /* BoardUI Agent Progress reference: compact card, not a full-width status table. */
 .execution-todos { flex-shrink: 0; padding: 12px max(16px, calc((100% - 760px) / 2)); background: var(--board-panel); }
-.agent-progress { width: 340px; max-width: 100%; border: 1px solid var(--board-border); border-radius: 16px; background: var(--board-surface); box-shadow: 0 1px 1px rgb(0 0 0 / 3%); color: var(--board-muted); }
+.agent-progress { width: 340px; max-width: 100%; border: 1px solid var(--board-border); border-radius: var(--board-radius-card); overflow: hidden; background: var(--board-surface); box-shadow: 0 1px 1px rgb(0 0 0 / 3%); color: var(--board-muted); }
 .agent-progress[open] { width: 300px; }
-.agent-progress-heading { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 10px 12px; list-style: none; cursor: pointer; font-size: 13px; line-height: 20px; border-radius: inherit; }
+.agent-progress-heading { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 10px 12px; list-style: none; cursor: pointer; font-size: 13px; line-height: 20px; border-radius: calc(var(--board-radius-card) - 1px); }
+.agent-progress[open] > .agent-progress-heading { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .agent-progress-heading::-webkit-details-marker { display: none; }
-.agent-progress-heading:hover { background: var(--board-hover); }
-.agent-progress-heading:focus-visible { outline: 2px solid var(--board-focus); outline-offset: 3px; }
+.agent-progress-heading:hover, .agent-progress-heading:active { background: var(--board-hover); }
+.agent-progress-heading:focus-visible { outline: 2px solid var(--board-focus); outline-offset: -3px; }
 .agent-progress-label { flex-shrink: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
 .agent-progress-current { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--board-text); }
 .agent-progress-current > svg { flex-shrink: 0; }
@@ -572,3 +573,23 @@ html, body, #root { width: 100%; min-width: 0; }
   .tasks-page .task-table th:nth-child(3), .tasks-page .task-table td:nth-child(3),
   .tasks-page .task-table th:last-child, .tasks-page .task-table td:last-child { display: table-cell; }
 }
+
+.page-content-slot { display: contents; }
+/* Conversation chrome lives inside the full-height workspace surface. */
+.main-panel.chat-panel { display: flex; flex-direction: column; }
+.conversation-topbar { flex-shrink: 0; min-height: 52px; padding: 10px 16px; }
+.conversation-topbar .header-location { flex: 1; overflow: hidden; }
+.conversation-content { flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.conversation-topbar .rail-toggle { display: inline-flex; }
+@media (max-width: 1250px) {
+  .conversation-workspace { flex-direction: column; gap: 8px; }
+  .conversation-workspace > .activity-rail { display: flex; width: 100%; max-height: 35%; padding: 12px 16px; background: var(--board-panel); border-radius: var(--board-radius-panel); }
+}
+@media (max-width: 520px) {
+  .conversation-topbar { min-height: 48px; padding: 8px 10px; gap: 6px; }
+  .conversation-topbar .header-location { gap: 6px; }
+  .conversation-topbar .header-location > span:first-child { display: none; }
+  .conversation-topbar .breadcrumb-slash { display: none; }
+}
+
+.conversation-global-topbar { justify-content: flex-end; min-height: 44px; padding-top: 4px; padding-bottom: 4px; }
