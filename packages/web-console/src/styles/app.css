@@ -655,7 +655,7 @@ html, body, #root { width: 100%; min-width: 0; }
 
 /* One independent header owns navigation and global tools on every route. */
 .main-frame { --content-inset: 24px; --workspace-header-height: 52px; --message-inline-inset: 16px; }
-.workspace-topbar { min-height: var(--workspace-header-height); padding: 4px 12px; gap: 12px; flex-shrink: 0; }
+.workspace-topbar { min-height: var(--workspace-header-height); padding: 4px var(--content-inset); gap: 12px; flex-shrink: 0; }
 .workspace-topbar > .board-icon-button { width: 44px; height: 44px; min-height: 44px; }
 .workspace-topbar .header-location { flex: 1; min-width: 0; overflow: hidden; }
 .main-panel > .page-content-slot > .page-content { width: 100%; max-width: none; margin: 0; padding: 20px var(--content-inset) 24px; }
@@ -670,7 +670,7 @@ html, body, #root { width: 100%; min-width: 0; }
 @media (max-width: 760px) { .main-frame { --content-inset: 16px; } }
 @media (max-width: 520px) {
   .main-frame { --workspace-header-height: 48px; }
-  .workspace-topbar { padding: 2px 6px; gap: 6px; }
+  .workspace-topbar { padding: 2px var(--content-inset); gap: 6px; }
   .workspace-topbar .header-location { gap: 6px; }
   .conversation-tools { right: 12px; }
 }
