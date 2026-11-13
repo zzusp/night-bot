@@ -114,3 +114,4 @@
 .task-dialogue .agent-progress[open] .agent-progress-current,
 .task-dialogue .agent-progress[open] .pi-task-meta { display: none; }
 .task-dialogue .agent-progress-steps { max-height: 78px; overflow-y: auto; }
+.task-dialogue .agent-progress-steps:focus-visible { outline: 2px solid var(--board-primary); outline-offset: -2px; }
