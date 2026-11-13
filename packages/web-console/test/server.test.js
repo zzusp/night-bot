@@ -1025,7 +1025,7 @@ test('execution reads refresh Host secret values and fail closed when the provid
   secret='opaque-vendor-value-two'
   body = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
   assert.equal(body.status,200);assert.doesNotMatch(JSON.stringify(body.body),/opaque-vendor-value-two/)
-  assert.equal(calls,3)
+  assert.equal(calls,6, 'each response refreshes secrets before projection and at its final guard')
   unavailable=true
   const denied = await f.fetchApi('/api/tasks/task-one/session')
   assert.equal(denied.status,503)
@@ -1052,4 +1052,24 @@ test('evolution index labels are redacted before response and file caching', asy
   const directory = join(f.paths.cache, (await readdir(f.paths.cache))[0])
   const cachePath = join(directory, (await readdir(directory))[0])
   assert.ok(!(await readFile(cachePath, 'utf8')).includes(token))
+})
+
+test('light execution HTTP binds login and endpoint, uses identity-only task reads and rechecks secret rotation', async t=>{
+ let secret=[],rotate=false,nativeReads=0
+ const snapshot={journalDigest:'safe-bytes',header:{id:'pi-one'},entries:[{id:'commit-one'}],audit:[{domain:'task',kind:'identity',version:1,payload:{taskId:'task-one',sessionId:'pi-one'}}],context:{projection:{entries:[]}}}
+ const persistence={readNative:async()=>{nativeReads++;return snapshot},readNativeDigest:async()=>{if(rotate)secret=['rotated-secret'];return 'safe-bytes'},readLive:async()=>({sessionId:'pi-one',active:true,revision:'r1',assistant:{id:'stream',message:{role:'assistant',content:[{type:'text',text:'正在核对。',complete:true}]}},tools:[]})}
+ const f=await fixture(t,{persistence,redactionSecrets:async()=>secret})
+ f.app.tasks.store={query:async q=>q.kind==='task.get'&&q.taskId==='task-one'?{taskId:'task-one',groupId:'room-one',sessionId:'pi-one',sessionBound:true}:null}
+ f.app.tasks.taskDetail=async()=>{assert.fail('execution polling must not assemble the complete task-detail DTO')}
+ await f.login()
+ const full=await f.fetchApi('/api/tasks/task-one/session?stream=1');assert.equal(full.status,200);assert.ok(full.body.liveProof)
+ const endpoint='/api/tasks/task-one/session?live='+full.body.liveProof
+ const light=await f.fetchApi(endpoint);assert.equal(light.status,200);assert.equal(light.body.historyChanged,false);assert.equal(nativeReads,1)
+ rotate=true
+ const denied=await f.fetchApi(endpoint);assert.equal(denied.status,409);assert.doesNotMatch(JSON.stringify(denied.body),/正在核对/)
+ rotate=false;secret=[]
+ await f.login()
+ assert.equal((await f.fetchApi(endpoint)).body.historyChanged,true,'a new login cannot reuse the old login proof')
+ await f.fetchApi('/api/logout',{method:'POST',body:{}})
+ assert.equal((await f.fetchApi(endpoint)).status,401)
 })

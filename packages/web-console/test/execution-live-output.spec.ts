@@ -79,3 +79,27 @@ test('native model phases show without body; short deltas update one bubble and 
  await expect(page.locator('.pi-live-message')).toHaveCount(0);
  await expect(page.locator('.execution-transcript .message-assistant')).toHaveCount(1);
 });
+
+test('active output polls the light lane and catches up history without duplicating a completed message',async({page})=>{
+ let full=0,light=0,committed=false;
+ const output={id:'live-lane-output',role:'assistant',text:'实时轻量输出',status:'running',transient:true};
+ await page.route('**/api/tasks/task-research/session?*',r=>{
+  const url=new URL(r.request().url());
+  if(url.searchParams.has('live')){
+   light++;
+   return r.fulfill({json:{status:'ready',items:[],historyChanged:committed,liveProof:'proof-1',live:{active:!committed,items:committed?[]:[output]}}});
+  }
+  full++;
+  return r.fulfill({json:{status:'ready',items:committed?[{...output,id:'final-lane-output',transient:false,status:'stop'}]:[],total:committed?1:0,checkpoint:committed?'done':'start',liveProof:'proof-1',live:{active:!committed,items:committed?[]:[output]}}});
+ });
+ await page.goto('/#/tasks/task-research');
+ await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+ await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+ await expect(page.locator('.pi-live-message')).toHaveCount(1);
+ await expect.poll(()=>light).toBeGreaterThanOrEqual(3);
+ expect(full).toBe(1);
+ committed=true;
+ await expect(page.locator('.pi-live-message')).toHaveCount(0);
+ await expect(page.locator('.execution-transcript .message-assistant')).toHaveCount(1);
+ expect(full).toBeGreaterThanOrEqual(2);
+});

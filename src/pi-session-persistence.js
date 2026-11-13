@@ -15,6 +15,7 @@ const owners = new Map()
 const digest = value => createHash('sha256').update(value).digest('hex')
 const fail = code => Object.assign(new Error(code), { code })
 const clean = value => structuredClone(value)
+const fileStamp = info => JSON.stringify([info.dev,info.ino,info.size,info.mtimeMs,info.ctimeMs])
 
 async function processIdentity(pid = process.pid) {
   if (process.platform !== 'linux') return null
@@ -68,8 +69,11 @@ async function acquire(path,id) {
  * uncommitted physical tail; no read or writer silently truncates evidence.
  */
 async function load(path,id,codec,requireComplete=false) {
+  const before=await lstat(path).catch(error=>{if(error.code==='ENOENT')throw new SessionPersistenceNotFoundError(id);throw error})
   const bytes=await readFile(path).catch(error=>{if(error.code==='ENOENT')throw new SessionPersistenceNotFoundError(id);throw error})
-  return decode(bytes,id,codec,requireComplete)
+  const after=await lstat(path)
+  if(fileStamp(before)!==fileStamp(after)||before.isSymbolicLink()||!before.isFile()||before.nlink!==1)throw fail('PI_SESSION_CHANGED')
+  return {...decode(bytes,id,codec,requireComplete),journalDigest:fileStamp(after)+':'+digest(bytes)}
 }
 function decode(bytes,id,codec,requireComplete=false){
   const result=decodePiJournal(bytes,id,{codec,requireComplete})
@@ -132,6 +136,29 @@ export default class PiSessionPersistence extends Service {
     if(!actor||actor.id!==id||actor.metadata?.id!==id||actor.piSession?.sessionId!==id||actor.lifecycle?.isLive()!==true)return null
     return readPiLiveOutput(actor)
   }
+  digestReads = new Map()
+  async readNativeDigest(id) {
+    if(this.closed)throw fail('PI_PERSISTENCE_CLOSED')
+    // Deduplicate only concurrent reads, never reuse a completed disk check.
+    if(this.digestReads.has(id))return this.digestReads.get(id)
+    const reading=(async()=>{
+      await this.checkedFile(id)
+      const path=this.path(id),before=await lstat(path),file=await open(path,'r')
+      const same=(a,b)=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs
+      try {
+        const opened=await file.stat()
+        if(!same(before,opened)||!opened.isFile()||opened.nlink!==1)throw fail('PI_SESSION_CHANGED')
+        const hash=createHash('sha256'),buffer=Buffer.allocUnsafe(65536)
+        let position=0
+        while(position<opened.size){const {bytesRead}=await file.read(buffer,0,Math.min(buffer.length,opened.size-position),position);if(!bytesRead)throw fail('PI_SESSION_CHANGED');hash.update(buffer.subarray(0,bytesRead));position+=bytesRead}
+        await this.checkedFile(id)
+        if(this.path(id)!==path||!same(opened,await file.stat())||!same(opened,await lstat(path)))throw fail('PI_SESSION_CHANGED')
+        return fileStamp(opened)+':'+hash.digest('hex')
+      } finally {await file.close()}
+    })()
+    this.digestReads.set(id,reading)
+    try{return await reading}finally{if(this.digestReads.get(id)===reading)this.digestReads.delete(id)}
+  }
   async readNative(id,options={}) {
     options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED')
     await this.checkedFile(id)
@@ -140,7 +167,7 @@ export default class PiSessionPersistence extends Service {
     options.signal?.throwIfAborted()
     const nameManager=SessionManager.inMemory(data.header.cwd,undefined,[data.piHeader,...data.entries])
     const nameEntry=data.entries.findLast(entry=>entry.type==='session_info')
-    return clean({format:data.format,header:data.header,entries:data.entries,audit:data.audit,
+    return clean({format:data.format,journalDigest:data.journalDigest,header:data.header,entries:data.entries,audit:data.audit,
       sessionName:{name:nameManager.getSessionName(),nameEntryId:nameEntry?.id},
       auditEntries:data.entries.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit').map((entry,index)=>({entryId:entry.id,parentId:entry.parentId,data:data.audit[index]})),
       context:committedContext(data)})
