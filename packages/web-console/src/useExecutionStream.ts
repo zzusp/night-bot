@@ -2,7 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {api, ApiError, type ExecutionPage, type Message} from './api';
 
 const batchSize = 200;
-type Read = 'newer' | 'older' | 'reset';
+type Read = 'newer' | 'older' | 'reset' | 'live';
 type State = {data: ExecutionPage | null; error: Error | null; olderError: Error | null; loading: boolean; loadingOlder: boolean; updatedAt: number | null; epoch: number};
 const initial = (): State => ({data: null, error: null, olderError: null, loading: true, loadingOlder: false, updatedAt: null, epoch: 0});
 const unique = (rows: Message[]) => [...new Map(rows.map(row => [row.id, row])).values()];
@@ -18,7 +18,7 @@ export function useExecutionStream(endpoint: string) {
   const loadOlder = useCallback(() => dispatch.current('older'), []);
   useEffect(() => {
     active.current = endpoint;
-    let current = initial(), disposed = false, busy = false, failures = 0;
+    let current = initial(), disposed = false, busy = false, failures = 0, historyDue = 0;
     let queued: Read | null = null, inFlight: Read | null = null, timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | null = null;
     const publish = (patch: Partial<State>) => { current = {...current, ...patch}; if (!disposed) setState(current); };
@@ -32,18 +32,33 @@ export function useExecutionStream(endpoint: string) {
         if (requested === 'reset' || queued !== 'reset') queued = requested;
         return;
       }
-      const kind = requested === 'reset' && current.data && !current.error ? 'newer' : requested;
+      const selected = requested === 'live' && (!current.data?.liveProof || Date.now() >= historyDue) ? 'newer' : requested;
+      const kind = selected === 'reset' && current.data && !current.error ? 'newer' : selected;
       const previous = kind === 'reset' ? null : current.data;
       if (kind === 'older' && (!previous?.before || current.error)) return;
       busy = true; inFlight = kind; clearTimeout(timer); controller = new AbortController();
-      publish({loading: kind !== 'older', loadingOlder: kind === 'older'});
+      publish({loading: kind !== 'older' && kind !== 'live', loadingOlder: kind === 'older'});
       const params = new URLSearchParams({stream: '1', limit: String(batchSize)});
       if (previous?.checkpoint) params.set('checkpoint', previous.checkpoint);
       if (kind === 'older' && previous?.before) params.set('before', previous.before);
+      if (kind === 'live') {params.delete('stream'); params.delete('limit'); params.delete('checkpoint'); params.set('live', previous!.liveProof!);}
       let catchUp = false;
       try {
         const page = await api<ExecutionPage>(`${endpoint}?${params}`, {signal: controller.signal});
         if (disposed || controller.signal.aborted) return;
+        if (kind === 'live') {
+          if (page.historyChanged) {
+            publish({data: current.data ? {...current.data, live: {active:false, items:[]}, liveProof:undefined} : null});
+            catchUp = true;
+          } else {
+            const ended = previous?.live?.active === true && !page.live?.active;
+            publish({data: current.data ? {...current.data, live:page.live} : null, error:null, updatedAt:Date.now()});
+            catchUp = ended;
+          }
+          failures = 0;
+          return;
+        }
+        historyDue = Date.now() + 2500;
         let data = page;
         if (page.status === 'ready' && previous?.status === 'ready' && previous.checkpoint) {
           data = {...page, items: unique(kind === 'older' ? [...page.items, ...previous.items] : [...previous.items, ...page.items]),
@@ -61,6 +76,7 @@ export function useExecutionStream(endpoint: string) {
         if (disposed || controller.signal.aborted) return;
         const problem = error instanceof Error ? error : new Error('REQUEST_FAILED');
         if (revoked(problem)) publish({data: null, error: problem, olderError: null, epoch: current.epoch + 1});
+        else if (problem instanceof ApiError && problem.status === 409) {publish({data:null, error:problem, olderError:null, epoch:current.epoch+1}); queued='reset';}
         else if (kind === 'older' && !(problem instanceof ApiError && problem.status === 409)) publish({olderError: problem});
         else publish({error: problem});
         failures++;
@@ -69,11 +85,12 @@ export function useExecutionStream(endpoint: string) {
         if (!disposed) {
           publish({loading: false, loadingOlder: false});
           const next = queued; queued = null;
-          if (next) void read(next);
+          if (next && failures < 3) void read(next);
           else if (catchUp) void read('newer');
           else if (failures < 3 && !(current.error instanceof ApiError && (current.error.status === 409 || revoked(current.error)))) {
-            const interval = current.data?.live?.active ? 250 : 2500;
-            timer = setTimeout(() => void read('newer'), interval * Math.max(1, 2 ** failures));
+            const light = !!current.data?.liveProof && current.data?.live?.active === true;
+            const interval = light ? 250 : 2500;
+            timer = setTimeout(() => void read(light ? 'live' : 'newer'), interval * Math.max(1, 2 ** failures));
           }
         }
       }

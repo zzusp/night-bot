@@ -505,3 +505,63 @@ test('new execution packets show actual admitted deltas without duplicating the 
   assert.equal(rows[0].text,'仅核对当前构建结果\n\n目标：\n当前目标\n\n要求：\n- 不重复发布')
  }
 })
+
+test('long committed histories yield to unrelated requests and retain every row', async () => {
+  const value = snapshot()
+  value.context.projection.entries = Array.from({length: 256}, (_, i) => project('history-' + i, {role:'assistant',content:[{type:'text',text:'进展 ' + i}]}))
+  let serviced = false
+  const turn = new Promise(resolve => setImmediate(() => {serviced = true; resolve()}))
+  const result = await taskSessionView({task,persistence:{readNative:async()=>value},stream:true,limit:500})
+  assert.equal(serviced,true,'an unrelated I/O turn must run before the full projection finishes')
+  assert.equal(result.items.length,256)
+  assert.equal(result.items[255].text,'进展 255')
+  await turn
+})
+
+test('light live proof rechecks exact bytes, current scope and secrets without rebuilding history', async () => {
+ const value=snapshot();value.journalDigest='bytes-one'
+ let reads=0, disk='bytes-one', checks=0, active=true
+ const persistence={readNative:async()=>{reads++;return value},readNativeDigest:async()=>disk,readLive:async()=>({sessionId:'pi-one',active,revision:'live-one',assistant:{id:'new-text',message:{role:'assistant',content:[{type:'text',text:'正在读取。',complete:true}]}},tools:[]})}
+ const options={task,persistence,proofScope:'browser-one:task-one',guard:async()=>{checks++}}
+ const full=await taskSessionView(options);assert.ok(full.liveProof)
+ const light=await taskSessionView({...options,liveProof:full.liveProof})
+ assert.equal(reads,1);assert.equal(light.historyChanged,false);assert.equal(light.live.active,true);assert.match(light.live.items[0].text,/正在读取/);assert.deepEqual(light.items,[])
+ const other=await taskSessionView({...options,proofScope:'browser-two:task-one',liveProof:full.liveProof});assert.equal(other.historyChanged,true);assert.equal(other.live.active,false)
+ await assert.rejects(taskSessionView({...options,secrets:['new-secret'],liveProof:full.liveProof}),{code:'SESSION_REDACTION_CHANGED'})
+ disk='bytes-two';assert.equal((await taskSessionView({...options,liveProof:full.liveProof})).historyChanged,true);assert.equal(reads,1)
+ disk='bytes-one';active=false;assert.equal((await taskSessionView({...options,liveProof:full.liveProof})).live.active,false)
+ await assert.rejects(taskSessionView({...options,liveProof:full.liveProof,guard:async()=>{throw Object.assign(Error(),{code:'AUTH_REQUIRED'})}}),{code:'AUTH_REQUIRED'})
+ assert.ok(checks>=4)
+})
+
+test('light proof does not trust unchanged last entry ID after historical bytes change', async () => {
+ const value=snapshot();value.journalDigest='old-bytes'
+ const persistence={readNative:async()=>value,readNativeDigest:async()=> 'rewritten-bytes',readLive:async()=>null}
+ const options={task,persistence,proofScope:'operator:task'}
+ const full=await taskSessionView(options)
+ persistence.readLive=async()=>{throw Error('must not read live from stale proof')}
+ assert.equal((await taskSessionView({...options,liveProof:full.liveProof})).historyChanged,true)
+ assert.equal((await taskSessionView({...options,persistence:{...persistence},liveProof:full.liveProof})).historyChanged,true,'proof cannot cross persistence authority')
+})
+
+test('live proof expiring during asynchronous validation returns no live body', async () => {
+ const value=snapshot();value.journalDigest='bytes-one'
+ const realNow=Date.now;let now=realNow();Date.now=()=>now
+ try {
+  const persistence={readNative:async()=>value,readNativeDigest:async()=>{now+=11000;return 'bytes-one'},readLive:async()=>({sessionId:'pi-one',active:true,revision:'live-one',assistant:{id:'new-text',message:{role:'assistant',content:[{type:'text',text:'不应显示。',complete:true}]}},tools:[]})}
+  const options={task,persistence,proofScope:'operator:task'},full=await taskSessionView(options)
+  const light=await taskSessionView({...options,liveProof:full.liveProof})
+  assert.equal(light.historyChanged,true);assert.equal(light.live.active,false);assert.deepEqual(light.live.items,[])
+ } finally {Date.now=realNow}
+})
+
+test('proof expires while final response guard awaits without publishing live content', async () => {
+ const value=snapshot();value.journalDigest='bytes-one'
+ const realNow=Date.now;let now=realNow();Date.now=()=>now
+ try {
+  const persistence={readNative:async()=>value,readNativeDigest:async()=> 'bytes-one',readLive:async()=>({sessionId:'pi-one',active:true,revision:'live-one',assistant:{id:'new-text',message:{role:'assistant',content:[{type:'text',text:'不应显示。',complete:true}]}},tools:[]})}
+  const options={task,persistence,proofScope:'operator:task'},full=await taskSessionView(options)
+  const light=await taskSessionView({...options,liveProof:full.liveProof,guard:async()=>{now+=11000}})
+  assert.equal(light.historyChanged,true);assert.deepEqual(light.live.items,[])
+ } finally {Date.now=realNow}
+})

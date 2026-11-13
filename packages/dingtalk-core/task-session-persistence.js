@@ -118,8 +118,9 @@ async function install(ctx, { root, compression } = {}) {
   await checkedTaskDirectory(root, true)
   const index = join(root, 'tasks', '.session-routes')
   await checkedTaskDirectory(index, true)
-  const originals = Object.fromEntries(methods.map(name => [name, persistence[name]]))
-  const legacy = Object.fromEntries(methods.map(name => [name, originals[name].bind(persistence)]))
+  const routedMethods = typeof persistence.readNativeDigest === 'function' ? [...methods, 'readNativeDigest'] : methods
+  const originals = Object.fromEntries(routedMethods.map(name => [name, persistence[name]]))
+  const legacy = Object.fromEntries(routedMethods.map(name => [name, originals[name].bind(persistence)]))
   const agents = ctx.agents
   const agentMethods = { create: agents.create, resume: agents.resume }
   const backends = new Map(), routes = new Map()
@@ -233,7 +234,7 @@ async function install(ctx, { root, compression } = {}) {
           try { await (await pending).fiber.dispose() } catch (error) { errors.push(error) }
         }
         // Cordis wraps method reads, so function-reference equality is not a valid guard here.
-        for (const name of methods) persistence[name] = originals[name]
+        for (const name of routedMethods) persistence[name] = originals[name]
         for (const name of Object.keys(agentMethods)) agents[name] = agentMethods[name]
         installations.delete(key)
         if (errors.length) throw new AggregateError(errors, 'TASK_SESSION_PERSISTENCE_CLOSE_FAILED')
@@ -260,6 +261,13 @@ async function install(ctx, { root, compression } = {}) {
       const handle=await (await backendFor(route.taskId)).openNative(id,options)
       if(handle.header.cwd!==route.cwd){await handle.close();throw failure('TASK_SESSION_CWD_MISMATCH')}
       return handle
+    },
+    async readNativeDigest(id) {
+      assertOpen()
+      const route=await routeFor(id)
+      if(!route)return legacy.readNativeDigest(id)
+      await legacyConflict(id)
+      return (await backendFor(route.taskId)).readNativeDigest(id)
     },
     async readNative(id, options) {
       assertOpen();options?.signal?.throwIfAborted()
@@ -319,7 +327,7 @@ async function install(ctx, { root, compression } = {}) {
     await api.register({ taskId: route.taskId, sessionId, cwd: route.cwd })
     return api.runOwned({ taskId: route.taskId, sessionId }, () => agentMethods[name].call(this, options))
   }
-  for (const name of methods) persistence[name] = wrappers[name]
+  for (const name of routedMethods) persistence[name] = wrappers[name]
   installations.set(key, api)
   ctx.effect(() => () => api.close(), 'task session native persistence routing')
   return api

@@ -26,6 +26,10 @@ const pageNumber = (query, key, fallback, max = 1_000_000) => {
   return Number(raw)
 }
 const sessionOptions = query => {
+  if (query.has('live')) {
+    if ([...query.keys()].some(key=>key!=='live') || !/^[a-f0-9-]{36}$/.test(query.get('live'))) fail('PAGE_INVALID')
+    return {liveProof:query.get('live')}
+  }
   if (query.get('stream') === '1') {
     if ([...query.keys()].some(key => !['stream', 'limit', 'checkpoint', 'before'].includes(key))) fail('PAGE_INVALID')
     return {stream: true, limit: pageNumber(query, 'limit', 200, 500), checkpoint: query.get('checkpoint'), before: query.get('before')}
@@ -166,6 +170,16 @@ export async function createWebConsole({channels, paths, config, getApplication,
       return send(response, 200, sessionView(sessions.login(body.token, response)))
     }
     const session = sessions.require(request, !['GET', 'HEAD'].includes(request.method))
+    const sessionGuards = async (revalidate = async () => {}) => {
+      const secrets = await historySecrets(), secretKey = digest(JSON.stringify(secrets))
+      return {secrets, proofScope:digest(JSON.stringify([session.key,path])), guard:async()=>{
+        await revalidate()
+        if (digest(JSON.stringify(await historySecrets())) !== secretKey) fail('SESSION_REDACTION_CHANGED',409)
+        if (sessions.require(request).key !== session.key) fail('AUTH_REQUIRED',401)
+      }}
+    }
+    const sessionTask = async (id) => {const tasks=application().tasks;return tasks.store?.query ? tasks.store.query({kind:'task.get',taskId:id}) : tasks.taskDetail(id)}
+    const taskIdentity = value => JSON.stringify([value?.taskId,value?.groupId,value?.session?.sessionId??value?.sessionId,value?.session?.sessionBound??value?.sessionBound])
     if (request.method === 'GET' && path === '/api/session') return send(response, 200, sessionView(session))
     if (request.method === 'POST' && path === '/api/logout') {await jsonBody(request, []); sessions.logout(session, response); return send(response, 200, {ok: true})}
     if (path === '/api/feedback' || path.startsWith('/api/feedback/')) {
@@ -396,20 +410,20 @@ export async function createWebConsole({channels, paths, config, getApplication,
     }
     const taskBody = /^\/api\/tasks\/([^/]+)\/session\/messages\/([^/]+)$/.exec(path)
     if (request.method === 'GET' && taskBody) {
-      const value = await application().tasks.taskDetail(decodeURIComponent(taskBody[1]))
+      const value = await sessionTask(decodeURIComponent(taskBody[1]))
       if (!value) fail('TASK_NOT_FOUND', 404)
-      return send(response, 200, await taskSessionMessageView({...bodyOptions(url.searchParams), secrets: await historySecrets(), task: value, persistence: getSessionPersistence(), messageId: decodeURIComponent(taskBody[2])}))
+      return send(response, 200, await taskSessionMessageView({...bodyOptions(url.searchParams), ...await sessionGuards(async()=>{if(taskIdentity(await sessionTask(decodeURIComponent(taskBody[1])))!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)}), task: value, persistence: getSessionPersistence(), messageId: decodeURIComponent(taskBody[2])}))
     }
     const task = /^\/api\/tasks\/([^/]+)(?:\/(dialogue|executions|session))?$/.exec(path)
     if (request.method === 'GET' && task) {
       const id = decodeURIComponent(task[1]), app = application()
       if (task[2] === 'dialogue') return send(response, 200, taskDialogueView(await app.tasks.taskDialogue(id), [credential.token]))
       if (task[2] === 'executions') return send(response, 200, await app.tasks.taskExecutions(id, {...page(url.searchParams), summary: true}))
-      const value = await app.tasks.taskDetail(id)
+      const value = task[2] === 'session' ? await sessionTask(id) : await app.tasks.taskDetail(id)
       if (!value) fail('TASK_NOT_FOUND', 404)
       if (task[2] === 'session') {
         return send(response, 200, await taskSessionView({task: value, persistence: getSessionPersistence(),
-          ...sessionOptions(url.searchParams), secrets: await historySecrets()}))
+          ...sessionOptions(url.searchParams), ...await sessionGuards(async()=>{if(taskIdentity(await sessionTask(id))!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)})}))
       }
       return send(response, 200, taskView(value, [credential.token]))
     }
@@ -478,7 +492,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const value = await store.query({kind: 'task.get', taskId})
       if (!value || value.taskId !== taskId || value.groupId !== conversationId) fail('CHAT_TASK_NOT_FOUND', 404)
       const task = {taskId, session: {sessionId: value.sessionId, sessionBound: value.sessionBound}}
-      const options = {task, persistence: getSessionPersistence(), secrets: await historySecrets()}
+      const options = {task, persistence: getSessionPersistence(), ...await sessionGuards(async()=>{const current=await store.query({kind:'task.get',taskId});if(taskIdentity(current)!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)})}
       if (chatTask[4]) return send(response, 200, await taskSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatTask[4])}))
       return send(response, 200, await taskSessionView({...options, ...sessionOptions(url.searchParams)}))
     }
@@ -487,7 +501,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const conversationId = executionContext(chatSession[1], decodeURIComponent(chatSession[2]))
       const store = application().tasks.store
       if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
-      const options = {conversationId, readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), secrets: await historySecrets()}
+      const options = {conversationId, readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), ...await sessionGuards()}
       if (chatSession[3]) return send(response, 200, await routerSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[3])}))
       return send(response, 200, await routerSessionView({...options, ...sessionOptions(url.searchParams)}))
     }

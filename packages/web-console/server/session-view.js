@@ -1,3 +1,5 @@
+import {randomUUID} from 'node:crypto'
+import {setImmediate as yieldToIO} from 'node:timers/promises'
 import {digest, fail} from './security.js'
 
 // Names cover environment variables, JSON fields and HTTP headers. A configured
@@ -201,9 +203,10 @@ function crossBlockSensitive(blocks, secrets) {
   return visibleText(joined, secrets, {maxLength: Infinity, preservePaths: true}).text !== joined
 }
 
-function projectEntries(snapshot, identity, secrets, calls = new Map()) {
+async function projectEntries(snapshot, identity, secrets, calls = new Map()) {
   const {taskId, sessionId, conversationId, generation} = identity
   const items = [], sources = new Set()
+  let processed = 0
   const opaque = (...parts) => digest(JSON.stringify([sessionId, ...parts]))
   const add = (entry, suffix, role, value, extra = {}, message) => {
     const visible = visibleText(value, secrets, {maxLength: Infinity, preservePaths: true})
@@ -219,6 +222,8 @@ function projectEntries(snapshot, identity, secrets, calls = new Map()) {
     add(entry, suffix, 'user', row.text, {kind: 'source'})
   }
   for (const projected of snapshot.context.projection.entries) {
+    // Long journals must not monopolize the shared HTTP event loop.
+    if (++processed % 32 === 0) await yieldToIO()
     const entry = projected.sourceEntry
     if (!entry || typeof entry.id !== 'string') continue
     for (const [index, message] of projected.messages.entries()) {
@@ -342,10 +347,10 @@ export function visibleLiveText(value, secrets = [], complete = false, {shortPro
   if (visible.redacted) return ''
   return text.slice(0, cut + 1)
 }
-function projectLive(snapshot, identity, secrets, raw) {
+async function projectLive(snapshot, identity, secrets, raw, calls) {
   if (!raw || raw.sessionId !== identity.sessionId || typeof raw.active !== 'boolean' || typeof raw.revision !== 'string') return {active:false,items:[]}
   if (!raw.active) return {active:false,revision:raw.revision,items:[]}
-  const extra = [], native = snapshot.context.projection.entries
+  const extra = []
   if (raw.assistant?.message?.role === 'assistant' && typeof raw.assistant.id === 'string') {
     const message = raw.assistant.message
     const blocks = (crossBlockSensitive(message.content, secrets) ? [] : message.content ?? []).flatMap(block => {
@@ -358,40 +363,62 @@ function projectLive(snapshot, identity, secrets, raw) {
   }
   // Only the exact currently pending official call can lend its public result
   // schema to a live tool update; tools never self-authorize by naming a tool.
-  const pending = new Map()
-  for (const row of native) for (const [index, message] of (row.messages ?? []).entries()) {
-    if (!row.sourceEntry || typeof row.sourceEntry.id !== 'string') continue
-    if (message.role === 'assistant') for (const [blockIndex, block] of (Array.isArray(message.content) ? message.content : []).entries()) {
-      if (block.type === 'toolCall' && typeof block.id === 'string' && typeof block.name === 'string') pending.set(block.id, pending.has(block.id) ? null : {id:digest(JSON.stringify([identity.sessionId,row.sourceEntry.id,index,blockIndex])),name:block.name})
-    }
-    if (message.role === 'toolResult') pending.delete(message.toolCallId)
-  }
+  const pending = new Map([...calls].map(([id, call]) => [id, call?.name ?? null]))
   for (const tool of raw.tools ?? []) {
-    if (typeof tool.id !== 'string' || pending.get(tool.toolCallId)?.name !== tool.toolName || !Array.isArray(tool.content) || !tool.content.length) continue
+    if (typeof tool.id !== 'string' || pending.get(tool.toolCallId) !== tool.toolName || !Array.isArray(tool.content) || !tool.content.length) continue
     if (!(identity.taskId && taskTextTools.has(tool.toolName)) && !Object.hasOwn(toolOutputs,tool.toolName)) continue
     if (!(identity.taskId && taskTextTools.has(tool.toolName)) && !tool.complete) continue
     const text=visibleLiveText(texts(tool.content),secrets,tool.complete===true)
     if (!text) continue
     extra.push({sourceEntry:{id:tool.id},messages:[{role:'toolResult',toolCallId:tool.toolCallId,toolName:tool.toolName,isError:tool.isError===true,content:[{type:'text',text}]}]})
   }
+  const liveEntryIds = new Set(extra.map(row=>digest(JSON.stringify([identity.sessionId,row.sourceEntry.id]))))
   const combined={...snapshot,context:{...snapshot.context,projection:{...snapshot.context.projection,entries:extra}}}
-  return {active:true,revision:raw.revision,...(['waiting','thinking','text','tool'].includes(raw.phase)?{phase:raw.phase}:{}),...(typeof raw.phaseStartedAt==='string'&&Number.isFinite(Date.parse(raw.phaseStartedAt))?{phaseStartedAt:raw.phaseStartedAt}:{}),items:projectEntries(combined,identity,secrets,pending).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
+  return {active:true,revision:raw.revision,...(['waiting','thinking','text','tool'].includes(raw.phase)?{phase:raw.phase}:{}),...(typeof raw.phaseStartedAt==='string'&&Number.isFinite(Date.parse(raw.phaseStartedAt))?{phaseStartedAt:raw.phaseStartedAt}:{}),items:(await projectEntries(combined,identity,secrets,new Map(calls))).filter(row=>liveEntryIds.has(row.source.entryId)).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
 }
 
-async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = []}) {
+// No public history is cached: only short-lived committed identity/pending calls.
+// Every live request rechecks the exact physical journal, current browser and secrets.
+const liveProofs = new WeakMap()
+const liveValidity = Symbol('live-proof-validity')
+const proofTTL = 10000, proofLimit = 64
+async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = [], liveProof, proofScope, guard}) {
   const {sessionId} = identity
   if (!sessionId || !persistence?.readNative) return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
+  const identityKey = JSON.stringify(identity), secretKey = digest(JSON.stringify(secrets))
+  let proofs = liveProofs.get(persistence)
+  if (!proofs) {proofs = new Map(); liveProofs.set(persistence, proofs)}
+  for (const [key, value] of proofs) if (value.expires <= Date.now()) proofs.delete(key)
+  if (liveProof) {
+    const saved = proofs.get(liveProof)
+    const changed = () => ({...base, status:'ready', historyChanged:true, live:{active:false,items:[]}})
+    if (saved && saved.secret !== secretKey) fail('SESSION_REDACTION_CHANGED',409)
+    if (!saved || !proofScope || saved.scope !== proofScope || saved.identity !== identityKey || !persistence.readNativeDigest) return changed()
+    try {if (await persistence.readNativeDigest(sessionId) !== saved.digest) return changed()} catch {return changed()}
+    const live = await projectLive({context:{projection:{entries:[]}}}, identity, secrets, await persistence.readLive?.(sessionId), saved.calls)
+    return {...base, status:'ready', live, liveProof, historyChanged:false, [liveValidity]:()=>saved.expires>Date.now() && proofs.get(liveProof)===saved}
+  }
   let snapshot
   try {snapshot = await persistence.readNative(sessionId, {requireComplete: true})} catch (error) {
-    if (error.code === 'PI_SESSION_UNCOMMITTED_TAIL' || error.code === 'PI_SESSION_COMMIT_REQUIRED') return {...base, status: 'pending', reason: 'SESSION_COMMIT_PENDING'}
+    if (error.code === 'PI_SESSION_CHANGED' || error.code === 'PI_SESSION_UNCOMMITTED_TAIL' || error.code === 'PI_SESSION_COMMIT_REQUIRED') return {...base, status: 'pending', reason: 'SESSION_COMMIT_PENDING'}
     if (error.name === 'SessionPersistenceNotFoundError' && notStarted) return {...base, status: 'pending', reason: 'SESSION_NOT_STARTED'}
     return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
   }
   if (snapshot.header?.id !== sessionId || !Array.isArray(snapshot.entries) || !Array.isArray(snapshot.context?.projection?.entries) || !validIdentity(snapshot)) fail('SESSION_IDENTITY_INVALID', 503)
   const currentRevision = digest(JSON.stringify([sessionId, snapshot.entries.at(-1)?.id]))
   if (revision && revision !== currentRevision) fail('SESSION_PAGE_STALE', 409)
-  const live = persistence.readLive ? projectLive(snapshot, identity, secrets, await persistence.readLive(sessionId)) : undefined
-  return {...base, status: 'ready', revision: currentRevision, ...taskTodos(snapshot, identity, secrets), items: projectEntries(snapshot, identity, secrets), ...(live ? {live} : {})}
+  // Validate/redact committed history once, retaining its exact pending-call
+  // pairing state for the bounded live suffix. No cached authorization.
+  const calls = new Map()
+  const items = await projectEntries(snapshot, identity, secrets, calls)
+  const live = persistence.readLive ? await projectLive(snapshot, identity, secrets, await persistence.readLive(sessionId), calls) : undefined
+  let nextProof
+  if (proofScope && calls.size <= 256 && JSON.stringify([...calls]).length <= 65536 && typeof snapshot.journalDigest === 'string' && persistence.readNativeDigest) {
+    while (proofs.size >= proofLimit) proofs.delete(proofs.keys().next().value)
+    nextProof = randomUUID()
+    proofs.set(nextProof, {scope:proofScope, identity:identityKey, secret:secretKey, digest:snapshot.journalDigest, calls:new Map(calls), expires:Date.now()+proofTTL})
+  }
+  return {...base, status: 'ready', revision: currentRevision, ...taskTodos(snapshot, identity, secrets), items, ...(live ? {live} : {}), ...(nextProof ? {liveProof:nextProof} : {})}
 }
 function sessionPage(value, options) {
   const {offset, limit} = pageOptions(options)
@@ -462,7 +489,7 @@ async function routerProjection({conversationId, readRouter, readRotations, ...o
     validIdentity: snapshot => snapshot.header.runtimeOwner === 'conversation-router' && snapshot.header.conversationId === conversationId && snapshot.header.generation === router.generation})
   // Idle rotation starts a fresh context containing only private handoff data.
   // Select only a published, same-conversation predecessor; never expose handoff.
-  if (value.status === 'ready' && !value.items.length && readRotations) {
+  if (!options.liveProof && value.status === 'ready' && !value.items.length && readRotations) {
     const rotations = await readRotations()
     const previous = rotations.filter(row => row.state === 'published' && row.conversationId === conversationId
       && Number.isSafeInteger(row.oldGeneration) && row.oldGeneration > 0 && row.oldGeneration < router.generation
@@ -477,7 +504,13 @@ async function routerProjection({conversationId, readRouter, readRotations, ...o
   if (current?.activeSessionId !== sessionId || current?.generation !== router.generation || current?.phase !== router.phase) fail('SESSION_PAGE_STALE', 409)
   return value
 }
-export async function taskSessionView(options) {pageOptions(options); return sessionPage(await taskProjection(options), options)}
-export async function taskSessionMessageView(options) {return messagePage(await taskProjection(options), options)}
-export async function routerSessionView(options) {pageOptions(options); return sessionPage(await routerProjection(options), options)}
-export async function routerSessionMessageView(options) {return messagePage(await routerProjection(options), options)}
+async function finalRead(value, options) {
+  await options.guard?.()
+  const valid=value[liveValidity];delete value[liveValidity]
+  if(valid&&!valid())return {...value,historyChanged:true,live:{active:false,items:[]}}
+  return value
+}
+export async function taskSessionView(options) {pageOptions(options); const value = await finalRead(await taskProjection(options), options); return options.liveProof ? value : sessionPage(value, options)}
+export async function taskSessionMessageView(options) {const value = await finalRead(await taskProjection(options), options); return messagePage(value, options)}
+export async function routerSessionView(options) {pageOptions(options); const value = await finalRead(await routerProjection(options), options); return options.liveProof ? value : sessionPage(value, options)}
+export async function routerSessionMessageView(options) {const value = await finalRead(await routerProjection(options), options); return messagePage(value, options)}

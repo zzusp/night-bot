@@ -1058,7 +1058,7 @@
       "source": "task-session-persistence.js",
       "sourceSha256": "780a47c4c047c63050c81f375f2f7efb55f327ea74f7a553f3ba239cf00df7f6",
       "status": "adapted",
-      "sha256": "cc1bd44f0117c0d62a5843eef66633214958c107e276a83b47bf90b3f158470e",
+      "sha256": "d39be46a00f79ba9ad0a8b957102936ecdb44fe691845ff899e7cef6c0a70eaa",
       "adaptation": "Route native create/open/read through existing task binding, cwd and writer scope checks."
     },
     {

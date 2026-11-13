@@ -1,7 +1,7 @@
 import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,rm,readFile,appendFile,mkdir,cp,writeFile} from 'node:fs/promises'
+import {mkdtemp,rm,readFile,appendFile,mkdir,cp,writeFile,rename} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
 import {SessionManager,buildSessionProjection} from '@earendil-works/pi-coding-agent'
@@ -156,4 +156,19 @@ test('listing cannot replace commit validation with a header or accept a renamed
  await assert.rejects(f.backend.list(),{code:'PI_SESSION_PATH_UNSAFE'});await rm(other)
  assert.equal((await f.backend.list()).length,1)
  await assert.rejects(f.backend.list({signal:AbortSignal.abort(new Error('cancelled-list'))}),/cancelled-list/)
+})
+
+
+test('cached native projection refreshes live digest after same-byte file replacement',async t=>{
+ const f=await fixture(t),writer=await f.backend.createNative(f.header('cached-digest'))
+ writer.manager.appendMessage(message('safe cached content'));await writer.close()
+ const path=f.backend.path('cached-digest'),first=await f.backend.readNative('cached-digest',{requireComplete:true})
+ assert.equal(first.journalDigest,await f.backend.readNativeDigest('cached-digest'))
+ const bytes=await readFile(path);await writeFile(path+'.replacement',bytes);await rename(path+'.replacement',path)
+ const next=await f.backend.readNative('cached-digest',{requireComplete:true})
+ assert.notEqual(next.journalDigest,first.journalDigest)
+ assert.equal(next.journalDigest,await f.backend.readNativeDigest('cached-digest'))
+ assert.deepEqual(next.context,first.context)
+ next.context.projection.entries.length=0
+ assert.deepEqual((await f.backend.readNative('cached-digest',{requireComplete:true})).context,first.context)
 })
