@@ -1,0 +1,11 @@
+case,round-1,evidence
+strict-journal-and-route,PASS,13 tests; same-size tampering/tail/link/route/new commit/caller isolation
+history-and-live,PASS,39 initial; updated live file 11; overlapping counts
+source-import-runtime-guards,PASS,pnpm check
+web-build,PASS,typecheck and vite; existing chunk warning
+real-history-http,PASS,unchanged median 1266 to 124ms; light max 1360 to 304ms
+web-server-suite,FAIL,295 pass 1 fail 2 skip; Router failure reproduced on original release
+runtime-suite,BLOCKED,95 pass 14 fail-or-cancelled 11 skip before stopped runner; full teardown not converged
+runtime-baseline-counterevidence,PARTIAL,human reply same assertion; unknown-effect same timeout; other failures not all compared
+runtime-isolated-followup,PASS,skills 7; teardown and PDF individually pass on both versions
+merge-and-local-deploy,PENDING,see PR follow-up after merged-code deployment

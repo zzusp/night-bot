@@ -201,9 +201,9 @@ function crossBlockSensitive(blocks, secrets) {
   return visibleText(joined, secrets, {maxLength: Infinity, preservePaths: true}).text !== joined
 }
 
-function projectEntries(snapshot, identity, secrets) {
+function projectEntries(snapshot, identity, secrets, calls = new Map()) {
   const {taskId, sessionId, conversationId, generation} = identity
-  const items = [], sources = new Set(), calls = new Map()
+  const items = [], sources = new Set()
   const opaque = (...parts) => digest(JSON.stringify([sessionId, ...parts]))
   const add = (entry, suffix, role, value, extra = {}, message) => {
     const visible = visibleText(value, secrets, {maxLength: Infinity, preservePaths: true})
@@ -359,21 +359,23 @@ function projectLive(snapshot, identity, secrets, raw) {
   // Only the exact currently pending official call can lend its public result
   // schema to a live tool update; tools never self-authorize by naming a tool.
   const pending = new Map()
-  for (const row of native) for (const message of row.messages ?? []) {
-    if (message.role === 'assistant') for (const block of message.content ?? []) if(block.type === 'toolCall' && typeof block.id === 'string') pending.set(block.id,pending.has(block.id)?null:block.name)
+  for (const row of native) for (const [index, message] of (row.messages ?? []).entries()) {
+    if (!row.sourceEntry || typeof row.sourceEntry.id !== 'string') continue
+    if (message.role === 'assistant') for (const [blockIndex, block] of (Array.isArray(message.content) ? message.content : []).entries()) {
+      if (block.type === 'toolCall' && typeof block.id === 'string' && typeof block.name === 'string') pending.set(block.id, pending.has(block.id) ? null : {id:digest(JSON.stringify([identity.sessionId,row.sourceEntry.id,index,blockIndex])),name:block.name})
+    }
     if (message.role === 'toolResult') pending.delete(message.toolCallId)
   }
   for (const tool of raw.tools ?? []) {
-    if (typeof tool.id !== 'string' || pending.get(tool.toolCallId) !== tool.toolName || !Array.isArray(tool.content) || !tool.content.length) continue
+    if (typeof tool.id !== 'string' || pending.get(tool.toolCallId)?.name !== tool.toolName || !Array.isArray(tool.content) || !tool.content.length) continue
     if (!(identity.taskId && taskTextTools.has(tool.toolName)) && !Object.hasOwn(toolOutputs,tool.toolName)) continue
     if (!(identity.taskId && taskTextTools.has(tool.toolName)) && !tool.complete) continue
     const text=visibleLiveText(texts(tool.content),secrets,tool.complete===true)
     if (!text) continue
     extra.push({sourceEntry:{id:tool.id},messages:[{role:'toolResult',toolCallId:tool.toolCallId,toolName:tool.toolName,isError:tool.isError===true,content:[{type:'text',text}]}]})
   }
-  const liveEntryIds = new Set(extra.map(row=>digest(JSON.stringify([identity.sessionId,row.sourceEntry.id]))))
-  const combined={...snapshot,context:{...snapshot.context,projection:{...snapshot.context.projection,entries:[...native,...extra]}}}
-  return {active:true,revision:raw.revision,...(['waiting','thinking','text','tool'].includes(raw.phase)?{phase:raw.phase}:{}),...(typeof raw.phaseStartedAt==='string'&&Number.isFinite(Date.parse(raw.phaseStartedAt))?{phaseStartedAt:raw.phaseStartedAt}:{}),items:projectEntries(combined,identity,secrets).filter(row=>liveEntryIds.has(row.source.entryId)).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
+  const combined={...snapshot,context:{...snapshot.context,projection:{...snapshot.context.projection,entries:extra}}}
+  return {active:true,revision:raw.revision,...(['waiting','thinking','text','tool'].includes(raw.phase)?{phase:raw.phase}:{}),...(typeof raw.phaseStartedAt==='string'&&Number.isFinite(Date.parse(raw.phaseStartedAt))?{phaseStartedAt:raw.phaseStartedAt}:{}),items:projectEntries(combined,identity,secrets,pending).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
 }
 
 async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = []}) {

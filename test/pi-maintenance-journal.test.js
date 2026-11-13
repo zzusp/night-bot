@@ -66,3 +66,34 @@ test('portable maintenance uses the same explicit controlled-path codec as live 
  assert.deepEqual(stored.context.piMessages,(await f.backend.readNative(f.row.sessionId,{requireComplete:true})).context.piMessages)
  assert.deepEqual(await readFile(f.path),f.bytes)
 })
+
+test('cached strict reads isolate callers, observe new commits and reject unchanged-size tampering',async t=>{
+ const f=await fixture(t),options={requireComplete:true}
+ const first=await f.backend.readNative(f.row.sessionId,options)
+ first.context.piMessages[0].content[0].text='CALLER_MUTATION';first.entries.length=0
+ assert.deepEqual((await f.backend.readNative(f.row.sessionId,options)).context.piMessages,f.messages)
+ const writer=await f.backend.openNative(f.row.sessionId)
+ const next={role:'user',content:[{type:'text',text:'NEW_COMMIT'}],timestamp:2}
+ writer.manager.appendMessage(next);await writer.close()
+ assert.deepEqual((await f.backend.readNative(f.row.sessionId,options)).context.piMessages,[...f.messages,next])
+ const {stat,utimes}=await import('node:fs/promises'),info=await stat(f.path),bytes=await readFile(f.path)
+ const forged=bytes.toString().replace('ORIGINAL_EVIDENCE','MODIFIED_EVIDENCE')
+ assert.equal(Buffer.byteLength(forged),bytes.length)
+ await writeFile(f.path,forged);await utimes(f.path,info.atime,info.mtime)
+ await assert.rejects(f.backend.readNative(f.row.sessionId,options),{code:'PI_SESSION_CHECKSUM_MISMATCH'})
+ await writeFile(f.path,bytes)
+ assert.deepEqual((await f.backend.readNative(f.row.sessionId,options)).context.piMessages,[...f.messages,next])
+ await assert.rejects(f.backend.readNative(f.row.sessionId,{...options,signal:AbortSignal.abort(new Error('cancelled'))}),/cancelled/)
+})
+test('warm strict reads never conceal physical tails, missing files or unsafe links',async t=>{
+ const f=await fixture(t),options={requireComplete:true}
+ await f.backend.readNative(f.row.sessionId,options)
+ await writeFile(f.path,Buffer.concat([f.bytes,Buffer.from('{"torn":')]))
+ assert.deepEqual((await f.backend.readNative(f.row.sessionId)).context.piMessages,f.messages)
+ await assert.rejects(f.backend.readNative(f.row.sessionId,options),{code:'PI_SESSION_UNCOMMITTED_TAIL'})
+ await writeFile(f.path,f.bytes);await f.backend.readNative(f.row.sessionId,options)
+ const saved=f.path+'.saved';await rename(f.path,saved)
+ await assert.rejects(f.backend.readNative(f.row.sessionId,options),{name:'SessionPersistenceNotFoundError'})
+ await link(saved,f.path)
+ await assert.rejects(f.backend.readNative(f.row.sessionId,options),{code:'PI_SESSION_PATH_UNSAFE'})
+})
