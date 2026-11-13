@@ -107,3 +107,10 @@
 @media (max-width: 760px) {
   .task-dialogue .execution-todos { right: 16px; max-width: calc(100% - 32px); }
 }
+/* Expanded TODOs stay inside the same safe overlay band. The checklist has its
+   own scrollbar; opening it never covers the first record or moves the stream. */
+.task-dialogue .execution-todos .agent-progress { max-height: 120px; overflow: hidden; }
+.task-dialogue .agent-progress[open] > .agent-progress-heading { min-height: 36px; }
+.task-dialogue .agent-progress[open] .agent-progress-current,
+.task-dialogue .agent-progress[open] .pi-task-meta { display: none; }
+.task-dialogue .agent-progress-steps { max-height: 78px; overflow-y: auto; }
