@@ -10,8 +10,11 @@
 - 已实现：字节一致的完整快照 LRU；每次仍读物理字节并检查路径；live 增量投影。
 - 已通过：严格 journal 与路由 13 项、历史/live 39 项、源码守卫、Web 构建。
 - 已验证：真实大历史无增量 HTTP 中位数 1266 → 124ms；独立轻接口最大 1360 → 304ms。完整回归不全绿，详见 round-1.md，未将既有失败或整组阻断隐藏。
-- 待完成：PR、合并、已合并 SHA 本地部署、同路径复测与清理本任务资源。
+- 首次交付：PR #133 已合并，7df8058 已部署；真实实例仍出现任务历史 10688ms / health 10109ms，因此没有将首次部署判为性能验收通过。
+- 新根因：真实服务 CPU 采样中约 67% 沿 recover → kickGroup → triage.pending → latest 反复扫描/解码全部来源。136 条来源中有 28 条旧 pending，当前版本匹配后为 0，仍反复触发扫描。
+- 后续修复：复用既有版本覆盖索引；同一只读真实账本的查询从约 55ms 降至约 1ms，结果逐项相同；43 项来源/Router 账本及 10 项真实分诊/任务闭环通过；整合最新主线后核心 67 PASS、1 Windows 符号链接权限失败，Web 定向 45 PASS。
+- 待完成：后续修复合并与部署、真实实例复测及清理；最终合并/部署事实集中在 PR #133 与后续关联 PR。
 
 ## 决策和证据入口
 
-方案：[决策快照](../../spec/web-history-read-latency.md)。复用脚本：[只读 HTTP 对照](scripts/compare.mjs)，参数仅在本地提供，不提交真实身份、路径或正文。当前分支 worktree-web-api-latency，基于 935785f；验证结果集中在 [round-1.md](round-1.md) / [matrix.csv](matrix.csv)，合并部署事实追加在 PR。
+方案：[决策快照](../../spec/web-history-read-latency.md)。复用脚本：[只读 HTTP 对照](scripts/compare.mjs)，参数仅在本地提供，不提交真实身份、路径或正文。第一轮基于 935785f；后续分支 worktree-web-api-latency-followup 已整合当前主线 58026c0（含 #132）；验证结果集中在 [round-1.md](round-1.md) / [round-2.md](round-2.md) / [matrix.csv](matrix.csv)，合并部署事实追加在 PR。

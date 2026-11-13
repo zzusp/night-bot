@@ -505,3 +505,16 @@ test('Router updates keep a current brief and exact delta instead of appending o
  assert.equal(revised.request,'Only two targeted checks');assert.deepEqual(revised.requirements,['Retain old-call noReplay']);assert.equal(revised.currentInput.text,'Old scope replaced')
  assert.equal((await h.query('source.get',{sourceId:h.sourceId})).text,'First verify A; only after the evidence is accepted, produce B')
 })
+
+test('待分诊只认同会话同消息的最新版本，跨会话高版本不屏蔽且批量上限保留',async t=>{
+ const f=await fixture(t)
+ await f.command('source.record-direct',{source:{sourceId:'same-v2',groupId:f.conversationId,messageId:'user-order',actorId:'alice',version:2,text:'Current version'}})
+ await f.command('source.record-direct',{source:{sourceId:'foreign-v3',groupId:'conversation-other',messageId:'user-order',actorId:'alice',version:3,text:'Other conversation'}})
+ for(let i=0;i<18;i++)await f.command('source.record-direct',{source:{sourceId:'queued-'+i,groupId:f.conversationId,messageId:'queued-'+i,actorId:'alice',version:1,text:'Queued input'}})
+ const pending=await f.query('triage.pending',{conversationId:f.conversationId,limit:15})
+ assert.equal(pending.length,15);assert.equal(pending[0].sourceId,'same-v2')
+ assert.ok(pending.every(row=>row.groupId===f.conversationId&&row.sourceId!==f.sourceId))
+ assert.equal((await f.query('triage.pending',{conversationId:'conversation-other'}))[0].sourceId,'foreign-v3')
+ await assert.rejects(f.command('triage.commit',{dispositions:[{sourceId:f.sourceId,messageVersion:1,needsHandling:true,reason:'Stale version'}]}),/ROUTER_SOURCE_STALE/)
+ await f.reopen();assert.deepEqual(await f.query('triage.pending',{conversationId:f.conversationId,limit:15}),pending)
+})
