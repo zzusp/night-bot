@@ -60,7 +60,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const chats = useResource<Page<ChatSummary>>('/chat?offset=0&limit=20', 5000);
   const recent = useResource<Page<RecentConversation>>('/recent-conversations?offset=0&limit=20', 5000);
   const conversations = useResource<{items: Conversation[]}>('/conversations', 5000);
-  const [rail, setRail] = useState(true);
+  const [rail, setRail] = useState(() => window.matchMedia('(min-width: 1251px)').matches);
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'light');
   const [logoutError, setLogoutError] = useState<unknown>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
@@ -98,18 +98,19 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     <div className="sidebar-bottom">
       <div className="operator"><span className="operator-avatar">{session.operator.name.slice(0, 1) || 'N'}</span><div><strong>{session.operator.name || '操作者'}</strong><span>本机工作空间</span></div><IconButton label="退出登录" disabled={logoutBusy} onClick={() => void logout()}><RiLogoutBoxRLine size={18} /></IconButton></div>
     </div></>;
-  return <AssistantBrandContext.Provider value={brand}><div className="app-shell"><a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>跳转到主内容</a><aside className="sidebar desktop-sidebar">{sidebar()}</aside>
-    <dialog ref={drawer} className="nav-dialog" aria-label="导航"><div className="sidebar">{sidebar(true)}</div></dialog>
-    <div className="main-frame"><header className="topbar"><IconButton label="打开导航" className="mobile-menu" onClick={() => drawer.current?.showModal()}><RiMenuLine size={20} /></IconButton><div className="header-location"><span>工作空间</span><span className="breadcrumb-slash">/</span><h1 ref={titleRef} tabIndex={-1}>{title}</h1></div>
+  const workspaceHeader = <header className={`topbar${isConversation ? ' conversation-topbar' : ''}`}><IconButton label="打开导航" className="mobile-menu" onClick={() => drawer.current?.showModal()}><RiMenuLine size={20} /></IconButton><div className="header-location"><span>工作空间</span><span className="breadcrumb-slash">/</span><h1 ref={titleRef} tabIndex={-1}>{title}</h1></div>
       <div className="topbar-actions"><span className={`connection ${overview.error ? 'offline' : ''}`} role="status"><i />{overview.error ? '连接中断' : overview.data ? '已连接' : '连接中'}</span><span className="toolbar-divider" />
         <PermissionsPanel key={permissionIdentity.epoch} /><IconButton label="刷新概览" onClick={refresh}><RiRefreshLine size={18} /></IconButton><IconButton label={theme === 'light' ? '切换深色外观' : '切换浅色外观'} onClick={toggleTheme}>{theme === 'light' ? <RiMoonLine size={18} /> : <RiSunLine size={18} />}</IconButton>
-        {isConversation && <IconButton label={rail ? '隐藏活动面板' : '显示活动面板'} className="rail-toggle" aria-pressed={rail} onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton>}
-      </div></header>
+        {isConversation && <IconButton label={rail ? '隐藏活动面板' : '显示活动面板'} className="rail-toggle" aria-expanded={rail} aria-controls={rail ? "activity-panel" : undefined} onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton>}
+      </div></header>;
+  return <AssistantBrandContext.Provider value={brand}><div className="app-shell"><a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>跳转到主内容</a><aside className="sidebar desktop-sidebar">{sidebar()}</aside>
+    <dialog ref={drawer} className="nav-dialog" aria-label="导航"><div className="sidebar">{sidebar(true)}</div></dialog>
+    <div className="main-frame">{!isConversation && workspaceHeader}
       {!!logoutError && <Notice error={logoutError} />}
-      <div className="workspace-body"><main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : ''}`}><PageBoundary resetKey={route.pathname}>
+      <div className={`workspace-body${isConversation ? ' conversation-workspace' : ''}`}><main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : ''}`}>{isConversation && workspaceHeader}<div className={isConversation ? 'conversation-content' : 'page-content-slot'}><PageBoundary resetKey={route.pathname}>
         {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} /> : <TaskList route={route} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'settings' && !id ? <SettingsPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
-      </PageBoundary></main>
-      {isConversation && rail && <aside className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
+      </PageBoundary></div></main>
+      {isConversation && rail && <aside id="activity-panel" className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
         {overview.error && <Notice error={overview.error} stale={!!overview.data} onRetry={overview.refresh} />}
         {!!Object.keys(overview.data?.sectionErrors || {}).length && <p className="rail-empty" role="status">部分工作动态暂不可读，可刷新概览重新获取。</p>}
         {!overview.data && overview.loading ? <Loading /> : <>
