@@ -653,9 +653,16 @@ html, body, #root { width: 100%; min-width: 0; }
 .message-disclosure:focus-visible { outline: 2px solid var(--board-primary); outline-offset: 2px; }
 @media (pointer: coarse) { .message-disclosure { min-height: 44px; } }
 
-/* All route breadcrumbs belong to their content surface, never global tools. */
-.page-content-topbar { min-height: 52px; padding: 14px 36px 10px; }
-.page-content-topbar .header-location { flex: 1; overflow: hidden; }
-.page-content-topbar + .page-content-slot > .page-content { padding-top: 12px; }
-@media (max-width: 760px) { .page-content-topbar { padding: 12px 20px 8px; } }
-@media (max-width: 520px) { .page-content-topbar { min-height: 48px; padding: 10px 16px 8px; } }
+/* Shared page chrome. Content/scroll ownership remains route-specific. */
+.main-frame { --content-inset: 24px; --content-header-height: 52px; }
+.content-topbar { min-height: var(--content-header-height); padding: 10px var(--content-inset); gap: 12px; flex-shrink: 0; }
+.content-topbar .header-location { flex: 1; overflow: hidden; }
+.page-content-topbar + .page-content-slot > .page-content { width: 100%; max-width: none; margin: 0; padding: 12px var(--content-inset) 24px; }
+.settings-page > .settings-card, .settings-page > .settings-grid { max-width: 1100px; }
+.feedback-page > .settings-card { max-width: 1000px; }
+@media (max-width: 760px) { .main-frame { --content-inset: 16px; } }
+@media (max-width: 520px) {
+  .main-frame { --content-header-height: 48px; }
+  .content-topbar { padding-block: 8px; gap: 6px; }
+  .content-topbar .header-location { gap: 6px; }
+}
