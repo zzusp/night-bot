@@ -1,3 +1,4 @@
+import { RiArrowDownSLine, RiArrowUpSLine } from '@remixicon/react';
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 // Measure rendered line boxes, not character counts: CJK, inline emphasis and
@@ -10,6 +11,7 @@ export function ThreeLineMessage({ children, text }: { children: ReactNode; text
   useLayoutEffect(() => {
     const root = ref.current!;
     const measure = () => {
+      if (!root.isConnected) return;
       const origin = root.getBoundingClientRect().top;
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
       const lines: { top: number; bottom: number }[] = [];
@@ -46,6 +48,6 @@ export function ThreeLineMessage({ children, text }: { children: ReactNode; text
   }, [collapsed, text]);
   return <div className="three-line-message" data-collapsed={collapsed || undefined}>
     <div ref={ref} id={id} className="three-line-content" style={collapsed ? { maxHeight: cutoff!, overflow: 'hidden' } : undefined}>{children}</div>
-    {cutoff !== null && <button className="message-disclosure" type="button" aria-controls={id} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? '收起' : '展开'}<span aria-hidden="true">{expanded ? '⌃' : '⌄'}</span></button>}
+    {cutoff !== null && <button className="message-disclosure" type="button" aria-controls={id} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? '收起' : '展开'}{expanded ? <RiArrowUpSLine size={14} aria-hidden="true" /> : <RiArrowDownSLine size={14} aria-hidden="true" />}</button>}
   </div>;
 }
