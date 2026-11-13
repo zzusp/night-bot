@@ -167,3 +167,61 @@ test('retired skill usage database and all sidecars remain untouched during migr
  assert.equal((await applyMemoryMigration(root)).status,'completed')
  for(const name of files)assert.equal(await readFile(join(dir,name),'utf8'),'RETIRED:'+name)
 })
+
+test('explicit no-backup CLI upgrades v3 without copying source bodies or creating backups',async t=>{
+ const {root,dir}=await v3Fixture(t),before=await snapshot(root)
+ const args=['scripts/migrate-memory.mjs','--install-root',root,'--no-backup']
+ const check=spawnSync(process.execPath,[...args,'--check'],{encoding:'utf8'})
+ assert.equal(check.status,0,check.stderr);assert.equal(JSON.parse(check.stdout).backup,null);assert.deepEqual(await snapshot(root),before)
+ const apply=spawnSync(process.execPath,[...args,'--apply'],{encoding:'utf8'})
+ assert.equal(apply.status,0,apply.stderr);const result=JSON.parse(apply.stdout)
+ assert.equal(result.receipt.backup,null);assert.equal(result.receipt.version,2)
+ await assert.rejects(lstat(join(root,'backups')),{code:'ENOENT'});await assert.rejects(lstat(join(dir,'layout-migration.pending.json')),{code:'ENOENT'})
+ for(const name of ['candidates.md',entryPath('preferences','style'),'sources/'+entry.id+'.md'])assert.equal(await readFile(join(dir,name),'utf8'),before['data/memory/v2/bot/'+name].text)
+ const store=new MarkdownMemoryStore(join(root,'data/memory'))
+ const state=await store.transaction(scope,s=>({meta:s.meta,entry:s.topics.get('preferences').entries[0],candidates:s.candidates}))
+ assert.deepEqual(state.entry,entry);for(const [key,value]of Object.entries(meta))assert.deepEqual(state.meta[key],value);assert.deepEqual(state.candidates,[{...entry,id:'22345678-1234-1234-1234-123456789012',topic:'preferences',key:'candidate'}])
+ assert.equal((await checkMemoryMigration(root)).status,'already-layered')
+})
+
+for(const boundary of ['index.md',categoryPath('preferences'),'scope.json'])test('no-backup redo survives a process exit after '+boundary,async t=>{
+ const {root,dir}=await v3Fixture(t)
+ const module=new URL('../src/memory/layered-migration.js',import.meta.url).href
+ const child=spawnSync(process.execPath,['--input-type=module','-e',`import {applyMemoryMigration} from ${JSON.stringify(module)};await applyMemoryMigration(process.argv[1],{backup:false,afterWrite:name=>{if(name===process.argv[2])process.exit(23)}});`,root,boundary],{encoding:'utf8'})
+ assert.equal(child.status,23,child.stderr)
+ const journal=JSON.parse(await readFile(join(dir,'layout-migration.pending.json'),'utf8'))
+ assert.equal(journal.backup,null);assert.equal(journal.version,2)
+ assert.ok(journal.writes.every(([name])=>name==='index.md'||name==='scope.json'||name===categoryPath('preferences')))
+ assert.ok(journal.sourceFiles.every(([,digest])=>/^[a-f0-9]{64}$/.test(digest)));assert.doesNotMatch(JSON.stringify(journal),/night-bot-memory-entry-v3|night-bot-memory-sources-v3/);await assert.rejects(lstat(join(root,'backups')),{code:'ENOENT'})
+ const cli=spawnSync(process.execPath,['scripts/migrate-memory.mjs','--install-root',root,'--apply','--no-backup'],{encoding:'utf8'})
+ assert.equal(cli.status,0,cli.stderr);assert.equal(JSON.parse(cli.stdout).status,'completed')
+ const store=new MarkdownMemoryStore(join(root,'data/memory'));assert.deepEqual((await store.read(scope,{topic:'preferences',key:'style',includePrevious:true})).entries[0],entry)
+ assert.equal((await checkMemoryMigration(root)).status,'already-layered');await assert.rejects(lstat(join(root,'backups')),{code:'ENOENT'})
+})
+for(const mutation of ['source','target','added','journal-path','journal-body'])test('no-backup redo refuses foreign '+mutation+' without further writes',async t=>{
+ const {root,dir}=await v3Fixture(t)
+ await assert.rejects(applyMemoryMigration(root,{backup:false,afterWrite:()=>{throw Error('pause')}}),/pause/)
+ if(mutation==='source')await writeFile(join(dir,entryPath('preferences','style')),'changed source')
+ if(mutation==='target')await writeFile(join(dir,'index.md'),'changed target')
+ if(mutation==='added')await writeFile(join(dir,'categories/preferences/entries/foreign.md'),'foreign')
+ if(mutation.startsWith('journal-')){
+  const path=join(dir,'layout-migration.pending.json'),journal=JSON.parse(await readFile(path,'utf8'))
+  if(mutation==='journal-path')journal.writes[0][0]='../outside.md'
+  else journal.writes[0][1]+='changed'
+  await writeFile(path,JSON.stringify(journal))
+ }
+ const before=await snapshot(root)
+ await assert.rejects(checkMemoryMigration(root,{backup:false}));await assert.rejects(applyMemoryMigration(root,{backup:false}));assert.deepEqual(await snapshot(root),before)
+})
+test('no-backup keeps runtime, source-version and existing transaction policy fences',async t=>{
+ const legacy=await fixture(t),before=await snapshot(legacy.root)
+ await assert.rejects(applyMemoryMigration(legacy.root,{backup:false}),/NO_BACKUP_REQUIRES_V3/);assert.deepEqual(await snapshot(legacy.root),before)
+ const {root}=await v3Fixture(t),release=await acquireLock(join(root,'data/runtime/.host.lock'))
+ try{const locked=await snapshot(root);await assert.rejects(applyMemoryMigration(root,{backup:false}),/NIGHT_DATA_IN_USE/);assert.deepEqual(await snapshot(root),locked)}finally{await release()}
+ await assert.rejects(applyMemoryMigration(root,{afterWrite:()=>{throw Error('pause')}}),/pause/)
+ const partial=await snapshot(root);await assert.rejects(applyMemoryMigration(root,{backup:false}),/BACKUP_POLICY_CONFLICT/);assert.deepEqual(await snapshot(root),partial)
+ assert.equal((await applyMemoryMigration(root)).status,'completed')
+ const other=await v3Fixture(t)
+ await assert.rejects(applyMemoryMigration(other.root,{backup:false,afterWrite:()=>{throw Error('pause')}}),/pause/)
+ const without=await snapshot(other.root);await assert.rejects(applyMemoryMigration(other.root),/BACKUP_POLICY_CONFLICT/);assert.deepEqual(await snapshot(other.root),without)
+})

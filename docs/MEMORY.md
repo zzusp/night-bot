@@ -263,7 +263,8 @@ and cannot prove semantic use. Failed/revoked calls do not become successful cou
 Existing topic-aggregate Bot stores are never silently rewritten by startup. Stop all
 writers and use the read-only check followed by explicit apply in
 [the migration guide](MEMORY-MIGRATION.md). The script preserves old originals,
-source metadata and forgetting receipts, backs up before writing, validates interrupted
+source metadata and forgetting receipts, backs up before writing by default (explicit local
+`--no-backup` is limited to v3→v4 metadata with a forward-only redo journal), validates interrupted
 work before resuming, and never infers missing content. No real installation is
 modified by the implementation or its isolated tests.
 
