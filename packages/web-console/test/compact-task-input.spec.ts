@@ -42,10 +42,17 @@ test('three rendered lines, accessible disclosure, resize, polling, canvas gutte
       const body=(await message.locator('.message-body').boundingBox())!;
       expect(paneBox.x+paneBox.width-body.x-body.width).toBeGreaterThanOrEqual(16);
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      await page.locator('.agent-progress-heading').scrollIntoViewIfNeeded();
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const before=(await message.boundingBox())!;
       await page.locator('.agent-progress-heading').click();
       const after=(await message.boundingBox())!;
       expect(Math.abs(after.y-before.y)).toBeLessThan(2);
+      const todo=(await page.locator('.execution-todos').boundingBox())!;
+      const start=(await page.locator('.execution-history-start').boundingBox())!;
+      expect(todo.y+todo.height).toBeLessThanOrEqual(start.y);
+      const steps=page.locator('.agent-progress-steps');
+      expect(await steps.evaluate(el=>getComputedStyle(el).overflowY)).toBe('auto');
       await page.locator('.agent-progress-heading').click();
       await page.screenshot({path:test.info().outputPath(`task-compact-${width}-${theme}.png`)});
     }
