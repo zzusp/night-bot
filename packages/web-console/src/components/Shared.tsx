@@ -2,7 +2,7 @@ import {useAssistantBrand, brandGlyph} from './AssistantBrand';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiArrowRightSLine, RiLightbulbLine } from '@remixicon/react';
+import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiArrowRightSLine, RiLightbulbLine, RiFileTextLine, RiTerminalBoxLine, RiPencilLine, RiToolsLine } from '@remixicon/react';
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
 import { ApiError, errorText, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
 import { dateTime, useResource } from '../hooks';
@@ -231,7 +231,7 @@ function ToolActivityGroup({ tools, history, compact = false, anchorId }: { tool
   return <details className="execution-tool-group" data-message-id={anchorId} open={open} onToggle={event => {
     if (event.target === event.currentTarget) setOpen(event.currentTarget.open);
   }}>
-    <summary>{compact ? <RiCheckLine className="pi-tool-status is-complete" size={14} aria-hidden="true" /> : <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="pi-tool-count">{tools.length} 项工具调用</span><span className="execution-tool-group-summary">{summary}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<RiArrowRightSLine className="pi-tool-chevron" size={14} aria-hidden="true" /><span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
+    <summary>{compact ? <RiCheckLine className="pi-tool-status is-complete" size={14} aria-hidden="true" /> : <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="pi-tool-count">{tools.length} 项工具调用</span><span className="execution-tool-group-summary sr-only">{summary}</span><span className="pi-tool-breakdown">{[...counts].map(([label, count]) => { const Icon = label === '读取' ? RiFileTextLine : label === '脚本' ? RiTerminalBoxLine : label === '编辑' || label === '写入' ? RiPencilLine : label === '检索' || label === '搜索' ? RiSearchLine : RiToolsLine; return <span key={label} title={label} aria-label={`${label} ${count} 次`}><Icon size={12} aria-hidden="true" /><span>{count}</span></span>; })}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<RiArrowRightSLine className="pi-tool-chevron" size={14} aria-hidden="true" /><span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
     <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} compact={compact} />)}</div>
   </details>;
 }
