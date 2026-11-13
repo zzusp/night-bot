@@ -11,7 +11,7 @@ const paths=[];
 globalThis.__feedbackResource=path=>{paths.push(path);return {data:path==='/feedback'?destination:undefined,loading:false,error:null,refresh(){}}};
 const hooks=registerHooks({
  resolve(specifier,context,next){if(specifier.startsWith('.')&&context.parentURL?.startsWith('file:')){const url=new URL(specifier,context.parentURL);for(const extension of ['.ts','.tsx'])if(existsSync(fileURLToPath(url)+extension))return next(url.href+extension,context)}return next(specifier,context)},
- load(url,context,next){if(url.endsWith('.css'))return {format:'module',source:'',shortCircuit:true};if(/\.tsx?$/.test(url)&&url.startsWith('file:')){let input=readFileSync(new URL(url),'utf8');if(url.endsWith('/src/FeedbackPage.tsx'))input=input.replace('const [collectEvidence, setCollectEvidence] = useState(false)', 'const [collectEvidence, setCollectEvidence] = useState(globalThis.__feedbackCollect ?? false)').replace('useState<Feedback | null>(null)', 'useState<Feedback | null>(globalThis.__feedbackRecord ?? null)').replace('useState<{title: string; body: string} | null>(null)', 'useState<{title: string; body: string} | null>(globalThis.__feedbackDraft ?? null)');if(url.endsWith('/src/hooks.ts'))input=input.replace('export function useResource<T>','function originalUseResource<T>')+'\nexport const useResource = path => globalThis.__feedbackResource(path);';return {format:'module',source:ts.transpileModule(input,{fileName:fileURLToPath(url),compilerOptions:{module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText,shortCircuit:true}}return next(url,context)}
+ load(url,context,next){if(url.endsWith('.css'))return {format:'module',source:'',shortCircuit:true};if(/\.tsx?$/.test(url)&&url.startsWith('file:')){let input=readFileSync(new URL(url),'utf8');if(url.endsWith('/src/FeedbackPage.tsx'))input=input.replace('useState(false);\n  const [copyStatus', 'useState(globalThis.__feedbackImages ?? false);\n  const [copyStatus').replace('const [collectEvidence, setCollectEvidence] = useState(false)', 'const [collectEvidence, setCollectEvidence] = useState(globalThis.__feedbackCollect ?? false)').replace('useState<Feedback | null>(null)', 'useState<Feedback | null>(globalThis.__feedbackRecord ?? null)').replace('useState<{title: string; body: string} | null>(null)', 'useState<{title: string; body: string} | null>(globalThis.__feedbackDraft ?? null)');if(url.endsWith('/src/hooks.ts'))input=input.replace('export function useResource<T>','function originalUseResource<T>')+'\nexport const useResource = path => globalThis.__feedbackResource(path);';return {format:'module',source:ts.transpileModule(input,{fileName:fileURLToPath(url),compilerOptions:{module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText,shortCircuit:true}}return next(url,context)}
 });
 let FeedbackPage;try{({default:FeedbackPage}=await import('../src/FeedbackPage.tsx'))}finally{hooks.deregister()}
 const render=()=>renderToStaticMarkup(createElement(FeedbackPage));
@@ -54,4 +54,22 @@ test('no model still permits non-collection preview; selecting collection requir
  globalThis.__feedbackCollect=true;
  try {html=render();assert.match(html,/type="checkbox" disabled=""/);assert.match(html,/<button[^>]*disabled=""[^>]*><span[^>]*>开始诊断/);}finally{delete globalThis.__feedbackCollect;}
  const source=readFileSync(new URL('../src/FeedbackPage.tsx',import.meta.url),'utf8');assert.match(source,/collectEvidence \? '\/feedback\/collect' : '\/feedback\/draft'/);assert.match(source,/: { title: title.trim\(\), description: description.trim\(\) }/);
+});
+
+test('native image handoff keeps explicit privacy disclosure and never carries draft or images in its URL',()=>{
+ globalThis.__feedbackRecord={id:'report',state:'ready',target:'zzusp/night-bot',title:'图片问题',body:'x'.repeat(48000)};
+ globalThis.__feedbackImages=true;
+ try {
+  const html=render();
+  assert.match(html,/复制完整正文/);assert.match(html,/打开 GitHub 编辑页/);
+  assert.match(html,/图片在 GitHub 页面中手动粘贴或拖入/);assert.match(html,/无法保证自动脱敏/);
+  assert.doesNotMatch(html,/确认提交 Issue/);assert.doesNotMatch(html,/type="file"/);
+  assert.match(html,/在 GitHub 提交/);assert.match(html,/默认不收集/);
+ } finally {delete globalThis.__feedbackRecord;delete globalThis.__feedbackImages;}
+ const source=readFileSync(new URL('../src/FeedbackPage.tsx',import.meta.url),'utf8');
+ assert.match(source,/if \(nativeImages \|\| nativeOpened\) return;/);
+ assert.match(source,/window.open\('https:\/\/github.com\/zzusp\/night-bot\/issues\/new', '_blank', 'noopener,noreferrer'\)/);
+ assert.doesNotMatch(source,/issues\/new\?/);
+ assert.match(source,/navigator.clipboard.writeText\(record\[field\]\)/);
+ assert.match(source,/setNativeOpened\(true\)/);
 });
