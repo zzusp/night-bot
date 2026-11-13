@@ -17,10 +17,10 @@ let FeedbackPage;try{({default:FeedbackPage}=await import('../src/FeedbackPage.t
 const render=()=>renderToStaticMarkup(createElement(FeedbackPage));
 test('feedback defaults to no collection with visible scope and model destination, never starts collection on render',()=>{
  destination={target:'zzusp/night-bot',model:'provider/model',revision:'configuration-1',endpoint:'https://models.example'};paths.length=0;const html=render();
- assert.match(html,/独立 Pi 会话/);assert.match(html,/关联 Pi 会话中的工具调用计时及结构化错误码/);assert.match(html,/由 AI 收集诊断/);assert.match(html,/自动脱敏可能遗漏/);assert.match(html,/当前模型服务/);assert.match(html,/zzusp\/night-bot/);assert.match(html,/provider\/model/);assert.match(html,/https:\/\/models.example/);
+ assert.match(html,/由 AI 收集诊断/);assert.match(html,/自动脱敏可能遗漏/);assert.match(html,/所选模型服务/);
  assert.match(html,/type="radio"[^>]*checked=""[^>]*value="none"/);assert.doesNotMatch(html,/type="checkbox"/);assert.match(html,/>生成预览/);assert.deepEqual(paths,['/feedback',null]);assert.doesNotMatch(html,/确认提交 Issue/);
 });
-test('scope remains visible before configuration is available, submit stays unavailable',()=>{destination=undefined;const html=render();assert.match(html,/数据收集与提交提示/);assert.match(html,/提交 GitHub 前请核对完整内容/);assert.match(html,/<button[^>]*disabled=""[^>]*><span[^>]*>生成预览/)});
+test('scope remains visible before configuration is available, submit stays unavailable',()=>{destination=undefined;const html=render();assert.match(html,/数据收集与提交提示/);assert.match(html,/内容可审核修改，确认后才提交 GitHub/);assert.match(html,/<button[^>]*disabled=""[^>]*><span[^>]*>生成预览/)});
 test('UI has separate exact-payload confirmation and model-bound collection with no persistent browser content storage',()=>{
  const source=readFileSync(new URL('../src/FeedbackPage.tsx',import.meta.url),'utf8');
  assert.match(source,/consent: true, model: destination.data.model/);assert.match(source,/confirm: true, title: record.title, body: record.body/);assert.match(source,/setSubmitAttempted\(true\)/);assert.match(source,/method: 'DELETE'/);assert.doesNotMatch(source,/localStorage|sessionStorage|dangerouslySetInnerHTML|window\.confirm/);
@@ -50,7 +50,7 @@ test('collection binds explicit consent to provider endpoint revision',()=>{
 });
 
 test('no model still permits non-collection preview; selecting collection requires unchecked consent',()=>{
- destination={target:'zzusp/night-bot',model:null};let html=render();assert.match(html,/未配置（仍可不收集并提交）/);assert.match(html,/默认不收集/);assert.doesNotMatch(html,/<button[^>]*disabled=""[^>]*><span[^>]*>生成预览/);
+ destination={target:'zzusp/night-bot',model:null};let html=render();assert.match(html,/默认不收集/);assert.doesNotMatch(html,/<button[^>]*disabled=""[^>]*><span[^>]*>生成预览/);
  globalThis.__feedbackCollect=true;
  try {html=render();assert.match(html,/type="checkbox" disabled=""/);assert.match(html,/<button[^>]*disabled=""[^>]*><span[^>]*>开始诊断/);}finally{delete globalThis.__feedbackCollect;}
  const source=readFileSync(new URL('../src/FeedbackPage.tsx',import.meta.url),'utf8');assert.match(source,/collectEvidence \? '\/feedback\/collect' : '\/feedback\/draft'/);assert.match(source,/: { title: title.trim\(\), description: description.trim\(\) }/);
@@ -74,13 +74,13 @@ test('native image handoff keeps explicit privacy disclosure and never carries d
  assert.match(source,/setNativeOpened\(true\)/);
 });
 
-test('privacy notice is inline with choices, full details collapsed and important consent boundary always visible',()=>{
+test('privacy notice is inline without a details entry and consent boundaries stay visible',()=>{
  destination={target:'zzusp/night-bot',model:'provider/model',revision:'r1',endpoint:'https://models.example'};
  const html=render();
  assert.doesNotMatch(html,/class="feedback-disclosure"/);
  assert.ok(html.indexOf('feedback-title') < html.indexOf('feedback-privacy-summary'));
- assert.match(html,/<p id="feedback-privacy-summary"[^>]*>收集可选，需您同意；本地数据脱敏后用于模型诊断，可能遗漏敏感信息。内容可审核修改，确认后才提交 GitHub。<\/p>/);
- assert.match(html,/<details class="feedback-privacy-details"><summary>了解详情<\/summary>/);
+ assert.match(html,/<p id="feedback-privacy-summary"[^>]*>默认不收集。经您同意后采集本地诊断信息，脱敏后发送所选模型服务分析；自动脱敏可能遗漏。内容可审核修改，确认后才提交 GitHub。<\/p>/);
+ assert.doesNotMatch(html,/<details|了解详情/);
  globalThis.__feedbackCollect=true;
  try {
   const selected=render();

@@ -21,10 +21,4 @@
 
 .feedback-privacy { margin-block: 0 16px; min-width: 0; }
 .feedback-privacy-summary { margin: 0; color: var(--board-muted); font-size: 12px; line-height: 1.65; }
-.feedback-privacy-details { margin-top: 4px; font-size: 12px; line-height: 1.65; }
-.feedback-privacy-details summary { width: fit-content; color: var(--board-muted); cursor: pointer; border-radius: 4px; }
-.feedback-privacy-details summary:hover { color: var(--board-text); }
-.feedback-privacy-details summary:focus-visible { outline: 2px solid var(--board-primary); outline-offset: 3px; }
-.feedback-privacy-body { margin-top: 8px; color: var(--board-muted); max-width: 72ch; overflow-wrap: anywhere; }
-.feedback-privacy-body p { margin: 0 0 8px; }
 .feedback-image-notice { color: var(--board-muted); font-size: 12px; line-height: 1.65; }
