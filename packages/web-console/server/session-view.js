@@ -182,14 +182,15 @@ const stamp = (message, entry) => {
 }
 
 // Only project fields from the exact admitted packet, never today's mutable task.
-// request can be cumulative on resume; do not infer a delta from marker strings.
+// Legacy requests may be cumulative. New packets carry exact explicit deltas; never parse marker strings.
 function taskInstruction(input) {
   const task = input?.task
   if (!task || typeof task !== 'object' || Array.isArray(task)) return ''
+  const updates = [...(Array.isArray(input.updates) ? input.updates.map(row => row?.text) : []), input.supplement?.text].filter(value => typeof value === 'string' && value.trim())
   const request = typeof task.request === 'string' && task.request.trim() ? task.request : ''
   const objective = typeof task.objective === 'string' && task.objective.trim() ? task.objective : ''
   const requirements = Array.isArray(task.requirements) ? task.requirements.filter(value => typeof value === 'string' && value.trim()) : []
-  return [request, objective && objective !== request ? '目标：\n' + objective : '',
+  return [updates.length ? updates.join('\n\n') : request, objective && objective !== request ? '目标：\n' + objective : '',
     requirements.length ? '要求：\n' + requirements.map(value => '- ' + value).join('\n') : ''].filter(Boolean).join('\n\n')
 }
 

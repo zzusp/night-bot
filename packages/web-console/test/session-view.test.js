@@ -496,3 +496,12 @@ test('instruction bodies remain paginated and redact secrets without serializing
   assert.match(body, /FINAL/); assert.match(body, /保留数据/)
   assert.doesNotMatch(body, /hidden-password|PRIVATE_CAPABILITY|SOURCE_ONLY/)
 })
+
+test('new execution packets show actual admitted deltas without duplicating the historical brief', async () => {
+ const value = snapshot(), message = value.context.projection.entries[1].messages[0]
+ for (const delta of [{updates:[{id:'one',text:'仅核对当前构建结果'}]}, {supplement:{text:'仅核对当前构建结果',contextRevision:2}}]) {
+  message.content[0].text=JSON.stringify({task:{request:'旧初始简报',objective:'当前目标',requirements:['不重复发布']},...delta})
+  const rows=(await taskSessionView({task,persistence:{readNative:async()=>value}})).items
+  assert.equal(rows[0].text,'仅核对当前构建结果\n\n目标：\n当前目标\n\n要求：\n- 不重复发布')
+ }
+})
