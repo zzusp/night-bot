@@ -2,7 +2,7 @@ import {useAssistantBrand, brandGlyph} from './AssistantBrand';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiArrowRightSLine } from '@remixicon/react';
+import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiArrowRightSLine, RiLightbulbLine } from '@remixicon/react';
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
 import { ApiError, errorText, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
 import { dateTime, useResource } from '../hooks';
@@ -63,7 +63,7 @@ function MessageProvenance({ source }: { source?: MessageSource }) {
     {source.callId && <><dt>工具调用</dt><dd><code>{source.callId}</code></dd></>}
   </dl></details> : null;
 }
-function MessageBody({ message, history, plain = false, showSource = true, disclosure }: { message: Message; history?: HistoryReader; plain?: boolean; showSource?: boolean; disclosure?: { kind: 'input' | 'output'; name: string; state?: string } }) {
+function MessageBody({ message, history, plain = false, showSource = true, disclosure, onUnavailable }: { onUnavailable?: () => void; message: Message; history?: HistoryReader; plain?: boolean; showSource?: boolean; disclosure?: { kind: 'input' | 'output'; name: string; state?: string } }) {
   const [bodyOpen, setBodyOpen] = useState(false);
   const [bodyOpened, setBodyOpened] = useState(false);
   const [cursor, setCursor] = useState<{ offsets: number[]; revision?: string }>({ offsets: [0] });
@@ -78,7 +78,7 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
   const reset = () => setCursor({ offsets: [0] });
   const forbidden = query.error instanceof ApiError && ([401, 403, 404].includes(query.error.status) || query.error.code === 'SESSION_RESOURCE_UNAVAILABLE');
   const [denied, setDenied] = useState(false);
-  useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
+  useEffect(() => { if (forbidden) { setDenied(true); onUnavailable?.(); } }, [forbidden]);
   // Only a fresh successful read of this same page clears revocation. Resetting
   // to the cached first fragment would reveal text without rechecking access.
   useEffect(() => { if (query.updatedAt && !query.error) setDenied(false); }, [query.updatedAt]);
@@ -123,9 +123,21 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
 
 }
 
+// Summaries use only already-redacted public input; never inspect raw Pi files.
+function toolSummary(item: ToolItem): string {
+  const name = (item.call || item.results[0]).toolName || '工具';
+  if (!item.call || item.call.truncated) return name;
+  try {
+    const args = JSON.parse(item.call.text);
+    const field = ['bash', 'pwsh'].includes(name) ? args.command : ['read', 'write', 'edit'].includes(name) ? args.path : ['grep', 'find'].includes(name) ? args.pattern || args.glob : undefined;
+    return typeof field === 'string' ? `${['bash', 'pwsh'].includes(name) ? '$' : name} ${field.replace(/\s+/g, ' ').slice(0, 180)}` : name;
+  } catch { return name; }
+}
+
 function ToolActivity({ item, history, compact = false }: { item: ToolItem; history?: HistoryReader; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState(false);
+  const [summaryHidden, setSummaryHidden] = useState(false);
   const frame = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!frame.current || typeof IntersectionObserver === 'undefined') return;
@@ -138,6 +150,12 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
   const state = toolState(item);
   const running = ['running', 'active'].includes(state);
   const failed = ['error', 'failed'].includes(state);
+  const previousState = useRef(state);
+  const [completionCue, setCompletionCue] = useState(false);
+  useEffect(() => {
+    if (['running', 'active'].includes(previousState.current) && (failed || !!result)) setCompletionCue(true);
+    previousState.current = state;
+  }, [state, failed, result]);
   if (compact) return <article ref={frame} className={`message message-tool pi-tool-frame${running ? ' is-running' : ''}`} data-message-id={item.id}>
     <details className="pi-tool-step" open={open} onToggle={event => {
       if (event.target !== event.currentTarget) return;
@@ -145,14 +163,14 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
       if (event.currentTarget.open) setOpened(true);
     }}>
       <summary className={running ? 'pi-tool-shimmer' : undefined}>
-        <span className={`pi-tool-status${running ? ' is-running' : failed ? ' is-error' : result ? ' is-complete' : ''}`} aria-hidden="true">{running ? <RiLoader4Line size={14} /> : failed ? <RiErrorWarningLine size={14} /> : result ? <RiCheckLine size={14} /> : <span>·</span>}</span>
-        <span className="pi-tool-title">{message.toolName || '工具'}</span>
-        <span className="pi-tool-state">{states[state]?.[0] || state}</span>
+        <span key={state} className={`pi-tool-status${completionCue ? ' pi-motion-cue' : ''}${running ? ' is-running' : failed ? ' is-error' : result ? ' is-complete' : ''}`} aria-hidden="true">{running ? <RiLoader4Line size={14} /> : failed ? <RiErrorWarningLine size={14} /> : result ? <RiCheckLine size={14} /> : <span>·</span>}</span>
+        <span className="pi-tool-title">{summaryHidden ? message.toolName || '工具' : toolSummary(item)}</span>
+        {!result && <span className="pi-tool-state">{states[state]?.[0] || state}</span>}
         <RiArrowRightSLine className="pi-tool-chevron" size={14} aria-hidden="true" />
       </summary>
       {opened && <div className="pi-tool-body">
-        <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain /> : <span className="execution-tool-missing">{item.inputElsewhere ? '输入见上方调用。' : '本页无输入记录。'}</span>}</section>
-        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出</h4><MessageBody message={output} history={history} plain /></section>)}
+        <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain onUnavailable={() => setSummaryHidden(true)} /> : <span className="execution-tool-missing">{item.inputElsewhere ? '输入见上方调用。' : '本页无输入记录。'}</span>}</section>
+        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出</h4><MessageBody message={output} history={history} plain onUnavailable={() => setSummaryHidden(true)} /></section>)}
         {!result && <section className="tool-part"><h4>输出</h4><span className="execution-tool-missing">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</span></section>}
       </div>}
     </details>
@@ -171,7 +189,7 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
       {opened && <>
         <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain />
           : <p className="message-scope">{item.inputElsewhere ? '见上方调用。' : '本页无输入记录。'}</p>}</section>
-        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain /></section>)}
+        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain onUnavailable={() => setSummaryHidden(true)} /></section>)}
         {!result && <section className="tool-part"><h4>输出</h4><p className="message-scope">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</p></section>}
       </>}
     </details></div>
@@ -192,7 +210,7 @@ function ToolActivityGroup({ tools, history, compact = false, anchorId }: { tool
   return <details className="execution-tool-group" data-message-id={anchorId} open={open} onToggle={event => {
     if (event.target === event.currentTarget) setOpen(event.currentTarget.open);
   }}>
-    <summary>{compact ? <RiCheckLine className="pi-tool-status is-complete" size={14} aria-hidden="true" /> : <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="execution-tool-group-summary">{summary}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<RiArrowRightSLine className="pi-tool-chevron" size={14} aria-hidden="true" /><span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
+    <summary>{compact ? <RiCheckLine className="pi-tool-status is-complete" size={14} aria-hidden="true" /> : <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="pi-tool-count">{tools.length} 项工具调用</span><span className="execution-tool-group-summary">{summary}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<RiArrowRightSLine className="pi-tool-chevron" size={14} aria-hidden="true" /><span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
     <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} compact={compact} />)}</div>
   </details>;
 }
@@ -303,7 +321,7 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>}
-          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <details className="thinking-message"><summary>模型思考</summary><MessageBody message={message} history={history} showSource={!compact} /></details> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
+          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <details className="thinking-message"><summary><RiLightbulbLine className="pi-thinking-icon" size={14} aria-hidden="true" /><span>模型思考</span><RiArrowRightSLine className="pi-tool-chevron" size={14} aria-hidden="true" /></summary><MessageBody message={message} history={history} showSource={!compact} /></details> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
         </article>;
       })}
       {pending && <div className="thinking" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>Bot 正在处理，完成后会更新回复</div>}

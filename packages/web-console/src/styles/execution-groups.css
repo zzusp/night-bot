@@ -106,3 +106,25 @@
  .execution-transcript .message-assistant:has(.thinking-message) { padding-inline: 8px; }
  .execution-transcript .thinking-message > summary { min-height: 44px; }
 }
+.execution-transcript .thinking-message > summary { display: flex; align-items: center; gap: 6px; list-style: none; }
+.execution-transcript .thinking-message > summary::-webkit-details-marker { display: none; }
+.pi-thinking-icon { color: #c084fc; }
+.thinking-message[open] > summary > .pi-tool-chevron { transform: rotate(90deg); }
+.pi-motion-cue { transition: opacity 180ms ease-out, transform 220ms cubic-bezier(.2,1.3,.4,1); }
+@starting-style { .pi-motion-cue { opacity: 0; transform: scale(.6); } }
+@media(prefers-reduced-motion: reduce) { .pi-motion-cue { transition: none; } }
+.execution-transcript .message-assistant:not(:has(.thinking-message)) { margin: 16px 0; padding: 0; }
+.execution-transcript .pi-tool-body .tool-content { font-size: 12px; line-height: 1.5; max-height: none; }
+@media(max-width:760px) { .execution-transcript .message-column { padding: 8px; } }
+.execution-transcript .pi-tool-frame, .execution-transcript .execution-tool-group { margin-block: 2px; }
+.execution-transcript .execution-tool-group > summary, .pi-tool-step > summary { flex-wrap: nowrap; min-height: 20px; padding-block: 0; }
+.execution-tool-group-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-tool-count { flex-shrink: 0; color: var(--board-text); font-weight: 500; }
+.execution-transcript .execution-tool-group-items { gap: 2px; }
+.execution-transcript .thinking-message[open] > summary { margin-bottom: 0; }
+.execution-transcript .thinking-message > summary { min-height: 20px; }
+.pi-tool-status.is-running { animation: pi-tool-opacity 1.8s ease-in-out infinite; }
+@keyframes pi-tool-opacity { 0%,100% {opacity:1} 50% {opacity:.55} }
+@media(max-width:760px) { .execution-transcript .execution-tool-group > summary, .pi-tool-step > summary, .execution-transcript .thinking-message > summary { min-height: 44px; } }
+@media(prefers-reduced-motion:reduce) { .pi-tool-status.is-running { animation:none; } }
+.pi-offscreen .pi-tool-status.is-running { animation-play-state:paused; }
