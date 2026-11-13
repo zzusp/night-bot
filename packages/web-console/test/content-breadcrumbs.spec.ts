@@ -15,6 +15,13 @@ for (const width of [1440, 390]) test(`所有页面导航在内容区内 ${width
     await expect(page.locator('.header-location')).toHaveCount(1)
     const box = await header.boundingBox(), panel = await page.locator('.main-panel').boundingBox()
     expect(box!.y).toBeGreaterThanOrEqual(panel!.y)
+    const inset = width <= 760 ? 16 : 24
+    expect(await header.evaluate(el => parseFloat(getComputedStyle(el).paddingLeft))).toBe(inset)
+    const body = page.locator('.page-content-slot > .page-content')
+    if (await body.count()) {
+      expect(await body.evaluate(el => parseFloat(getComputedStyle(el).paddingLeft))).toBe(inset)
+      expect(await body.evaluate(el => getComputedStyle(el).maxWidth)).toBe('none')
+    }
     expect(box!.x).toBeGreaterThanOrEqual(panel!.x)
     expect(box!.x + box!.width).toBeLessThanOrEqual(panel!.x + panel!.width + 1)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
