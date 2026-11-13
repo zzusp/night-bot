@@ -160,9 +160,6 @@
 .execution-transcript .pi-live-message:not(:has(.thinking-message)) > .message-body::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(100deg,transparent 20%,rgb(96 165 250 / 9%) 45%,rgb(96 165 250 / 15%) 50%,rgb(96 165 250 / 9%) 55%,transparent 80%); animation: pi-tool-sweep 1.6s linear infinite; }
 @media(prefers-reduced-motion:reduce) { .execution-transcript .pi-live-message > .message-body::after { animation:none; background:none; } }
 
-.pi-shell-parameters { margin-top: 4px; font: 12px/1.5 var(--execution-mono); color: var(--board-muted); }
-.pi-shell-parameters > summary { cursor: pointer; }
 
 .pi-shell-command code { flex: 1; word-break: break-all; }
-.pi-shell-parameters { margin: 4px 0; }
 .pi-tool-body .tool-part:first-child > h4 { display: none; }

@@ -79,8 +79,8 @@ test('native shell arguments remain compact and real output copies its final new
  await page.locator('.pi-tool-step > summary').click();
  await expect(page.locator('.pi-shell-command code')).toHaveText(args.command);
  await expect(page.locator('.pi-shell-command small')).toHaveText('(timeout: 7s)');
- await page.locator('.pi-shell-parameters > summary').click();
- await expect(page.locator('.pi-shell-parameters')).toContainText(args.description);
+ await expect(page.locator('.pi-shell-parameters')).toHaveCount(0);
+ await expect(page.locator('.pi-tool-body')).not.toContainText(args.description);
  const code=page.locator('.pi-plain-output > code');
  expect(await code.textContent()).toBe(output);
  expect(await code.locator('..').evaluate(el=>({max:getComputedStyle(el).maxHeight,bg:getComputedStyle(el).backgroundColor,radius:getComputedStyle(el).borderRadius}))).toEqual({max:'320px',bg:'rgb(245, 245, 245)',radius:'4px'});
