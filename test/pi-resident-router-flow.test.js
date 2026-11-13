@@ -1284,3 +1284,71 @@ for(const cut of ['prepared-only','journal-committed'])test(`Router resumes thro
   assert.equal(await readFile(join(inspection.scope.taskRoot,'work/independent.txt'),'utf8'),'new independent work')
   assert.ok(!(await h.query('source.list')).some(row=>row.requestIdentity?.effectAuthorization))
 })
+
+for(const scenario of ['newer-cancellation','committed-reply','failed-tool'])test('normal Router shutdown resumes an aborted generation safely: '+scenario,{timeout:nativeTestTimeout(60000)},async t=>{
+  const entered=Promise.withResolvers(),release=Promise.withResolvers()
+  t.after(()=>release.resolve())
+  let recovering=false,first=true,resumedSources=[]
+  const h=await residentRouterHost(t,async body=>{
+    const summary=handoff(body);if(summary)return summary
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(!requestTools(body).includes('resident_router_settle'))return {text:'No business task is needed'}
+    const input=router(body),source=input.events.find(event=>event.source)?.source
+    if(recovering){
+      const current=await h.host.ctx.agents.get((await h.query('router.get',{conversationId:input.conversationId})).activeSessionId).admission.current()
+      resumedSources=current.messages.flatMap(packet=>packet.source.eventIds)
+      if(scenario==='newer-cancellation'){
+        assert.equal(current.messages.length,2,'the real later input, not a Host control, supplies cancellation context')
+        assert.ok(requestText(body).some(text=>text.includes('Do not release; postpone until next week.')))
+      }
+      if(body.messages.at(-1)?.role==='tool')return {text:'The current request and later constraint are settled without release.'}
+      return {tool:'resident_router_settle',args:{operationId:'settle-aborted-after-current-inputs',eventIds:resumedSources}}
+    }
+    if(first){
+      first=false
+      if(scenario==='committed-reply')return {tool:'resident_router_reply',args:{operationId:'reply-once-before-stop',sourceId:source.sourceId,messageVersion:source.version,text:'A receipt committed before shutdown.'}}
+      if(scenario==='failed-tool')return {tool:'resident_task_query',args:{taskId:'not-a-task-in-this-conversation'}}
+    }
+    const active=await h.query('router.get',{conversationId:input.conversationId})
+    const unsubscribe=h.host.ctx.agents.get(active.activeSessionId).piSession.agent.subscribe(event=>{
+      if(event.type==='message_update'&&event.message.content.some(block=>block.type==='toolCall'&&block.name==='resident_task_action'))entered.resolve()
+    })
+    t.after(unsubscribe)
+    return {tool:'resident_task_action',args:{operationId:'must-never-dispatch-aborted-call',sourceId:source.sourceId,messageVersion:source.version,kind:'reopen',taskId:'not-a-task-in-this-conversation',expectedRequirementRevision:1,expectedControlRevision:1},beforeFinish:()=>release.promise}
+  })
+  const message=channelMessage('shutdown-'+scenario,{text:'Prepare a release only after checking current instructions.'}),conversationId=h.host.ctx.channels.identity(message).sessionId
+  await h.receive(message);await entered.promise
+  if(scenario==='newer-cancellation'){
+    await h.receive(channelMessage('shutdown-cancel',{text:'Do not release; postpone until next week.'}))
+    await eventually(async()=>await h.query('router.inbox-count',{conversationId})===2,'later cancellation is committed before shutdown',t.signal)
+  }
+  if(scenario==='committed-reply')await eventually(()=>h.sent.length===1,'the original reply reaches fake transport',t.signal)
+  const row=await h.query('router.get',{conversationId}),sessionId=row.activeSessionId
+  await h.close();release.resolve()
+  const before=await h.host.ctx.sessionPersistence.readNative(sessionId,{requireComplete:true})
+  const failed=before.entries.findLast(entry=>entry.type==='message'&&entry.message.role==='assistant')
+  assert.equal(failed.message.stopReason,'aborted')
+  assert.ok(failed.message.content.some(block=>block.type==='toolCall'&&block.name==='resident_task_action'))
+  assert.equal(h.results.filter(result=>result.name==='resident_task_action').length,0,'a streamed aborted tool call never reaches Host dispatch')
+  recovering=true
+  await h.restart();await h.service.whenIdle().catch(error=>{if(scenario!=='failed-tool')throw error})
+  if(scenario==='failed-tool'){
+    assert.ok(h.service.listAlerts().some(alert=>alert.detail==='ROUTER_BATCH_UNSETTLED'))
+    assert.equal((await h.query('router.inbox',{conversationId})).length,1)
+    assert.equal(resumedSources.length,0,'an earlier failed tool still blocks automatic inference')
+    return
+  }
+  assert.equal((await h.query('router.inbox',{conversationId})).length,0)
+  assert.equal(resumedSources.length,scenario==='newer-cancellation'?2:1)
+  assert.ok(!h.service.listAlerts().some(alert=>alert.detail==='ROUTER_BATCH_UNSETTLED'))
+  assert.equal(h.results.filter(result=>result.name==='resident_task_action').length,0)
+  assert.equal(h.sent.length,scenario==='committed-reply'?1:0,'committed delivery is not replayed')
+  const after=await h.host.ctx.sessionPersistence.readNative(sessionId,{requireComplete:true})
+  assert.deepEqual(after.entries.slice(0,before.entries.length),before.entries)
+  const original=before.entries.find(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')
+  assert.equal(after.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'&&entry.details.packetId===original.details.packetId).length,1)
+  const requests=h.requests.length
+  await h.restart();await h.service.whenIdle()
+  assert.equal(h.requests.length,requests,'cold restart after settlement adds no inference or delivery')
+  t.diagnostic(JSON.stringify({case:'normal-stop-aborted-router',scenario,originalInputUnique:true,abortedCallNotDispatched:true,laterInputs:resumedSources.length-1,replayedEffects:0,realVendorExecuted:false}))
+})

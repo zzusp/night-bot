@@ -210,7 +210,7 @@ export class OfficialAgentFactory {
     const failure=branch.find(entry=>entry.id===failedEntryId),claims=entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.router-resume-claim'&&entry.details?.failedEntryId===failedEntryId)
     if(claim===undefined&&claims.length)throw fail('PI_ROUTER_RESUME_CHECKPOINT_USED')
     if(claim!==undefined&&(claims.length!==1||!isDeepStrictEqual(claims[0].details,claim)||messages.at(-1)?.id!==claims[0].id||entries.length!==store.snapshot().nativeEntryCount))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
-    if(failure?.type!=='message'||failure.message.role!=='assistant'||failure.message.stopReason!=='error'||messages.at(claim===undefined?-1:-2)?.id!==failedEntryId||branch.indexOf(input)>=branch.indexOf(failure))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+    if(failure?.type!=='message'||failure.message.role!=='assistant'||!['error','aborted'].includes(failure.message.stopReason)||messages.at(claim===undefined?-1:-2)?.id!==failedEntryId||branch.indexOf(input)>=branch.indexOf(failure))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
     // 未配对或错误工具结果不能凭 idle 推断外部效果已结算。
     const suffix=branch.slice(branch.indexOf(input)+1),calls=new Map()
     for(const entry of suffix){
@@ -219,7 +219,8 @@ export class OfficialAgentFactory {
     }
     for(const entry of suffix)if(entry.type==='message'){
      const message=entry.message
-     if(message.role==='assistant')for(const block of message.content)if(block.type==='toolCall'){if(calls.has(block.id))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED');calls.set(block.id,block.name)}
+     // Pi 1.5.0 在 aborted 生成后直接结束，未派发的调用不冒充未知效果；此前调用仍须真实结果。
+     if(message.role==='assistant'&&!(entry.id===failedEntryId&&message.stopReason==='aborted'))for(const block of message.content)if(block.type==='toolCall'){if(calls.has(block.id))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED');calls.set(block.id,block.name)}
      if(message.role==='toolResult'){if(!calls.has(message.toolCallId)||calls.get(message.toolCallId)!==message.toolName||message.isError)throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED');calls.delete(message.toolCallId)}
     }
     const receipts=entries.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit').map(entry=>entry.data)
@@ -231,14 +232,20 @@ export class OfficialAgentFactory {
     deliver:(packetId,deliveryOptions)=>{
      active();if(routerFrozen||routerContinuing)throw fail('PI_ROUTER_FROZEN');const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,()=>bundle.deliver(packetId,deliveryOptions)));pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation
     },whenIdle,interrupt,cancel,
-    resumeRouterBatch({packet,failedEntryId},validate){
+    resumeRouterBatch({packet,failedEntryId,supplements=[]},validate){
      active();check()
      if(ownerCtx.agents.currentInitiator?.()!==undefined)throw fail('PI_ROUTER_RESUME_HOST_ONLY')
      if(routerContinuing||routerFrozen||maintenanceCount||admission.paused||pending.size||!bundle.session.isIdle)throw fail('PI_ROUTER_RESUME_BUSY')
      if(typeof validate!=='function')throw new TypeError('Router Host validation required')
-     packet=deepFreeze(structuredClone(packet));routerCheckpoint(packet,failedEntryId)
+     packet=deepFreeze(structuredClone(packet));supplements=deepFreeze(structuredClone(supplements))
+     const eventIds=new Set(packet.source.eventIds)
+     for(const next of supplements){
+      if(next.source.kind!=='conversation-router'||next.source.conversationId!==packet.source.conversationId||next.source.generation!==packet.source.generation||next.id===packet.id||!next.source.eventIds?.length)throw fail('PI_ROUTER_RESUME_SCOPE')
+      for(const id of next.source.eventIds){if(eventIds.has(id))throw fail('PI_ROUTER_RESUME_INPUT_INVALID');eventIds.add(id)}
+     }
+     routerCheckpoint(packet,failedEntryId)
      routerContinuing=true
-     const authorizeResume=async()=>{active();check();await validate();active();if(await authorize(packet,actor)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED');active()}
+     const authorizeResume=async()=>{active();check();await validate();active();for(const input of [packet,...supplements])if(await authorize(input,actor)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED');active()}
      const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,async()=>{
       await authorizeResume();routerCheckpoint(packet,failedEntryId)
       routerFrozen=true;admission.pause()
@@ -247,7 +254,7 @@ export class OfficialAgentFactory {
       routerResumeCheck=async()=>{await authorizeResume();routerResumeCheck=undefined}
       return bundle.resumeRouterBatch(packet,async()=>{
        await store.commit();await authorizeResume();return routerCheckpoint(packet,failedEntryId)
-      },async proof=>{routerCheckpoint(packet,failedEntryId,proof);await authorizeResume()})
+      },async proof=>{routerCheckpoint(packet,failedEntryId,proof);await authorizeResume()},supplements)
      }))
      pending.add(operation)
      void operation.finally(()=>{routerResumeCheck=undefined;routerContinuing=false;pending.delete(operation)}).catch(()=>{})

@@ -114,7 +114,7 @@ Invoke-RestMethod http://127.0.0.1:19198/health | Select-Object status,transport
 
 这仅提供定位依据，不证明真实渠道提速；应在另行授权部署后，用同口径消息测量首答可见时间。
 
-若冷启动保留 `ROUTER_BATCH_UNSETTLED`，应核对任务服务 `recover()` 的 `degraded` 结果和现有恢复告警，不能把入口可用或已完成任务当作 Router 已消费。继续处理须由已授权 Host 集成按[原批次续办合同](../CHANNELS.md#已接纳未结批次的显式续办)绑定原失败 checkpoint；没有新增可供操作者直接使用的 HTTP/CLI，不直调 SDK、不重建任务、不改 journal、DB 或通知收据。其它恢复错误仍停止启动。若关闭报错，保留错误和原资源，独立核对实际排空；Host/application 异常关闭短路风险尚未修复，不能因正常路径曾退出就认定异常路径资源已释放。
+若冷启动保留 `ROUTER_BATCH_UNSETTLED`，应核对任务服务 `recover()` 的 `degraded` 结果和现有恢复告警，不能把入口可用或已完成任务当作 Router 已消费。只有严格满足中止生成条件的批次自动沿原会话领取一次；普通 error 继续由已授权 Host 集成按[原批次续办合同](../CHANNELS.md#已接纳未结批次的安全续办)绑定原失败 checkpoint；没有新增可供操作者直接使用的 HTTP/CLI，不直调 SDK、不重建任务、不改 journal、DB 或通知收据。其它恢复错误仍停止启动。若关闭报错，保留错误和原资源，独立核对实际排空；Host/application 异常关闭短路风险尚未修复，不能因正常路径曾退出就认定异常路径资源已释放。
 
 ## 文件工具纠错与未知效果
 
@@ -160,7 +160,7 @@ node docs/acceptance/pi-native-retirement-local/scripts/verify-live-task.mjs . T
 
 ### 历史恢复失败
 
-`recovering` 包含历史补拉、Host 接纳和持久消费水位，不只表示网络重连。卡片「历史恢复失败」按固定错误码说明：
+`recovering` 包含首次历史补拉、Host 接纳和持久消费水位，以及重连或恢复缺口，不只表示网络重连。已经完成恢复后的普通增量拉取保持 `receiving`，不能仅因 `backfill.inProgress` 为真判成恢复中；若历史读取不完整或接纳失败，仍转入错误状态。卡片「历史恢复失败」按固定错误码说明：
 
 - `CHANNEL_MESSAGE_ID_CONFLICT`：旧消息与同 ID、同版本的冻结输入不一致。核对来源及插件去重证据，不直接改 DB、清游标或反复重启。
 - `CHANNEL_HISTORY_INCOMPLETE`：历史页不完整或已知暂缓消息仍缺失。核对原绑定账号的读取权限与查询完整性，不因供应商返回 `complete` 就丢弃暂缓来源。
@@ -212,6 +212,12 @@ node bin/night-bot-dingtalk.js $config list
 5. 独立核对带原完成事件引用的持久复盘报告及该群范围内的经验目的地；合法空经验可为 `skipped`，不能仅以已调度或任务完成代替报告。复盘无工具、保持原记忆范围，不能依据 `task.completed` 声称附件已送达。最后正常停止并冷恢复，核同一任务/会话/产物和发送收据没有重放；未核或阻断的环节逐项报告。
 
 当前登记前回声 guard 仅覆盖 Router/任务队列通知：即使关闭 `dingtalk_operator_notifications`，也用该插件自身 adapter 和原生/内部会话映射精确查身份，在消息事实/来源登记前过滤自身消息。同会话 `starting` / `unknown` 通知身份未决时，typed 入站以 `CHANNEL_NOTIFICATION_IDENTITY_PENDING` 暂缓，沿既有持久补读水位恢复；不把暂缓记为已接纳或已完成，也不靠绕过沙箱、注入或重发旧事项继续。原 native operation 的 send/status 尚未统一 typed 接线，不能外推 shell 原生发送的通用回声已修复或已验收；完整合同见 [CHANNELS](../CHANNELS.md)。
+
+## 停机中断后的 Router 恢复
+
+正常 IPC 退出只证明进程关闭，不证明每个 Router 批次已 settled。新版冷启动会对原生最后 aborted 生成领取一次原检查点；较新真实输入先进入同一官方会话，再触发续轮。仅最后 aborted 生成中的调用依据固定 Pi 的未派发语义处理，较早调用缺结果、失败或未决效果仍阻断。不删除 admission/inbox，不手改 stopReason，不重发原群消息。
+
+部署后从认证会话消息/API 核对原消息的实际处理、Router inbox/告警和必要业务/送达收据，不能只看首答、服务端口或 HTTP 200。恢复联合批次超过15条用户消息/30事件、分页外还有事件、来源变化或未知效果时仍 degraded；单列阻断，不通过清账本或降低守卫消警。普通模型 error 仍沿原受信 Host 显式入口，不自动重试。真实渠道业务只按原授权与最新取消/延期处理，不发人工测试消息。
 
 ## 既有 Night Bot 的 Router 离线升级
 

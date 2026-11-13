@@ -1,17 +1,24 @@
-case_id,case,platform,round_1_initial,round_1_final,evidence,notes
-cache-native-rename,旧目标与临时读句柄对照,Windows,EPERM,ROOT_CAUSE_CONFIRMED,round-1.md,只有目标读句柄阻止替换
-cache-win,连续刷新冷读失败恢复鉴权撤销,Windows,FAIL,PASS_WITH_SKIPS,round-1.md,30项28通过2平台跳过；最终62项再次覆盖
-cache-linux,缓存完整文件链接权限,Linux,NOT_RUN,PASS_WITH_SKIPS,round-1.md,30项29通过1Windows专属跳过
-event-cursor,解除归档保持原增量游标,Windows/Linux,FAIL,PASS,round-1.md,真实SQLite先红后绿；完整归档两平台通过
-feedback-secret,完整脱敏后截断,Windows/Linux,FAIL,PASS,round-1.md,输出48000且无合成密钥前缀
-linux-content-feedback-archive,反馈正文授权归档完整文件,Linux,NOT_RUN,PASS,round-1.md,36通过0跳过；含真实symlink
-windows-fixture-cleanup,keys与contention外部SQLite先关闭,Windows,FAIL,PASS,round-1.md,两文件25项通过；原28项命令因shared另有超时
-windows-final-related,缓存inventory真实Web学习共享记忆复盘归档,Windows,FAIL,PASS_WITH_SKIPS,round-1.md,62项60通过2跳过0失败取消
-router-handoff,全部交接阶段,Windows,TIMEOUT,PASS,round-1.md,7项全通过；精确Router闸门；原120秒不变
-source-supplement,准确来源保留等待且无隐式任务回合,Windows/Linux,FAIL,PASS,round-1.md,各3项通过；持久来源作者原文问题状态与冷恢复去重
-core-batch-initial,本批次变动核心文件初轮,Windows,FAIL,FAIL_THEN_TARGETED_RETEST,round-1.md,552项519通过29失败1取消3跳过；失败组已复验；未完整重跑
-source-guards,来源哈希生产导入原生运行时,Windows,PASS,PASS,round-1.md,190retained及437JS；守卫不放宽
-web-build,Web构建,Windows,PASS,PASS,round-1.md,前端实现未改
-browser-related,自进化计划任务进度执行滚动,Windows,PASS,PASS,round-1/evolution-light-390.png,47通过；fixture不替代正式实例
-platform-native-skips,POSIXtoken及process-group及portable取消,Windows,SKIP,SKIP,round-1.md,3项平台限制；本轮未补跑独立Linux场景
-live-deployment,正式发行与真实页面fresh终态,local-installation,NOT_RUN,BLOCKED,goal.md,需修复PR先合并且合并需明确授权；旧39实例未替换
+case_id,case,platform,round_1_initial,round_1_final,evidence,notes,round_2_final,round_2_evidence,round_2_notes,round_3_final,round_3_evidence,round_3_notes
+cache-native-rename,旧目标与临时读句柄对照,Windows,EPERM,ROOT_CAUSE_CONFIRMED,round-1.md,只有目标读句柄阻止替换,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+cache-win,连续刷新冷读失败恢复鉴权撤销,Windows,FAIL,PASS_WITH_SKIPS,round-1.md,30项28通过2平台跳过；最终62项再次覆盖,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+cache-linux,缓存完整文件链接权限,Linux,NOT_RUN,PASS_WITH_SKIPS,round-1.md,30项29通过1Windows专属跳过,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+event-cursor,解除归档保持原增量游标,Windows/Linux,FAIL,PASS,round-1.md,真实SQLite先红后绿；完整归档两平台通过,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+feedback-secret,完整脱敏后截断,Windows/Linux,FAIL,PASS,round-1.md,输出48000且无合成密钥前缀,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+linux-content-feedback-archive,反馈正文授权归档完整文件,Linux,NOT_RUN,PASS,round-1.md,36通过0跳过；含真实symlink,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+windows-fixture-cleanup,keys与contention外部SQLite先关闭,Windows,FAIL,PASS,round-1.md,两文件25项通过；原28项命令因shared另有超时,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+windows-final-related,缓存inventory真实Web学习共享记忆复盘归档,Windows,FAIL,PASS_WITH_SKIPS,round-1.md,62项60通过2跳过0失败取消,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+router-handoff,全部交接阶段,Windows,TIMEOUT,PASS,round-1.md,7项全通过；精确Router闸门；原120秒不变,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+source-supplement,准确来源保留等待且无隐式任务回合,Windows/Linux,FAIL,PASS,round-1.md,各3项通过；持久来源作者原文问题状态与冷恢复去重,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+core-batch-initial,本批次变动核心文件初轮,Windows,FAIL,FAIL_THEN_TARGETED_RETEST,round-1.md,552项519通过29失败1取消3跳过；失败组已复验；未完整重跑,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+source-guards,来源哈希生产导入原生运行时,Windows,PASS,PASS,round-1.md,190retained及437JS；守卫不放宽,PASS,round-2.md,最新457585e发行守卫通过,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+web-build,Web构建,Windows,PASS,PASS,round-1.md,前端实现未改,PASS,round-2.md,最新457585e独立发行构建通过,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+browser-related,自进化计划任务进度执行滚动,Windows,PASS,PASS,round-1/evolution-light-390.png,47通过；fixture不替代正式实例,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+platform-native-skips,POSIXtoken及process-group及portable取消,Windows,SKIP,SKIP,round-1.md,3项平台限制；本轮未补跑独立Linux场景,NOT_RERUN,round-2.md,保留第1轮结果,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+live-deployment,正式发行与真实页面fresh终态,local-installation,NOT_RUN,BLOCKED,goal.md,需修复PR先合并且合并需明确授权；旧39实例未替换,DEPLOYED_WITH_ISSUES,round-2.md,最新发行与真实强刷通过；恢复告警与界面遗留单列,NOT_DEPLOYED,round-3.md,本轮代码待合并；安装仍457585e
+live-refresh,真实3080连续两次强刷与Store计数,Windows,NOT_RUN,NOT_RUN,round-2.md,第2轮新增部署场景,PASS,round-2.md,31已应用0候选；v3 revision42；两次无stale和error,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+latest-ui-targeted,最新合入聊天任务界面回归,Windows,NOT_RUN,NOT_RUN,round-2.md,第2轮新增部署场景,FAIL,round-2.md,7项5通过2失败；1024px页面溢出和深色待办对比度3.46,NOT_RERUN,round-3.md,保持历史结论；不在本轮修改范围
+live-channel-recovery,实际渠道连接与恢复终态,Windows,NOT_RUN,NOT_RUN,round-2.md,第2轮新增部署场景,PARTIAL,round-2.md,两路钉钉listening但ingress recovering；degraded有2项告警,PARTIAL,round-3.md,两路真实游标已推进且间歇receiving；普通轮询误报已修但未部署
+live-task-preservation,重启任务状态与投递账本观察,Windows,NOT_RUN,NOT_RUN,round-2.md,第2轮新增部署场景,PASS_WITH_LIVE_ACTIVITY,round-2.md,10任务9完成1等待且状态指纹一致；真实投递使账本73变75,PASS_READ_ONLY,round-3.md,10任务9完成1等待；未人工close或resume且无新测试消息
+ingress-poll-status,普通增量拉取接入状态,Windows,NOT_RUN,NOT_RUN,round-3.md,第3轮新增恢复场景,NOT_RUN,round-3.md,第3轮新增恢复场景,PASS_LOCAL,round-3.md,修复前1项明确断言失败；修复后真实plugin/bridge的6项fake DWS回归通过
+task-effect-recovery,原任务效果核验,Windows,NOT_RUN,NOT_RUN,round-3.md,第3轮新增恢复场景,NOT_RUN,round-3.md,第3轮新增恢复场景,BLOCKED,round-3.md,正式inspect返回TASK_EFFECT_DRAIN_CUT_CHANGED；未执行close或原写调用
+router-batch-recovery,原Router批次恢复,Windows,NOT_RUN,NOT_RUN,round-3.md,第3轮新增恢复场景,NOT_RUN,round-3.md,第3轮新增恢复场景,BLOCKED,round-3.md,aborted action未配对且有较新输入；现有续办合同拒绝；未改账本

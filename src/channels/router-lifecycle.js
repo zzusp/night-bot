@@ -215,8 +215,16 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
       handle??=await open(row);assertOpen()
       const admittedInput=handle.session.sessionManager.getBranch().findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')
       const admittedPacket=admittedInput&&handle.agent.admission.lookupPacket(admittedInput.details?.packetId)
-      // 已接纳且未结的旧批次只能显式续轮，迟到事件也不能让它被重新编成新输入。
-      if(admittedPacket?.source.kind==='conversation-router'&&handle.agent.admission.status(admittedPacket.id)==='admitted'&&admittedPacket.source.eventIds.some(id=>inbox.some(event=>event.id===id)))fail('ROUTER_BATCH_UNSETTLED')
+      // 正常停机中止的生成沿原历史领取一次；原生 error 仍需显式 Host 续办。
+      if(admittedPacket?.source.kind==='conversation-router'&&handle.agent.admission.status(admittedPacket.id)==='admitted'&&admittedPacket.source.eventIds.some(id=>inbox.some(event=>event.id===id))){
+        const failed=handle.session.sessionManager.getBranch().findLast(entry=>entry.type==='message')
+        if(failed?.message.role!=='assistant'||failed.message.stopReason!=='aborted')fail('ROUTER_BATCH_UNSETTLED')
+        try{await continueBatch(row,handle,admittedPacket,failed.id)}catch(error){
+          if(/^(?:PI_ROUTER_RESUME_|ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT)/.test(error.code??''))fail('ROUTER_BATCH_UNSETTLED')
+          throw error
+        }
+        row=await query('router.get',{conversationId});continue
+      }
       const persistedPacket=pendingBusinessInputs(handle.agent)[0]
       let batch=[]
       if(persistedPacket){
@@ -272,41 +280,49 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     void work.then(()=>errors.delete(conversationId),error=>errors.set(conversationId,error)).finally(()=>{inflight.delete(work);if(tails.get(conversationId)===work)tails.delete(conversationId)}).catch(()=>{})
     return work
   }
+  async function continueBatch(row,handle,packet,failedEntryId,onAttempt=()=>{}){
+    const conversationId=row.id,packetId=packet.id,ids=packet.source.eventIds,startedAt=new Date().toISOString()
+    if(!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)fail('ROUTER_PACKET_ID_CONFLICT')
+    const inbox=await query('router.inbox',{conversationId,limit:30});assertOpen()
+    const pendingCount=await query('router.inbox-count',{conversationId});assertOpen()
+    // 不漏掉分页外的后续取消；联合续轮仍受原批次消息数与编码预算约束。
+    if(pendingCount!==inbox.length||inbox.filter(event=>event.kind==='source.message').length>15||!isDeepStrictEqual(ids,inbox.slice(0,ids.length).map(event=>event.id))||inbox.reduce((bytes,event)=>bytes+Buffer.byteLength(JSON.stringify({...event,...event.source?{source:withoutTiming(event.source)}:{}})),0)>131072)fail('ROUTER_RESUME_BATCH_STALE')
+    if(!packetViews(row,inbox.slice(0,ids.length)).some(value=>sameRouterPacket(value,packet)))fail('ROUTER_PACKET_ID_CONFLICT')
+    const supplements=inbox.length>ids.length?[packetViews(row,inbox.slice(ids.length))[0]]:[]
+    const snapshot=packetViews(row,inbox)[0],allIds=inbox.map(event=>event.id)
+    const validate=async()=>{
+      assertOpen()
+      const current=await query('router.get',{conversationId});assertOpen()
+      if(!current||current.phase!=='active'||current.generation!==row.generation||current.activeSessionId!==row.activeSessionId||agents.get(row.activeSessionId)!==handle.agent||handle.agent.lifecycle.signal.aborted)fail('ROUTER_RESUME_STALE')
+      const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
+      if(await query('router.inbox-count',{conversationId})!==allIds.length||!sameRouterPacket(packetViews(current,pending)[0],snapshot))fail('ROUTER_RESUME_BATCH_STALE')
+    }
+    await validate();assertOpen()
+    for(const input of [packet,...supplements])packets.set(input.id,input)
+    const observed=timing(row,`${packetId}:resume:${failedEntryId}`,1),stopObserving=observed.observe(handle.session)
+    observed.start(inbox.filter(event=>event.sourceId).map(event=>({sourceId:event.sourceId,messageId:event.source?.messageId,version:event.messageVersion})),startedAt)
+    try{const resumed=handle.resumeRouterBatch({packet,failedEntryId,supplements},validate);onAttempt();await resumed;await handle.whenIdle();assertOpen()}finally{
+      for(const input of [packet,...supplements])packets.delete(input.id)
+      try{await handle.whenIdle();await observed.finish()}catch{await observed.finishIfSettled()}finally{stopObserving()}
+    }
+    const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
+    if(pending.some(event=>allIds.includes(event.id)))fail('ROUTER_BATCH_UNSETTLED')
+  }
   async function resumeRouterBatch({conversationId,generation,sessionId:activeSessionId,packetId,failedEntryId}={}){
     assertOpen();ctx.get('channels').assertGroupTarget(conversationId)
     if(agents.currentInitiator?.()!==undefined)fail('ROUTER_RESUME_HOST_ONLY')
     if(![conversationId,activeSessionId,packetId,failedEntryId].every(value=>typeof value==='string'&&value.length)||!Number.isSafeInteger(generation)||generation<1)fail('ROUTER_RESUME_REQUEST_INVALID')
     if(tails.has(conversationId))fail('ROUTER_RESUME_BUSY')
-    const assertRow=row=>{if(!row||row.phase!=='active'||row.generation!==generation||row.activeSessionId!==activeSessionId||activeSessionId!==sessionId(conversationId,generation))fail('ROUTER_RESUME_STALE')}
     let attempted=false
-    // 同步占有原会话队列；并发控制请求不能排队后变成另一次模型轮。
+    // 显式入口和普通恢复共用校验；同步占有原会话队列，拒绝并发重复模型轮。
     const work=Promise.resolve().then(async()=>{
       assertOpen()
-      const row=await query('router.get',{conversationId});assertOpen();assertRow(row)
-      const startedAt=new Date().toISOString()
-      const existing=await persistence.stat(activeSessionId);assertOpen()
-      if(!existing)fail('ROUTER_NATIVE_IDENTITY_INVALID')
+      const row=await query('router.get',{conversationId});assertOpen()
+      if(!row||row.phase!=='active'||row.generation!==generation||row.activeSessionId!==activeSessionId||activeSessionId!==sessionId(conversationId,generation))fail('ROUTER_RESUME_STALE')
+      if(!await persistence.stat(activeSessionId))fail('ROUTER_NATIVE_IDENTITY_INVALID')
       const handle=await open(row),packet=handle.agent.admission.lookupPacket(packetId)
-      assertOpen()
-      if(agents.get(activeSessionId)!==handle.agent||handle.agent.lifecycle.signal.aborted)fail('ROUTER_RESUME_STALE')
-      const ids=packet?.source.eventIds
-      if(packet?.id!==packetId||!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)fail('ROUTER_PACKET_ID_CONFLICT')
-      let validatedSources=[]
-      const validate=async()=>{
-        assertOpen()
-        const current=await query('router.get',{conversationId});assertOpen();assertRow(current)
-        const inbox=await query('router.inbox',{conversationId,limit:30});assertOpen()
-        const pendingCount=await query('router.inbox-count',{conversationId});assertOpen()
-        if(pendingCount!==ids.length||!isDeepStrictEqual(ids,inbox.map(event=>event.id)))fail('ROUTER_RESUME_BATCH_STALE')
-        if(!packetViews(current,inbox).some(value=>sameRouterPacket(value,packet)))fail('ROUTER_PACKET_ID_CONFLICT')
-        validatedSources=inbox
-      }
-      await validate();assertOpen();packets.set(packetId,packet)
-      const observed=timing(row,`${packetId}:resume:${failedEntryId}`,1),stopObserving=observed.observe(handle.session)
-      observed.start(validatedSources.filter(event=>ids.includes(event.id)&&event.sourceId).map(event=>({sourceId:event.sourceId,messageId:event.source?.messageId,version:event.messageVersion})),startedAt)
-      try{const resumed=handle.resumeRouterBatch({packet,failedEntryId},validate);attempted=true;await resumed;await handle.whenIdle();assertOpen()}finally{packets.delete(packetId);try{await handle.whenIdle();await observed.finish()}catch{await observed.finishIfSettled()}finally{stopObserving()}}
-      const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
-      if(pending.some(event=>ids.includes(event.id)))fail('ROUTER_BATCH_UNSETTLED')
+      if(packet?.id!==packetId)fail('ROUTER_PACKET_ID_CONFLICT')
+      await continueBatch(row,handle,packet,failedEntryId,()=>{attempted=true})
       await drain(conversationId)
       return {conversationId,generation,sessionId:activeSessionId,packetId,resumed:true,settled:true}
     })
