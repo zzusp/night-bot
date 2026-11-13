@@ -1,19 +1,23 @@
-case,round-1,round-2,evidence
-strict-journal-and-route,PASS,NOT_RERUN,13 tests; same-size tampering/tail/link/route/new commit/caller isolation
-history-and-live,PASS,NOT_RERUN,39 initial; updated live file 11; overlapping counts
-source-import-runtime-guards,PASS,NOT_RERUN,pnpm check
-web-build,PASS,NOT_RERUN,typecheck and vite; existing chunk warning
-real-history-http,PASS,FAIL_ON_DEPLOY,unchanged median 1266 to 124ms; light max 1360 to 304ms
-web-server-suite,FAIL,NOT_RERUN,295 pass 1 fail 2 skip; Router failure reproduced on original release
-runtime-suite,BLOCKED,NOT_RERUN,95 pass 14 fail-or-cancelled 11 skip before stopped runner; full teardown not converged
-runtime-baseline-counterevidence,PARTIAL,NOT_RERUN,human reply same assertion; unknown-effect same timeout; other failures not all compared
-runtime-isolated-followup,PASS,NOT_RERUN,skills 7; teardown and PDF individually pass on both versions
-merge-and-local-deploy,PENDING,FIRST_DEPLOY_PERFORMANCE_FAIL,see PR follow-up after merged-code deployment
-real-service-cpu-profile,NOT_RUN,CONFIRMED,4160/6182 samples in recover/triage.pending/latest full source decode
-pending-source-same-db,NOT_RUN,PASS,same results; about 55ms to 1ms; existing covering index
-source-version-ledger,NOT_RUN,PASS,43 tests; scopes/latest/revoked/hold/batch bound/restart
-real-triage-router-e2e,NOT_RUN,PASS,10 tests; Pi compaction/cold resume/source replacement/A rework then B
-followup-guards-and-build,NOT_RUN,PASS,pnpm check and Web typecheck/build
-followup-merged-deployment,NOT_RUN,PENDING,candidate phase; final live state will be recorded after merged deployment
-combined-core-on-latest-main,NOT_RUN,FAIL_ENV,67 pass 1 fail; symlink creation EPERM in upstream digest test; no skips
-combined-web-on-latest-main,NOT_RUN,PASS,45 tests; history/live/proof; typecheck and production build
+case,round-1,round-2,round-3,evidence
+strict-journal-and-route,PASS,NOT_RERUN,NOT_RERUN,13 tests; same-size tampering/tail/link/route/new commit/caller isolation
+history-and-live,PASS,NOT_RERUN,PASS,39 initial; updated live file 11; overlapping counts
+source-import-runtime-guards,PASS,NOT_RERUN,PASS,pnpm check
+web-build,PASS,NOT_RERUN,PASS,typecheck and vite; existing chunk warning
+real-history-http,PASS,FAIL_ON_DEPLOY,PASS,unchanged median 1266 to 124ms; light max 1360 to 304ms
+web-server-suite,FAIL,NOT_RERUN,NOT_RERUN,295 pass 1 fail 2 skip; Router failure reproduced on original release
+runtime-suite,BLOCKED,NOT_RERUN,NOT_RERUN,95 pass 14 fail-or-cancelled 11 skip before stopped runner; full teardown not converged
+runtime-baseline-counterevidence,PARTIAL,NOT_RERUN,NOT_RERUN,human reply same assertion; unknown-effect same timeout; other failures not all compared
+runtime-isolated-followup,PASS,NOT_RERUN,NOT_RERUN,skills 7; teardown and PDF individually pass on both versions
+merge-and-local-deploy,PENDING,FIRST_DEPLOY_PERFORMANCE_FAIL,PASS,see PR follow-up after merged-code deployment
+real-service-cpu-profile,NOT_RUN,CONFIRMED,NOT_RERUN,4160/6182 samples in recover/triage.pending/latest full source decode
+pending-source-same-db,NOT_RUN,PASS,NOT_RERUN,same results; about 55ms to 1ms; existing covering index
+source-version-ledger,NOT_RUN,PASS,NOT_RERUN,43 tests; scopes/latest/revoked/hold/batch bound/restart
+real-triage-router-e2e,NOT_RUN,PASS,NOT_RERUN,10 tests; Pi compaction/cold resume/source replacement/A rework then B
+followup-guards-and-build,NOT_RUN,PASS,PASS,pnpm check and Web typecheck/build
+followup-merged-deployment,NOT_RUN,PENDING,PASS,candidate phase; final live state will be recorded after merged deployment
+combined-core-on-latest-main,NOT_RUN,FAIL_ENV,NOT_RERUN,67 pass 1 fail; symlink creation EPERM in upstream digest test; no skips
+combined-web-on-latest-main,NOT_RUN,PASS,PASS,45 tests; history/live/proof; typecheck and production build
+real-cordis-light-proof,NOT_RUN,NOT_RUN,PASS,original Host HTTP fails; fix passes; deployed task and Router 24 valid light responses
+final-auth-http-and-artifact,NOT_RUN,NOT_RUN,PASS,acc9c69; 7 small APIs; task/Router; independent health; HTML/JS byte hash; login/logout 200
+original-task-business-resume,NOT_RUN,NOT_RUN,BLOCKED,same original sessions; 11 tasks 9 complete; drain failure and business wait remain
+normal-ipc-shutdown,NOT_RUN,NOT_RUN,FAIL_KNOWN,old instances retained ownership; forced only after exact PID/child/port checks
