@@ -5,7 +5,7 @@ import {readdir,unlink,lstat} from 'node:fs/promises'
 import {randomUUID} from 'node:crypto'
 import {privateDirectory,atomicWrite,withLock,failure} from '../runtime/files.js'
 import {hash,label,checkedText,checkedTextWithLimit,encodeTopic,decodeTopic,checkedMemoryContext,memoryContextText,renderRouterMemory,renderMemoryContent} from './format.js'
-import {LAYOUT_VERSION,buildLayeredWrites,decodeRootIndex,decodeCategoryIndex,decodeEntry,entrySourceReference,categoryPath,entryPath,sourcePath} from './layered-format.js'
+import {LAYOUT_VERSION,buildLayeredWrites,decodeRootIndex,decodeLegacyRootIndex,decodeCategoryIndex,renderIndex,decodeEntry,entrySourceReference,categoryPath,entryPath,sourcePath} from './layered-format.js'
 
 const withoutPrevious=({previous,...entry})=>entry
 const empty=()=>({version:1,revision:0,forgotten:[],seen:[]})
@@ -38,6 +38,34 @@ export async function readLegacySnapshot(directory,scope){
   }
   const raw=await safeRead(directory,'candidates.md'),candidates=raw?scopedTopic(raw,scope).entries:[]
   return {meta,topics,candidates}
+}
+/** Explicit offline v3 reader. Never repairs or writes source data. */
+export async function readV3Snapshot(directory,scope){
+  await safeAncestors(join(directory,'categories','.check'))
+  if(await safeRead(directory,'pending.json'))throw failure('MEMORY_MIGRATION_RECOVERY_REQUIRED')
+  const meta=metadata(await safeRead(directory,'scope.json'))
+  if(meta.layoutVersion!==3)throw failure('MEMORY_MIGRATION_LAYOUT_INVALID')
+  const root=decodeLegacyRootIndex(await safeRead(directory,'index.md'),scope),topics=new Map(),files=new Set(['index.md','scope.json','candidates.md'])
+  if(root.revision!==meta.revision)throw failure('MEMORY_INDEX_STALE')
+  for(const descriptor of root.topics){
+    const path=categoryPath(descriptor.topic),raw=await safeRead(directory,path)
+    if(hash(raw??'')!==descriptor.sha256)throw failure('MEMORY_INDEX_CHANGED')
+    const category=decodeCategoryIndex(raw,scope,descriptor.topic),entries=[];files.add(path)
+    if(category.revision!==meta.revision)throw failure('MEMORY_INDEX_STALE')
+    for(const row of category.entries){
+      const path=entryPath(row.topic,row.key),raw=await safeRead(directory,path);files.add(path)
+      if(hash(raw??'')!==row.sha256)throw failure('MEMORY_CONTENT_CHANGED')
+      const reference=entrySourceReference(raw)
+      if(reference&&(reference.path!==sourcePath(row.id)||!/^[a-f0-9]{64}$/.test(reference.sha256)))throw failure('MEMORY_SOURCE_INVALID')
+      if(reference)files.add(reference.path)
+      const entry=decodeEntry(raw,{scope,topic:row.topic,key:row.key,includeSources:true,includePrevious:true,sourceText:reference?await safeRead(directory,reference.path):undefined})
+      if(entry.id!==row.id||entry.revision!==row.revision)throw failure('MEMORY_INDEX_CHANGED')
+      entries.push(entry)
+    }
+    topics.set(descriptor.topic,{topic:descriptor.topic,entries})
+  }
+  const candidateText=await safeRead(directory,'candidates.md')
+  return {meta,topics,candidates:candidateText?scopedTopic(candidateText,scope).entries:[],files}
 }
 function allowedWrite(name){
   if(['candidates.md','index.md','scope.json'].includes(name)||/^topics\/[a-f0-9]{64}\.md$/.test(name)||/^sources\/[a-f0-9-]{36}\.md$/.test(name))return true
@@ -78,21 +106,16 @@ export class MarkdownMemoryStore {
   }
   async rootIndex(dir,scope,meta){
     const raw=await this.file(dir,'index.md')
-    if(!raw){if(meta.layoutVersion===LAYOUT_VERSION)throw failure('MEMORY_INDEX_MISSING');return {revision:meta.revision,topics:[],candidateCount:0,candidateExpiries:[]}}
-    const index=decodeRootIndex(raw,scope)
+    if(!raw){if(meta.layoutVersion===LAYOUT_VERSION)throw failure('MEMORY_INDEX_MISSING');return {revision:meta.revision,topics:[],entries:[],markdown:renderIndex([]),candidateCount:0,candidateExpiries:[]}}
+    const index=decodeRootIndex(raw,scope,meta)
     if(index.revision!==meta.revision)throw failure('MEMORY_INDEX_STALE')
     return index
   }
   async categoryIndex(dir,scope,root,topic){
     if(!label(topic))throw failure('MEMORY_RECORD_INVALID')
-    const descriptor=root.topics.find(row=>row.topic===topic)
-    if(!descriptor)return {revision:root.revision,topic,entries:[]}
-    const raw=await this.file(dir,categoryPath(topic))
-    if(hash(raw??'')!==descriptor.sha256)throw failure('MEMORY_INDEX_CHANGED')
-    const category=decodeCategoryIndex(raw,scope,topic)
-    if(category.revision!==root.revision)throw failure('MEMORY_INDEX_STALE')
-    return category
+    return {revision:root.revision,topic,entries:root.entries.filter(row=>row.topic===topic)}
   }
+
   async entry(dir,scope,row,{includeSources=true,includePrevious=false}={}){
     const raw=await this.file(dir,entryPath(row.topic,row.key))
     if(hash(raw??'')!==row.sha256)throw failure('MEMORY_CONTENT_CHANGED')
@@ -108,11 +131,11 @@ export class MarkdownMemoryStore {
     if(scope.kind!=='bot')return readLegacySnapshot(dir,scope)
     const root=await this.rootIndex(dir,scope,meta),topics=new Map(),files=new Set(['index.md','scope.json','candidates.md'])
     for(const descriptor of root.topics){
-      const category=await this.categoryIndex(dir,scope,root,descriptor.topic),entries=[];files.add(categoryPath(descriptor.topic))
+      const category=await this.categoryIndex(dir,scope,root,descriptor.topic),entries=[]
       for(const row of category.entries){const entry=await this.entry(dir,scope,row,{includePrevious:true});entries.push(entry);files.add(entryPath(row.topic,row.key));if(entry.context?.evidence||entry.context?.background?.quote!==undefined)files.add(sourcePath(entry.id))}
       topics.set(descriptor.topic,{topic:descriptor.topic,entries})
     }
-    return {meta,topics,candidates:await this.candidates(dir,scope),files}
+    return {meta,topics,candidates:await this.candidates(dir,scope),files,indexEntries:root.entries}
   }
   async transaction(scope,work){return this.locked(scope,async(dir,meta)=>{
     const snapshot=await this.snapshot(dir,scope,meta);let changed=false
@@ -141,7 +164,9 @@ export class MarkdownMemoryStore {
     return this.locked(scope,async(dir,meta)=>{
       const root=await this.rootIndex(dir,scope,meta),now=this.now(),unexpired=(count,expiries)=>count-expiries.filter(at=>Date.parse(at)<=now).length
       const result={revision:root.revision,topics:root.topics.map(row=>({...row,count:unexpired(row.count,row.expiries)})).filter(row=>row.count),candidateCount:unexpired(root.candidateCount,root.candidateExpiries)}
-      if(topic!==undefined){const category=await this.categoryIndex(dir,scope,root,topic);result.topic=topic;result.entries=category.entries.filter(entry=>includeExpired||active(entry,now))}
+      result.entries=root.entries.filter(entry=>(topic===undefined||entry.topic===topic)&&(includeExpired||active(entry,now)))
+      if(topic!==undefined){if(!label(topic))throw failure('MEMORY_RECORD_INVALID');result.topic=topic}
+      result.markdown=renderIndex(result.entries)
       return result
     })
   }

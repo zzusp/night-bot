@@ -1,7 +1,9 @@
 # 离线升级 Bot Markdown 记忆
 
-此脚本只升级同一安装的 `data/memory/v2/bot`：从一个 topic 一个聚合文件，
-变成总目录、分类目录、单条正文和按需来源文件（`scope.json.layoutVersion: 3`）。
+此脚本只升级同一安装的 `data/memory/v2/bot`：支持从一个 topic 一个聚合文件的旧布局，或根/分类 JSON 索引的 layout 3，
+显式升级为纯 Markdown 根索引（`scope.json.layoutVersion: 4`）。根索引每条
+`- [标题](具体记忆文件.md) — 适用场景及关键结论` 直接指向正文，不再经过分类索引。
+单条正文与按需来源文件保留原有格式、身份及证据。
 它不启动模型，不补造内容，不搬迁 Pi 会话、原始聊天、外部 SDK 数据、技能或账户。
 历史正文、ID、版本、创建/更新时间、期限、context、出处、previous、去重及遗忘记录保持。
 更完整的新内容由正常 Bot 维护流程产生，不由迁移程序推测补齐。运行时生成的 `installed-previous.json` 技能历史观察文件保留在原位、原始字节不变，不转换成事实或候选；未知文件和不安全链接仍拒绝。
@@ -36,21 +38,24 @@
 
 ## 备份、重跑与失败
 
-- 写入目标前，将旧 `scope.json`、`index.md`、`candidates.md`（若存在）和全部 `topics/` 原件
-  保存到安装内 `backups/memory-layout-<source digest>/`，并逐文件校验 manifest。
-  源 `topics/` 原件不删除；旧 scope/index 的原始字节保存在备份。
+- 写入目标前，将旧 `scope.json`、`index.md`、`candidates.md`、旧迁移收据（若存在）
+  及全部 `topics/`、`categories/`、`sources/` 原件保存到安装内 `backups/memory-layout-<source digest>/`，并逐文件校验 manifest。
+  源 `topics/` 原件不删除；旧 scope/index 的原始字节保存在备份。升级 layout 3 时，
+  仅退役已校验的 `categories/<topic>/index.md`，正文和来源保持，旧分类索引原始字节在备份中保留。
   备份含私人记忆，应使用与安装数据相同的访问保护，禁止提交 Git 或分享。
 - `layout-migration.pending.json` 是持久升级日志。任何中途失败都不要手动删除它，
   不要让旧版本运行。修复磁盘/权限问题后执行同一个 `--check`、`--apply`，
   程序验证备份和已写入文件，再继续完成；目标中既非旧内容也非本次计划内容的文件会阻塞。
 - `layout-migration.json` 是完成收据。重复 apply 返回 already-layered，不重复导入，
-  不从 retained topics 恢复后来已遗忘的条目。新安装的 layout 3 不需要此升级。
+  不从 retained topics 恢复后来已遗忘的条目。新安装的 layout 4 不需要此升级。
+- 旧版本尚未完成的 layout 3 升级日志不由本脚本改写；先用匹配的旧版本迁移器
+  完成原升级，再停机升级至 layout 4。不同目标版本的日志返回 `MEMORY_MIGRATION_JOURNAL_TARGET_UNSUPPORTED`。
 - 未知文件、符号链接/硬链接、特殊文件、哈希不符、冲突、修改过的备份及不确定锁均拒绝。
   没有 `--force`，不删除或覆盖未知文件。保留现场后由运维确认原因。
 - 若存在旧 `pending.json`，报 `MEMORY_MIGRATION_RECOVERY_REQUIRED`。先使用匹配的旧版本，
   在入口/渠道关闭且无并行写入者的维护环境中完成旧存储已有的事务恢复，再排空、退出、重新检查。
   新迁移器不解释/丢弃旧事务，也不把未完成状态当成功。恢复前先保留完整离线备份。
-- 回退需要同时恢复匹配旧代码和完整离线数据，不要用旧版本直接打开 layout 3。
+- 回退需要同时恢复匹配旧代码和完整离线数据，不要用旧版本直接打开 layout 4。
   脚本的局部记忆备份不回滚升级后新增事实、遗忘、任务状态或会话。
 
 ## 与旧 v1 → Bot 共享空间迁移的区别

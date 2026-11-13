@@ -45,3 +45,55 @@ test('signed assistant revocation fails closed; official omission leaves remaini
  assert.equal(filtered.messages.some(message=>message.responseId==='signed-response'),false)
  assert.deepEqual(filtered.messages.at(-1),safe)
 })
+
+test('Markdown index tool history retains revocation through original Pi native result metadata',async t=>{
+ const f=await fixture(t),scope=await f.service.scope(f.actor,{})
+ await f.service.store.remember(scope,{topic:'facts',key:'report',text:'UNIQUE_REVOKED_SUMMARY',source:{sessionId:'s',messageId:'m'}})
+ const value=await f.service.index(f.actor,{}),content=[{type:'text',text:value.markdown}]
+ assert.match(value.markdown,/UNIQUE_REVOKED_SUMMARY/);assert.doesNotMatch(value.markdown,/"revision"|"scopeToken"/)
+ f.manager.appendMessage({role:'toolResult',toolCallId:'index-call',toolName:'memory_index',timestamp:1,isError:false,content,details:{nativeResult:{value,content}}})
+ const current=await f.service.filterRequest(request(f.manager),f.actor)
+ assert.match(current.messages.at(-1).content[0].text,/UNIQUE_REVOKED_SUMMARY/)
+ await f.service.store.forget(scope,{topic:'facts',key:'report'})
+ const revoked=await f.service.filterRequest(request(f.manager),f.actor)
+ assert.match(revoked.messages.at(-1).content[0].text,/index revoked/)
+ assert.doesNotMatch(revoked.messages.at(-1).content[0].text,/UNIQUE_REVOKED_SUMMARY/)
+ assert.equal(f.manager.buildSessionProjection().messages.at(-1).content[0].text,value.markdown)
+})
+
+test('Markdown index reprojects subject applicability without exposing scope or machine metadata',async t=>{
+ const f=await fixture(t),scope=await f.service.scope(f.actor,{})
+ let subjects=[{actor:'alice-hash',messageId:'alice-source'}]
+ f.service.bindRecallSources(f.actor,async()=>subjects)
+ // Use a descriptor fixture to isolate policy projection from storage validation.
+ f.service.store.index=async()=>({revision:1,entries:[{title:'Report style',key:'report',path:'categories/preferences/entries/report.md',summary:'For reports, use concise text.',subject:{kind:'actor',actor:'alice-hash'}}]})
+ const value=await f.service.index(f.actor,{}),content=[{type:'text',text:value.markdown}]
+ assert.match(value.markdown,/仅适用于已匹配/)
+ f.manager.appendMessage({role:'toolResult',toolCallId:'index-call',toolName:'memory_index',timestamp:1,isError:false,content,details:{nativeResult:{value,content}}})
+ subjects=[{actor:'bob-hash',messageId:'bob-source'}]
+ const projected=await f.service.filterRequest(request(f.manager),f.actor)
+ assert.match(projected.messages.at(-1).content[0].text,/不适用于当前消息对象/)
+ assert.doesNotMatch(projected.messages.at(-1).content[0].text,/alice-hash|scopeToken|"revision"/)
+})
+
+test('each run injects the complete direct Markdown index, not a topic shortlist or bodies',async t=>{
+ const f=await fixture(t),scope=await f.service.scope(f.actor,{})
+ for(let n=0;n<5;n++)await f.service.store.remember(scope,{topic:'facts',key:'entry-'+n,text:'Distinct navigation fact '+n,source:{sessionId:'s',messageId:'m'+n}})
+ await f.service.prepareRun(f.actor,[],'run-one')
+ const prompt=f.service.contexts.get(f.actor).prompt
+ for(let n=0;n<5;n++)assert.match(prompt,new RegExp('categories/facts/entries/entry-'+n+'\\.md'))
+ assert.match(prompt,/Memory file links are relative to:/)
+ assert.doesNotMatch(prompt,/"topics"|"entries"|"scopeToken"|categories\/facts\/index\.md/)
+})
+
+test('index links read exact scoped leaves including encoded names, never arbitrary file paths',async t=>{
+ const f=await fixture(t),scope=await f.service.scope(f.actor,{})
+ await f.service.store.remember(scope,{topic:'经验',key:'报告 格式',text:'Summary for index.\n\nBODY_VIA_LINK',source:{sessionId:'s',messageId:'m'}})
+ const index=await f.service.index(f.actor,{}),href=index.markdown.match(/\]\(([^)]+)\)/)[1]
+ const result=await f.service.read(f.actor,{path:href})
+ assert.equal(result.entries[0].key,'报告 格式');assert.match(result.entries[0].text,/BODY_VIA_LINK/)
+ for(const path of ['/etc/passwd','../scope.json','scope.json',href+'?extra=1','%ZZ',encodeURIComponent(href)])await assert.rejects(f.service.read(f.actor,{path}),{code:'MEMORY_INDEX_LINK_INVALID'})
+ await assert.rejects(f.service.read(f.actor,{path:href,topic:'other'}),{code:'MEMORY_INDEX_LINK_INVALID'})
+ await f.service.store.forget(scope,{topic:'经验',key:'报告 格式'})
+ await assert.rejects(f.service.read(f.actor,{path:href}),{code:'MEMORY_INDEX_LINK_INVALID'})
+})

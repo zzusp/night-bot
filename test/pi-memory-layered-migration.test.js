@@ -8,6 +8,7 @@ import {spawnSync} from 'node:child_process'
 import {checkMemoryMigration,applyMemoryMigration} from '../src/memory/layered-migration.js'
 import {hash,encodeTopic} from '../src/memory/format.js'
 import {MarkdownMemoryStore} from '../src/memory/store.js'
+import {encodeEntry,entryPath,categoryPath} from '../src/memory/layered-format.js'
 import {acquireLock} from '../src/runtime/files.js'
 import {InstalledSkillPrevious} from '../src/memory/installed-previous.js'
 const scope={kind:'bot',id:hash('bot:shared'),actor:hash('fixture-user')}
@@ -23,7 +24,7 @@ test('check and default CLI are read-only, apply retains every record field and 
  const result=await applyMemoryMigration(root);assert.equal(result.status,'completed')
  const store=new MarkdownMemoryStore(join(root,'data/memory'))
  const actual=await store.transaction(scope,s=>({meta:s.meta,entry:s.topics.get('preferences').entries[0],candidates:s.candidates}))
- assert.deepEqual(actual.entry,entry);assert.deepEqual(actual.meta,{...meta,layoutVersion:3});assert.deepEqual(actual.candidates,[{...entry,id:'22345678-1234-1234-1234-123456789012',topic:'preferences',key:'candidate'}])
+ assert.deepEqual(actual.entry,entry);for(const [key,value]of Object.entries(meta))assert.deepEqual(actual.meta[key],value);assert.equal(actual.meta.layoutVersion,4);assert.deepEqual(actual.candidates,[{...entry,id:'22345678-1234-1234-1234-123456789012',topic:'preferences',key:'candidate'}])
  for(const name of ['scope.json','index.md','candidates.md','topics/'+hash('preferences')+'.md'])assert.equal(await readFile(join(root,result.receipt.backup,name),'utf8'),before['data/memory/v2/bot/'+name].text)
  assert.equal(await readFile(join(dir,'topics',hash('preferences')+'.md'),'utf8'),before['data/memory/v2/bot/topics/'+hash('preferences')+'.md'].text)
  await store.forget(scope,{topic:'preferences',key:'style',source:{messageId:'forget-fixture',sessionId:'fixture'}})
@@ -109,4 +110,51 @@ test('migration preserves runtime-created installed Skill previous snapshots byt
  assert.deepEqual(await history.readState(),state)
  assert.equal((await applyMemoryMigration(root)).status,'already-layered')
  assert.deepEqual(await readFile(join(dir,'installed-previous.json')),before)
+})
+
+async function v3Fixture(t){
+ const {root,dir}=await fixture(t),topic='preferences',encoded=encodeEntry(topic,entry,scope)
+ const envelope=(meta,body)=>'---\n'+JSON.stringify({...meta,metadataSha256:hash(JSON.stringify(meta)),bodySha256:hash(body)},null,2)+'\n---\n\n'+body
+ const descriptor={id:entry.id,key:entry.key,topic,title:entry.key,summary:'Answering questions: use concise explanations.',path:'entries/style.md',sha256:hash(encoded.text),revision:entry.revision,createdAt:entry.createdAt,updatedAt:entry.updatedAt,expiresAt:entry.expiresAt}
+ const category=envelope({format:'night-bot-memory-category-v3',scope:{kind:scope.kind,id:scope.id},topic,revision:meta.revision,entries:[descriptor]},'# preferences\n\n- [style](entries/style.md) — Answering questions: use concise explanations.\n')
+ const index=envelope({format:'night-bot-memory-index-v3',scope:{kind:scope.kind,id:scope.id},revision:meta.revision,topics:[{topic,title:topic,summary:'style',path:categoryPath(topic),sha256:hash(category),count:1,expiries:[entry.expiresAt]}],candidateCount:1,candidateExpiries:[entry.expiresAt]},'# Memory index\n\n- [preferences](categories/preferences/index.md) — style\n')
+ await mkdir(join(dir,'categories/preferences/entries'),{recursive:true})
+ await writeFile(join(dir,entryPath(topic,entry.key)),encoded.text);await writeFile(join(dir,categoryPath(topic)),category)
+ if(encoded.sourceText){await mkdir(join(dir,'sources'),{recursive:true});await writeFile(join(dir,'sources',entry.id+'.md'),encoded.sourceText)}
+ await writeFile(join(dir,'scope.json'),JSON.stringify({...meta,layoutVersion:3}));await writeFile(join(dir,'index.md'),index)
+ const digest='a'.repeat(64),receipt={version:1,layoutVersion:3,status:'completed',sourceDigest:digest,backup:'backups/memory-layout-'+digest}
+ await writeFile(join(dir,'layout-migration.json'),JSON.stringify(receipt))
+ return {root,dir}
+}
+test('v3 JSON indices explicitly migrate to direct Markdown links with original source and receipts backed up',async t=>{
+ const {root,dir}=await v3Fixture(t),before=await snapshot(root)
+ const check=await checkMemoryMigration(root);assert.equal(check.status,'ready');assert.equal(check.entries,1);assert.deepEqual(await snapshot(root),before)
+ const result=await applyMemoryMigration(root);assert.equal(result.receipt.layoutVersion,4)
+ const index=await readFile(join(dir,'index.md'),'utf8');assert.doesNotMatch(index,/night-bot-memory-index|metadataSha256|\n---\n|categories\/preferences\/index/);assert.match(index,/\[style\]\(categories\/preferences\/entries\/style\.md\)/)
+ await assert.rejects(lstat(join(dir,categoryPath('preferences'))),{code:'ENOENT'})
+ for(const name of ['scope.json','index.md','layout-migration.json',categoryPath('preferences'),entryPath('preferences','style'),'sources/'+entry.id+'.md'])assert.equal(await readFile(join(root,result.receipt.backup,name),'utf8'),before['data/memory/v2/bot/'+name].text)
+ const store=new MarkdownMemoryStore(join(root,'data/memory'));assert.deepEqual((await store.read(scope,{topic:'preferences',key:'style',includePrevious:true})).entries[0],entry)
+ assert.equal((await applyMemoryMigration(root)).status,'already-layered')
+})
+test('v3 migration resumes after removing an obsolete category index without replacing edited targets',async t=>{
+ const {root,dir}=await v3Fixture(t)
+ await assert.rejects(applyMemoryMigration(root,{afterWrite:name=>{if(name===categoryPath('preferences'))throw Error('pause after category retirement')}}),/pause after/)
+ assert.equal((await checkMemoryMigration(root)).status,'interrupted')
+ assert.equal((await applyMemoryMigration(root)).status,'completed')
+ assert.equal((await checkMemoryMigration(root)).status,'already-layered')
+})
+test('v3 index hash corruption is rejected without writing a migration backup',async t=>{
+ const {root,dir}=await v3Fixture(t)
+ await writeFile(join(dir,categoryPath('preferences')),'tampered category')
+ const before=await snapshot(root);await assert.rejects(checkMemoryMigration(root));await assert.rejects(applyMemoryMigration(root));assert.deepEqual(await snapshot(root),before)
+})
+test('v3 migration refuses undeclared category files instead of retiring or importing them',async t=>{
+ const {root,dir}=await v3Fixture(t)
+ await mkdir(join(dir,'categories/unknown'),{recursive:true});await writeFile(join(dir,'categories/unknown/index.md'),'unregistered content')
+ const before=await snapshot(root);await assert.rejects(checkMemoryMigration(root),/DESTINATION_CONFLICT/);await assert.rejects(applyMemoryMigration(root),/DESTINATION_CONFLICT/);assert.deepEqual(await snapshot(root),before)
+})
+test('old unfinished layout migration cannot be silently repurposed for a new target layout',async t=>{
+ const {root,dir}=await fixture(t)
+ await writeFile(join(dir,'layout-migration.pending.json'),JSON.stringify({version:1,installRoot:root,now:Date.now(),sourceDigest:'a'.repeat(64),backup:'backups/memory-layout-'+'a'.repeat(64)}))
+ const before=await snapshot(root);await assert.rejects(checkMemoryMigration(root),/JOURNAL_TARGET_UNSUPPORTED/);await assert.rejects(applyMemoryMigration(root),/JOURNAL_TARGET_UNSUPPORTED/);assert.deepEqual(await snapshot(root),before)
 })

@@ -1,8 +1,8 @@
 import {lstat,readdir,unlink,open} from 'node:fs/promises'
 import {resolve,join,dirname} from 'node:path'
 import {hash} from './format.js'
-import {readLegacySnapshot} from './store.js'
-import {buildLayeredWrites} from './layered-format.js'
+import {readLegacySnapshot,readV3Snapshot} from './store.js'
+import {buildLayeredWrites,LAYOUT_VERSION} from './layered-format.js'
 import {atomicWrite,readRegular,acquireLock,failure} from '../runtime/files.js'
 
 const scope={kind:'bot',id:hash('bot:shared')}
@@ -36,8 +36,8 @@ async function inspectRoot(directory){
 const digest=files=>hash(JSON.stringify([...files].sort(([a],[b])=>a.localeCompare(b))))
 async function originals(directory){
   const files=new Map()
-  for(const name of ['scope.json','index.md','candidates.md']){const text=await readRegular(join(directory,name));if(text!==undefined)files.set(name,text)}
-  for(const [name,text]of await tree(join(directory,'topics'),'topics/'))files.set(name,text)
+  for(const name of ['scope.json','index.md','candidates.md',receiptName]){const text=await readRegular(join(directory,name));if(text!==undefined)files.set(name,text)}
+  for(const subtree of ['topics','categories','sources'])for(const [name,text]of await tree(join(directory,subtree),subtree+'/'))files.set(name,text)
   return files
 }
 function validateSnapshot(snapshot){
@@ -45,8 +45,12 @@ function validateSnapshot(snapshot){
   for(const [,topic]of snapshot.topics){const keys=new Set();for(const entry of topic.entries){if(ids.has(entry.id)||keys.has(entry.key))fail('ENTRY_COLLISION');ids.add(entry.id);keys.add(entry.key)}}
 }
 async function plan(directory,now){
-  const snapshot=await readLegacySnapshot(directory,scope);validateSnapshot(snapshot)
+  const meta=JSON.parse(await readRegular(join(directory,'scope.json'))??'null')
+  const snapshot=await (meta?.layoutVersion===3?readV3Snapshot(directory,scope):readLegacySnapshot(directory,scope));validateSnapshot(snapshot)
   const files=await originals(directory),writes=buildLayeredWrites(scope,snapshot,now)
+  if(meta?.layoutVersion===3)for(const name of files.keys())if(/^(categories|sources)\//.test(name)&&!snapshot.files?.has(name))fail('DESTINATION_CONFLICT')
+  // Retire only obsolete category indices; their exact bytes remain in backup.
+  for(const name of files.keys())if(/^categories\/[^/]+\/index\.md$/.test(name)&&!writes.has(name))writes.set(name,null)
   const names=new Set()
   for(const name of writes.keys()){const canonical=name.normalize('NFC').toLowerCase();if(names.has(canonical))fail('PATH_COLLISION');names.add(canonical)}
   return {files,writes,digest:digest(files),entries:[...snapshot.topics.values()].reduce((sum,topic)=>sum+topic.entries.length,0),candidates:snapshot.candidates.length}
@@ -60,7 +64,7 @@ async function rejectRestore(root){for(const name of ['restore.pending.json','ta
 async function existingReceipt(directory){
   const text=await readRegular(join(directory,receiptName));if(text===undefined)return
   let receipt;try{receipt=JSON.parse(text)}catch{fail('RECEIPT_INVALID')}
-  if(receipt.version!==1||receipt.layoutVersion!==3||receipt.status!=='completed'||!/^[a-f0-9]{64}$/.test(receipt.sourceDigest)||receipt.backup!=='backups/memory-layout-'+receipt.sourceDigest)fail('RECEIPT_INVALID')
+  if(receipt.version!==1||![3,LAYOUT_VERSION].includes(receipt.layoutVersion)||receipt.status!=='completed'||!/^[a-f0-9]{64}$/.test(receipt.sourceDigest)||receipt.backup!=='backups/memory-layout-'+receipt.sourceDigest)fail('RECEIPT_INVALID')
   return receipt
 }
 async function preparation(installRoot,{locked=false,now=Date.now()}={}){
@@ -71,10 +75,11 @@ async function preparation(installRoot,{locked=false,now=Date.now()}={}){
   await inspectRoot(paths.directory)
   const journalText=await readRegular(join(paths.directory,journalName)),receipt=await existingReceipt(paths.directory)
   const meta=JSON.parse(await readRegular(join(paths.directory,'scope.json'))??'null')
-  if(!journalText&&meta?.layoutVersion===3)return {...paths,report:{status:'already-layered',ready:true,receipt:receipt??null}}
-  if(receipt&&!journalText)fail('RECEIPT_LAYOUT_CONFLICT')
+  if(!journalText&&meta?.layoutVersion===LAYOUT_VERSION)return {...paths,report:{status:'already-layered',ready:true,receipt:receipt??null}}
+  if(receipt&&!journalText&&!(meta?.layoutVersion===3&&receipt.layoutVersion===3))fail('RECEIPT_LAYOUT_CONFLICT')
   if(journalText){
     let journal;try{journal=JSON.parse(journalText)}catch{fail('JOURNAL_INVALID')}
+    if(journal.targetLayout!==LAYOUT_VERSION)fail('JOURNAL_TARGET_UNSUPPORTED')
     if(journal.version!==1||journal.installRoot!==paths.root||!Number.isSafeInteger(journal.now)||!/^[a-f0-9]{64}$/.test(journal.sourceDigest)||journal.backup!=='backups/memory-layout-'+journal.sourceDigest)fail('JOURNAL_INVALID')
     const backup=join(paths.root,journal.backup);await safePath(backup)
     const planned=await plan(backup,journal.now)
@@ -82,17 +87,17 @@ async function preparation(installRoot,{locked=false,now=Date.now()}={}){
     await verifyBackup(backup,planned);await verifyTargets(paths.directory,planned,true)
     return {...paths,planned,journal,report:{status:'interrupted',ready:true,entries:planned.entries,candidates:planned.candidates,backup:journal.backup,sourceDigest:planned.digest}}
   }
-  for(const name of ['categories','sources'])if(await stat(join(paths.directory,name)))fail('DESTINATION_CONFLICT')
+  if(meta?.layoutVersion!==3)for(const name of ['categories','sources'])if(await stat(join(paths.directory,name)))fail('DESTINATION_CONFLICT')
   const planned=await plan(paths.directory,now)
   await verifyTargets(paths.directory,planned,false)
-  const journal={version:1,installRoot:paths.root,now,sourceDigest:planned.digest,backup:'backups/memory-layout-'+planned.digest}
+  const journal={version:1,targetLayout:LAYOUT_VERSION,installRoot:paths.root,now,sourceDigest:planned.digest,backup:'backups/memory-layout-'+planned.digest}
   await safePath(join(paths.root,journal.backup));await backupPlan(join(paths.root,journal.backup),planned)
   return {...paths,planned,journal,report:{status:'ready',ready:true,entries:planned.entries,candidates:planned.candidates,backup:journal.backup,sourceDigest:planned.digest}}
 }
 async function verifyTargets(directory,planned,resuming){
   const retained=await tree(join(directory,'topics'),'topics/')
   if(digest(retained)!==digest(new Map([...planned.files].filter(([name])=>name.startsWith('topics/')))))fail('SOURCE_CHANGED')
-  for(const subtree of ['categories','sources'])for(const [name,text]of await tree(join(directory,subtree),subtree+'/'))if(planned.writes.get(name)!==text)fail('DESTINATION_CONFLICT')
+  for(const subtree of ['categories','sources'])for(const [name,text]of await tree(join(directory,subtree),subtree+'/'))if(planned.files.get(name)!==text&&(!resuming||planned.writes.get(name)!==text))fail('DESTINATION_CONFLICT')
   for(const [name,text]of planned.writes){
     await safePath(join(directory,name));const current=await readRegular(join(directory,name)),original=planned.files.get(name)
     if(current!==original&&(!resuming||current!==(text??undefined)))fail('DESTINATION_CONFLICT')
@@ -136,7 +141,7 @@ export async function applyMemoryMigration(installRoot,{afterWrite}={}){
       const writes=[...planned.writes].filter(([name])=>name!=='scope.json')
       writes.push(['scope.json',planned.writes.get('scope.json')])
       for(const [name,text]of writes){if(text===null){if(await readRegular(join(paths.directory,name))!==undefined)await unlink(join(paths.directory,name))}else await atomicWrite(join(paths.directory,name),text);await afterWrite?.(name)}
-      const receipt={version:1,layoutVersion:3,status:'completed',sourceDigest:planned.digest,backup:journal.backup,entries:planned.entries,candidates:planned.candidates,completedAt:new Date().toISOString()}
+      const receipt={version:1,layoutVersion:LAYOUT_VERSION,status:'completed',sourceDigest:planned.digest,backup:journal.backup,entries:planned.entries,candidates:planned.candidates,completedAt:new Date().toISOString()}
       await atomicWrite(join(paths.directory,receiptName),JSON.stringify(receipt,null,2)+'\n')
       await unlink(join(paths.directory,journalName))
       if(process.platform!=='win32'){const directory=await open(paths.directory,'r');try{await directory.sync()}finally{await directory.close()}}

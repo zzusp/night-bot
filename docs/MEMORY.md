@@ -23,13 +23,12 @@ The portable default is `<install>/data/memory/`:
 memory/
   bindings.json                 # trusted session-to-principal grants, private
   v2/bot/                       # one common namespace for this Bot
-    index.md                    # category titles, relative links and summaries
+    index.md                    # every link directly targets an accepted memory file
     categories/<topic>/
-      index.md                  # entry titles, relative links and summaries
       entries/<key>.md          # one accepted memory per Markdown file
     sources/<entry-id>.md        # saved evidence excerpts, opened on demand
     candidates.md               # unapproved; absent when empty
-    scope.json                  # layoutVersion 3, revision, dedup/forget receipts
+    scope.json                  # layoutVersion 4, transaction descriptors and dedup/forget receipts
     pending.json                # redo transaction; normally absent
     layout-migration.json       # explicit offline layout-upgrade receipt
     usage.json                  # observed memory read/search and entry returns
@@ -39,10 +38,15 @@ memory/
   v1/                           # retained legacy originals; not active stores
 ```
 
-Markdown has a JSON-compatible YAML front matter envelope with format/scope/
-revision, entry identity, source message/session IDs, source hash and timestamps.
-Fact text lives in its entry Markdown body; indices retain only a short summary.
-Each index line follows `- [Title](relative-file.md) — one-line summary`.
+The root index is plain Markdown, not a JSON envelope. Each line follows
+`- [Title](relative-memory-file.md) — applicability and key conclusion` and links
+directly to an individual memory body. Headings may group entries; there is no
+intermediate category-index lookup. Every entry is available to the session index;
+this change introduces no automatic filtering, ranking or index-size truncation.
+Machine transaction descriptors remain in `scope.json`, not in the index or model
+prompt. Individual memory/source files retain their existing validated envelope
+with format/scope/revision, identity, source IDs, hashes and timestamps. Fact text
+lives in the entry Markdown body; the index contains only title, link and short summary.
 Category/key path components are portably escaped, including case-insensitive
 filesystems and Windows reserved names. Long names use a bounded prefix plus a hash
 suffix; their original full labels remain in metadata. Standard Markdown links URL-escape
@@ -162,7 +166,7 @@ Host 只允许当前已接纳且未结清批次中的原来源，回查当前版
 ## Persistence, forgetting and failures
 
 Writers acquire the Bot memory cross-process lease, reload current Markdown, and use
-private temporary files, fsync and atomic rename. A redo journal commits changed records, sources, category/root indices,
+private temporary files, fsync and atomic rename. A redo journal commits changed records, sources, the direct Markdown index,
 candidates and revision as one logical operation. Every normal reader holds the same
 lease and completes a committed redo before observing its selected files. A failed post-journal write
 reports `MEMORY_COMMIT_UNCERTAIN`; the next locked access finishes recovery. Read
@@ -176,7 +180,7 @@ cooperating Bot writers. Individual files and a pending transaction are bounded 
 owner remains blocked for operator review.
 
 Forget removes the current fact, matching candidates and derived index entries;
-empty category indices and deleted entry/source files disappear. It leaves only bounded non-plaintext fingerprints and
+deleted entry/source files disappear. It leaves only bounded non-plaintext fingerprints and
 dedup metadata. Stale memory tool bodies are revoked in subsequent model requests,
 including inherited context lacking the necessary grants. The raw Pi conversation
 and its historical tool records are intentionally retained. Forgetting memory is
@@ -184,22 +188,33 @@ not a claim to erase original chats, backups, vendor logs, or manually copied fi
 
 ### Progressive recall and actual I/O
 
-1. At prompt preparation, read only the root index and revision, never every body or
-   candidates file. All categories remain discoverable; there is no silent 40-topic cutoff.
-2. `memory_index({topic})` or `memory_read({topic})` reads that category index only.
-   It returns titles, summaries, topic/key and applicability descriptors, not bodies.
-3. `memory_read({topic,key})` opens just the selected entry after validating the
-   root/category checksums. It retains conditions and current applicability, but
-   does not open the separate saved-source file.
+1. At prompt preparation, read the complete plain Markdown root index plus private
+   transaction descriptors, never every body or candidates file. Every link points
+   directly to a specific memory, including entries after the first three of a topic.
+   There is no classification-index navigation or automatic retrieval/filtering layer.
+2. `memory_index()` lists direct entry links and summaries. A topic argument narrows
+   this same index; it does not open a second index file.
+3. `memory_read({path})` accepts the exact relative link target copied from the index,
+   including encoded names; it resolves only against current scoped index entries,
+   never arbitrary filesystem paths. `memory_read({topic,key})` is also supported.
+   Both open only the selected entry after checking its private
+   transaction descriptor and own content hashes. It retains conditions and current
+   applicability, but does not open the separate saved-source file.
 4. `memory_read({topic,key,includeSources:true})` also opens that entry's saved evidence.
    These are recorded excerpts and source references, not access to another conversation's
    original transcript. Pi remains the authority for original committed conversation history.
 
-`memory_search` defaults to index descriptors; use `mode:"fulltext"` explicitly
-when a detail missing from the summary matters. An optional topic narrows the scan.
-Search stops once its result limit is reached. Expired rows are filtered from
-indices, search and ordinary reads without opening their bodies. Unapproved candidates
-remain separate. Root/category reads do not increment per-entry body-read counters.
+Pi invokes the registered `memory_read` tool for normal on-demand recall. Direct
+native `read` of a linked file is available only when the existing full-access file
+policy permits it; ask/read-only file privacy remains unchanged. A raw file read
+does not get the memory service's applicability projection or revision-revocation
+metadata, so the prompt prefers `memory_read` rather than bypassing that service.
+
+`memory_search` keeps the existing literal descriptor search; use `mode:"fulltext"`
+explicitly when a detail missing from the summary matters. This change does not add
+semantic retrieval or automatic candidate selection. Expired rows are excluded from
+ordinary recall using private expiry metadata without reading every body. Unapproved
+candidates remain separate. Index reads do not increment per-entry body-read counters.
 Skill catalog support checks use index keys, not memory bodies. Host maintenance,
 write transactions and explicit full-text scans may read a broader snapshot; the
 on-demand guarantee applies to normal recall, not those deliberate operations.

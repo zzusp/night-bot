@@ -3,7 +3,7 @@ import {join, dirname} from 'node:path'
 import {setTimeout as delay} from 'node:timers/promises'
 import {bindingSchema, readableScopes, memoryDirectory} from '../../../src/memory/scope.js'
 import {decodeTopic, hash, label} from '../../../src/memory/format.js'
-import {decodeRootIndex, decodeCategoryIndex, categoryPath} from '../../../src/memory/layered-format.js'
+import {decodeRootIndex} from '../../../src/memory/layered-format.js'
 import {boundedRead} from '../../../src/memory/previous.js'
 import {learnedSkillSupported} from '../../../src/memory/evolution.js'
 import {installedSkills, contentVersion, pathSafe} from '../../../src/memory/skill-usage.js'
@@ -59,20 +59,17 @@ async function readScopeSnapshot(memory, scope) {
     bytes += Buffer.byteLength(text)
     if (bytes > 32 * 1024 * 1024) fail('EVOLUTION_UNAVAILABLE', 503)
     if (expectedHash && hash(text) !== expectedHash) {await checkCurrent(); fail('EVOLUTION_UNAVAILABLE', 503)}
-    const value = decode(text)
+    let value
+    try {value = decode(text)} catch {await checkCurrent(); fail('EVOLUTION_UNAVAILABLE', 503)}
     if (value.scope?.kind !== scope.kind || value.scope?.id !== scope.id) fail('EVOLUTION_UNAVAILABLE', 503)
     if (value.revision !== meta.revision) {await checkCurrent(); fail('EVOLUTION_UNAVAILABLE', 503)}
     return value
   }
-  // Only the root and category descriptors are needed for inventory. Detail
-  // bodies, source context and retained prior content stay unopened until asked.
-  const index = await loadIndex(join(directory, 'index.md'), text => decodeRootIndex(text, scope))
+  // Markdown owns titles/links/summaries; metadata is fenced above.
+  // Never open fact/source bodies for the Web inventory.
+  const index = await loadIndex(join(directory, 'index.md'), text => decodeRootIndex(text, scope, meta))
   if (!index && meta.revision > 0) {await checkCurrent(); fail('EVOLUTION_UNAVAILABLE', 503)}
-  for (const row of index?.topics ?? []) {
-    const category = await loadIndex(join(directory, categoryPath(row.topic)), text => decodeCategoryIndex(text, scope, row.topic), true, row.sha256)
-    if (category.topic !== row.topic) fail('EVOLUTION_UNAVAILABLE', 503)
-    entries.push(...category.entries.filter(active).map(entry => ({...entry, topic: row.topic})))
-  }
+  entries.push(...(index?.entries ?? []).filter(active))
   const candidateIndex = await loadIndex(join(directory, 'candidates.md'), decodeTopic)
   for (const entry of candidateIndex?.entries ?? []) {
     if (!label(entry.topic)) fail('EVOLUTION_UNAVAILABLE', 503)
