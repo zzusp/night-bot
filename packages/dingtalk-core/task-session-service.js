@@ -1725,7 +1725,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         for(const source of sources.filter(Boolean)){const prior=latest.get(source.messageId);if(!prior||source.version>prior.version)latest.set(source.messageId,source)}
         if([...latest.values()].some(source=>!source.routed||source.processingPending||source.triageHold||source.archiveRestoreHold))blocked()
         const router=await query('router.get',{conversationId:groupId})
-        if(await query('router.inbox-count',{conversationId:groupId})>0||router&&(router.phase!=='active'||router.cursor>router.lastHandoffCursor))blocked()
+        // Idle Routers now retain their journal instead of advancing a handoff
+        // watermark. Pending events, live work and legacy recovery still block.
+        if(await query('router.inbox-count',{conversationId:groupId})>0||router&&router.phase!=='active')blocked()
         const notifications=[...await query('notification.list',{groupId}),...(await Promise.all(tasks.map(task=>query('notification.list',{taskId:task.taskId})))).flat()]
         if(notifications.some(row=>['prepared','starting','unknown'].includes(row.state)||row.state==='failed'&&row.deliveryError?.knownNotSent&&row.deliveryError?.retryable))blocked()
         if(residentStore.listPlatformSchedules(groupId).some(binding=>!binding.outcome))blocked()

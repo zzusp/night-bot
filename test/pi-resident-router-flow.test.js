@@ -230,7 +230,7 @@ test('all four default dispositions keep original handling independent of an unk
   assert.equal(notices.length,2);assert.ok(notices.every(notice=>notice.state==='unknown'))
   assert.ok(observed.flatMap(input=>input.events).find(event=>event.source?.messageId==='both')?.triageReply,'Router sees the independently prepared short reply')
   assert.equal((await h.query('task.list')).length,0,'handled dialogue can settle without empty task creation')
-  assert.ok(handoffs.length>0);assert.ok(handoffs.every(body=>requestTools(body).length===0),'idle handoff must be tool-free')
+  assert.equal(handoffs.length,0,'idle conversation must not trigger an extra model handoff')
   assert.equal((await h.query('router.inbox',{conversationId:h.host.ctx.channels.identity(originals[0]).sessionId})).length,0)
   const sendCount=h.sent.length,requestCount=h.requests.length
   await h.restart()
@@ -360,32 +360,24 @@ test('in-flight first tier steers at most 15 original messages and leaves the si
   assert.ok(sets.size>=2);assert.equal(h.sent.length,0)
 })
 
-test('a message arriving during tool-free handoff is delivered exactly once to the next generation',{timeout:nativeTestTimeout(40000)},async t=>{
-  const entered=Promise.withResolvers(),release=Promise.withResolvers(),observed=[];let held=false
-  t.after(()=>release.resolve())
-  const h=await residentRouterHost(t,async body=>{
-    const summary=handoff(body)
-    if(summary){if(!held){held=true;entered.resolve();await release.promise}return summary}
+test('messages after idle and cold restart continue the same Router generation exactly once',{timeout:nativeTestTimeout(40000)},async t=>{
+  const observed=[]
+  const h=await residentRouterHost(t,body=>{
+    assert.equal(requestEnvelope(body,'Router 交接请求：'),undefined)
     if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
     if(requestTools(body).includes('resident_router_settle')){const input=router(body);observed.push(input);return settle(body,input)}
     return {text:'No other work'}
   })
-  const first=channelMessage('before-handoff'),late=channelMessage('during-handoff')
-  const id=h.host.ctx.channels.identity(first).sessionId
-  await h.receive(first);await entered.promise
-  const old=await h.query('router.get',{conversationId:id})
-  assert.equal(old.phase,'handoff')
-  await h.receive(late)
-  await eventually(async()=>(await h.query('router.inbox',{conversationId:id})).some(event=>event.source?.messageId===late.messageId),'late source durably queues during handoff',t.signal)
-  assert.ok(observed.every(input=>input.events.every(event=>event.source?.messageId!==late.messageId)),'old actor does not receive a cutoff-late message')
-  release.resolve();await h.service.whenIdle()
-  const firstTurn=observed.find(input=>input.events.some(event=>event.source?.messageId===first.messageId))
-  const lateTurn=observed.find(input=>input.events.some(event=>event.source?.messageId===late.messageId))
-  assert.equal(lateTurn.generation,firstTurn.generation+1)
+  const first=channelMessage('before-idle'),late=channelMessage('after-idle'),id=h.host.ctx.channels.identity(first).sessionId
+  await h.receive(first);await h.service.whenIdle()
+  const before=await h.query('router.get',{conversationId:id})
+  await h.restart();await h.receive(late);await h.service.whenIdle()
   const current=await h.query('router.get',{conversationId:id})
-  assert.equal(current.phase,'active');assert.equal(current.cursor,2);assert.equal(current.generation,3)
+  assert.equal(current.activeSessionId,before.activeSessionId);assert.equal(current.generation,1);assert.equal(current.cursor,2)
+  assert.deepEqual(await h.query('router.rotations',{conversationId:id}),[])
   const native=await h.host.ctx.sessionPersistence.readNative(current.activeSessionId,{requireComplete:true})
-  assert.ok(native.entries.some(entry=>entry.type==='custom_message'&&entry.customType==='night.router-handoff'))
+  const inputs=native.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')
+  assert.equal(inputs.length,2);assert.ok(!native.entries.some(entry=>entry.customType==='night.router-handoff'))
   assert.equal((await h.query('router.inbox',{conversationId:id})).length,0)
 })
 
@@ -401,8 +393,15 @@ for(const failureStage of ['router.candidate.commit','router.publish'])test('col
     return store.command(command)
   }})})
   const input=channelMessage('crash-window'),id=h.host.ctx.channels.identity(input).sessionId
-  await h.receive(input)
-  await eventually(()=>injected,'native next-generation commit before injected failure',t.signal)
+  await h.receive(input);await h.service.whenIdle()
+  // Seed the persisted state an older deployment could leave. New code never
+  // starts this handoff, but must recover it without replaying a model turn.
+  const old=await h.query('router.get',{conversationId:id}),nativeOld=await h.host.ctx.sessionPersistence.readNative(old.activeSessionId,{requireComplete:true})
+  const args={conversationId:id,generation:old.generation,handoffId:'legacy-handoff'}
+  const begun=await h.store.command({id:'legacy-begin',kind:'router.handoff.begin',args})
+  await h.store.command({id:'legacy-ready',kind:'router.handoff.ready',args:{...args,handoff:{currentIntent:'Prior deployment summary',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:begun.result.rotation.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:old.cursor},commitProof:{sessionId:old.activeSessionId,commitId:nativeOld.entries.findLast(entry=>entry.customType==='night.commit').id}}})
+  await assert.rejects(h.service.recover(),{code:'TEST_CRASH_WINDOW'})
+  assert.equal(injected,true)
   await h.service.whenIdle().catch(error=>assert.match(error.message,/TEST_CRASH_WINDOW|Injected crash/))
   const before=await h.query('router.get',{conversationId:id})
   assert.equal(before.generation,1);assert.equal(before.phase,'handoff');assert.equal(before.cursor,1)
@@ -420,7 +419,7 @@ for(const failureStage of ['router.candidate.commit','router.publish'])test('col
   assert.equal((await h.query('router.rotations',{conversationId:id}))[0].state,'published')
 })
 
-test('successive idle cycles retain the short handoff without reloading old payloads or self-triggering empty rotations',{timeout:nativeTestTimeout(60000)},async t=>{
+test('successive idle cycles retain original Pi history without any handoff or empty model turns',{timeout:nativeTestTimeout(60000)},async t=>{
   const initialTurns=[],summaries=[]
   const h=await residentRouterHost(t,body=>{
     const summary=handoff(body);if(summary){summaries.push(body);return summary}
@@ -436,52 +435,16 @@ test('successive idle cycles retain the short handoff without reloading old payl
     await h.receive(channelMessage('cycle-'+round,{text:'PAYLOAD_ROUND_'+round+':'+String(round).repeat(3000)}))
     await h.service.whenIdle()
   }
-  assert.equal(initialTurns.length,4);assert.equal(summaries.length,4)
+  assert.equal(initialTurns.length,4);assert.equal(summaries.length,0)
   for(let round=1;round<initialTurns.length;round++){
     const context=JSON.stringify(initialTurns[round].messages)
-    assert.match(context,/Retain necessary original source references/)
-    for(let old=0;old<round;old++)assert.ok(!context.includes('PAYLOAD_ROUND_'+old+':'),'new generation does not reload the old source payload')
-    assert.ok(context.length<JSON.stringify(initialTurns[0].messages).length+8000,'context growth is not proportional to all historical payloads')
+    for(let old=0;old<round;old++)assert.ok(context.includes('PAYLOAD_ROUND_'+old+':'),'same Pi session retains recent original inputs')
   }
   const current=await h.query('router.get',{conversationId:h.host.ctx.channels.identity(channelMessage('cycle-0')).sessionId})
-  assert.equal(current.generation,5);assert.equal(current.cursor,4);assert.equal(current.lastHandoffCursor,4)
+  assert.equal(current.generation,1);assert.equal(current.cursor,4);assert.equal(current.lastHandoffCursor,0)
   const count=h.requests.length;await h.service.whenIdle();assert.equal(h.requests.length,count,'seed creation and settled summary cannot recursively trigger another handoff')
 })
 
-for(const invalid of ['blank-intent','missing-source','utf8-budget','referents-object'])test(`invalid tool-free handoff retains the current native generation without publishing a candidate: ${invalid}`,{timeout:nativeTestTimeout(40000)},async t=>{
-  let summaries=0
-  const h=await residentRouterHost(t,body=>{
-    const input=requestEnvelope(body,'Router 交接请求：')
-    if(input&&!requestTools(body).length){
-      summaries++
-      const value={currentIntent:'Preserve the original request',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:input.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:input.cutoff}
-      if(invalid==='blank-intent')value.currentIntent='   '
-      if(invalid==='referents-object')value.referents=[{name:'A',meaning:'Object elements remain forbidden'}]
-      if(invalid==='missing-source')value.evidenceRefs=[]
-      if(invalid==='utf8-budget')value.assumptions=Array(16).fill('中'.repeat(800))
-      return {text:JSON.stringify(value)}
-    }
-    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
-    if(requestTools(body).includes('resident_router_settle'))return settle(body,router(body))
-    return {text:'No other work'}
-  })
-  const message=channelMessage('invalid-'+invalid),conversationId=h.host.ctx.channels.identity(message).sessionId
-  await h.receive(message)
-  await eventually(async()=>summaries>0&&(await h.query('router.rotations',{conversationId})).some(row=>row.state==='aborted'),'invalid summary abort is durably committed',t.signal)
-  // Triage commit and triage completion may both enqueue a router drain.
-  // An aborted earlier rotation does not mean the queued retry is already idle.
-  await eventually(async()=>{
-    try{await h.service.whenIdle();return true}
-    catch(error){assert.equal(error.routerSafeToResume,true);return false}
-  },'all queued invalid handoffs have settled',t.signal)
-  const current=await h.query('router.get',{conversationId}),rotations=await h.query('router.rotations',{conversationId})
-  assert.equal(current.generation,1);assert.equal(current.phase,'active');assert.equal(current.cursor,1);assert.equal(current.lastHandoffCursor,0)
-  assert.ok(rotations.length>0);assert.ok(rotations.every(row=>row.state==='aborted'&&!row.candidateSessionId))
-  assert.equal((await h.query('router.inbox',{conversationId})).length,0,'committed handling is not replayed when its later summary fails')
-  const saved=await h.host.ctx.sessionPersistence.readNative(current.activeSessionId,{requireComplete:true})
-  assert.equal(saved.header.generation,1);assert.ok(saved.entries.some(entry=>entry.customType==='night.commit'))
-  assert.equal((await h.query('task.list')).length,0)
-})
 
 test('legacy prepared replyRequest and cold unknown retain original payload bytes while neutral retries stay idempotent',{timeout:nativeTestTimeout(60000)},async t=>{
   const steps=new Map();let h,original,frozen,notificationId
@@ -605,10 +568,10 @@ for(const outcome of ['complete','newer-input','fails-again','unrelated-error'])
   const continuationAdmissions=[]
   let failModel=true,resumeEntered,releaseResume,holdResume=false,fatalConversation,continuationPacket,continuationSessionId,observeHandoffRecovery
   const entered=new Promise(resolve=>resumeEntered=resolve),released=new Promise(resolve=>releaseResume=resolve)
-  const handoffEntered=Promise.withResolvers(),handoffReleased=Promise.withResolvers(),recoveryListed=Promise.withResolvers()
-  t.after(()=>{releaseResume();handoffReleased.resolve()})
+  const recoveryListed=Promise.withResolvers()
+  t.after(()=>releaseResume())
   const h=await residentRouterHost(t,async body=>{
-    const summary=handoff(body);if(summary){if(outcome==='complete'){handoffEntered.resolve();await handoffReleased.promise}return summary}
+    const summary=handoff(body);if(summary)return summary
     if(requestTools(body).includes('channel_triage_submit')){
       if(outcome==='newer-input'){
         const conversationId=h.host.ctx.channels.identity(channelMessage('explicit-failed-batch')).sessionId,taskId='paused-inbox-fixture'
@@ -708,15 +671,15 @@ for(const outcome of ['complete','newer-input','fails-again','unrelated-error'])
   }
   failModel=false;holdResume=true
   const resumed=h.service.resumeRouterBatch(proof)
-  try{await Promise.race([entered,resumed.then(()=>assert.fail('continuation completed before its model gate'))]);await rejectedWithoutInference(proof)}finally{releaseResume()}
-  await Promise.race([handoffEntered.promise,resumed.then(()=>assert.fail('continuation completed before its handoff gate'))])
+  await Promise.race([entered,resumed.then(()=>assert.fail('continuation completed before its model gate'))])
+  await rejectedWithoutInference(proof)
   observeHandoffRecovery=true
   const recovery=h.service.recover();void recovery.catch(()=>{})
   try{
     await recoveryListed.promise
-    assert.equal((await h.query('router.get',{conversationId})).phase,'handoff')
-    assert.equal(h.host.ctx.agents.get(continuationSessionId).lifecycle.signal.aborted,false,'ordinary recovery must not dispose the live handoff owner')
-  }finally{handoffReleased.resolve()}
+    assert.equal((await h.query('router.get',{conversationId})).phase,'active')
+    assert.equal(h.host.ctx.agents.get(continuationSessionId).lifecycle.signal.aborted,false,'ordinary recovery must not dispose the live continuation owner')
+  }finally{releaseResume()}
   await Promise.all([resumed,recovery]);await h.service.whenIdle();assertOriginalAdmission()
   const completed=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true}),current=await h.query('router.get',{conversationId})
   assert.deepEqual(completed.entries.slice(0,closed.entries.length),closed.entries)
@@ -724,12 +687,11 @@ for(const outcome of ['complete','newer-input','fails-again','unrelated-error'])
   assert.equal(completed.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='enqueued'&&receipt.payload.id===packetId).length,1)
   assert.equal(completed.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='admitted'&&receipt.payload.id===packetId).length,1)
   assert.equal(h.results.filter(result=>result.name==='resident_router_settle'&&!result.result.isError&&result.sessionId===row.activeSessionId).length,1)
-  assert.equal((await h.query('router.inbox',{conversationId})).length,0);assert.equal(current.cursor,1);assert.equal(current.generation,row.generation+1)
+  assert.equal((await h.query('router.inbox',{conversationId})).length,0);assert.equal(current.cursor,1);assert.equal(current.generation,row.generation)
   const candidate=await h.host.ctx.sessionPersistence.readNative(current.activeSessionId,{requireComplete:true})
   assert.equal(candidate.header.conversationId,conversationId);assert.equal(candidate.header.generation,current.generation)
-  const rotation=(await h.query('router.rotations',{conversationId})).find(item=>item.oldSessionId===row.activeSessionId&&item.state==='published')
-  assert.equal(rotation?.candidateSessionId,current.activeSessionId)
-  assert.ok(candidate.entries.some(entry=>entry.type==='custom_message'&&entry.customType==='night.router-handoff'&&entry.details.handoffId===rotation.id&&entry.details.conversationId===conversationId))
+  assert.deepEqual(await h.query('router.rotations',{conversationId}),[])
+  assert.equal(current.activeSessionId,row.activeSessionId)
   await rejectedWithoutInference(proof)
   const finishedRequests=h.requests.length
   await h.restart();await h.service.whenIdle()
@@ -737,7 +699,7 @@ for(const outcome of ['complete','newer-input','fails-again','unrelated-error'])
   await rejectedWithoutInference(proof)
   assert.ok(!h.service.listAlerts().some(row=>row.detail==='ROUTER_BATCH_UNSETTLED'),'only a settled batch clears its recovery issue')
   assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
-  t.diagnostic(JSON.stringify({case:'explicit-failed-router-batch-continuation',originalMemoryAdmissionBound:true,liveHandoffRecoverySerialized:true,strictCold:true,originalPacketUnique:true,originalAdmissionUnique:true,originalPrefixUnchanged:true,concurrentAndStaleRejectedBeforeInference:true,settled:true,legalHandoff:true,coldReplay:false,realVendorExecuted:false}))
+  t.diagnostic(JSON.stringify({case:'explicit-failed-router-batch-continuation',originalMemoryAdmissionBound:true,liveContinuationRecoverySerialized:true,strictCold:true,originalPacketUnique:true,originalAdmissionUnique:true,originalPrefixUnchanged:true,concurrentAndStaleRejectedBeforeInference:true,settled:true,sameOwnerRetained:true,coldReplay:false,realVendorExecuted:false}))
 })
 
 // 等待真实模型请求，关停必须先取消 SDK；放行模型夹具不能成为关闭条件。

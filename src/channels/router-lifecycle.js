@@ -2,7 +2,6 @@ import {traceSourcesMetadata,traceTaskEventsMetadata} from '../runtime/pi-agent-
 import {sourceStageTiming} from './source-stage-timing.js'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
-import {z} from 'zod'
 import {sessionWorkspace} from '../../packages/dingtalk-core/session-workspaces.js'
 import {conversationSource} from './message-safety.js'
 import {pendingBusinessInputs} from '../runtime/pi-business-inputs.js'
@@ -25,15 +24,9 @@ function comparableRouterPacket(packet){
   return copy
 }
 export const sameRouterPacket=(left,right)=>isDeepStrictEqual(comparableRouterPacket(left),comparableRouterPacket(right))
-export const routerHandoffLimits=Object.freeze({maxBytes:32768,maxIntentCharacters:4000,maxSectionItems:16,maxItemCharacters:2000,maxReferences:128,maxReferenceCharacters:512})
-const nonemptyText=max=>z.string().max(max).refine(value=>value.trim().length>0,{message:'交接内容不能为空'})
-const section=z.array(nonemptyText(routerHandoffLimits.maxItemCharacters)).max(routerHandoffLimits.maxSectionItems)
-const reference=nonemptyText(routerHandoffLimits.maxReferenceCharacters)
-export const routerHandoffSchema=z.object({currentIntent:nonemptyText(routerHandoffLimits.maxIntentCharacters),unresolvedQuestions:section,referents:section,assumptions:section,evidenceRefs:z.array(z.object({sourceId:reference.optional(),taskId:reference.optional()}).strict().refine(row=>!!row.sourceId||!!row.taskId)).max(routerHandoffLimits.maxReferences),cutoff:z.number().int().nonnegative()}).strict().refine(value=>Buffer.byteLength(JSON.stringify(value),'utf8')<=routerHandoffLimits.maxBytes,{message:'ROUTER_HANDOFF_BUDGET_EXCEEDED'})
-
 /** 串行调度只负责 Host 生命周期；推理、队列和历史始终由官方 Pi 执行。 */
 export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPreset='night-bot',recordStage}){
-  const handles=new Map(),tails=new Map(),inflight=new Set(),packets=new Map(),errors=new Map(),interruptions=new Map(),cancellationReasons=new Set(),handoffs=new Map()
+  const handles=new Map(),tails=new Map(),inflight=new Set(),packets=new Map(),errors=new Map(),interruptions=new Map(),cancellationReasons=new Set()
   const closeError=Object.assign(new Error('ROUTER_CLOSED'),{code:'ROUTER_CLOSED'})
   let closed=false,closing
   const assertOpen=()=>{if(closed)throw closeError}
@@ -54,20 +47,6 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
   const command=(kind,args,id)=>store.command({kind,args,id:id??`${kind}:${hash(args)}`})
   const agents=ctx.get('agents'),persistence=ctx.get('sessionPersistence')
   const sessionId=(id,generation)=>`router-${hash(id)}-g${generation}`
-  async function validateHandoff(text,row,requiredSourceIds){
-    if(Buffer.byteLength(text,'utf8')>routerHandoffLimits.maxBytes)fail('ROUTER_HANDOFF_BUDGET_EXCEEDED')
-    let parsed
-    try{parsed=JSON.parse(text)}catch{fail('ROUTER_HANDOFF_INVALID')}
-    const value=routerHandoffSchema.parse(parsed)
-    if(value.cutoff!==row.cursor)fail('ROUTER_HANDOFF_CUTOFF_INVALID')
-    const covered=new Set()
-    for(const ref of value.evidenceRefs){
-      if(ref.sourceId){const source=await query('source.get',{sourceId:ref.sourceId});if(!source||source.groupId!==row.id||source.triageHold||source.archiveRestoreHold)fail('ROUTER_HANDOFF_REFERENCE_INVALID');covered.add(ref.sourceId)}
-      if(ref.taskId){const task=await query('task.get',{taskId:ref.taskId});if(!task||task.groupId!==row.id)fail('ROUTER_HANDOFF_REFERENCE_INVALID')}
-    }
-    if(requiredSourceIds.some(id=>!covered.has(id)))fail('ROUTER_HANDOFF_SOURCE_MISSING')
-    return value
-  }
   async function verifyCommit(id,proof,handoffId,identity){
     if(!proof||proof.sessionId!==id)fail('ROUTER_NATIVE_COMMIT_INVALID')
     const native=await persistence.readNative(id,{requireComplete:true})
@@ -137,40 +116,6 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     await command('router.publish',{conversationId:row.id,generation:row.generation,handoffId:rotation.id})
     if(old&&releaseOld){await old.dispose();handles.delete(old.agent.id)}
     return candidate
-  }
-  async function rotate(row,handle){
-    assertOpen()
-    const beforeCommit=await handle.routerCommitProof();assertOpen()
-    const handoffId=`router-handoff:${hash([row.id,row.generation,row.cursor,beforeCommit.commitId])}`
-    await handle.whenIdle();assertOpen()
-    if(handle.session.pendingMessageCount||handle.session.isRetrying||handle.session.isStreaming)fail('ROUTER_NOT_IDLE')
-    const begun=await command('router.handoff.begin',{conversationId:row.id,generation:row.generation,handoffId});assertOpen()
-    const requiredSourceIds=begun.result.rotation.requiredSourceIds
-    const packet={id:handoffId,source:{kind:'router-handoff',conversationId:row.id,generation:row.generation,handoffId},content:[{type:'text',text:'Router 交接请求：'+JSON.stringify({conversationId:row.id,generation:row.generation,handoffId,cutoff:row.cursor,requiredSourceIds,limits:routerHandoffLimits})+'\n仅输出JSON {currentIntent,unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:[{sourceId或taskId}],cutoff}。unresolvedQuestions、referents、assumptions 必须是字符串数组，每个元素须为非空字符串（例如 ["A 指前置核验事项"]），没有内容时用 []，不得用对象作元素。覆盖本代最后一批与前代交接中仍有效的意图、未决问题、指代和假设；引用必须存在，推测只进assumptions。不要工具、不要复制日志/附件/Skill/长期记忆全文。'}]}
-    const candidate={controller:new AbortController()}
-    handoffs.set(row.id,candidate)
-    let summarized=false
-    try{
-      await preemptCompletion(row.id,candidate)
-      const result=await handle.runToolFreeHandoff(packet,text=>validateHandoff(text,row,requiredSourceIds),{signal:candidate.controller.signal,onPrepared:()=>{if(handoffs.get(row.id)===candidate)handoffs.delete(row.id)}});assertOpen()
-      const receipt=await command('router.handoff.ready',{conversationId:row.id,generation:row.generation,handoffId,handoff:result.handoff,commitProof:result.commitProof})
-      summarized=true;assertOpen()
-      await handle.runMaintenance(()=>publishCandidate(row,receipt.result.rotation,handle,false))
-      await handle.dispose();handles.delete(handle.agent.id)
-    }catch(error){
-      if(!closed&&!summarized&&error.routerSafeToResume===true){
-        await command('router.handoff.abort',{conversationId:row.id,generation:row.generation,handoffId,safeToResume:true,error:error.code??error.message})
-        if(error===candidate.controller.signal.reason)return
-      }
-      if(!closed&&!summarized&&error===candidate.controller.signal.reason&&error.routerHandoffRecoveryRequired===true){await recoverConversation(await query('router.get',{conversationId:row.id}),error.code);return}
-      throw error
-    }finally{if(handoffs.get(row.id)===candidate)handoffs.delete(row.id)}
-  }
-  async function preemptCompletion(conversationId,candidate=handoffs.get(conversationId)){
-    if(!candidate||closed)return
-    if(await query('router.pending-completion',{conversationId})){
-      if(!closed&&handoffs.get(conversationId)===candidate&&!candidate.controller.signal.aborted)candidate.controller.abort(Object.assign(new Error('ROUTER_HANDOFF_PREEMPTED'),{code:'ROUTER_HANDOFF_PREEMPTED'}))
-    }
   }
   async function recoverConversation(row,recoveryReason='interrupted-handoff'){
     assertOpen()
@@ -257,24 +202,16 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
       if(batch.some(event=>pending.some(item=>item.id===event.id)))fail('ROUTER_BATCH_UNSETTLED')
       row=await query('router.get',{conversationId})
     }
-    if(row.cursor>row.lastHandoffCursor){
-      // An empty Router inbox is not conversation quiescence. A running task
-      // can publish its completion next; rotating after each arrangement made
-      // that result wait behind a wholly avoidable model handoff. Keep the
-      // current official Pi owner while active work can still produce events.
-      // Pi's ordinary context/compaction remains responsible for long sessions.
-      const tasks=await query('task.list',{groupId:conversationId});assertOpen()
-      if(tasks.some(task=>task.status==='active'&&task.control==='active'&&!task.archivedAt))return
-      if((await query('router.inbox',{conversationId,limit:1})).length)return
-      assertOpen();handle??=await open(row);await rotate(row,handle)
-    }
+    // Keep the same Pi owner even when the inbox and tasks are idle. Pi's
+    // native compaction handles bounded context; idle is not a semantic cutoff.
+    // recoverConversation above still completes a pre-upgrade committed handoff.
+
   }
   function schedule(conversationId){
     if(closed)return Promise.reject(closeError)
     try{ctx.get('channels').assertGroupTarget(conversationId)}catch(error){return Promise.reject(error)}
     const previous=tails.get(conversationId)??Promise.resolve()
-    const preemption=preemptCompletion(conversationId)
-    const work=Promise.all([previous.catch(()=>{}),preemption]).then(()=>drain(conversationId))
+    const work=previous.catch(()=>{}).then(()=>drain(conversationId))
     return trackTail(conversationId,work)
   }
   function trackTail(conversationId,work){

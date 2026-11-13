@@ -16,7 +16,7 @@ Pi agent-core1.5.0 负责推理/工具迭代，Pi SessionManager 负责当前历
 
 渠道认证消息先进入轻量一级分诊；一级分诊只输出是否处理及可选短回复，原消息按需转入该 conversation 的常驻 Router。Router 拆分/关联和安排任务、评估执行结果，每个任务仍只有一个执行会话，不恢复任务 Owner、协调团队或子代理产品。活动路由不再依赖 Topic。
 
-直接来源保存消息身份、版本、作者和准确引用；任务动作、依赖满足与结果认可仍经 Host/SQLite 的当前权限、版本和效果校验。Router 的 Pi generation 可在真正空闲时通过无工具交接更换，旧 journal 保留，摘要不成为权限或状态权威。职责与恢复边界见 [CHANNELS](CHANNELS.md)。
+直接来源保存消息身份、版本、作者和准确引用；任务动作、依赖满足与结果认可仍经 Host/SQLite 的当前权限、版本和效果校验。Router 的 Pi 会话在空闲后继续复用，上下文缩减由 Pi 原生压缩负责。仅恢复旧部署尚未完成的交接，不再发起正常空闲换代；旧 journal 保留，摘要不成为权限或状态权威。职责与恢复边界见 [CHANNELS](CHANNELS.md)。
 
 已有 Night Bot 数据需停机排空、离线备份、显式 `--check` 检查和升级；旧 Topic 只读留作审计，未处理/不确定来源不能丢弃或整体重放。新 schema 回退必须恢复匹配的旧代码与离线数据，不能让旧代码读取新账本。具体命令见 [Windows 运维](ops/windows-local-runtime.md)，单任务档案版本与恢复边界见 [TASK-ARCHIVE](TASK-ARCHIVE.md)。这不是 DSH 数据导入或外部路径转换。
 

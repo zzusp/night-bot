@@ -33,7 +33,13 @@ export async function eventually(read, description, signal) {
 export async function residentRouterHost(t, decide, options = {}) {
   let opened, closed = false
   t.after(close)
-  const f = await memoryHost(t, decide, options.hostOptions), sent = [], readbacks = [], results = []
+  // Persistent Router tests should not accidentally compact a scripted model's
+  // fixed transcript. Compression itself has a dedicated small-window test.
+  const configured=options.hostOptions?.hostConfig
+  const f = await memoryHost(t, decide, {...options.hostOptions,hostConfig:config=>{
+    config.providers.fixture.models[0].contextWindow=262144
+    return typeof configured==='function'?configured(config):configured??{}
+  }}), sent = [], readbacks = [], results = []
   const config = {...f.config.model, workspaceDir:f.host.ctx.runtimePaths.workspaces,
     dbPath:join(f.host.ctx.runtimePaths.state, 'tasks.sqlite'),instanceId:'resident-router-fixture',
     initialize:true,ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot',reasoningMode:'inherit',
