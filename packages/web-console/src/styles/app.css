@@ -644,3 +644,11 @@ html, body, #root { width: 100%; min-width: 0; }
 .agent-progress.pi-session-card { color: var(--board-muted); background: var(--board-surface); }
 .agent-progress .pi-task-status.is-running { color: var(--board-muted); border-color: var(--board-border); }
 .agent-progress-heading:hover, .agent-progress-heading:active { background: var(--board-hover); }
+
+/* One shared disclosure for right-hand messages; retain the original palette. */
+.three-line-content { display: flow-root; }
+.message-disclosure { display: flex; align-items: center; gap: 4px; min-height: 28px; margin: 6px 0 -4px auto; padding: 2px 4px; color: var(--board-text); background: transparent; border: 0; border-radius: 5px; font: inherit; font-size: 12px; cursor: pointer; }
+.message-disclosure:hover { background: color-mix(in srgb, var(--board-text) 7%, transparent); }
+.message-disclosure:active { background: color-mix(in srgb, var(--board-text) 12%, transparent); }
+.message-disclosure:focus-visible { outline: 2px solid var(--board-primary); outline-offset: 2px; }
+@media (pointer: coarse) { .message-disclosure { min-height: 44px; } }
