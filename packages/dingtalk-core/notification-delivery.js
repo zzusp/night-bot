@@ -1,3 +1,10 @@
+// Only a synchronous Host pre-send fence can mint this proof; a transport or
+// model-supplied error code cannot turn an unknown external send into not-sent.
+const hostCancelled = new WeakSet()
+export function cancelNotificationBeforeSend() {
+  const error=Object.assign(new Error('PLATFORM_SCHEDULE_CANCELLED'),{code:'PLATFORM_SCHEDULE_CANCELLED',knownNotSent:true,retryable:false})
+  hostCancelled.add(error);throw error
+}
 import { quotedSendRejectionProof, persistedUuidSendRejectionProof, persistedMentionSendRejectionProof, persistedReplySendRejectionProof, taskReplySendRetryProof } from './group-message.js'
 import { createHash, randomUUID } from 'node:crypto'
 
@@ -156,7 +163,7 @@ async function deliverNotification({ notification, notifications, command, onSta
   } catch (error) {
     const localRejection = phase === 'send' && persistedReplySendRejectionProof({ ...claimed, state: 'unknown',
       ack, receipt: null, deliveryError: notificationErrorDetail(error, phase) })
-    const rejected = !!localRejection || phase === 'send' && knownPreSendRejection(error, claimed)
+    const rejected = !!localRejection || phase === 'send' && (hostCancelled.has(error)||knownPreSendRejection(error, claimed))
     error.knownNotSent = rejected
     if (localRejection) { error.retryable = false; error.proof = localRejection }
     error.notificationPhase = phase

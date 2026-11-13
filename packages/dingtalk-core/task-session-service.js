@@ -1,3 +1,4 @@
+import {cancelNotificationBeforeSend} from './notification-delivery.js'
 import {bindTaskMaterialPaths,resolveTaskMaterialPaths} from '../../src/tasks/material-paths.js'
 import {SessionManager} from '@earendil-works/pi-coding-agent'
 import {committedLiveSupplementAdmissions} from '../../src/tasks/input-origin.js'
@@ -105,6 +106,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     throw error
   }
   const deliveryFiles = createTaskArtifactFiles({ root: join(root, 'delivery-files'),getTaskDirectories:async taskId=>taskDirectories(root,taskId,{task:await requireTask(taskId)}) })
+  function scheduleNotificationCancelled(notification){
+    if(!['platform-reply','fixed-topic-reply'].includes(notification.kind))return false
+    const id=notification.payload.deliveryId??notification.id
+    return residentStore.listPlatformSchedules(notification.payload.conversationId).some(binding=>binding.managementKey&&
+      (id===platformScheduleOutboundId(binding.requestId)||id.startsWith(binding.requestId+':')&&id.endsWith('-scheduled-delivery')))
+  }
   const originalNotifications=notifications
   notifications={...notifications,canDisclose:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').canDeliver(notification):originalNotifications.canDisclose?originalNotifications.canDisclose(notification):true,send:async notification=>{
     // 来源只从 Host 账本取得；不改冻结 payload，也不接受模型提供的公开标记声明。
@@ -113,8 +120,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       &&ref?.messageId===source.messageId&&ref.messageVersion===source.version&&ref.actorId===source.actorId
       &&!source.authorizationRevoked&&!source.triageHold&&!source.archiveRestoreHold?source.text:undefined
     const outgoing={...notification,replySourceText}
+    if(scheduleNotificationCancelled(notification))cancelNotificationBeforeSend()
     return ctx.get('channels').deliveryEnvelope(outgoing)?ctx.get('channels').transportCall('send',outgoing):originalNotifications.send(outgoing)
-  },readback:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readback',notification):originalNotifications.readback(notification),sendFile:(notification,file)=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('sendFile',notification,file):originalNotifications.sendFile?.(notification,file),readbackFile:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readbackFile',notification):originalNotifications.readbackFile?.(notification)}
+  },readback:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readback',notification):originalNotifications.readback(notification),sendFile:(notification,file)=>{if(scheduleNotificationCancelled(notification))cancelNotificationBeforeSend();return ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('sendFile',notification,file):originalNotifications.sendFile?.(notification,file)},readbackFile:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readbackFile',notification):originalNotifications.readbackFile?.(notification)}
   notifications = withTaskFileNotifications(notifications, deliveryFiles)
   const inflightTasks = new Map(), inflightExecutions = new Map(), inflightGroups = new Map(), inflightNotifications = new Map()
   let nativeDws, residentRouter
@@ -932,6 +940,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       return page
     },
     platformConfig:groupId=>({responsibility:responsibilityFor(groupId),timezone:residentStore.getGroup(groupId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone,model:roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,maxConcurrentTasks:taskLimit()}),
+    platformScheduleList:groupId=>platformSchedules.list(groupId),
+    platformScheduleUpdate:args=>platformSchedules.update({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},{scheduleId:args.scheduleId,change:args.change}),
+    platformScheduleDelete:args=>platformSchedules.delete({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},{scheduleId:args.scheduleId}),
     platformSchedule:args=>platformSchedules.submit({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},args),
   })}})
   const rerouteGroups=new Set()
@@ -1260,6 +1271,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       messages: [{ messageId: current.payload.sourceRef?.messageId ?? current.payload.sourceMessageId, messageVersion: current.payload.sourceVersion }] }, stage) : undefined
   async function notificationDeliveryGate(notification) {
     if(notification.archiveRestoreHold)return false
+    if(!['unknown','starting'].includes(notification.state)&&scheduleNotificationCancelled(notification))return false
     // 所有通知先核原持久父子顺序，direct 来源分支也不能绕过。
     if (notification.payload.afterNotificationId) {
       const previous = await query('notification.get', { notificationId: notification.payload.afterNotificationId })

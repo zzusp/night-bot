@@ -14,7 +14,7 @@ import {conversationNotificationInstructions,conversationMessageActorId} from '.
 const fail=code=>Object.assign(new Error(code),{code})
 const output = { schema: { type: 'object' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] }
 const deliveryPrompt = binding => binding.everySeconds ? `按原消息持续执行平台检查：${binding.prompt}。每 ${binding.everySeconds} 秒一次，检查范围 ${JSON.stringify(binding.stopWhen??null)}。每次先 platform_task_query 读取当前任务快照，再 platform_reply_submit 汇报本次，不另建提醒或业务任务。只有宿主核实指定任务当前版本全部完成后才停止；等待、失败、阻塞不是完成。` : `执行原群已授权的一次平台事项：${binding.prompt}\n约定时间 ${binding.at}，原群 ${binding.groupId}。必须先使用 platform_task_query 核对本群事实，再用 platform_reply_submit 提交；这两个工具未就绪时等待宿主恢复，不自行发群、不改排时间、不创建业务任务。已过期时判断补报或失去意义而静默，不能把入站提醒当已交付。`
-const matchesNative = (binding, record) => (binding.everySeconds ? record?.kind === 'every' && record.everySeconds === binding.everySeconds : record?.kind === 'at' && record.scheduledAt === binding.at) && record.sessionId === binding.sessionId
+const matchesNative = (binding, record) => (binding.everySeconds ? record?.kind === 'every' && record.everySeconds === binding.everySeconds : record?.kind === 'at' && record.scheduledAt === (binding.nativeAt??binding.at)) && record.sessionId === binding.sessionId
   && record.prompt === deliveryPrompt(binding) && record.title === binding.title && (!binding.scheduleId || binding.scheduleId === record.id)
 
 const recoveryInput=(binding,record)=>({id:`${record.id}-platform-recovery:${record.lastDelivery.messageId}`,source:{kind:'platform-schedule-recovery',scheduleId:record.id,originalPacketId:record.lastDelivery.messageId,requestId:binding.requestId},content:`[SCHEDULE REMINDER]\n原生定时已在 ${record.lastDelivery.deliveredAt} 投入本会话，平台工具现已就绪。沿原事项补报或判断过期，只通过 platform_reply_submit 结清；不要创建新的 schedule。`})
@@ -38,13 +38,17 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
   }
   const assertTarget=groupId=>ctx.get?.('channels')?.assertGroupTarget(groupId)
   const settle = (binding, outcome) => store.updatePlatformSchedule(binding.sessionId, { outcome, completedAt: new Date(now()).toISOString() })
+  const assertUnchanged = binding => {
+    if(store.getPlatformSchedule(binding.sessionId)?.managementKey)throw fail('platform_schedule_superseded')
+  }
   async function deliver(binding, decision, occurrenceAt) {
+    assertUnchanged(binding)
     assertTarget(binding.groupId)
     const current = source(binding)
     if (!current) throw new Error('platform_schedule_source_stale')
     const outboundId = outboundKey(binding.requestId + (occurrenceAt ? ':'+occurrenceAt : '')), message = current.message
     await notify({ groupId: binding.groupId, outboundId, message, unit: current.unit, directSource:binding.sourceMode==='direct'?{sourceId:binding.sourceId,actorId:binding.actorId}:undefined, decision, sessionId: binding.sessionId,
-      preflight: () => { assertTarget(binding.groupId);if (!source(binding)) throw new Error('platform_schedule_source_stale') } })
+      preflight: () => { assertUnchanged(binding);assertTarget(binding.groupId);if (!source(binding)) throw new Error('platform_schedule_source_stale') } })
     if(!binding.everySeconds)await settle(binding, 'replied')
   }
   const mount = async agent => {
@@ -65,6 +69,7 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
     }
     disposers.push(bindPlatformScheduleSource(agent,{isReady:()=>!closed&&mounted.get(agent)?.prepared===true}))
     const assert = exec => {
+      assertUnchanged(binding)
       assertTarget(binding.groupId)
       if (exec.agent !== agent || !source(binding)) throw new Error('platform_schedule_source_stale')
     }
@@ -141,6 +146,9 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
       if (closed) return
       const schedule = ctx.get?.('schedule'), controller = ctx.get?.('sessionController')
       if (!schedule || !controller) return
+      for(const group of store.listGroups())for(const binding of store.listPlatformSchedules(group.groupId)){
+        if(binding.managementKey&&!binding.managementCompleted)try{await serialize(binding.sessionId,()=>finishManagement(binding))}catch(error){ctx.logger?.warn?.('platform schedule management recovery: '+error.message)}
+      }
       for (const record of await schedule.catalog()) {
         const binding = store.getPlatformSchedule?.(record.sessionId)
         if(binding?.everySeconds&&binding.outcome&&matchesNative(binding,record)){await schedule.delete({sessionId:binding.sessionId,id:record.id});continue}
@@ -202,7 +210,7 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
   }
   const stopChanged = ctx.on?.('schedule/changed', recover)
   ctx.inject?.(['schedule'], () => { recover() })
-  async function prepare(binding) {
+  async function prepare(binding, {acceptedReplacement=false}={}) {
     assertTarget(binding.groupId)
     const schedule = ctx.get('schedule')
     if (!schedule?.create || !ctx.get('sessionController')) throw new Error('platform_native_schedule_unavailable')
@@ -211,6 +219,11 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
     // already-fired entry. Never recreate a deleted, previously accepted record.
     const existing = store.getPlatformSchedule(binding.sessionId)
     if (existing && ['title', 'prompt', 'at', 'timezone','everySeconds','stopWhen'].some(key => !isDeepStrictEqual(existing[key],binding[key]))) throw new Error('platform_schedule_identity_conflict')
+    if(existing?.replacementOfSessionId){
+      const parent=store.getPlatformSchedule(existing.replacementOfSessionId)
+      if(!parent?.managementKey||parent.replacementSessionId!==existing.sessionId||
+        (await schedule.catalog()).some(row=>row.sessionId===parent.sessionId))throw fail('platform_schedule_replacement_pending')
+    }
     if(existing?.outcome)return {status:existing.outcome,scheduleId:existing.scheduleId}
     const native = existing ? (await schedule.catalog()).find(item => item.sessionId === binding.sessionId) : null
     if (native) {
@@ -219,7 +232,14 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
       return { status: native.status === 'active' ? 'scheduled' : 'triggered', scheduleId: native.id, at: native.scheduledAt,...(binding.everySeconds?{every_seconds:binding.everySeconds,stopWhen:binding.stopWhen??null}:{}) }
     }
     if (existing?.scheduleId || existing?.outcome) return { status: existing.outcome ?? 'cancelled', scheduleId: existing.scheduleId }
-    if (Date.parse(binding.at) <= now()) return { status: 'expired', at: binding.at }
+    if (Date.parse(binding.at) <= now()) {
+      if(!acceptedReplacement)return {status:'expired',at:binding.at}
+      // Preserve the requested instant in the binding/prompt. Native creation
+      // requires a future clock target; a committed replacement missed during
+      // downtime is admitted promptly instead of silently losing the request.
+      binding={...binding,nativeAt:new Date(now()+1000).toISOString()}
+      await store.updatePlatformSchedule(binding.sessionId,{nativeAt:binding.nativeAt})
+    }
     assertTarget(binding.groupId)
     await store.preparePlatformSchedule(binding)
     if (!await ctx.sessionPersistence.stat(binding.sessionId)) {
@@ -240,13 +260,11 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
       } finally { await handle.dispose() }
     }
     if (!source(binding)) throw new Error('platform_schedule_source_stale')
-    const record = await schedule.create(binding.sessionId, { title: binding.title, prompt: deliveryPrompt(binding), ...(binding.everySeconds?{every_seconds:binding.everySeconds}:{at:binding.at}) })
+    const record = await schedule.create(binding.sessionId, { title: binding.title, prompt: deliveryPrompt(binding), ...(binding.everySeconds?{every_seconds:binding.everySeconds}:{at:binding.nativeAt??binding.at}) })
     await store.updatePlatformSchedule(binding.sessionId, { scheduleId: record.id })
     return { status: 'scheduled', scheduleId: record.id, at: record.scheduledAt,...(binding.everySeconds?{every_seconds:binding.everySeconds,stopWhen:binding.stopWhen??null}:{}) }
   }
-  return {
-    hasInflight:groupId=>[...flightGroups.values()].includes(groupId)||recoveryGroups.has(groupId),
-    async submit(sourceBinding, { title, prompt, at, every_seconds, stopWhen }) {
+  async function validate(sourceBinding, { title, prompt, at, every_seconds, stopWhen }) {
       if((at!==undefined)+(every_seconds!==undefined)!==1)throw fail('platform_schedule_timing_required')
       if(every_seconds!==undefined&&(!Number.isSafeInteger(every_seconds)||every_seconds<60))throw fail('platform_schedule_interval_invalid')
       if(stopWhen!==undefined){
@@ -258,6 +276,88 @@ export function createPlatformSchedules({ ctx, store, legacy, root, models, read
       if (every_seconds===undefined&&!z.string().datetime({ offset: true }).safeParse(at).success) throw new Error('platform_schedule_time_invalid')
       if (typeof title !== 'string' || !title.trim() || title.trim().length > 120 || typeof prompt !== 'string' || !prompt.trim() || prompt.length > 8000) throw new Error('platform_schedule_invalid')
       const binding = { ...sourceBinding, sessionId: sessionKey(sourceBinding.requestId), title: title.trim(), prompt: prompt.trim(), ...(every_seconds!==undefined?{everySeconds:every_seconds,...(stopWhen?{stopWhen}:{})}:{at:new Date(at).toISOString()}) }
+      return binding
+  }
+  async function serialize(sessionId, run) {
+    const groupId=store.getPlatformSchedule(sessionId)?.groupId
+    const previous=flights.get(sessionId)??Promise.resolve()
+    const work=previous.catch(()=>{}).then(run)
+    flights.set(sessionId,work);if(groupId)flightGroups.set(work,groupId)
+    try{return await work}finally{if(flights.get(sessionId)===work)flights.delete(sessionId);flightGroups.delete(work)}
+  }
+  async function finishManagement(binding) {
+    binding=store.getPlatformSchedule(binding.sessionId)
+    if(!binding?.managementKey)return
+    const schedule=ctx.get('schedule')
+    // Tombstone is durable before deletion. Pending/admitted old packets cannot
+    // pass platform source/preflight checks even if native delivery already won.
+    if(binding.scheduleId){
+      await schedule.delete({sessionId:binding.sessionId,id:binding.scheduleId})
+      if((await schedule.catalog()).some(row=>row.id===binding.scheduleId&&row.sessionId===binding.sessionId))throw fail('platform_schedule_cancel_incomplete')
+    }
+    const actor=ctx.get('agents')?.get(binding.sessionId)
+    if(actor){await schedule.cancelAccepted?.(actor);await actor.dispose()}
+    if(binding.replacementSessionId){
+      const replacement=store.getPlatformSchedule(binding.replacementSessionId)
+      if(!replacement)throw fail('platform_schedule_replacement_missing')
+      const result=replacement.outcome?{status:replacement.outcome,scheduleId:replacement.scheduleId}:await prepare(replacement,{acceptedReplacement:true})
+      await store.updatePlatformSchedule(binding.sessionId,{managementCompleted:true})
+      return result
+    }
+    await store.updatePlatformSchedule(binding.sessionId,{managementCompleted:true})
+    return {status:'cancelled',scheduleId:binding.scheduleId}
+  }
+  async function manage(sourceBinding,args,action){
+    if(closed)throw fail('platform_schedule_closed')
+    assertTarget(sourceBinding.groupId)
+    const native=(await ctx.get('schedule').catalog()).find(row=>row.id===args.scheduleId)
+    const binding=store.listPlatformSchedules(sourceBinding.groupId).find(row=>row.scheduleId===args.scheduleId||!row.scheduleId&&native?.sessionId===row.sessionId)
+    if(binding&&!binding.scheduleId)await store.updatePlatformSchedule(binding.sessionId,{scheduleId:args.scheduleId})
+    if(!binding)throw fail('platform_schedule_not_found')
+    return serialize(binding.sessionId,async()=>{
+      const current=store.getPlatformSchedule(binding.sessionId)
+      const key=JSON.stringify([sourceBinding.requestId,action,args])
+      if(current.managementKey){
+        if(current.managementKey!==key)throw fail('platform_schedule_already_changed')
+        return {...await finishManagement(current),replacesScheduleId:action==='update'?current.scheduleId:undefined}
+      }
+      if(current.outcome)throw fail('platform_schedule_settled')
+      if(!source({...sourceBinding,sessionId:sessionKey(sourceBinding.requestId)}))throw fail('platform_schedule_source_stale')
+      let replacement
+      if(action==='update'){
+        const change=args.change
+        if(!change||!Object.keys(change).length||Object.keys(change).some(key=>!['title','prompt','at','every_seconds','stopWhen'].includes(key)))throw fail('platform_schedule_update_invalid')
+        const timing=change.at!==undefined||change.every_seconds!==undefined
+          ? {at:change.at,every_seconds:change.every_seconds}
+          : current.everySeconds?{every_seconds:current.everySeconds}:{at:current.at}
+        replacement=await validate(sourceBinding,{title:current.title,prompt:current.prompt,...timing,
+          ...(current.stopWhen&&timing.every_seconds!==undefined?{stopWhen:current.stopWhen}:{}),...change})
+        if(replacement.at&&Date.parse(replacement.at)<=now())throw fail('platform_schedule_time_past')
+        if(replacement.sessionId===current.sessionId)throw fail('platform_schedule_operation_reused')
+        replacement={...replacement,replacementOfSessionId:current.sessionId}
+        await store.preparePlatformSchedule(replacement)
+      }
+      await store.updatePlatformSchedule(current.sessionId,{outcome:action==='delete'?'cancelled':'superseded',completedAt:new Date(now()).toISOString(),managementKey:key,...(replacement?{replacementSessionId:replacement.sessionId}:{})})
+      const result=await finishManagement(store.getPlatformSchedule(current.sessionId))
+      return {...result,...(replacement?{replacesScheduleId:current.scheduleId}:{})}
+    })
+  }
+  return {
+    async list(groupId){
+      assertTarget(groupId)
+      const catalog=await ctx.get('schedule').catalog()
+      return store.listPlatformSchedules(groupId).filter(binding=>!binding.outcome).map(binding=>{
+        const native=catalog.find(row=>row.sessionId===binding.sessionId&&(!binding.scheduleId||row.id===binding.scheduleId))
+        return {scheduleId:binding.scheduleId??native?.id,title:binding.title,prompt:binding.prompt,timezone:binding.timezone,
+          ...(binding.everySeconds?{every_seconds:binding.everySeconds,stopWhen:binding.stopWhen??null}:{at:binding.at}),
+          status:native?.status==='active'?'scheduled':native?'triggered':'cancelled',scheduledAt:native?.scheduledAt}
+      }).filter(row=>row.scheduleId)
+    },
+    update:(sourceBinding,args)=>manage(sourceBinding,args,'update'),
+    delete:(sourceBinding,args)=>manage(sourceBinding,args,'delete'),
+    hasInflight:groupId=>[...flightGroups.values()].includes(groupId)||recoveryGroups.has(groupId),
+    async submit(sourceBinding, args) {
+      const binding = await validate(sourceBinding,args)
       assertTarget(binding.groupId)
       const previous = flights.get(binding.sessionId) ?? Promise.resolve()
       const work = previous.catch(() => {}).then(() => prepare(binding))

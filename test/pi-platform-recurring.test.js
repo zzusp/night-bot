@@ -223,3 +223,46 @@ test('a silent occurrence does not silently terminate a completed-work monitor',
   await waitUntil(async()=>(await f.h.ctx.schedule.catalog()).length===0,'final visible report stops monitor')
   assert.equal(f.h.residentStore.getPlatformSchedule(initial.sessionId).outcome,'completed')
 }))
+
+async function editSource(f, id='edit-source') {
+  const store=f.h.residentStore,groupId=f.source.groupId
+  await store.ingest({groupId,messageId:id,senderOpenDingTalkId:'original-actor',text:'修改原排期',occurredAt:new Date().toISOString()})
+  await store.routeMessages({groupId,routeId:id,routingRevision:store.getGroup(groupId).routingRevision,routes:[{messageId:id,messageVersion:1,units:[{unitKey:id,summary:'修改排期',sourceRefs:[{quote:'修改原排期'}],topics:[],fixedTopic:'agent-platform',reason:'修改排期'}]}]})
+  const message=store.getGroup(groupId).messages.find(row=>row.messageId===id),unit=message.units[0]
+  return {groupId,requestId:fixedUnitRequestId(groupId,message,unit),unitId:unit.unitId,unitRevision:unit.unitRevision,messageId:id,messageVersion:1,timezone:'Asia/Shanghai'}
+}
+
+test('native managed replacement and cancellation survive restart without firing the old target',
+ {timeout:nativeLifecycleTimeout(40000)},nativeLifecycle(40000,async t=>{
+  await t.beginBusiness()
+  const f=await fixture(t)
+  const original=await f.bridge.submit(f.source,{title:'Progress',prompt:'Report progress',every_seconds:600})
+  const replacement=await f.bridge.update(await editSource(f),{scheduleId:original.scheduleId,change:{every_seconds:1200}})
+  assert.equal(replacement.status,'scheduled');assert.notEqual(replacement.scheduleId,original.scheduleId)
+  await f.tick();await new Promise(resolve=>setTimeout(resolve,40))
+  assert.equal(f.outbox().length,0,'old 10-minute occurrence must not fire')
+  await f.restart();await f.tick();await f.report(1)
+  assert.equal((await f.h.ctx.schedule.catalog()).length,1)
+  assert.equal((await f.bridge.delete(await editSource(f,'delete-source'),{scheduleId:replacement.scheduleId})).status,'cancelled')
+  assert.equal((await f.h.ctx.schedule.catalog()).length,0)
+  await f.restart();await f.tick();await new Promise(resolve=>setTimeout(resolve,40))
+  assert.equal(f.outbox().length,1,'cancelled periodic timer cannot emit after restart')
+}))
+
+test('native cold startup completes committed replacement after interrupted create without Router retry',
+ {timeout:nativeLifecycleTimeout(40000)},nativeLifecycle(40000,async t=>{
+  await t.beginBusiness()
+  const f=await fixture(t)
+  const original=await f.bridge.submit(f.source,{title:'Progress',prompt:'Report progress',every_seconds:600})
+  const source=await editSource(f),create=f.h.ctx.schedule.create.bind(f.h.ctx.schedule)
+  f.h.ctx.schedule.create=async()=>{throw Error('interrupted replacement create')}
+  await assert.rejects(f.bridge.update(source,{scheduleId:original.scheduleId,change:{every_seconds:1200}}),/interrupted/)
+  assert.equal((await f.h.ctx.schedule.catalog()).length,0)
+  f.h.ctx.schedule.create=create
+  await f.restart()
+  await waitUntil(async()=> (await f.h.ctx.schedule.catalog()).length===1,'replacement recovery')
+  const [replacement]=await f.h.ctx.schedule.catalog()
+  assert.notEqual(replacement.id,original.scheduleId);assert.equal(replacement.everySeconds,1200)
+  await f.tick();await f.tick();await f.report(1)
+  assert.equal((await f.h.ctx.schedule.catalog()).length,1)
+}))

@@ -38,7 +38,7 @@ async function fixture(t){
   open()
   t.after(async()=>{await bridge.close();await store.close();await domains.closeAll();await rm(root,{recursive:true,force:true})})
   return {source,records,tasks,native,ctx,args:{title:'Progress report',prompt:'Report current progress to the group',at:'2026-10-21T09:00:00+08:00'},
-    get store(){return store},get creates(){return createCount},submit:(args,identity=source)=>bridge.submit(identity,args),
+    get bridge(){return bridge},get store(){return store},get creates(){return createCount},submit:(args,identity=source)=>bridge.submit(identity,args),
     tick:ms=>{clock+=ms},setTime:at=>{clock=Date.parse(at)},
     async restart(){await bridge.close();await store.close();await domains.closeAll();domains=await openNativeDomains({root:join(root,'domains')});store=await openResidentStore(domains);open()}}
 }
@@ -183,4 +183,104 @@ test('periodic platform rejects ambiguous timing, invalid interval and unbound s
  f.tasks.push({taskId:'foreign',groupId:'another-group'})
  await assert.rejects(f.submit({...base,every_seconds:600,stopWhen:{taskIds:['foreign']}}),/platform_schedule_task_forbidden/)
  assert.equal(f.creates,0)
+})
+
+const managementSource = (f, operation='edit') => ({...f.source,sourceMode:'direct',sourceId:'source-management',actorId:'author',unitId:undefined,unitRevision:undefined,requestId:operation})
+// Strip legacy-only fields rather than serializing undefined into the strict binding.
+const directManagementSource = (f, operation) => {const {unitId,unitRevision,...source}=managementSource(f,operation);return source}
+function managementNative(f){
+  f.native.delete=async({id,sessionId})=>{const index=f.records.findIndex(row=>row.id===id&&row.sessionId===sessionId);if(index<0)return {deleted:false};f.records.splice(index,1);return {deleted:true}}
+}
+
+test('management physically replaces 13:00 with 05:00 Beijing and retries exactly once',async t=>{
+  const f=await fixture(t);managementNative(f)
+  const first=await f.submit({...f.args,at:'2026-11-14T13:00:00+08:00'})
+  const source=directManagementSource(f,'move-to-five'),args={scheduleId:first.scheduleId,change:{at:'2026-11-14T05:00:00+08:00'}}
+  const updated=await f.bridge.update(source,args)
+  assert.equal(updated.status,'scheduled');assert.equal(updated.at,'2026-11-13T21:00:00.000Z')
+  assert.notEqual(updated.scheduleId,first.scheduleId)
+  assert.deepEqual(f.records.map(row=>row.id),[updated.scheduleId])
+  assert.deepEqual(await f.bridge.update(source,args),updated)
+  await f.restart();assert.deepEqual(await f.bridge.update(source,args),updated)
+  assert.equal(f.creates,2)
+  assert.equal((await f.bridge.list('g')).length,1)
+})
+
+test('management deletion survives restart and cannot be undone by late occurrence settlement',async t=>{
+  const f=await fixture(t);managementNative(f)
+  const first=await f.submit(f.args),session=f.records[0].sessionId
+  const source=directManagementSource(f,'cancel'),args={scheduleId:first.scheduleId}
+  assert.equal((await f.bridge.delete(source,args)).status,'cancelled')
+  await f.store.updatePlatformSchedule(session,{outcome:'replied',completedAt:new Date().toISOString()})
+  assert.equal(f.store.getPlatformSchedule(session).outcome,'cancelled')
+  assert.equal(f.records.length,0)
+  await f.restart();assert.equal((await f.bridge.delete(source,args)).status,'cancelled')
+  assert.equal(f.records.length,0)
+})
+
+test('management refuses foreign conversations and invalid timezone without cancelling original',async t=>{
+  const f=await fixture(t);managementNative(f)
+  const first=await f.submit(f.args),source=directManagementSource(f,'bad-change')
+  await assert.rejects(f.bridge.delete({...source,groupId:'other'},{scheduleId:first.scheduleId}),/not_found/)
+  await assert.rejects(f.bridge.update(source,{scheduleId:first.scheduleId,change:{at:'2026-11-14T05:00:00'}}),/requires_offset/)
+  assert.equal(f.records[0].id,first.scheduleId)
+})
+
+test('replacement failures retain a cancellation fence and retry without recreating the old timer',async t=>{
+  const f=await fixture(t);managementNative(f)
+  const first=await f.submit(f.args),oldSession=f.records[0].sessionId
+  const source=directManagementSource(f,'recover-edit'),args={scheduleId:first.scheduleId,change:{every_seconds:600}}
+  const create=f.native.create;let failOnce=true
+  f.native.create=async(...args)=>{if(failOnce){failOnce=false;throw Error('interrupted native create')}return create(...args)}
+  await assert.rejects(f.bridge.update(source,args),/interrupted/)
+  assert.equal(f.records.length,0);assert.equal(f.store.getPlatformSchedule(oldSession).outcome,'superseded')
+  await f.restart()
+  const next=await f.bridge.update(source,args)
+  assert.equal(next.every_seconds,600);assert.equal(f.records.length,1)
+  assert.equal((await f.bridge.update(source,args)).scheduleId,next.scheduleId)
+})
+
+test('replacement chains never revive cancelled intermediate schedules and concurrent edits conflict',async t=>{
+  const f=await fixture(t);managementNative(f)
+  const a=await f.submit(f.args)
+  const first={scheduleId:a.scheduleId,change:{every_seconds:600}},source=directManagementSource(f,'chain-b')
+  const races=await Promise.allSettled([f.bridge.update(source,first),f.bridge.update(directManagementSource(f,'conflict'),first)])
+  assert.equal(races.filter(row=>row.status==='fulfilled').length,1)
+  const b=races.find(row=>row.status==='fulfilled').value
+  const c=await f.bridge.update(directManagementSource(f,'chain-c'),{scheduleId:b.scheduleId,change:{every_seconds:1200}})
+  assert.equal((await f.bridge.update(source,first)).status,'superseded')
+  assert.deepEqual(f.records.map(row=>row.id),[c.scheduleId])
+})
+
+test('committed replacement missed during downtime is recovered without changing its requested instant',async t=>{
+  const f=await fixture(t);managementNative(f)
+  const first=await f.submit(f.args),source=directManagementSource(f,'late-edit')
+  const args={scheduleId:first.scheduleId,change:{at:'2026-10-21T10:00:00+08:00'}}
+  const create=f.native.create;let failed=false
+  f.native.create=async(...args)=>{if(!failed){failed=true;throw Error('crash')}return create(...args)}
+  await assert.rejects(f.bridge.update(source,args),/crash/)
+  f.setTime('2026-10-21T03:00:00Z');await f.restart()
+  const recovered=await f.bridge.update(source,args),binding=f.store.getPlatformSchedule(f.records[0].sessionId)
+  assert.equal(recovered.status,'scheduled')
+  assert.equal(binding.at,'2026-10-21T02:00:00.000Z')
+  assert.equal(binding.nativeAt,'2026-10-21T03:00:01.000Z')
+  assert.equal(f.records[0].scheduledAt,binding.nativeAt)
+})
+
+test('list repairs visibility of a native create committed before its binding receipt',async t=>{
+  const f=await fixture(t);managementNative(f)
+  const first=await f.submit(f.args),session=f.records[0].sessionId
+  await f.store.updatePlatformSchedule(session,{scheduleId:undefined})
+  assert.equal((await f.bridge.list('g'))[0].scheduleId,first.scheduleId)
+  assert.equal((await f.bridge.delete(directManagementSource(f,'orphan-delete'),{scheduleId:first.scheduleId})).status,'cancelled')
+  assert.equal(f.records.length,0)
+})
+
+test('management does not substitute another timer in the same native session for its bound ID',async t=>{
+  const f=await fixture(t);managementNative(f)
+  const first=await f.submit(f.args)
+  f.records.push({...f.records[0],id:'unbound-extra-timer'})
+  await assert.rejects(f.bridge.delete(directManagementSource(f,'wrong-timer'),{scheduleId:'unbound-extra-timer'}),/not_found/)
+  assert.equal(f.records[0].id,first.scheduleId)
+  assert.equal(f.records.length,2)
 })
