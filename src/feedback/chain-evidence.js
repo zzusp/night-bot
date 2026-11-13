@@ -14,7 +14,7 @@ const fail=(code='FEEDBACK_EVIDENCE_SCOPE')=>{throw Object.assign(new Error(code
 /** Consent is enforced by the caller. No filesystem, command, network or mutation
  * capability is exposed. Private bodies are used for local matching only. */
 export function createChainEvidence({application,title='',description,secrets=[],getSessionPersistence,getSchedule}) {
- const sources=new Map(),tasks=new Map(),schedules=new Map(),conversations=new Map(),identities=new Map(),sessions=new Map(),pageCache=new Map();let calls=0,groupsCache
+ const sources=new Map(),tasks=new Map(),schedules=new Map(),conversations=new Map(),identities=new Map(),sessions=new Map(),pageCache=new Map(),catalogCache=new Map(),continuationQueries=new Map();let calls=0,groupsCache
  const identity=(kind,id)=>{if(!id)return null;const key=kind+':'+id;if(!identities.has(key))identities.set(key,kind+'-'+(identities.size+1));return identities.get(key)}
  const conversation=id=>{const alias=identity('conversation',id);if(alias)conversations.set(alias,id);return alias}
  const registerSession=(id,scope)=>{if(!id)return null;const alias=identity('session',id);const previous=sessions.get(alias);sessions.set(alias,{...previous,sessionId:id,...scope,windows:[...(previous?.windows??[]),...(scope.windows??(scope.window?[scope.window]:[]))]});return alias}
@@ -22,7 +22,6 @@ export function createChainEvidence({application,title='',description,secrets=[]
  const query=(kind,args)=>app().tasks.store.query({kind,...args})
  const input=[title,description].filter(Boolean).join('\n'),terms=[...new Set([...input.matchAll(/[“「"]([^”」"\n]{1,500})[”」"]/g)].map(match=>normalize(match[1])))]
  if(!terms.length)for(const part of [title,description,...String(description??'').split(/[，。！？：；,!?;:\n]/)]){const term=normalize(part);if(term)terms.push(term)}
- const matches=value=>{const body=normalize(value);return body&&terms.some(term=>body.includes(term)||term.includes(body)&&body.length>=8)}
  const sourceFor=alias=>{const value=sources.get(alias);if(!value)fail('FEEDBACK_ALIAS_INVALID');return value}
  const taskFor=alias=>{const value=tasks.get(alias);if(!value)fail('FEEDBACK_ALIAS_INVALID');return value}
  const addTask=row=>{const alias=identity('task',row.taskId);tasks.set(alias,{taskId:row.taskId,groupId:row.groupId??row.conversationId});return alias}
@@ -34,19 +33,32 @@ export function createChainEvidence({application,title='',description,secrets=[]
   if(!service?.store?.query&&action!=='schedule'&&action!=='discover')return unavailable('task-service-unavailable')
   let result
   if(action==='discover'){
-   if(args.query!==undefined){const text=normalize(args.query);if(!text||text.length>500||![title,description].some(value=>normalize(value).includes(text)))fail('FEEDBACK_QUERY_INVALID');terms.splice(0,terms.length,text)}
+   let selectedTerms=terms
+   if(args.cursor!==undefined){
+    const saved=continuationQueries.get(args.cursor)
+    if(!saved||args.query!==undefined||['target','alias','offset'].some(key=>args[key]!==undefined&&args[key]!==saved.args[key]))fail('FEEDBACK_CURSOR_INVALID')
+    args={...saved.args};selectedTerms=saved.terms
+   }else if(args.query!==undefined){const text=normalize(args.query);if(!text||text.length>500||![title,description].some(value=>normalize(value).includes(text)))fail('FEEDBACK_QUERY_INVALID');selectedTerms=[text]}
+   const matches=value=>{const body=normalize(value);return body&&selectedTerms.some(term=>body.includes(term)||term.includes(body)&&body.length>=8)}
+   // A diagnosis may span scheduler ticks or interleave narrowed queries. Keep
+   // candidate order stable within each query; selected detail reads stay live.
+   const catalogFor=async(target,load,project)=>{
+    const key=JSON.stringify([target,selectedTerms]);let snapshot=catalogCache.get(key)
+    if(!snapshot){const catalog=await load();snapshot={inspected:catalog.length,rows:catalog.filter(row=>[row.title,target==='tasks'?row.request:row.prompt].some(matches)).map(project)};catalogCache.set(key,snapshot)}
+    return snapshot
+   }
    const start=args.offset??0
    if(!Number.isSafeInteger(start)||start<0)fail('FEEDBACK_OFFSET_INVALID')
    if(args.target!==undefined&&!['messages','tasks','schedules'].includes(args.target))fail()
    if(args.alias!==undefined&&(!conversations.has(args.alias)||args.target&&args.target!=='messages'))fail('FEEDBACK_ALIAS_INVALID')
-   if(!terms.length)return unavailable('no-specific-text-in-description')
+   if(!selectedTerms.length)return unavailable('no-specific-text-in-description')
    const candidates=[],taskCandidates=[],scheduleCandidates=[],continuations=[],failures=[]
    let inspected=0,groupsScanned=0,inspectedTasks=0,inspectedSchedules=0
    const failed=(target,error)=>{signal?.throwIfAborted();failures.push({target,...diagnosticQueryFailure(error)})}
    if(!args.alias&&(!args.target||args.target==='tasks')){
     if(!service?.store?.query)failures.push({target:'tasks',...unavailable('task-service-unavailable')})
     else try{
-     const catalog=await query('task.list',{archived:'all'}),rows=catalog.filter(row=>[row.title,row.request].some(matches));inspectedTasks=catalog.length
+     const {rows,inspected:count}=await catalogFor('tasks',()=>query('task.list',{archived:'all'}),row=>({taskId:row.taskId,groupId:row.groupId??row.conversationId,status:row.status,createdAt:row.createdAt}));inspectedTasks=count
      for(const row of rows.slice(start,start+10))taskCandidates.push({alias:addTask(row),conversation:conversation(row.groupId),state:state(row.status),createdAt:stamp(row.createdAt),match:'literal-description-fragment'})
      if(start+10<rows.length)continuations.push({target:'tasks',offset:start+10})
     }catch(error){failed('tasks',error)}
@@ -55,7 +67,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
     const schedule=getSchedule?.()
     if(!schedule?.catalog)failures.push({target:'schedules',...unavailable('schedule-service-unavailable')})
     else try{
-     const catalog=await schedule.catalog(),rows=catalog.filter(row=>[row.title,row.prompt].some(matches));inspectedSchedules=catalog.length
+     const {rows,inspected:count}=await catalogFor('schedules',()=>schedule.catalog(),row=>({id:row.id,sessionId:row.sessionId,kind:row.kind,status:row.status,scheduledAt:row.scheduledAt}));inspectedSchedules=count
      for(const row of rows.slice(start,start+10)){const alias=identity('schedule',row.id);schedules.set(alias,{id:row.id,sessionId:row.sessionId});scheduleCandidates.push({alias,kind:['at','after','every','daily','weekly','cron'].includes(row.kind)?row.kind:null,state:state(row.status),scheduledAt:stamp(row.scheduledAt),match:'literal-description-fragment'})}
      if(start+10<rows.length)continuations.push({target:'schedules',offset:start+10})
     }catch(error){failed('schedules',error)}
@@ -94,6 +106,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
      }
     }catch(error){failed('messages',error)}
    }
+   for(const next of continuations){const cursor='cursor-'+(continuationQueries.size+1);continuationQueries.set(cursor,{args:{...next},terms:[...selectedTerms]});next.cursor=cursor}
    result={candidates,taskCandidates,scheduleCandidates,ambiguous:candidates.length+taskCandidates.length+scheduleCandidates.length>1,complete:false,coverage:'indexed-messages-and-task-schedule-catalogs',inspected,groupsScanned,inspectedTasks,inspectedSchedules,truncated:continuations.length>0,continuations,failures,unavailableGroups:failures.filter(row=>row.target==='messages').length,limitations:['no-match-does-not-prove-absence','candidates-are-not-automatic-selection','message-content-not-returned','deleted-schedules-not-in-catalog']}
   }else if(action==='message'){
    const ref=sourceFor(args.alias)

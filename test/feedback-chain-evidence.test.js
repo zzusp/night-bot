@@ -126,3 +126,42 @@ test('short original fragments work; source failure preserves other catalogs and
  assert.equal(failure.reason,'FEEDBACK_ALIAS_INVALID');assert.match(failure.correction,/discover/)
  const error=Object.assign(new Error('PRIVATE_ERROR'),{code:'SQLITE_BUSY'});assert.equal(diagnosticQueryFailure(error).reason,'SQLITE_BUSY')
 })
+
+test('catalog continuations retain their query and candidate order across scheduler ticks and task archival',async()=>{
+ for(const target of ['tasks','schedules']){
+  let rows=Array.from({length:11},(_,i)=>({id:'schedule-'+i,sessionId:'private-session',taskId:'task-'+i,groupId:'private-room',title:'发布',kind:'every',status:'active',scheduledAt:at(i),createdAt:at(i)})),reads=0
+  const catalog=async()=>{reads++;return rows}
+  const collect=createChainEvidence({title:'发布检查',application:{tasks:{store:{query:async q=>q.kind==='task.list'?catalog():rows.find(r=>r.taskId===q.taskId)}}},getSchedule:()=>({catalog})})
+  const field=target==='tasks'?'taskCandidates':'scheduleCandidates'
+  const first=await collect('discover',undefined,{target,query:'发布'})
+  assert.equal(first[field].length,10)
+  const continuation=first.continuations[0]
+  rows=[...rows.slice(1),rows[0]] // recurring due time or archive moves the first row
+  await collect('discover',undefined,{target,query:'检查'})
+  const last=await collect('discover',undefined,continuation)
+  assert.equal(last[field].length,1);assert.equal(new Set([...first[field],...last[field]].map(row=>row.alias)).size,11)
+  assert.deepEqual(last.continuations,[]);assert.equal(reads,2,'one catalog snapshot per distinct query')
+  await assert.rejects(collect('discover',undefined,{...continuation,query:'检查'}),/FEEDBACK_CURSOR_INVALID/)
+  await assert.rejects(collect('discover',undefined,{...continuation,offset:0}),/FEEDBACK_CURSOR_INVALID/)
+  await assert.rejects(collect('discover',undefined,{cursor:'cursor-invented'}),/FEEDBACK_CURSOR_INVALID/)
+  if(target==='schedules'){
+   rows=rows.filter(row=>row.id!=='schedule-10')
+   assert.equal((await collect('schedule',undefined,{alias:last[field][0].alias})).reason,'selected-schedule-no-longer-retained','detail still checks live existence')
+  }
+  assert.doesNotMatch(JSON.stringify([first,last]),/发布|检查|private-room|private-session/)
+ }
+})
+
+test('message continuation retains its original narrowed query after another discovery',async()=>{
+ const {tasks}=fixture(),source=(await tasks.store.query({kind:'observer.message-contexts'})).sources[0]
+ const rows=Array.from({length:110},(_,i)=>({messageId:'old-'+i,messageVersion:2,text:i>=100?'发布':'unrelated'}))
+ tasks.observerGroupPage=async(_group,{offset,limit})=>({items:rows.slice(offset,offset+limit),nextOffset:offset+limit<rows.length?offset+limit:null})
+ const original=tasks.store.query;tasks.store.query=q=>q.kind==='observer.message-contexts'?{sources:q.messages.map(ref=>({...source,messageId:ref.messageId,sourceId:ref.messageId}))}:original(q)
+ const collect=createChainEvidence({application:{tasks},description:'发布检查'})
+ const first=await collect('discover',undefined,{target:'messages',query:'发布'})
+ await collect('discover',undefined,{target:'messages',query:'检查'})
+ const last=await collect('discover',undefined,first.continuations[0])
+ assert.equal(last.candidates.length,10);assert.deepEqual(last.continuations,[])
+ const other=createChainEvidence({application:{tasks},description:'发布检查'})
+ await assert.rejects(other('discover',undefined,first.continuations[0]),/FEEDBACK_CURSOR_INVALID/)
+})
