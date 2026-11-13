@@ -26,7 +26,9 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(found.length>1)fail('ROUTER_EVENT_IDENTITY_CONFLICT')
     return found.length?JSON.parse(found[0].body):null
   }
-  const latest = source => !rows('sources').some(row => row.groupId === source.groupId && row.messageId === source.messageId && row.version > source.version)
+  // 复用现有会话/消息/版本索引，不能为每条候选反复解码全部来源正文。
+  const newerSource = db.prepare("SELECT 1 FROM dynamic_sources WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId')=? AND json_extract(body,'$.version')>? LIMIT 1")
+  const latest = source => !newerSource.get(source.groupId,source.messageId,source.version)
   function sourceOf(a, scheduling = false) {
     const source = read('sources', required(a.sourceId))
     if (source.version !== a.messageVersion || !scheduling && (!latest(source) || source.authorizationRevoked || source.triageHold || source.archiveRestoreHold)) fail('ROUTER_SOURCE_STALE')
