@@ -25,10 +25,16 @@ test('单条消息首答时间、共同任务结果与无需回复、等待和�
  for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:test.info().outputPath(`first-reply-${width}.png`)})}
 })
 
-test('任务待办卡片与模型思考展示真实记录，更新和撤权不沿用旧内容', async ({page}) => {
+test('任务待办清单与模型思考展示真实记录，更新和撤权不沿用旧内容', async ({page}) => {
  await page.goto('/#/tasks/task-research?view=execution'); await page.getByLabel('访问令牌', {exact:true}).fill(FIXTURE_TOKEN); await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
  const todos=page.getByRole('region',{name:'任务待办'}), cards=todos.locator('.todo-card')
  await expect(cards).toHaveCount(3)
+ await expect(todos.locator('.todo-count')).toHaveText('1 / 3')
+ await expect(todos).not.toContainText('模型最近提交')
+ await todos.locator('summary').click()
+ await expect(cards.first()).not.toBeVisible()
+ await todos.locator('summary').click()
+ await expect(cards.first()).toBeVisible()
  for(const [index,status] of ['已完成','进行中','待处理'].entries()) await expect(cards.nth(index)).toContainText(status)
  await expect(cards.nth(1)).toContainText('核对来源与结论')
  const thought=page.locator('.thinking-message'); await expect(thought).not.toHaveAttribute('open')
@@ -40,6 +46,10 @@ test('任务待办卡片与模型思考展示真实记录，更新和撤权不�
  expect(JSON.stringify(snapshot)).not.toMatch(/SECRET_ARGUMENT_FIXTURE|SECRET_SIGNATURE_FIXTURE/)
  for(const [width,theme] of [[1440,'light'],[390,'light'],[1440,'dark'],[390,'dark']] as const){
   await page.setViewportSize({width,height:960}); await page.evaluate(value=>document.documentElement.dataset.theme=value,theme)
+  const geometry=await todos.evaluate(el=>{const row=el.querySelector('.todo-card')!,state=row.querySelector('.todo-state')!,text=row.querySelector('.todo-text')!;return {width:row.getBoundingClientRect().width,gap:text.getBoundingClientRect().left-state.getBoundingClientRect().right,border:getComputedStyle(row).borderWidth}})
+  expect(geometry.width).toBeLessThanOrEqual(760)
+  expect(geometry.gap).toBeLessThanOrEqual(16)
+  expect(geometry.border).toBe('0px')
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
   expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa']).analyze()).violations).toEqual([])
   await page.screenshot({path:test.info().outputPath(`execution-records-${width}-${theme}.png`),fullPage:true})

@@ -1,6 +1,5 @@
 import {useAssistantBrand} from './components/AssistantBrand';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { RiArrowRightUpLine, RiChatSmile2Line, RiFileList3Line, RiLightbulbLine } from '@remixicon/react';
 import { api, ApiError, errorText, type Chat, type Message } from './api';
 import { navigate, useResource, useRoute } from './hooks';
 import { Button, Composer, EmptyState, Logo } from './components/BoardPrimitives';
@@ -101,11 +100,11 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
       empty={query.error && !query.data ? <EmptyState title="对话暂不可读" /> : <div className="welcome"><div className="welcome-mark"><Logo compact /></div>
         <h2>今天，有什么可以帮你？</h2>
         <div className="suggestions">{[
-          { icon: RiFileList3Line, title: '梳理一项任务', prompt: '我想和你一起梳理一项任务：' },
-          { icon: RiLightbulbLine, title: '一起想想办法', prompt: '帮我分析一下这个问题：' },
-          { icon: RiChatSmile2Line, title: '开始一段对话', prompt: '你好，介绍一下你能如何帮助我。' },
+          { title: '梳理一项任务', prompt: '我想和你一起梳理一项任务：' },
+          { title: '一起想想办法', prompt: '帮我分析一下这个问题：' },
+          { title: '开始一段对话', prompt: '你好，介绍一下你能如何帮助我。' },
         ].map(item => <button type="button" key={item.title} onClick={() => { edit(item.prompt); document.querySelector<HTMLTextAreaElement>('.board-composer textarea')?.focus(); }}>
-          <item.icon size={20} /><strong>{item.title}</strong><RiArrowRightUpLine size={15} /></button>)}</div>
+          <strong>{item.title}</strong></button>)}</div>
       </div>} />}
     <div className="composer-dock"><div>
       {error && <div className="send-notice" role="alert"><p>{error}</p>{attempt && attempt.state !== 'sending' && <div className="inline-actions">
