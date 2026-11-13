@@ -14,7 +14,7 @@ async function openHistory(page: Page) {
   return page.locator('.task-dialogue .execution-history');
 }
 
-test('执行正文流无图标信息条，组默认折叠，输入输出独立展开，刷新保留状态', async ({ page }) => {
+test('Pi工具组默认折叠，工具内输入输出展示，刷新保留状态', async ({ page }) => {
   let mode = 'initial';
   await page.route(endpoint + '?*', route => {
     if (mode === 'denied') return route.fulfill({ status: 403, json: { error: 'RESOURCE_FORBIDDEN' } });
@@ -27,27 +27,22 @@ test('执行正文流无图标信息条，组默认折叠，输入输出独立�
   await expect(group).not.toHaveAttribute('open');
   await expect(group.locator('.execution-tool-group-summary')).toHaveText('读取 1 次 · 脚本 1 次');
   await expect(history.locator('.message-column > .message-tool')).toContainText('执行中');
-  await expect(history.locator('.message-column > .message-tool')).toContainText('尚无结果。');
+  await expect(history.locator('.message-column > .message-tool .pi-tool-shimmer')).toBeVisible();
   await expect(group.locator('.tool-content')).toHaveCount(0);
   await group.locator(':scope > summary').focus();
   await page.keyboard.press('Enter');
-  const input = group.locator('.execution-tool-input').first(), output = group.locator('.execution-tool-output').first();
-  await expect(input).not.toHaveAttribute('open');
-  await expect(output).not.toHaveAttribute('open');
-  await expect(input.locator('summary')).toContainText('输入 a');
-  await expect(output.locator('summary')).toContainText('输出 a');
-  await input.locator('summary').click();
+  const step = group.locator('.pi-tool-step').first();
+  await expect(step).not.toHaveAttribute('open');
+  await step.locator('summary').click();
+  const input = step.locator('.tool-part').first(), output = step.locator('.tool-part').last();
   await expect(input.locator('.tool-content')).toHaveText('输入 a');
-  await expect(output).not.toHaveAttribute('open');
-  await output.locator('summary').click();
   await expect(output.locator('.tool-content')).toHaveText('输出 a');
   await expect(group.locator('.message-source')).toHaveCount(0);
   await expect(group).not.toContainText('fixture-execution');
   mode = 'updated';
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect(group.locator('.execution-tool-group-summary')).toHaveText('读取 1 次 · 脚本 2 次');
-  await expect(input).toHaveAttribute('open');
-  await expect(output).toHaveAttribute('open');
+  await expect(step).toHaveAttribute('open');
   for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -69,19 +64,16 @@ test('job_output 普通合组，安全首行摘要与独立正文，无内部来
   await expect(group.locator('.execution-tool-group-summary')).toHaveText('job_output 1 次 · custom_check 1 次 · 脚本 1 次');
   await expect(group.locator(':scope > summary')).toContainText('1 项失败');
   await group.locator(':scope > summary').click();
-  const activity = group.locator('.message-tool').first(), output = activity.locator('.execution-tool-output');
-  await expect(output.locator('summary')).toContainText('用户可见的作业结果');
-  await expect(output.locator('summary')).toContainText('本段另 1 行');
+  const activity = group.locator('.message-tool').first(), step = activity.locator('.pi-tool-step');
   await expect(activity.locator('.tool-content')).toHaveCount(0);
-  expect((await activity.locator('.execution-tool-input .execution-tool-preview').textContent())!.length).toBeLessThanOrEqual(93);
-  await activity.locator('.execution-tool-input > summary').click();
-  await output.locator('summary').click();
+  await step.locator('summary').click();
+  const output = activity.locator('.tool-part').last();
   await expect(activity.locator('.tool-content')).toHaveCount(2);
   await expect(output.locator('.tool-content')).toHaveText(text);
   await expect(activity.locator('.message-source')).toHaveCount(0);
   await expect(activity).not.toContainText('信息已隐藏');
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect(output).toHaveAttribute('open');
+  await expect(step).toHaveAttribute('open');
   expect(await page.evaluate(() => 'jobOutputExecuted' in window)).toBe(false);
 });
 
@@ -99,14 +91,11 @@ for (const toolName of ['read', 'job_output']) {
       if (mode === 'stale') return route.fulfill({ status: 409, json: { error: 'SESSION_PAGE_STALE' } });
       return route.fulfill({ json: { messageId: 'paged-result', text: tail, offset: first.length, nextOffset: null, total: first.length + tail.length, revision, redacted: true, source: { sessionId: 'HIDDEN_SESSION_ID', entryId: 'HIDDEN_ENTRY_ID', callId: 'HIDDEN_CALL_ID' } } });
     });
-    const history = await openHistory(page), activity = history.locator('.message-tool'), row = activity.locator('.execution-tool-output-row');
-    await expect(row.locator('summary')).toContainText('失败');
-    await expect(row.locator('summary')).toContainText('可继续读取');
-    expect((await row.locator('.execution-tool-preview').textContent())!.length).toBeLessThanOrEqual(111);
-    await row.locator('summary').click();
+    const history = await openHistory(page), activity = history.locator('.message-tool');
+    await activity.locator('.pi-tool-step > summary').click();
+    const row = activity.locator('.tool-part').last();
     await row.getByRole('button', { name: '下一段', exact: true }).click();
     await expect(row.locator('.tool-content')).toHaveText(tail);
-    await expect(row.locator('summary')).toContainText('分页终点');
     await expect(activity.locator('.message-source')).toHaveCount(0);
     await expect(activity).not.toContainText('HIDDEN_');
     expect(await page.evaluate(() => 'toolPageExecuted' in window)).toBe(false);
@@ -135,9 +124,7 @@ for (const toolName of ['read', 'job_output']) {
     await expect(row.locator('summary, .tool-content')).toHaveCount(0);
     revision = 'restored-revision'; mode = 'ready';
     await row.getByRole('button', { name: '获取最新记录', exact: true }).click();
-    await expect(row.locator('summary')).toContainText('重新授权后的最新正文');
-    await expect(row.locator('details')).not.toHaveAttribute('open');
-    await row.locator('summary').click();
+    await activity.locator('.pi-tool-step > summary').click();
     await expect(row.locator('.tool-content')).toHaveText('重新授权后的最新正文');
     await expect(row).not.toContainText('分页终点');
   });

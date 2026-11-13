@@ -486,3 +486,9 @@ Web 与渠道会话共用 `App` 的会话壳：面包屑与工作动态折叠入
 
 ### 2026-11-13 · 任务内容区与对话工具栏整合
 任务详情沿用对话布局的分工：全局连接、权限、刷新、主题工具留在内容区外顶部；面包屑和任务页标题放执行内容面板内部顶部。进度卡片是执行内容，不是工具栏按钮，留在其下方的执行内容区靠右，与记录边界对齐，不移入右侧元信息栏。
+
+### Pi Agent Dashboard execution reference (2026-11-13)
+
+This supersedes the prior scrumws / BoardUI AgentProgress visual treatment only. Source: BlackBeltTechnology/pi-agent-dashboard at e78b4c2c, MIT; retain licenses/pi-agent-dashboard-MIT.txt. ToolCallStep / ToolBurstGroup map to our shared execution reader: 2px left rail, 12px inset, small status glyph, 12px summary and trailing disclosure chevron, 12px rounded input/output surface. Completed contiguous tools remain grouped; active calls remain separate. Preserve body paging, chronological boundaries, redaction, revocation, disclosure state, and job_output semantics.
+
+SessionCard maps to the task-progress card in the execution content region and conversation-linked task cards. Rounded 12px surface, restrained inset rim and shadow, 2px hover lift / 200ms transition; only actual running state receives the upstream amber sweep. Step checklist remains backed by committed todos. Do not fabricate upstream model/cost/queue/stop controls. Shell and global toolbar positions approved in #125 remain unchanged. Reduced-motion removes all running effects. Verify both themes and 390/1440px widths in the browser before delivery.

@@ -2,7 +2,7 @@ import {useAssistantBrand, brandGlyph} from './AssistantBrand';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine } from '@remixicon/react';
+import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiArrowRightSLine } from '@remixicon/react';
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
 import { ApiError, errorText, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
 import { dateTime, useResource } from '../hooks';
@@ -126,17 +126,36 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
 function ToolActivity({ item, history, compact = false }: { item: ToolItem; history?: HistoryReader; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState(false);
+  const frame = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!frame.current || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(entries => { for (const entry of entries) entry.target.classList.toggle('pi-offscreen', !entry.isIntersecting); });
+    observer.observe(frame.current);
+    return () => observer.disconnect();
+  }, []);
   const message = item.call || item.results[0];
   const result = item.results.at(-1);
   const state = toolState(item);
-  if (compact) return <article className="message message-tool" data-message-id={item.id}>
-    <div className="message-body">
-      <section className="execution-tool-input-row"><h4 className="sr-only">输入</h4>{item.call
-        ? <MessageBody message={item.call} history={history} plain disclosure={{ kind: 'input', name: message.toolName || '工具', state }} />
-        : <div className="execution-tool-missing"><strong>{message.toolName || '工具'}</strong> · {item.inputElsewhere ? '输入见上方调用。' : '本页无输入记录。'} <span className="execution-tool-state">{states[state]?.[0] || state}</span></div>}</section>
-      {item.results.map(output => <section className="execution-tool-output-row" key={output.id}><h4 className="sr-only">输出</h4><MessageBody message={output} history={history} plain disclosure={{ kind: 'output', name: message.toolName || '工具' }} /></section>)}
-      {!result && <section className="execution-tool-output-row"><h4 className="sr-only">输出</h4><span className="execution-tool-missing">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</span></section>}
-    </div>
+  const running = ['running', 'active'].includes(state);
+  const failed = ['error', 'failed'].includes(state);
+  if (compact) return <article ref={frame} className={`message message-tool pi-tool-frame${running ? ' is-running' : ''}`} data-message-id={item.id}>
+    <details className="pi-tool-step" open={open} onToggle={event => {
+      if (event.target !== event.currentTarget) return;
+      setOpen(event.currentTarget.open);
+      if (event.currentTarget.open) setOpened(true);
+    }}>
+      <summary className={running ? 'pi-tool-shimmer' : undefined}>
+        <span className={`pi-tool-status${running ? ' is-running' : failed ? ' is-error' : result ? ' is-complete' : ''}`} aria-hidden="true">{running ? <RiLoader4Line size={14} /> : failed ? <RiErrorWarningLine size={14} /> : result ? <RiCheckLine size={14} /> : <span>·</span>}</span>
+        <span className="pi-tool-title">{message.toolName || '工具'}</span>
+        <span className="pi-tool-state">{states[state]?.[0] || state}</span>
+        <RiArrowRightSLine className="pi-tool-chevron" size={14} aria-hidden="true" />
+      </summary>
+      {opened && <div className="pi-tool-body">
+        <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain /> : <span className="execution-tool-missing">{item.inputElsewhere ? '输入见上方调用。' : '本页无输入记录。'}</span>}</section>
+        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出</h4><MessageBody message={output} history={history} plain /></section>)}
+        {!result && <section className="tool-part"><h4>输出</h4><span className="execution-tool-missing">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</span></section>}
+      </div>}
+    </details>
   </article>;
   return <article className="message message-tool">
     <div className="message-meta"><span className="message-avatar" aria-hidden="true" /><strong>{message.toolName || '工具'}</strong>
@@ -173,7 +192,7 @@ function ToolActivityGroup({ tools, history, compact = false, anchorId }: { tool
   return <details className="execution-tool-group" data-message-id={anchorId} open={open} onToggle={event => {
     if (event.target === event.currentTarget) setOpen(event.currentTarget.open);
   }}>
-    <summary>{!compact && <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="execution-tool-group-summary">{summary}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
+    <summary>{compact ? <RiCheckLine className="pi-tool-status is-complete" size={14} aria-hidden="true" /> : <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="execution-tool-group-summary">{summary}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<RiArrowRightSLine className="pi-tool-chevron" size={14} aria-hidden="true" /><span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
     <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} compact={compact} />)}</div>
   </details>;
 }

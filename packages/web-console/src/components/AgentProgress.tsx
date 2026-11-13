@@ -10,7 +10,7 @@ export function AgentProgress({ items }: { items: ProgressItem[] }) {
   const active = items.find(item => item.status === 'in_progress');
   const label = !items.length ? '暂无待办' : remaining ? `还剩 ${remaining} 步` : '步骤已完成';
   return <section className="execution-todos" aria-label="任务待办">
-    <details className="agent-progress" open>
+    <details className={`agent-progress pi-session-card${active ? ' is-running' : ''}`} open>
       <summary className="agent-progress-heading">
         <span className={`agent-progress-marker ${remaining ? active ? 'is-active' : 'is-pending' : items.length ? 'is-completed' : 'is-pending'}`} aria-hidden="true">{!!items.length && !remaining && <RiCheckLine size={10} />}</span>
         <span className="agent-progress-label">{label}</span>

@@ -49,3 +49,45 @@
 .execution-transcript .execution-tool-group > summary { min-height: 0; padding: 5px 0; gap: 9px; align-items: baseline; font-size: 12.5px; line-height: 1.8; }
 .execution-transcript .execution-tool-group > summary:hover, .execution-transcript .execution-tool-group > summary:active { background: transparent; }
 .execution-transcript .execution-tool-group-items { margin: 2px 0 8px 21px; padding: 0 0 0 12px; gap: 0; border-left: 1px solid var(--board-border); }
+
+/* Adapted from pi-agent-dashboard ToolCallStep / ToolBurstGroup and liveness
+ * CSS, MIT © 2026 Robert Csakany. See licenses/pi-agent-dashboard-MIT.txt. */
+.execution-transcript .pi-tool-frame,
+.execution-transcript .execution-tool-group { margin: 8px 16px; padding-left: 12px; border-left: 2px solid var(--board-border); width: auto; }
+.execution-transcript .execution-tool-group > summary,
+.pi-tool-step > summary { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 3px 4px; border-radius: 6px; font-size: 12px; line-height: 1.6; color: var(--board-muted); cursor: pointer; list-style: none; }
+.pi-tool-step > summary::-webkit-details-marker { display: none; }
+.pi-tool-step > summary:hover { color: var(--board-text); }
+.pi-tool-step > summary:focus-visible { outline: 2px solid var(--board-focus); outline-offset: 2px; }
+.pi-tool-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-tool-state { font-size: 10px; white-space: nowrap; }
+.pi-tool-chevron { margin-left: auto; transition: transform 160ms ease; }
+.pi-tool-step[open] > summary > .pi-tool-chevron,
+.execution-tool-group[open] > summary > .pi-tool-chevron { transform: rotate(90deg); }
+.pi-tool-status { display: inline-flex; align-items: center; flex: 0 0 14px; }
+.pi-tool-status.is-complete { color: var(--board-success, #4d9c70); }
+.pi-tool-status.is-error { color: var(--board-danger); }
+.pi-tool-status.is-running { color: #b98b29; }
+.pi-tool-status.is-running svg { animation: pi-tool-spin 1.8s linear infinite; }
+.execution-transcript .execution-tool-group-items { margin: 4px 0; padding: 0; border: none; gap: 8px; }
+.execution-transcript .execution-tool-group-items .pi-tool-frame { margin: 0; }
+.pi-tool-body { margin: 4px 0 8px 16px; padding: 8px; border: 1px solid var(--board-border); border-radius: 12px; background: var(--board-surface); box-shadow: 0 2px 5px rgb(0 0 0 / 5%); }
+.pi-tool-body .tool-part { margin: 0; }
+.pi-tool-body .tool-part + .tool-part { margin-top: 12px; }
+.pi-tool-body .tool-part h4 { font-size: 10px; margin: 0 0 4px; }
+.execution-transcript .pi-tool-body .tool-content { margin: 0; padding: 4px; background: transparent; box-shadow: none; border: 0; }
+.pi-tool-shimmer { position: relative; overflow: hidden; }
+.pi-tool-shimmer::after { content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; background: linear-gradient(100deg, transparent 20%, rgb(250 204 21 / 10%) 45%, rgb(250 204 21 / 16%) 50%, rgb(250 204 21 / 10%) 55%, transparent 80%); animation: pi-tool-sweep 1.6s linear infinite; }
+@keyframes pi-tool-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes pi-tool-spin { to { transform: rotate(360deg); } }
+@media(max-width: 760px) {
+ .execution-transcript .pi-tool-frame, .execution-transcript .execution-tool-group { margin-inline: 8px; }
+ .pi-tool-step > summary, .execution-transcript .execution-tool-group > summary { min-height: 44px; }
+}
+@media(prefers-reduced-motion: reduce) {
+ .pi-tool-shimmer::after, .pi-tool-status.is-running svg { animation: none; }
+ .pi-tool-shimmer::after { background: none; }
+ .pi-tool-chevron { transition: none; }
+}
+
+.pi-offscreen .pi-tool-shimmer::after, .pi-offscreen .pi-tool-status.is-running svg { animation-play-state: paused; }

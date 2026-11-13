@@ -593,3 +593,24 @@ html, body, #root { width: 100%; min-width: 0; }
 }
 
 .conversation-global-topbar { justify-content: flex-end; min-height: 44px; padding-top: 4px; padding-bottom: 4px; }
+
+/* SessionCard surface and running sweep adapted from pi-agent-dashboard (MIT,
+ * Robert Csakany, 2026). No fabricated model, cost, duration or queue controls. */
+.pi-session-card { position: relative; isolation: isolate; border: 1px solid var(--board-border); border-radius: 12px; background: var(--board-surface); box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 4px 8px rgb(0 0 0 / 6%); transition: transform 200ms ease, box-shadow 200ms ease; }
+.pi-session-card:hover { transform: translateY(-2px); box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 6px 12px rgb(0 0 0 / 8%); }
+.pi-session-card.is-running::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit; background: rgb(234 179 8 / 5%); }
+.pi-session-card.is-running::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit; background: repeating-linear-gradient(90deg, transparent 0px, transparent 60px, rgb(234 179 8 / 16%) 230px, transparent 400px, transparent 460px); background-size: 460px 100%; animation: pi-card-sweep 3.4s linear infinite; }
+@keyframes pi-card-sweep { to { background-position: 460px 0; } }
+.agent-progress, .agent-progress[open] { width: 340px; color: var(--board-text); }
+.agent-progress-heading { min-height: 42px; padding: 8px 12px; }
+.agent-progress-label { font-size: 14px; font-weight: 600; }
+.agent-progress-heading:hover { background: transparent; }
+.agent-progress-step { border-radius: 6px; }
+.agent-progress-step.todo-in_progress { border-color: transparent; background: rgb(234 179 8 / 7%); }
+.agent-progress-step.todo-completed { color: var(--board-muted); }
+.agent-progress-collapse { display: flex; }
+.chat-execution-group.pi-session-card { overflow: hidden; margin: 10px 0; }
+.chat-execution-group.pi-session-card > summary { padding: 8px 18px 8px 6px; }
+.chat-execution-group.pi-session-card .chat-execution-label strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-execution-group.pi-session-card .chat-execution-meta { font-size: 11px; }
+@media(prefers-reduced-motion: reduce) { .pi-session-card { transition: none; } .pi-session-card:hover { transform: none; } .pi-session-card.is-running::after { animation: none; } }
