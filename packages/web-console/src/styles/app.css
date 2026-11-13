@@ -590,3 +590,5 @@ html, body, #root { width: 100%; min-width: 0; }
   .conversation-topbar .header-location > span:first-child { display: none; }
   .conversation-topbar .breadcrumb-slash { display: none; }
 }
+
+.conversation-global-topbar { justify-content: flex-end; min-height: 44px; padding-top: 4px; padding-bottom: 4px; }
