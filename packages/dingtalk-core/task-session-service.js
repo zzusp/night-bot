@@ -803,11 +803,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       let task=await requireTask(args.taskId);const source=args.source
       if(task.effectReconciliations?.some(row=>row.state==='prepared')){if(oldTask)await oldTask;task=await settlePreparedEffectsForRouter(task)}
       if(task.groupId!==source.groupId||task.groupId!==args.conversationId)fail('TASK_SESSION_SOURCE_FORBIDDEN')
-      if(['supplement','resume'].includes(args.kind)&&[args.objective,args.title,args.requirements,args.control].some(value=>value!==undefined))fail('TASK_CONTEXT_CLASSIFICATION_CONFLICT')
+      if(args.request!==undefined&&!['revise','reopen'].includes(args.kind))fail('TASK_CONTEXT_CLASSIFICATION_CONFLICT')
+      if(['supplement','resume'].includes(args.kind)&&[args.objective,args.title,args.requirements,args.control,args.request].some(value=>value!==undefined))fail('TASK_CONTEXT_CLASSIFICATION_CONFLICT')
       const action={taskId:task.taskId,expectedRequirementRevision:args.expectedRequirementRevision,expectedControlRevision:args.expectedControlRevision,operationId:args.operationId,
         ...(['supplement','resume'].includes(args.kind)?{messageId:args.operationId,text:args.text??source.text}:{}),
         ...(args.kind==='resume'?{humanRequestId:args.humanRequestId,expectedContextRevision:args.expectedContextRevision,reason:args.reason}:{}),
-        ...(['revise','reopen'].includes(args.kind)?{text:args.text??source.text,...(args.objective!==undefined?{objective:args.objective}:{}),...(args.title!==undefined?{title:args.title}:{}),...(args.requirements!==undefined?{requirements:args.requirements}:{})}:{}),
+        ...(['revise','reopen'].includes(args.kind)?{text:args.text??source.text,...(args.request!==undefined?{request:args.request}:{}),...(args.objective!==undefined?{objective:args.objective}:{}),...(args.title!==undefined?{title:args.title}:{}),...(args.requirements!==undefined?{requirements:args.requirements}:{})}:{}),
         ...(args.kind==='control'?{control:args.control,reason:args.reason??source.text}:{}),
         ...(args.kind==='arrange'?{expectedArrangementRevision:args.expectedArrangementRevision,dependencies:args.dependencies}:{})}
       const hostLiveBinding=args.kind==='supplement'?taskSessions.liveBinding?.(task.taskId):undefined
@@ -1477,7 +1478,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const {kind:actionKind,text:input,...fields}=action
         const liveBinding=actionKind==='task.supplement'?taskSessions.liveBinding?.(task.taskId):undefined
         receipt=await command(actionKind,{...fields,operationId,sourceRefs:[...new Set([...current.sourceRefs,sourceId])],
-          ...(actionKind==='task.control'?{}:{request:[current.request,'[操作员输入]',input].join(String.fromCharCode(10,10))}),
+          ...(actionKind==='task.control'?{}:{currentInput:{id:operationId,text:input,sourceId, messageVersion:source.version}}),
           ...(actionKind==='task.supplement'?{messageId:operationId,text:input,...(liveBinding?{liveBinding}:{})}:{})},operationId)
       }
       const originalLease=!current.drained&&current.leaseEpoch===receipt.result.task.leaseEpoch&&current.requirementRevision===receipt.result.task.requirementRevision&&current.controlRevision===receipt.result.task.controlRevision

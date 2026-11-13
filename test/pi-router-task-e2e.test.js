@@ -55,7 +55,7 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
               controlRevision:b.controlRevision,arrangementRevision:dependency.arrangementRevision,decision,evidence:[revision===1?'proof:preliminary':'proof:verified']})
           }
           if(revision===1)return call('resident_task_action',{operationId:'rework-a',sourceId:source.sourceId,messageVersion:source.version,
-            kind:'reopen',taskId:'a-e2e',expectedRequirementRevision:a.requirementRevision,expectedControlRevision:a.controlRevision,sameGoal:true})
+            kind:'reopen',taskId:'a-e2e',expectedRequirementRevision:a.requirementRevision,expectedControlRevision:a.controlRevision,sameGoal:true,request:'Recheck A against current evidence; do not repeat completed external effects.'})
         }
       }
       if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1).result.isError)return {text:'Current batch disposition is committed.'}
@@ -71,7 +71,9 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
   assert.ok(planned.result.tasks.every(task=>task.projection==='summary'&&task.request===undefined),'plan returns compact receipts, not accumulated full input')
   const revised=h.results.find(row=>row.name==='resident_task_action'&&!row.result.isError).result.value
   assert.equal(revised.result.task.projection,'summary');assert.equal(revised.result.task.request,undefined)
-  assert.match(a.request,/First verify synthetic A/,'authoritative original request is not removed by the model projection')
+  assert.equal(a.request,'Recheck A against current evidence; do not repeat completed external effects.','real Router tool passes the explicit replacement brief through the service')
+  const originalSource=(await h.query('source.list')).find(row=>row.messageId==='ordered-work');assert.match(originalSource.text,/First verify synthetic A/,'original user evidence remains intact')
+  const journalA=await h.host.ctx.sessionPersistence.readNative(a.sessionId,{requireComplete:true});const revisedInput=journalA.audit.filter(row=>row.domain==='admission'&&row.kind==='enqueued'&&row.payload.source.kind==='task-input').map(row=>JSON.parse(row.payload.content[0].text)).find(body=>body.task.requirementRevision===2);assert.equal(revisedInput.task.request,a.request)
   assert.equal(a.requirementRevision,2);assert.equal(a.status,'completed');assert.equal(a.sessionId,originalSession)
   assert.equal(b.status,'completed');assert.equal(b.requirementRevision,1)
   assert.deepEqual(evaluations,[{revision:1,decision:'continue'},{revision:2,decision:'satisfied'}])

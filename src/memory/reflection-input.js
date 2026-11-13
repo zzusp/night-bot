@@ -27,7 +27,7 @@ export function reflectionInput(task,event,executions=[],operations=[]){
  const facts=[completed]
  const sameVersion=['requirementRevision','controlRevision','contextRevision','runSequence'].every(key=>Number.isSafeInteger(event[key])&&event[key]===(task[key]??(key==='contextRevision'?0:undefined)))
  if(sameVersion){
-  completed.request=field(task.request,'task.request');completed.objective=field(task.objective,'task.objective');coverage.taskContext='matching-completion-version'
+  completed.request=field(task.request,'task.request');completed.objective=field(task.objective,'task.objective');completed.requirements=list(task.requirements,'task.requirements');completed.latestInstruction=field(task.currentInput?.text,'task.currentInput.text');coverage.taskContext='matching-completion-version'
  }
  for(const row of executions.slice(-12))facts.push({id:row.executionId,kind:'execution',status:row.status,summary:field(row.result?.summary??row.error??row.stageProgress?.summary,'execution.'+row.executionId)??''})
  for(const row of operations.slice(-24))facts.push({id:row.operationId??row.id,kind:'operation',status:row.state,tool:row.toolName??row.name??''})
