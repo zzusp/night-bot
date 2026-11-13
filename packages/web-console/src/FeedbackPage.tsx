@@ -7,7 +7,7 @@ import './styles/feedback.css';
 
 type Feedback = { id: string; state: 'collecting' | 'editing' | 'ready' | 'failed' | 'submitting' | 'submitted' | 'unknown'; title: string; body: string; target: string; error?: string; url?: string };
 type Destination = { target: string; model: string | null; revision?: string; endpoint?: string };
-export const feedbackPrivacyNotice = '默认不收集：只处理您填写的标题和正文，不启动 Pi、不读取本地现场、不调用模型。选择收集并明确同意后，才会启动独立 Pi 会话收集本地诊断信息，并将脱敏后的问题与诊断信息发送给当前模型服务。采集时会在本地按您的描述检索消息，并读取相关消息阶段、路由、任务、模型及工具计时、关联 Pi 会话中的工具调用计时及结构化错误码、错误类别、退出码和 HTTP 状态；上述证据经脱敏及匿名化后发送给模型用于排查。不会发送聊天或记忆正文、工具输入输出正文、密钥或整份原始日志。调查有范围与数量限制，未找到不代表没有发生。自动脱敏可能遗漏，请勿填写敏感内容；提交 GitHub 前请核对完整内容。';
+export const feedbackPrivacyNotice = '默认不收集。经您同意后采集本地诊断信息，脱敏后发送所选模型服务分析；自动脱敏可能遗漏。内容可审核修改，确认后才提交 GitHub。';
 
 export const feedbackImageNotice = '图片在 GitHub 页面中手动粘贴或拖入，不会由 Night Bot 读取、上传或发送给 Pi。图片可能包含隐私，无法保证自动脱敏，请先遮盖敏感信息。发布前请在 GitHub 核对正文和图片，最终提交后可能公开可见。';
 
@@ -104,19 +104,19 @@ export default function FeedbackPage() {
     finally { if (mounted.current) setBusy(false); }
   };
   return <div className="page-content feedback-page">
-    <section className="feedback-disclosure" aria-label="数据收集与提交提示"><p>{feedbackPrivacyNotice}</p><p>{feedbackImageNotice}</p>
-      {destination.data && <dl><dt>模型服务</dt><dd>{destination.data.model ? `${destination.data.model} · ${destination.data.endpoint ?? '配置的模型服务'}` : '未配置（仍可不收集并提交）'}</dd><dt>Issue 目标</dt><dd>{destination.data.target}</dd></dl>}
-    </section>
     {destination.error && <Notice error={destination.error} onRetry={destination.refresh} />}
     {!destination.data && destination.loading && <Loading />}
     <section className="settings-card"><form noValidate onSubmit={event => { event.preventDefault(); void collect(); }}>
       <label htmlFor="feedback-title">标题</label><input ref={titleInput} id="feedback-title" maxLength={160} value={title} disabled={busy || !!record || requestLock.current} onChange={event => setTitle(event.target.value)} aria-describedby={error ? 'feedback-error' : undefined} />
       <label htmlFor="feedback-description">问题详情</label><textarea className="resize-none" id="feedback-description" rows={7} maxLength={6000} value={description} disabled={busy || !!record || requestLock.current} onChange={event => setDescription(event.target.value)} placeholder="发生了什么、操作步骤、期望结果" />
-      {!record && <><fieldset disabled={busy || requestLock.current} className="feedback-mode"><legend>本地现场信息</legend>
+      {!record && <fieldset disabled={busy || requestLock.current} className="feedback-mode" aria-describedby="feedback-privacy-summary"><legend>本地现场信息</legend>
         <label className="feedback-consent"><input type="radio" name="feedback-mode" value="none" checked={!collectEvidence} onChange={() => { setCollectEvidence(false); setConsent(false); }} />不收集</label>
         <label className="feedback-consent"><input type="radio" name="feedback-mode" value="collect" checked={collectEvidence} onChange={() => { setCollectEvidence(true); setConsent(false); }} />由 AI 收集诊断</label>
-      </fieldset>
-      {collectEvidence && <label className="feedback-consent"><input type="checkbox" checked={consent} disabled={busy || requestLock.current || !destination.data?.model} onChange={event => setConsent(event.target.checked)} />我同意上述范围的本地采集与模型分析，本次不提交 GitHub。</label>}<div><Button variant="primary" type="submit" busy={busy} disabled={!destination.data || requestLock.current || (collectEvidence && (!consent || !destination.data.model || !destination.data.revision))}>{collectEvidence ? '开始诊断' : '生成预览'}</Button></div></>}
+      </fieldset>}
+      <div className="feedback-privacy" aria-label="数据收集与提交提示">
+        <p id="feedback-privacy-summary" className="feedback-privacy-summary">{feedbackPrivacyNotice}</p>
+      </div>
+      {!record && <>{collectEvidence && <label className="feedback-consent"><input type="checkbox" checked={consent} disabled={busy || requestLock.current || !destination.data?.model} onChange={event => setConsent(event.target.checked)} />我同意采集消息链路、路由、任务及模型/工具计时、错误摘要，脱敏后连同问题发送至 {destination.data?.model ?? '未配置模型'}（{destination.data?.endpoint ?? '配置的模型服务'}）用于分析；本次不提交 GitHub。</label>}<div><Button variant="primary" type="submit" busy={busy} disabled={!destination.data || requestLock.current || (collectEvidence && (!consent || !destination.data.model || !destination.data.revision))}>{collectEvidence ? '开始诊断' : '生成预览'}</Button></div></>}
     </form></section>
     {record && !submitAttempted && <Button disabled={busy} onClick={() => void revoke()}>清除暂存</Button>}
     {collecting && <Loading>Pi 正在诊断</Loading>}
@@ -133,6 +133,7 @@ export default function FeedbackPage() {
           <label className="feedback-consent"><input type="radio" name="feedback-images" checked={!nativeImages} onChange={() => { setNativeImages(false); setConfirm(false); setCopyStatus(''); }} />不添加图片</label>
           <label className="feedback-consent"><input type="radio" name="feedback-images" checked={nativeImages} onChange={() => { setNativeImages(true); setConfirm(false); setCopyStatus(''); }} />在 GitHub 添加图片</label>
         </fieldset>
+        {nativeImages && <p className="feedback-image-notice">{feedbackImageNotice}</p>}
         <label className="feedback-consent"><input type="checkbox" checked={confirm} disabled={busy || submitAttempted || editDraft !== null} onChange={event => setConfirm(event.target.checked)} />{nativeImages ? '我已核对以上内容，将在 GitHub 粘贴正文、添加图片并最终确认提交。' : <>我已检查以上完整内容，同意向 {record.target} 提交 Issue，内容可能公开可见。</>}</label>
         {nativeImages ? <div className="feedback-github-handoff" aria-label="GitHub 图片反馈">
           <ol><li>复制标题与完整正文。</li><li>打开 GitHub 编辑页，粘贴内容并添加图片。</li><li>检查图片上传完成后，在 GitHub 提交。</li></ol>

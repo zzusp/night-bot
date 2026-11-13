@@ -24,7 +24,7 @@ test('image feedback hands off to GitHub without uploading or creating an issue'
   await expect(page.getByRole('button', {name:'确认提交 Issue',exact:true})).toHaveCount(0)
   await expect(page.getByRole('button', {name:'打开 GitHub 编辑页 ↗',exact:true})).toBeDisabled()
   await page.getByRole('button', {name:'复制完整正文',exact:true}).click()
-  await expect(page.getByRole('status')).toContainText('完整正文已复制')
+  await expect(page.getByLabel('GitHub 图片反馈').getByRole('status')).toContainText('完整正文已复制')
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(body)
   await page.getByRole('checkbox').check()
   const link = page.getByRole('button', {name:'打开 GitHub 编辑页 ↗',exact:true})
