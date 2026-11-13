@@ -82,8 +82,9 @@ test('dynamic provider read authority is checked even when its catalog revision 
  const revision=h.f.host.ctx.skills.revision,requests=h.f.requests.length
  h.state.authorized=false;assert.equal(h.f.host.ctx.skills.revision,revision)
  await (await h.observation()).refresh()
+ // refresh queues the revocation notice; the next guarded turn commits it.
+ await assert.rejects(h.run(),{code:'PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED'})
  assert.match(JSON.stringify((await h.saved()).entries),/unavailable/)
- await assert.rejects(h.run())
  assert.equal(h.f.requests.length,requests,'a cached catalog cannot dispatch after its current read authority is revoked')
  assert.equal((await h.receipts()).length,1)
 })
