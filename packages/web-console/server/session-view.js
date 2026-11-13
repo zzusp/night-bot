@@ -181,6 +181,18 @@ const stamp = (message, entry) => {
   return date && Number.isFinite(date.getTime()) ? date.toISOString() : null
 }
 
+// Only project fields from the exact admitted packet, never today's mutable task.
+// request can be cumulative on resume; do not infer a delta from marker strings.
+function taskInstruction(input) {
+  const task = input?.task
+  if (!task || typeof task !== 'object' || Array.isArray(task)) return ''
+  const request = typeof task.request === 'string' && task.request.trim() ? task.request : ''
+  const objective = typeof task.objective === 'string' && task.objective.trim() ? task.objective : ''
+  const requirements = Array.isArray(task.requirements) ? task.requirements.filter(value => typeof value === 'string' && value.trim()) : []
+  return [request, objective && objective !== request ? '目标：\n' + objective : '',
+    requirements.length ? '要求：\n' + requirements.map(value => '- ' + value).join('\n') : ''].filter(Boolean).join('\n\n')
+}
+
 function projectEntries(snapshot, identity, secrets) {
   const {taskId, sessionId, conversationId, generation} = identity
   const items = [], sources = new Set(), calls = new Map()
@@ -233,9 +245,14 @@ function projectEntries(snapshot, identity, secrets) {
           if (source.taskSession?.taskId !== taskId || source.taskSession?.sessionId !== sessionId) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
           let input
           try {input = JSON.parse(texts(message.content))} catch {fail('SESSION_SOURCE_INVALID', 503)}
-          const originals = Array.isArray(input.sources) ? input.sources.filter(row => typeof row.text === 'string') : []
-          if (originals.length) originals.forEach((row, n) => sourceText(entry, 'source-' + index + '-' + n, row))
-          else if (typeof input.task?.request === 'string') sourceText(entry, 'request-' + index, {text: input.task.request})
+          const instruction = taskInstruction(input)
+          if (instruction) add(entry, 'instruction-' + index, 'user', instruction, {kind: 'instruction'}, message)
+          else {
+            // Old packets without an instruction retain their real source text;
+            // do not invent a Router directive or hide an otherwise readable turn.
+            const originals = Array.isArray(input?.sources) ? input.sources.filter(row => typeof row?.text === 'string') : []
+            originals.forEach((row, n) => sourceText(entry, 'source-' + index + '-' + n, {...row, text: '原始消息：\n' + row.text}))
+          }
         } else if (source?.kind === 'conversation-router') {
           if (source.conversationId !== conversationId || source.generation !== generation) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
           const content = texts(message.content), prefix = 'Router 请求：'

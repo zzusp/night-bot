@@ -68,7 +68,7 @@ test('task session API reads actual committed Pi source, todos and tool records 
     assert.equal(result.status, 200, JSON.stringify(result.body))
     assert.equal(result.body.status, 'ready'); assert.equal(result.body.scope, 'current-session-context')
     assert.equal(result.body.sessionId, task.session.sessionId)
-    assert.ok(result.body.items.some(row => row.role === 'user' && row.kind === 'source' && row.text.includes('USER_SESSION_MARKER')), 'actual authorized source must remain visible')
+    assert.ok(result.body.items.some(row => row.role === 'user' && row.kind === 'instruction' && row.text.includes('USER_SESSION_MARKER')), 'the exact admitted task instruction must remain visible')
     assert.ok(result.body.items.some(row => row.kind === 'tool-call' && row.toolName === 'task_result'), 'actual Pi tool invocation must be visible')
     assert.ok(result.body.items.some(row => row.kind === 'tool-result' && row.toolName === 'task_result' && row.text.length > 0), 'actual Pi tool receipt must be visible')
     const visible = result.body.items.map(row => row.text).join('\n')
