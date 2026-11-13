@@ -14,6 +14,7 @@ for (const width of [1440, 390]) test(`所有页面导航在内容区内 ${width
     await expect(page.locator('.main-frame > .topbar .header-location')).toHaveCount(0)
     await expect(page.locator('.header-location')).toHaveCount(1)
     const box = await header.boundingBox(), panel = await page.locator('.main-panel').boundingBox()
+    expect(box!.height).toBe(width <= 520 ? 48 : 52)
     expect(box!.y).toBeGreaterThanOrEqual(panel!.y)
     const inset = width <= 760 ? 16 : 24
     expect(await header.evaluate(el => parseFloat(getComputedStyle(el).paddingLeft))).toBe(inset)
@@ -27,6 +28,8 @@ for (const width of [1440, 390]) test(`所有页面导航在内容区内 ${width
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     if (route === 'tasks' && width === 390) {
       const tableRegion = page.getByRole('region', {name: '任务列表，可横向滚动'})
+      expect(await tableRegion.locator('th .sr-only').evaluate(el =>
+        (el as HTMLElement).offsetParent === el.closest('.task-table-wrap'))).toBe(true)
       await tableRegion.focus()
       await page.keyboard.press('ArrowRight')
       await expect.poll(() => tableRegion.evaluate(el => el.scrollLeft)).toBeGreaterThan(0)
