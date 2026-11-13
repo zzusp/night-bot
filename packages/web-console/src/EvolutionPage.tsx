@@ -24,7 +24,7 @@ export function UsageSummary({ data }: { data: Summary }) {
   return <div className="evolution-summary">
     <section className="evolution-card" aria-labelledby="memory-summary">
       <header><RiBrainLine size={20} aria-hidden="true" /><h2 id="memory-summary">记忆</h2></header>
-      <dl className="evolution-metrics"><div><dt>已应用</dt><dd>{number(data.memory.acceptedCount)}</dd></div><div><dt>候选</dt><dd>{number(data.memory.candidateCount)}</dd></div><div><dt>读取次数</dt><dd>{number(data.memory.readCount)}</dd></div><div><dt>搜索次数</dt><dd>{number(data.memory.searchCount)}</dd></div></dl>
+      <dl className="evolution-metrics"><div><dt>已应用</dt><dd>{number(data.memory.acceptedCount)}</dd></div><div><dt>读取次数</dt><dd>{number(data.memory.readCount)}</dd></div><div><dt>今日更新</dt><dd>{number(data.memory.todayUpdatedCount)}</dd></div><div><dt>搜索次数</dt><dd>{number(data.memory.searchCount)}</dd></div></dl>
     </section>
     <section className="evolution-card" aria-labelledby="skill-summary">
       <header><RiBookOpenLine size={20} aria-hidden="true" /><h2 id="skill-summary">Skills</h2></header>
