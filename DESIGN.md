@@ -274,7 +274,7 @@ Composer 是受控组件，消息文本归调用方持有；原始缩进和换�
 - 主动退出清除可见缓存并替换草稿容器，旧回执不能恢复退出前内容；只读同步成功后的新会话不能消费旧过期标记。
 - Markdown 不执行原始 HTML；外部图片显示为显式链接，避免读取消息自动请求第三方；外链隔离 opener。
 - 任务结果、时间线与补充留言按业务字段投影。执行上下文只读当前已提交的 Pi 历史，按原块顺序展示模型正文、厂商实际返回的可读思考及所有工具调用名称；思考默认折叠，不展示签名、不补写未返回内容。普通文件、命令、作业与网页工具展示已声明业务输入及准确配对的文字结果，包括错误正文，保留业务路径和网页地址。未知输入/DTO 字段、未知工具正文、孤立或冲突结果、独立 memory/skill scope 不透传；隐藏系统指令、原始参数对象、权限/环境、秘密和私有审计。获权长文沿同一版本分页，工具默认折叠；明确实际隐藏原因，不把当前上下文冒充完整原始日志。
-- 任务待办卡片来自同一会话最新已提交的 planning/todos 业务回执，不从调用参数或消息文本猜测；状态逐项显示待处理、进行中、已完成，不用任务终态覆盖模型所记状态。卡片独立于历史分页和上下文压缩，标记更新时刻；从未提交不造列表，已清空明确为空。任务详情执行记录和 Chat 内任务组共享此实现，撤权隐藏卡片、思考及历史缓存。
+- 任务待办卡片来自同一会话最新已提交的 planning/todos 业务回执，不从调用参数或消息文本猜测；状态逐项显示待处理、进行中、已完成，不用任务终态覆盖模型所记状态。卡片独立于历史分页和上下文压缩；从未提交不造列表，已清空明确为空。任务详情执行记录和 Chat 内任务组共享此实现，撤权隐藏卡片、思考及历史缓存。
 - 「复盘与学习」按真实任务、复盘、事件、作用域和版本展示记忆与技能变更，区分候选、未应用与已应用。任务历史读取权不扩大记忆或技能权限；正文须显式授权读取，无权或权限失效时不继续展示缓存，版本变化后重新获取，不把读取动作当作学习或应用。
 - 渠道会话暂不显示输入框；仍可正常查看与分页，不新增只读会话分类。不添加删除、任务取消、真实渠道代发等未获支持的动作。上述认证操作者新增与编辑钉钉配置不受影响。
 
@@ -461,5 +461,6 @@ Web 盘点允许与普通记忆 read/index/search 事务并发，不因其作用
 ### 2026-11-12 · Shared Chat and task TODO reference pass
 - Verified BoardUI public AgentChat and agent-log at ec5c5eb. Component comparison: retain shell/sidebar geometry; align message and composer content at 768px with 16px gutters; use 20px message rhythm, compact metadata, pill-shaped prompt suggestions, and unchanged accessible composer/IME/send behavior.
 - Preserve Night Bot-specific blue user / white assistant borderless bubbles, single Web chat, channel input restrictions, inspection popover, true execution history and tool disclosures. Do not import unsupported new-chat, rename, speech, attachment, or copy actions.
-- Screenshot TODO rows were full-width bordered cards with status marooned at the far edge. Shared ExecutionHistory now uses a 760px reading column, inline status + wrapping text, real completed/total count, optional timestamp and native collapse. It is a task checklist, not a fabricated completion/approval summary. Empty/redacted/revoked states remain meaningful.
-- BoardUI's Task List component is not public; this is an independent adaptation of public agent-log spacing, not a copy of its Pro implementation. No added icon rail or per-row cards. No background/status/color change to existing conversation bubbles.
+- 任务待办采用用户指定的 [Agent Progress](https://www.boardui.com/zh-hans/components/agent-progress) 公开预览与展开/收起参考图，取代之前的横铺状态清单。该组件为 Pro，未获取或复制受限源码，按截图独立实现。
+- 共享 owner 为 `ExecutionHistory` → `AgentProgress`；任务详情与聊天内执行阅读器复用。展开为 300px 中性表面圆角卡，收起为 340px 单行块，最大不超过容器。标题是「还剩 N 步」，收起时显示箭头和当前事项，展开后显示勾选圆、进行中圆环、待办虚线圆与当前行细描边；不再显示更新时间和逐行状态文字，读屏仍保留状态。长标题展开可完整换行，清单内部可滚动；无待办和全部完成显示准确状态，完成不自动消失。
+- 数量与当前步骤只根据最新已提交回执计算；不复制示例的定时推进、模拟步骤耗时或自动完成。更新保持收起状态，撤权隐藏内容。圆环仅表示记录中的进行中状态，减弱动效时静止；浅深色消费原有 token。消息气泡配色、工具记录、任务调度和数据权限不变。
