@@ -15,3 +15,9 @@
 
 .feedback-mode { border: 0; padding: 0; margin: 8px 0 0; min-width: 0; }
 .feedback-mode legend { font-weight: 500; }
+
+.feedback-disclosure p + p { margin-top: 10px; }
+.feedback-github-handoff { border: 1px solid var(--board-border-strong); border-radius: var(--board-radius-control); padding: 16px; min-width: 0; }
+.feedback-github-handoff ol { padding-left: 20px; margin: 0 0 16px; line-height: 1.8; }
+.feedback-handoff-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.feedback-github-handoff p { color: var(--board-muted); line-height: 1.6; margin: 12px 0 0; }

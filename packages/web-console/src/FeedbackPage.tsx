@@ -9,10 +9,15 @@ type Feedback = { id: string; state: 'collecting' | 'editing' | 'ready' | 'faile
 type Destination = { target: string; model: string | null; revision?: string; endpoint?: string };
 export const feedbackPrivacyNotice = '默认不收集：只处理您填写的标题和正文，不启动 Pi、不读取本地现场、不调用模型。选择收集并明确同意后，才会启动独立 Pi 会话收集本地诊断信息，并将脱敏后的问题与诊断信息发送给当前模型服务。仅采集运行信息、渠道状态汇总和日志错误码，不收集密钥、聊天或记忆正文，不上传原始日志。自动脱敏可能遗漏，请勿填写敏感内容；提交 GitHub 前请核对完整内容。';
 
+export const feedbackImageNotice = '图片在 GitHub 页面中手动粘贴或拖入，不会由 Night Bot 读取、上传或发送给 Pi。图片可能包含隐私，无法保证自动脱敏，请先遮盖敏感信息。发布前请在 GitHub 核对正文和图片，最终提交后可能公开可见。';
+
 export default function FeedbackPage() {
   const destination = useResource<Destination>('/feedback');
   const [title, setTitle] = useState(''), [description, setDescription] = useState('');
   const [collectEvidence, setCollectEvidence] = useState(false);
+  const [nativeImages, setNativeImages] = useState(false);
+  const [copyStatus, setCopyStatus] = useState('');
+  const [nativeOpened, setNativeOpened] = useState(false);
   const [editDraft, setEditDraft] = useState<{title: string; body: string} | null>(null);
   const [consent, setConsent] = useState(false), [confirm, setConfirm] = useState(false);
   const [record, setRecord] = useState<Feedback | null>(null), [busy, setBusy] = useState(false);
@@ -42,7 +47,7 @@ export default function FeedbackPage() {
     setBusy(true); setError('');
     try {
       await api(`/feedback/${encodeURIComponent(record.id)}`, { method: 'DELETE' });
-      if (mounted.current) { setRecord(null); setEditDraft(null); setConsent(false); setConfirm(false); requestLock.current = false; }
+      if (mounted.current) { setRecord(null); setEditDraft(null); setNativeOpened(false); setCopyStatus(''); setConsent(false); setConfirm(false); requestLock.current = false; }
     } catch { if (mounted.current) setError('未能确认撤销，请重新核对；未提交 GitHub。'); }
     finally { revokeLock.current = false; if (mounted.current) setBusy(false); }
   };
@@ -59,7 +64,21 @@ export default function FeedbackPage() {
     } catch { if (mounted.current) setError('预览更新未完成，修改内容已保留。请重新更新预览，核对脱敏后的内容再提交。'); }
     finally { editLock.current = false; if (mounted.current) setBusy(false); }
   };
+  const copyField = async (field: 'title' | 'body') => {
+    if (!record || record.state !== 'ready' || editDraft || busy || submitAttempted) return;
+    try {
+      await navigator.clipboard.writeText(record[field]);
+      if (mounted.current) setCopyStatus(field === 'title' ? '标题已复制' : '完整正文已复制');
+    } catch { if (mounted.current) setCopyStatus('无法复制，请从上方预览手动选择并复制。'); }
+  };
+  const openGitHub = () => {
+    if (!record || record.state !== 'ready' || !nativeImages || !confirm || busy || submitAttempted || editDraft !== null) return;
+    // Lock the API route before opening; only an explicit button can hand off.
+    setNativeOpened(true); setCopyStatus('');
+    window.open('https://github.com/zzusp/night-bot/issues/new', '_blank', 'noopener,noreferrer');
+  };
   const submit = async () => {
+    if (nativeImages || nativeOpened) return;
     if (!record || record.state !== 'ready' || editDraft !== null || !confirm || busy || submitAttempted || submitLock.current || revokeLock.current || editLock.current) return;
     submitLock.current = true;
     setSubmitAttempted(true); setBusy(true); setError('');
@@ -85,7 +104,7 @@ export default function FeedbackPage() {
     finally { if (mounted.current) setBusy(false); }
   };
   return <div className="page-content feedback-page">
-    <section className="feedback-disclosure" aria-label="数据收集与提交提示"><p>{feedbackPrivacyNotice}</p>
+    <section className="feedback-disclosure" aria-label="数据收集与提交提示"><p>{feedbackPrivacyNotice}</p><p>{feedbackImageNotice}</p>
       {destination.data && <dl><dt>模型服务</dt><dd>{destination.data.model ? `${destination.data.model} · ${destination.data.endpoint ?? '配置的模型服务'}` : '未配置（仍可不收集并提交）'}</dd><dt>Issue 目标</dt><dd>{destination.data.target}</dd></dl>}
     </section>
     {destination.error && <Notice error={destination.error} onRetry={destination.refresh} />}
@@ -109,7 +128,23 @@ export default function FeedbackPage() {
         <label htmlFor="feedback-issue-body">提交正文</label><textarea className="resize-none" id="feedback-issue-body" rows={16} maxLength={48000} value={editDraft?.body ?? record.body} disabled={busy || submitAttempted} onChange={event => { setEditDraft({title: editDraft?.title ?? record.title, body: event.target.value}); setConfirm(false); }} />
         {editDraft && <div><Button disabled={busy || submitAttempted} busy={busy && editLock.current} onClick={() => void updatePreview()}>更新预览</Button></div>}
       </div> : <><h3>{record.title}</h3><pre tabIndex={0} aria-label="Issue 完整正文">{record.body}</pre></>}
-      {!url && record.state === 'ready' && <><label className="feedback-consent"><input type="checkbox" checked={confirm} disabled={busy || submitAttempted || editDraft !== null} onChange={event => setConfirm(event.target.checked)} />我已检查以上完整内容，同意向 {record.target} 提交 Issue，内容可能公开可见。</label><Button variant="primary" disabled={!confirm || submitAttempted || editDraft !== null} busy={busy} onClick={() => void submit()}>确认提交 Issue</Button></>}
+      {!url && record.state === 'ready' && <>
+        <fieldset className="feedback-mode" disabled={busy || submitAttempted || nativeOpened}><legend>图片附件</legend>
+          <label className="feedback-consent"><input type="radio" name="feedback-images" checked={!nativeImages} onChange={() => { setNativeImages(false); setConfirm(false); setCopyStatus(''); }} />不添加图片</label>
+          <label className="feedback-consent"><input type="radio" name="feedback-images" checked={nativeImages} onChange={() => { setNativeImages(true); setConfirm(false); setCopyStatus(''); }} />在 GitHub 添加图片</label>
+        </fieldset>
+        <label className="feedback-consent"><input type="checkbox" checked={confirm} disabled={busy || submitAttempted || editDraft !== null} onChange={event => setConfirm(event.target.checked)} />{nativeImages ? '我已核对以上内容，将在 GitHub 粘贴正文、添加图片并最终确认提交。' : <>我已检查以上完整内容，同意向 {record.target} 提交 Issue，内容可能公开可见。</>}</label>
+        {nativeImages ? <div className="feedback-github-handoff" aria-label="GitHub 图片反馈">
+          <ol><li>复制标题与完整正文。</li><li>打开 GitHub 编辑页，粘贴内容并添加图片。</li><li>检查图片上传完成后，在 GitHub 提交。</li></ol>
+          <div className="feedback-handoff-actions">
+            <Button disabled={busy || submitAttempted || editDraft !== null} onClick={() => void copyField('title')}>复制标题</Button>
+            <Button disabled={busy || submitAttempted || editDraft !== null} onClick={() => void copyField('body')}>复制完整正文</Button>
+            <Button variant="primary" disabled={!confirm || busy || submitAttempted || editDraft !== null} onClick={openGitHub}>打开 GitHub 编辑页 ↗</Button>
+          </div>
+          <p>{nativeOpened ? '已转入 GitHub 手动提交，本次反馈不会再经 API 提交。若未弹出编辑页，请允许浏览器弹窗后重试；请在 GitHub 完成并核对 Issue。' : 'Night Bot 不会创建 Issue；关闭或返回此页不会自动提交。'}</p>
+          {copyStatus && <p role="status">{copyStatus}</p>}
+        </div> : <Button variant="primary" disabled={!confirm || submitAttempted || editDraft !== null} busy={busy} onClick={() => void submit()}>确认提交 Issue</Button>}
+      </>}
     </section>}
     {submitAttempted && !url && <Button disabled={busy} onClick={() => void verify()}>核对提交状态</Button>}
     {error && <p id="feedback-error" role="alert">{error}</p>}
