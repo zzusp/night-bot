@@ -8,7 +8,7 @@ import { Button, EmptyState } from './BoardPrimitives';
 import { Loading, MessageList, Notice, Status } from './Shared';
 
 // 聊天与任务共用连续执行流、提交等待和版本冲突处理。
-export function ExecutionHistory({ endpoint, router = false, status, controlsTarget }: { endpoint: string; router?: boolean; status?: string; controlsTarget?: HTMLElement | null }) {
+export function ExecutionHistory({ endpoint, router = false, status, taskTitle, taskState, controlsTarget }: { taskTitle?: string; taskState?: string; endpoint: string; router?: boolean; status?: string; controlsTarget?: HTMLElement | null }) {
   const query = useExecutionStream(endpoint);
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
@@ -36,7 +36,7 @@ export function ExecutionHistory({ endpoint, router = false, status, controlsTar
   return <div className={`execution-history${router && (!query.data?.items.length || blocked) ? ' execution-history-empty' : ''}`}>
     {controlsTarget === undefined ? controls : controlsTarget ? createPortal(controls, controlsTarget) : null}
     {query.error && <Notice error={query.error} stale={!!query.data && !blocked} onRetry={latest} />}
-    {!router && !blocked && query.data?.status === 'ready' && query.data.todos && <AgentProgress key={endpoint} items={query.data.todos.items} />}
+    {!router && !blocked && query.data?.status === 'ready' && query.data.todos && <AgentProgress key={endpoint} items={query.data.todos.items} title={taskTitle} status={taskState} />}
 
     {query.loading && !query.data ? <Loading>正在读取正式执行记录…</Loading>
       : blocked || (!query.data && query.error) ? <EmptyState title="执行记录暂不可读" />

@@ -614,3 +614,18 @@ html, body, #root { width: 100%; min-width: 0; }
 .chat-execution-group.pi-session-card .chat-execution-label strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-execution-group.pi-session-card .chat-execution-meta { font-size: 11px; }
 @media(prefers-reduced-motion: reduce) { .pi-session-card { transition: none; } .pi-session-card:hover { transform: none; } .pi-session-card.is-running::after { animation: none; } }
+
+/* Current SessionCard title/status → secondary metadata → live action hierarchy. */
+.agent-progress-heading { display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 8px 12px; }
+.pi-task-heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pi-task-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.pi-task-status { flex-shrink: 0; padding: 1px 5px; border: 1px solid var(--board-border); border-radius: 4px; font-size: 10px; line-height: 16px; color: var(--board-muted); }
+.pi-task-status.is-running { border-color: rgb(234 179 8 / 30%); color: #a57812; }
+.pi-task-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--board-muted); }
+.pi-task-meta .agent-progress-label { font-size: 11px; font-weight: 400; }
+.agent-progress .agent-progress-current { display: flex; font-size: 12px; line-height: 18px; color: var(--board-muted); }
+.agent-progress-collapse { padding: 0; background: transparent; transform: rotate(-90deg); }
+.agent-progress[open] .agent-progress-collapse { transform: none; }
+.agent-progress-steps { border-top: 1px solid var(--board-border); padding-top: 6px; }
+.agent-progress-heading { border-radius: 11px; }
+.agent-progress[open] > .agent-progress-heading { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }

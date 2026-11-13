@@ -29,6 +29,6 @@ test('step contents are escaped and redaction stays visible', () => {
   assert.doesNotMatch(html,/<script>/); assert.match(html,/&lt;script&gt;/); assert.match(html,/敏感信息已隐藏/);
 });
 test('progress has a native keyboard disclosure and never simulates progress with timers', () => {
-  assert.match(render([]),/<details[^>]*open=""/); assert.match(render([]),/<summary/);
+  assert.match(render([]),/<details/); assert.match(render([]),/<summary/);
   assert.doesNotMatch(source,/setTimeout|setInterval|stepDuration|onFinished/);
 });
