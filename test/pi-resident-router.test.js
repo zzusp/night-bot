@@ -135,3 +135,53 @@ test('conversation task questions default to operator Web intake and explicit re
   assert.equal(packets.filter(input=>input.task.title==='audience-default').length,1);assert.equal(h.errors.length,0)
   t.diagnostic(JSON.stringify({case:'operator-requester-routing',defaultOperatorWebOnly:true,explicitOperatorWebOnly:true,requesterSourcePreserved:true,requesterWebCasResumeSameSession:true,realVendorExecuted:false}))
 })
+
+test('triage sees bounded read-only background and Router can recover a previously ignored source without replay',{timeout:nativeTestTimeout(60000)},async t=>{
+ let queried=false,read=false,steps=0,background
+ const h=await residentRouterHost(t,body=>{
+  const names=requestTools(body)
+  if(names.includes('channel_triage_submit')){
+   const input=triageInput(body)
+   if(input.messages.some(source=>source.messageId==='followup')){
+    assert.equal(input.messages.length,1)
+    assert.equal(input.background.backgroundOnly,true)
+    background=input.background.sources.find(source=>source.messageId==='background')
+    assert.ok(background);assert.match(background.text,/VERSION B/)
+    assert.ok(!JSON.stringify(input.background).includes('FOREIGN_SECRET'))
+   }
+   return triageReply(input,source=>({needsHandling:source.messageId==='followup'}))
+  }
+  const handoff=requestEnvelope(body,'Router 交接请求：')
+  if(handoff&&!names.length)return {text:JSON.stringify({currentIntent:'Current request checked against prior same-room background',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
+  if(names.includes('resident_router_settle')){
+   const input=requestEnvelope(body,'Router 请求：')
+   assert.ok(input.events.every(event=>event.source?.messageId!=='background'),'background does not enter the actionable inbox')
+   if(steps++===0)return {tool:'resident_source_query',args:{keyword:'VERSION B',limit:5}}
+   if(!queried){
+    const value=JSON.parse(body.messages.at(-1).content);assert.equal(value.sources.length,1);assert.equal(value.sources[0].sourceId,background.sourceId);queried=true
+    return {tool:'resident_source_get',args:{sourceId:background.sourceId}}
+   }
+   if(!read){const value=JSON.parse(body.messages.at(-1).content);assert.equal(value.version,background.messageVersion);assert.match(value.text,/VERSION B/);read=true
+    return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'history-settle'}}}
+   return {text:'Current source assessed using background; no new work is requested.'}
+  }
+  return {text:'No task work'}
+ })
+ await h.receive(channelMessage('foreign',{conversationId:'other-room',text:'FOREIGN_SECRET VERSION B'}));await h.service.whenIdle()
+ await h.receive(channelMessage('background',{text:'VERSION B is the current file; this is background only.'}));await h.service.whenIdle()
+ assert.equal(h.requests.filter(body=>requestTools(body).includes('resident_router_settle')).length,0)
+ await h.receive(channelMessage('followup',{text:'Which version did I mention earlier?'}));await h.service.whenIdle()
+ assert.equal(queried,true);assert.equal(read,true);assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
+ assert.equal((await h.query('router.inbox',{conversationId:(await h.query('source.list')).find(s=>s.messageId==='followup').groupId})).length,0)
+ const count=h.requests.length;await h.restart();await h.service.whenIdle();assert.equal(h.requests.length,count,'background cannot be replayed after restart')
+})
+
+test('optional history read failure does not block first-tier handling',{timeout:nativeTestTimeout(30000)},async t=>{
+ let observed=false
+ const h=await residentRouterHost(t,body=>{
+  const input=triageInput(body);assert.ok(input);assert.equal(input.background.status,'unavailable');assert.deepEqual(input.background.sources,[]);observed=true
+  return triageReply(input,()=>({needsHandling:false}))
+ },{wrapStore:store=>({...store,query:q=>q.kind==='router.source-history'?Promise.reject(Error('simulated history failure')):store.query(q)})})
+ await h.receive(channelMessage('background-failure'));await h.service.whenIdle();assert.equal(observed,true)
+ const source=(await h.query('source.list'))[0];assert.equal(source.routed,true)
+})

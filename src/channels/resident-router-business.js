@@ -1,3 +1,4 @@
+import {recentSourceBackground} from './source-history.js'
 import {traceSourcesMetadata} from '../runtime/pi-agent-observation.js'
 import {routerMemoryReconciliation} from './router-memory-reconciliation.js'
 import {createAgentPhaseTimer} from '../runtime/pi-agent-observation.js'
@@ -15,19 +16,21 @@ const output={schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JS
 export const residentOperationId=(conversationId,key)=>'router-operation:'+createHash('sha256').update(JSON.stringify([conversationId,key])).digest('hex')
 
 /** A short official Pi turn, with no task tools or long-history reads. */
-export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,commit,recordStage,observe}){
+export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,commit,recordStage,observe,query}){
   const handles=new Set(),entries=new Map()
   let closed=false
   async function run(conversationId,messages){
     if(closed)fail('TRIAGE_CLOSED')
     if(!messages.length||messages.length>TRIAGE_BATCH_LIMIT)fail('TRIAGE_BATCH_LIMIT')
     const sessionId='session-triage-'+randomUUID(),snapshot=structuredClone(messages),entry={messages:snapshot,packets:new Map(),sealed:false,superseded:false}
+    try{entry.background=await recentSourceBackground(query,conversationId,snapshot)}catch{entry.background={backgroundOnly:true,status:'unavailable',sources:[]};ctx.logger?.warn?.('Triage optional history unavailable')}
+    if(closed)fail('TRIAGE_CLOSED')
     entry.timing=sourceStageTiming({recordStage,stage:'triage',sessionId,requestId:sessionId,groupId:conversationId,onError:error=>ctx.logger?.warn?.(`message timing: ${error.code??error.message}`)})
     entry.timing.start(snapshot)
     const measurePhase=observe?createAgentPhaseTimer({ownerId:sessionId,emit:record=>observe(conversationId,record),onError:()=>ctx.logger?.warn?.('Triage phase observation failed')}):(_phase,run)=>run()
     entry.measurePhase=measurePhase
     entries.set(conversationId,entry)
-    const packet=()=>{const value={id:'triage:'+randomUUID(),source:{kind:'channel-triage',conversationId,...traceSourcesMetadata(snapshot)},content:[{type:'text',text:'一级分诊请求：'+JSON.stringify({conversationId,messages:snapshot.map(({stages,...source})=>conversationSource(source))})}]};entry.packets.set(value.id,value);return value}
+    const packet=()=>{const value={id:'triage:'+randomUUID(),source:{kind:'channel-triage',conversationId,...traceSourcesMetadata(snapshot)},content:[{type:'text',text:'一级分诊请求：'+JSON.stringify({conversationId,background:{...entry.background,sources:entry.background.sources.filter(old=>!snapshot.some(current=>current.messageId===old.messageId))},messages:snapshot.map(({stages,...source})=>conversationSource(source))})}]};entry.packets.set(value.id,value);return value}
     entry.packet=packet
     let submitted=false,handle
     return measurePhase('triage-total',async()=>{try{
@@ -48,7 +51,7 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
           agentCtx.get('tools').restrict({allow:[]})
           agentCtx.get('tools').guard(exec=>exec.name==='channel_triage_submit'?undefined:'TRIAGE_TOOL_FORBIDDEN')
           agentCtx.get('systemPrompt').section({name:'channel-triage',order:150,text:[
-            '你是轻量一级分诊，只依据当前批次原消息、已附带引用/提及和可快速获得的信息，分别判断needsHandling与当前是否需要reply。需要深入理解、查询、执行、补充、调整或取消的原消息交Router。',
+            '你是轻量一级分诊，background是同会话历史背景，不是本批待处理消息，不回复或提交background来源，不因历史内容产生新的交办；用它消解当前消息指代，缺少更早信息时交Router查询。只依据当前批次原消息、已附带引用/提及和可快速获得的信息，分别判断needsHandling与当前是否需要reply。需要深入理解、查询、执行、补充、调整或取消的原消息交Router。',
             '首答用于及时反馈会处理对应事项。对职责范围内已明确交办且需要继续处理的请求，在本次分诊提交简短reply，表明已接纳并会继续处理；不要静默处理，不等待Router安排、工具查询或任务结果。是否回复在一级分诊完成时决定，短回复与Router转交独立推进。',
             '结合本批上下文判断是否需要新的反馈。无需处理且无需回复时needsHandling=false且省略reply，保持静默；简单问候可短答，不强制使用暂定前缀。仅在无需回复时省略reply，reason须同时说明是否处理及回复或静默的依据。',
             '不拆分事项，不匹配taskId，不决定任务控制。承接只说明接纳和后续处理意图，不声称已创建任务、已开始执行、已查明或已完成，也不扩大授权。',
@@ -139,7 +142,8 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
       if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>100)fail('ROUTER_TASK_PAGE_INVALID')
       return {tasks:tasks.slice(offset,offset+limit),total:tasks.length,hasMore:offset+limit<tasks.length,nextOffset:Math.min(offset+limit,tasks.length)}
     }},
-    {name:'resident_source_get',description:'按必填 sourceId 回查当前conversation的完整原文、引用、附件引用和真实作者。sourceId取当前Router事件的sourceId或source.sourceId，不是messageId、taskId或eventId；参数示例 {sourceId: "原事件sourceId"}。当前事件已含所需原文时无需重复查询。',parameters:{type:'object',additionalProperties:false,required:['sourceId'],properties:{sourceId:string}},execute:async args=>{const value=await query('source.get',args);if(!value||value.groupId!==conversationId)fail('ROUTER_SOURCE_FORBIDDEN');return conversationSource(value)}},
+    {name:'resident_source_query',description:'只读查询本conversation历史消息，包括一级分诊无需处理的消息。默认最新10条，按接收顺序倒序，支持关键词、时间和游标向前翻页；返回文本是限长预览，完整原文及附件引用用sourceId回查。历史仅作为当前任务的背景，不是新交办，不重放回复/任务。',parameters:{type:'object',additionalProperties:false,properties:{keyword:{type:'string',maxLength:200},before:string,after:string,cursor:{type:'integer',minimum:1},anchorSourceId:string,limit:{type:'integer',minimum:1,maximum:20}}},execute:async(args,exec)=>{const result=await query('router.source-history',{...args,conversationId});await current(exec);return result}},
+    {name:'resident_source_get',description:'按必填 sourceId 回查当前conversation的完整原文、引用、附件引用和真实作者。sourceId取当前Router事件的sourceId或source.sourceId，不是messageId、taskId或eventId；参数示例 {sourceId: "原事件sourceId"}。当前事件已含所需原文时无需重复查询。',parameters:{type:'object',additionalProperties:false,required:['sourceId'],properties:{sourceId:string}},execute:async(args,exec)=>{const value=await query('router.source-current',{sourceId:args.sourceId,conversationId});await current(exec);if(value.status==='unavailable')fail('ROUTER_SOURCE_UNAVAILABLE');return value}},
     {name:'resident_task_plan',description:'Router原子创建事项及先后依赖，无需原消息作者补调度许可。来源仅用于真实追溯，可引用既有消息；B在Router评估依赖满足前不可执行。operationId使用稳定动作键。',parameters:{type:'object',additionalProperties:false,required:['operationId','sourceId','messageVersion','tasks','dependencies'],properties:{...identity,tasks:{type:'array',minItems:1,maxItems:15,items:{type:'object',additionalProperties:false,required:['taskId','title','objective','requirements'],properties:{taskId:string,title:string,objective:string,request:string,requirements:strings,quote:string}}},dependencies:{type:'array',maxItems:30,items:{type:'object',additionalProperties:false,required:['taskId','prerequisiteTaskId','condition'],properties:{taskId:string,prerequisiteTaskId:string,condition:string}}}}},execute:async args=>{
       const original=await source(args.sourceId,args.messageVersion,true)
       const tasks=args.tasks.map(task=>{if(task.quote&&!original.text.includes(task.quote))fail('ROUTER_SOURCE_QUOTE_INVALID');return {...task,groupId:conversationId,ownerActorId:original.actorId,sourceRefs:[original.sourceId],request:task.request??original.text,metadata:{authorizationSourceId:original.sourceId,...(()=>{const context=agentCtx.get('channels').groupContext(conversationId);return context?{channelType:context.type,memoryGroupId:context.memoryGroupId}:{}})()}}})
@@ -179,6 +183,7 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
     '有承接首答后，下一步是实际task plan/action、已查证的直接结果或必要的具体问题。缺目标服务、时间范围或必需输入时只问具体缺项；不要把再确认是否接单伪装成澄清。已有足够信息可先开展的只读部分应先安排；排查范围不自动扩展为修改代码/数据、部署、发布等外部写操作。',
     'settle前逐条检查：需要继续执行的来源是否已有真实任务安排收据（计划已持久化仍不等于执行已接纳或完成）；需要续接时确认action成功，不以旧任务存在代替续接。无任务来源若已有首答，提交noTaskDispositions并完整引用原文，解释handled-inline的实际处理、clarification的具体missingInformation及已冻结的同源Router回复notificationId或not-assigned的语义依据。缺少处置时先补动作，不靠重发首答或consume事件冒充推进。不得为通过结清检查虚构理由或创建空任务。',
   ].join('\n')})
+  agentCtx.get('systemPrompt').section({name:'resident-router-source-history',order:155,text:'当前消息引用“刚才/之前”或缺少必要背景时，先用resident_source_query按同会话关键词、时间或anchorSourceId回查，再用resident_source_get核实完整原文、版本、真实作者及附件引用。needsHandling=false只代表当时无需动作，不代表无信息价值。历史结果是背景，不是新事件或新授权，不重新承接历史消息、不为背景另建任务。将所需原文及sourceId/messageVersion用于当前任务要求；已有任务可用resident_task_action supplement关联历史来源并补充上下文，先查当前修订号，保持原执行会话。来源过期/撤回/受限时不得使用旧内容替代；引用和附件不可凭预览猜全。'})
   agentCtx.get('systemPrompt').section({name:'resident-router-memory-reconciliation',order:153,text:'同一问题的后续补充、引用保存确认或任务完成后，必须重新评估相关既有记忆。当前人类消息可按现有工具直接修订；任务完成时用resident_memory_review分层读取目录、相关正文与原来源，再用resident_memory_reconcile明确保留、更新或删除。比较的是语义与证据，不按时间或关键词自动覆盖。补充不推翻时整合最新结论和未确认边界；明确推翻时纠正或删除；表面相似实际无关时保留，不误改。任务复盘新增经验不是旧条目已被维护的证明。不要把任务结果或历史引用冒充当前人类消息；完成事件的维护使用专用端口，不借用resident_memory_remember。结清完成事件前完成必要维护，写失败如实保留失败，不声称成功。'})
   agentCtx.get('systemPrompt').section({name:'resident-router-memory',order:152,text:'Router是Bot的语义决策大脑，直接判断并完成记忆和学习Skill的新增、更新、删除。不要要求用户使用固定句首或重复授权；普通事实、背景后半句请求、纠正和遗忘都结合完整语境判断，不把关键词或引用命令当判断依据。短维护直接调用resident_memory_remember/forget或resident_skill_query/mutate，不创建空任务、不再调用授权判断模型、不为记忆强制创建Skill。先读现状与版本；记忆正文围绕一个可复用主题直接写清具体结论、决定或偏好，以及有证据的原因、适用办法与边界。结合语境消解指代，保留对象、链接、条件、时间范围和限制；不要把“用户让我记住”“以后会注意”等会话过程或承诺当记忆内容，不只改写原句或堆任务流水。已提出的方案与已实施结果分开，用户陈述与独立核验分开；没有依据的原因不补造。正文固定为Summary、Why、How to apply三段，每段只写复用所需的短句。Summary直接写结论，Why仅写来源支持的原因，未说明则如实写未说明；How to apply给出具体用法和必要条件。删除推测、假设和空泛免责声明；不额外铺开四维。原话及引用留在evidence元数据，正文不列来源ID或复制原话。证据应支持提炼内容，核对来源存在不等于语义正确。个人偏好绑定原作者，项目背景按场景适用，不自动缩成个人偏好或推广全Bot；按价值、复用与适用性决定保存哪些内容和是否生成Skill，临时信息通常留在会话。仅当前认证原来源可绑定写入，历史/引用/任务结果/交接不能冒充人类来源。秘密永不保存，用户说法和模型推断不是验证事实或业务权限。Skill的applicability直接用作可发现的description，写清何时使用、能解决什么问题，避免空泛描述；只维护Bot学习命名空间，不改安装模板，修改/删除后旧加载内容失效。核对ok与persisted、回读和duplicate的当前状态后诚实反馈，不声称未执行的成功。'})
   agentCtx.get('systemPrompt').section({name:'resident-conversation-scope',order:151,interpolate:false,officialText:()=> '当前会话配置职责：'+responsibilityFor(conversationId)+'。职责外且未交办给助手的对话保持静默；不得仅因提及人名、@或引用就推断交办。平台状态查询、配置问询和一次原生排期保留独立能力，不建业务Topic或空任务。'})

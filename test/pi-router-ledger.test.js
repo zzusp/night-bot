@@ -475,3 +475,17 @@ test('specific clarification requires its own same-source reply receipt; inline 
   assert.equal((await f.query('notification.get',{notificationId:'actual-question'})).state,'prepared','settlement does not pretend delivery')
   await f.reopen();assert.deepEqual(await f.query('router.inbox',{conversationId}),[])
 })
+
+test('an ignored historical source can supplement the existing task with versioned links, without creating a new task',async t=>{
+ const h=await fixture(t)
+ await h.command('source.record-direct',{source:{sourceId:'historical',groupId:h.conversationId??'conversation-a',messageId:'background',actorId:'alice',version:1,text:'Use attachment version B'},conversation:{conversationId:'conversation-a'}})
+ await h.command('triage.commit',{dispositions:[{sourceId:'historical',messageVersion:1,needsHandling:false,reason:'Background only'}]})
+ await h.plan()
+ const before=await h.query('task.get',{taskId:'a'})
+ await h.command('router.task-action',{conversationId:'conversation-a',generation:1,sourceId:'historical',messageVersion:1,operationId:'attach-background',kind:'task.supplement',action:{taskId:'a',messageId:'history-supplement',expectedRequirementRevision:before.requirementRevision,expectedControlRevision:before.controlRevision,text:'Use attachment version B'},quote:'attachment version B'})
+ const after=await h.query('task.get',{taskId:'a'}),links=await h.query('router.source-links',{taskId:'a'})
+ assert.equal(after.sessionId,before.sessionId);assert.ok(after.sourceRefs.includes('historical'));assert.match(after.request,/Use attachment version B/)
+ assert.ok(links.some(link=>link.sourceId==='historical'&&link.messageVersion===1&&link.relation==='task.supplement'))
+ assert.equal((await h.query('task.list')).length,2)
+ assert.equal((await h.query('router.source-status',{sourceId:'historical'})).event,null)
+})

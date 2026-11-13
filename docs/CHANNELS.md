@@ -292,3 +292,42 @@ clarification 还须 missingInformation 和同源同版本 Router 回复 notific
 代替模型理解：模型仍可能给出错误但形式完整的判断，需结合日志审查语义。
 prepared/delivered 首答状态不影响上述要求。计划持久化、执行输入接纳、业务
 完成和通知送达是四个不同事实；验收应观察实际任务动作与 Pi 执行输入。
+
+### Historical source context
+
+A first-tier `needsHandling=false` decision consumes only the immediate routing
+work; the authenticated original remains in the existing source ledger. Before a
+new triage batch, Host reads up to five preceding same-conversation messages as
+explicitly read-only background. Each background preview is bounded to 600 text characters
+(and 200 quote characters); background is not in the actionable `messages` array,
+not counted against the 15-source batch limit, and cannot be submitted to triage.
+Steered current-message versions are excluded from the background. This adds no
+model call and no separate memory/history store.
+
+Router can call `resident_source_query` for same-conversation history, including
+ignored sources: keyword literal substring, message-time `before`/`after`, a
+same-conversation `anchorSourceId`, and keyset `cursor`, with at most 20 previews
+per page (1,200 text characters and 400 quote characters per preview). Ordering is ledger receipt order, newest first; time filters refer to
+source timestamps, not that ordering. The SQLite query selects only the requested
+page and uses the conversation/message/version index to discard obsolete versions.
+Latest revoked, held, or restored-but-unreviewed versions hide earlier versions;
+internal sources are not returned. No caller-provided conversation selector is
+exposed in the model tool. Private sender/channel isolation follows the existing
+authenticated conversation identity.
+
+`resident_source_get` resolves full current content and attachment references;
+stale IDs return a superseded marker with the current ID/version, and unavailable
+sources do not return old bodies. Previews are not full attachment evidence and
+must not be mistaken for new instructions, fresh authorization or unprocessed
+messages. History reads never enqueue routing work or change disposition. Use
+existing task plan requirements and `resident_task_action` supplements to retain
+needed context, exact source/version links and original execution session rather
+than creating a task for background alone. Current task revisions and existing
+permission/no-replay boundaries continue to apply.
+
+These tools preserve source evidence, not model semantic accuracy: scripted tests
+exercise retrieval and task linkage, not a guarantee that a real model will
+always choose the right context. Very large histories can still incur SQLite
+search work; keyword matching is not semantic/vector retrieval. Already-admitted
+model context is a snapshot, so current source versions must be rechecked before
+relying on facts after a later edit or withdrawal.
