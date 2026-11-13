@@ -2,7 +2,7 @@
 
 > 状态：ACTIVE_WITH_BLOCKERS
 > Goal ID：local-merged-pr-review
-> 最近维护：2026-11-13T04:22:37Z
+> 最近维护：2026-11-13T04:34:00Z
 > 权威目标：goal.md
 
 ## 总目标
@@ -42,13 +42,13 @@
 - 本次停机恢复修复、合并和本地部署已完成；长期目标保留旧任务和既有界面问题，不标全系统全绿。
 - 实际发行0fa0c4f83bd8a3178e4ac13517a9d3b5fef9ae3c。04:11:24Z resident/Web就绪，04:22Z独立核实实际进程版本；两路钉钉listening/receiving。
 - 原4事件consumed，23条历史前缀不变、原packet唯一、claim一次，较新取消/延期先接纳。旧发布任务状态/revision不变，原调用/operation无重放。
-- 原群实质回复04:12:11Z delivered，有厂商真实messageId/回读；字段缺少目标选项、未修改、生产暂缓。随后真实群输入继续推进，关联任务revision4仍active，不把新业务当已完成。
+- 原群实质回复04:12:11Z delivered，有厂商真实messageId/回读；字段缺少目标选项、未修改、生产暂缓。随后真实群输入由Bot继续处理，关联任务revision4于04:29Z completed且drained；最终结果04:30:47Z delivered并有厂商回读。CLI只核实Host记录，未直接调用外部业务API。
 - 离线迁移后39份保留文件不变、31条/0候选、revision42、backup null、无新增备份。运行后仅既有机制更新技能快照，其余38份不变，区分迁移与运行写入。
 - 最终Edge两次刷新ready、无stale/refreshing/error，31/0与Store一致；12/12技能可用。usageCoverage仍partial。
-- 当前degraded2项任务说明，无ROUTER_BATCH_UNSETTLED：旧未知写保留；字段缺失的旧等待说明仍在投影，后续新输入已继续推动。未人工清警、close或重放。
+- 最终04:33:59Z degraded1项，只剩独立旧未知写；无ROUTER_BATCH_UNSETTLED，字段缺失问询已superseded。未人工清警、close或重放。
 - 唯一下一步：独立旧任务须先通过正式Host取得符合当前owner/增量切点的效果证明；当前不足以结清，保留阻断，不凭Router恢复重放原写。新的群业务由Bot按授权继续，不由CLI越界代办。
 
-- 未闭环项：独立旧任务未知写效果、后续新群业务、usageCoverage partial及第2轮两个界面问题；本次恢复修复不扩展代办或清警。
+- 未闭环项：独立旧任务未知写效果、usageCoverage partial及第2轮两个界面问题；本次恢复修复不扩展代办或清警。
 
 ## 证据入口
 

@@ -31,4 +31,4 @@ memory-neighbor-regressions,共享记忆及退役数据库,Windows,NOT_RUN,NOT_R
 skill-inventory-link,技能链接盘点Windows夹具,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,ENVIRONMENT_FAILED,round-4.md,31项组合30pass及1fail；symlink EPERM在产品调用前；非skip
 live-router-no-replay,原历史及旧调用无重放,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,PASS,round-4.md,23条前缀hash不变；旧call无toolResult且operation无执行记录
 live-substantive-delivery,原群实质反馈送达,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,PASS,round-4.md,04:12:11Z delivered；真实messageId及厂商回读；非仅受理
-live-project-status,Project字段修改业务完成,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,NOT_COMPLETE,round-4.md,缺少选项反馈送达；后续真实群输入继续处理；不称外部修改完成
+live-project-status,Project字段修改业务完成,Windows,NOT_RUN,NOT_RUN,,,NOT_RUN,,,NOT_RUN,,,PASS_BOT_DELIVERY,round-4.md,04:29Z Host完工且04:30Z结果delivered；CLI未直调外部API复核
