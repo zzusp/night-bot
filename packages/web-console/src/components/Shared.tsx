@@ -142,7 +142,7 @@ function toolInputPresentation(name: string, text: string): ReactNode {
     const allowed = name === 'read' ? ['path', 'offset', 'limit'] : ['command', 'timeout'];
     if (!args || typeof args !== 'object' || Object.keys(args).some(key => !allowed.includes(key))) throw new Error('generic');
     if (name === 'read' && typeof args.path === 'string') return <div className="pi-read-path"><code>{args.path}</code>{Number.isInteger(args.offset) && <small>从第 {args.offset} 行</small>}{Number.isInteger(args.limit) && <small>{args.limit} 行</small>}</div>;
-    if (['bash', 'pwsh'].includes(name) && typeof args.command === 'string') return <div className="pi-shell-command"><span aria-hidden="true">$</span><code>{args.command}</code>{typeof args.timeout === 'number' && <small>{args.timeout}s</small>}</div>;
+    if (['bash', 'pwsh'].includes(name) && typeof args.command === 'string') return <div className="pi-shell-command"><span aria-hidden="true">$</span><code>{args.command}</code>{typeof args.timeout === 'number' && <small>timeout: {args.timeout}s</small>}</div>;
   } catch { /* Unknown/public custom tools retain complete input. */ }
   return <pre className="tool-content"><code>{text}</code></pre>;
 }
@@ -152,7 +152,7 @@ function readOutputPresentation(text: string, offset: number, input?: string): R
   // Subsequent body pages use character offsets, not source line offsets.
   // Do not invent a line number when the preceding fragments are unavailable.
   const lines = text.split('\n');
-  return <pre className="tool-content pi-read-output"><code>{lines.map((line, index) => <span className="pi-code-line" key={index}>{offset === 0 && <span className="pi-line-number" data-line={start + index} aria-hidden="true" />}<span>{line || '\u200b'}{index < lines.length - 1 ? '\n' : ''}</span></span>)}</code></pre>;
+  return <pre className="tool-content pi-read-output"><code>{lines.map((line, index) => <span className="pi-code-line" key={index}>{offset === 0 && <span className="pi-line-number" data-line={start + index} aria-hidden="true" />}<span>{line}{index < lines.length - 1 ? '\n' : ''}</span></span>)}</code></pre>;
 }
 
 function ToolActivity({ item, history, compact = false }: { item: ToolItem; history?: HistoryReader; compact?: boolean }) {

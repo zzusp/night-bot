@@ -26,3 +26,24 @@ test('Pi dashboard execution and task card surfaces preserve data and responsive
  await page.emulateMedia({reducedMotion:'reduce'});
  expect(await page.locator('.pi-tool-shimmer').evaluate(el=>getComputedStyle(el,'::after').animationName)).toBe('none');
 });
+
+test('numbered read output copies exact blank lines and shell timeout is not elapsed time', async ({page,context})=>{
+ await context.grantPermissions(['clipboard-read','clipboard-write']);
+ const content='alpha\n\nbeta\n';
+ const call=(id:string,name:string,text:string)=>({id,role:'tool',kind:'tool-call',callId:id,toolName:name,text,status:'pending'});
+ const items=[call('read-lines','read',JSON.stringify({path:'/fixture/read.md'})),{...call('read-lines','read',content),id:'read-lines-out',kind:'tool-result',status:'completed'}, {id:'split',role:'assistant',text:'继续执行'},call('shell-timeout','bash',JSON.stringify({command:'echo hello',timeout:7}))];
+ await page.route('**/api/tasks/task-research/session?*',r=>r.fulfill({json:{status:'ready',scope:'current-context',items,total:items.length,revision:'copy-check'}}));
+ await page.goto('/#/tasks/task-research');
+ await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+ await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+ const read=page.locator('[data-message-id="read-lines"]');
+ await read.locator('.pi-tool-step > summary').click();
+ const code=read.locator('.pi-read-output > code');
+ expect(await code.textContent()).toBe(content);
+ await code.evaluate(el=>{const selection=window.getSelection()!;const range=document.createRange();range.selectNodeContents(el);selection.removeAllRanges();selection.addRange(range);});
+ await page.keyboard.press('Control+c');
+ expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe(content);
+ const shell=page.locator('[data-message-id="shell-timeout"]');
+ await shell.locator('.pi-tool-step > summary').click();
+ await expect(shell.locator('.pi-shell-command small')).toHaveText('timeout: 7s');
+});

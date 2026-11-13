@@ -141,3 +141,5 @@
 .pi-line-number::before { content: attr(data-line); }
 .pi-tool-breakdown { display: inline-flex; align-items: center; gap: 8px; min-width: 0; margin-left: 6px; color: var(--board-muted); }
 .pi-tool-breakdown > span { display: inline-flex; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
+/* Empty source lines keep their height without inserting copyable filler. */
+.pi-code-line { min-height: 1.5em; }
