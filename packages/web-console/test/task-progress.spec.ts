@@ -48,11 +48,23 @@ test('任务待办清单与模型思考展示真实记录，更新和撤权不�
  for(const [width,theme] of [[1440,'light'],[390,'light'],[1440,'dark'],[390,'dark']] as const){
   await page.setViewportSize({width,height:960}); await page.evaluate(value=>document.documentElement.dataset.theme=value,theme)
   const geometry=await todos.locator('.agent-progress').evaluate(el=>({width:el.getBoundingClientRect().width,border:getComputedStyle(el).borderRadius,background:getComputedStyle(el).backgroundColor}))
+  await expect(page.locator('.task-dialogue .conversation-topbar')).toHaveCount(0)
+  await expect(page.locator('.task-workspace .conversation-topbar').getByRole('heading', {level:1})).toBeVisible()
+  await expect(page.locator('.main-frame > .topbar').getByRole('button', {name:'刷新概览'})).toBeVisible()
   expect(geometry.width).toBeLessThanOrEqual(300)
+  await expect(page.locator('.task-dialogue .execution-todos')).toHaveCount(1)
+  await expect(page.locator('.task-info-rail .execution-todos')).toHaveCount(0)
+  const cardBox = await todos.locator('.agent-progress').boundingBox(), transcriptBox = await page.getByRole('region', {name: '任务执行记录', exact: true}).boundingBox()
+  expect(cardBox && transcriptBox && cardBox.x >= transcriptBox.x && cardBox.x + cardBox.width <= transcriptBox.x + transcriptBox.width && cardBox.y >= transcriptBox.y).toBeTruthy()
+  await todos.locator('summary').hover()
+  const corners = await todos.locator('summary').evaluate(el => ({top: getComputedStyle(el).borderTopLeftRadius, bottom: getComputedStyle(el).borderBottomLeftRadius}))
+  expect(corners).toEqual({top: '15px', bottom: '0px'})
+  expect(await todos.locator('.agent-progress').evaluate(el => getComputedStyle(el).overflow)).toBe('hidden')
   expect(geometry.border).toBe('16px')
   await todos.locator('summary').focus(); await page.keyboard.press('Enter')
   await expect(cards.first()).not.toBeVisible()
   expect(await todos.locator('.agent-progress').evaluate(el=>el.getBoundingClientRect().width)).toBeLessThanOrEqual(340)
+  expect(await todos.locator('summary').evaluate(el => getComputedStyle(el).borderBottomLeftRadius)).toBe('15px')
   await page.screenshot({path:test.info().outputPath(`agent-progress-collapsed-${width}-${theme}.png`),fullPage:true})
   await page.keyboard.press('Enter'); await expect(cards.first()).toBeVisible()
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
@@ -60,6 +72,9 @@ test('任务待办清单与模型思考展示真实记录，更新和撤权不�
   await page.screenshot({path:test.info().outputPath(`execution-records-${width}-${theme}.png`),fullPage:true})
  }
  await todos.locator('summary').click()
+ await page.getByRole('link', {name:'复盘', exact:true}).click()
+ await expect(cards.first()).not.toBeVisible()
+ await expect(page.getByRole('region',{name:'任务待办'})).toHaveCount(1)
  let denied=false
  await page.route('**/api/tasks/task-research/session?*',async route=>{
   if(denied){await route.fulfill({status:403,json:{error:'RESOURCE_FORBIDDEN'}});return}

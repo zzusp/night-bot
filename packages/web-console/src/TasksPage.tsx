@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { RiArrowRightLine, RiCheckboxCircleLine, RiTimeLine, RiPulseLine } from '@remixicon/react';
 import { ApiError, type Page, type Task } from './api';
 import { dateTime, navigate, textOf, useResource, useRoute } from './hooks';
@@ -41,7 +41,7 @@ export function TaskList({ route }: { route: URL }) {
   </div>;
 }
 
-export function TaskDetail({ id }: { id: string }) {
+export function TaskDetail({ id, header }: { id: string; header?: ReactNode }) {
   const query = useResource<Task>(`/tasks/${encodeURIComponent(id)}`, 4000);
   const route = useRoute();
   const view = route.searchParams.get('view');
@@ -57,6 +57,7 @@ export function TaskDetail({ id }: { id: string }) {
   const sections = [['task', '任务'], ['execution', '执行'], ['review', '复盘'], ['learning', '学习']];
   return <div className="task-workspace">
     <ConversationFrame label="任务执行记录">
+      {header}
       {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
       {!task ? query.loading ? <Loading>正在读取任务…</Loading> : <EmptyState title="无法读取任务" /> :
         <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} controlsTarget={recordControls} /></div>}
