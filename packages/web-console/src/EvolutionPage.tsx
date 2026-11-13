@@ -28,7 +28,7 @@ export function UsageSummary({ data }: { data: Summary }) {
     </section>
     <section className="evolution-card" aria-labelledby="skill-summary">
       <header><RiBookOpenLine size={20} aria-hidden="true" /><h2 id="skill-summary">Skills</h2></header>
-      <dl className="evolution-metrics"><div><dt>目录技能</dt><dd>{number(data.skills.installedCount)}</dd></div><div><dt>模型 Skill 调用</dt><dd>{number(data.skills.modelUseCount)}</dd></div><div><dt>用户显式引用</dt><dd>{number(data.skills.userUseCount)}</dd></div><div><dt>技能文件读取</dt><dd>{number(data.skills.fileReadCount)}</dd></div></dl>
+      <dl className="evolution-metrics"><div><dt>目录技能</dt><dd>{number(data.skills.installedCount)}</dd></div><div><dt>模型 Skill 调用</dt><dd>{number(data.skills.modelUseCount)}</dd></div><div><dt>今日更新</dt><dd>{number(data.skills.todayUpdatedCount)}</dd></div><div><dt>技能文件读取</dt><dd>{number(data.skills.fileReadCount)}</dd></div></dl>
     </section>
   </div>;
 }
