@@ -418,3 +418,74 @@ test('completion probe is conversation-scoped and summarized handoff cannot abor
   await assert.rejects(f.command('router.handoff.abort',{...args,safeToResume:true}),/ROUTER_ROTATION_STALE/)
   assert.equal((await f.query('router.rotations',{conversationId:f.conversationId}))[0].state,'summarized')
 })
+
+for(const delivered of [false,true])test(`acknowledged source needs task action or source-grounded disposition (${delivered?'delivered':'prepared'})`,async t=>{
+  const f=await fixture(t),{conversationId,generation,sourceId}=f
+  await f.command('triage.commit',{dispositions:[{sourceId,messageVersion:1,needsHandling:true,reason:'Explicit investigation',reply:'I will investigate.'}]})
+  const [event]=await f.query('router.inbox',{conversationId})
+  if(delivered){
+    const started=await f.command('notification.start',{notificationId:event.triageReplyId})
+    await f.command('notification.delivered',{notificationId:event.triageReplyId,dispatchToken:started.result.notification.dispatchToken,receipt:{messageId:'visible-ack'}})
+  }
+  const args={conversationId,generation,operationId:'settle-ack',eventIds:[event.id]}
+  await assert.rejects(f.command('router.settle',args),/ROUTER_SOURCE_DISPOSITION_REQUIRED/)
+  assert.equal((await f.query('router.inbox',{conversationId})).length,1)
+  const disposition={eventId:event.id,outcome:'clarification',sourceQuote:'First verify A; only after the evidence is accepted, produce B',reason:'Need concrete evidence location'}
+  await assert.rejects(f.command('router.settle',{...args,noTaskDispositions:[disposition]}),/ROUTER_CLARIFICATION_INFORMATION_REQUIRED/)
+  await assert.rejects(f.command('router.settle',{...args,noTaskDispositions:[{...disposition,sourceQuote:'I will investigate.',missingInformation:['evidence location']}]}),/ROUTER_SOURCE_DISPOSITION_INVALID/)
+  await f.plan()
+  await f.command('router.settle',args)
+  await f.reopen()
+  assert.deepEqual(await f.query('router.inbox',{conversationId}),[])
+  const cursor=(await f.query('router.get',{conversationId})).cursor
+  await f.command('router.settle',args)
+  assert.equal((await f.query('router.get',{conversationId})).cursor,cursor)
+  assert.equal((await f.query('task.list')).length,2)
+})
+
+test('mistaken triage acknowledgement permits explicit correction without task or expanded authority',async t=>{
+  const f=await fixture(t),{conversationId,generation}=f,sourceId='source-for-other'
+  const text='Bob will investigate this; assistant, do not act.'
+  await f.command('source.record-direct',{source:{sourceId,groupId:conversationId,messageId:'for-other',actorId:'alice',version:1,text},conversation:{conversationId}})
+  await f.command('triage.commit',{dispositions:[{sourceId,messageVersion:1,needsHandling:true,reason:'Mistaken triage',reply:'I will investigate.'}]})
+  const [event]=await f.query('router.inbox',{conversationId})
+  const args={conversationId,generation,operationId:'correct-triage',eventIds:[event.id],noTaskDispositions:[{eventId:event.id,outcome:'not-assigned',sourceQuote:text,reason:'Original explicitly assigns Bob and excludes assistant; acknowledgement grants no authority.'}]}
+  await f.command('router.settle',args)
+  assert.deepEqual(await f.query('task.list'),[])
+  await f.reopen()
+  assert.deepEqual(await f.query('router.inbox',{conversationId}),[])
+})
+
+test('specific clarification requires its own same-source reply receipt; inline work needs no empty task',async t=>{
+  const f=await fixture(t),{conversationId,generation,sourceId}=f
+  await f.command('triage.commit',{dispositions:[{sourceId,messageVersion:1,needsHandling:true,reason:'Investigate after necessary input',reply:'I will investigate.'}]})
+  const [event]=await f.query('router.inbox',{conversationId}),source=await f.query('source.get',{sourceId})
+  const decision={eventId:event.id,outcome:'clarification',sourceQuote:source.text,reason:'Need the target evidence location',missingInformation:['Which evidence folder should be inspected?']}
+  const settle=noTaskDispositions=>f.command('router.settle',{conversationId,generation,operationId:'clarify-target',eventIds:[event.id],noTaskDispositions})
+  for(const notificationId of [undefined,event.triageReplyId,'missing'])await assert.rejects(settle([{...decision,...notificationId?{notificationId}:{}}]),/ROUTER_CLARIFICATION_RECEIPT_REQUIRED/)
+  const prepare=async(id,original=source)=>f.command('notification.prepare',{notificationId:id,taskId:null,requirementRevision:1,kind:'router-reply',payload:{text:'Which evidence folder should I inspect?',conversationId:original.groupId,sourceId:original.sourceId,sourceVersion:original.version,sourceRef:{messageId:original.messageId,messageVersion:original.version,actorId:original.actorId}}})
+  for(const [id,groupId,messageId,version] of [['wrong-source',conversationId,'another',1],['wrong-version',conversationId,source.messageId,2],['wrong-conversation','foreign','foreign-message',1]]){
+    await f.command('source.record-direct',{source:{sourceId:id,groupId,messageId,actorId:'alice',version,text:'Other current source'},conversation:{conversationId:groupId}})
+    await prepare(id,await f.query('source.get',{sourceId:id}))
+    await assert.rejects(settle([{...decision,notificationId:id}]),/ROUTER_CLARIFICATION_RECEIPT_REQUIRED/)
+  }
+  assert.equal((await f.query('router.inbox',{conversationId})).length,1)
+  await prepare('actual-question');await settle([{...decision,notificationId:'actual-question'}])
+  assert.deepEqual(await f.query('task.list'),[])
+  assert.equal((await f.query('notification.get',{notificationId:'actual-question'})).state,'prepared','settlement does not pretend delivery')
+  await f.reopen();assert.deepEqual(await f.query('router.inbox',{conversationId}),[])
+})
+
+test('an ignored historical source can supplement the existing task with versioned links, without creating a new task',async t=>{
+ const h=await fixture(t)
+ await h.command('source.record-direct',{source:{sourceId:'historical',groupId:h.conversationId??'conversation-a',messageId:'background',actorId:'alice',version:1,text:'Use attachment version B'},conversation:{conversationId:'conversation-a'}})
+ await h.command('triage.commit',{dispositions:[{sourceId:'historical',messageVersion:1,needsHandling:false,reason:'Background only'}]})
+ await h.plan()
+ const before=await h.query('task.get',{taskId:'a'})
+ await h.command('router.task-action',{conversationId:'conversation-a',generation:1,sourceId:'historical',messageVersion:1,operationId:'attach-background',kind:'task.supplement',action:{taskId:'a',messageId:'history-supplement',expectedRequirementRevision:before.requirementRevision,expectedControlRevision:before.controlRevision,text:'Use attachment version B'},quote:'attachment version B'})
+ const after=await h.query('task.get',{taskId:'a'}),links=await h.query('router.source-links',{taskId:'a'})
+ assert.equal(after.sessionId,before.sessionId);assert.ok(after.sourceRefs.includes('historical'));assert.match(after.request,/Use attachment version B/)
+ assert.ok(links.some(link=>link.sourceId==='historical'&&link.messageVersion===1&&link.relation==='task.supplement'))
+ assert.equal((await h.query('task.list')).length,2)
+ assert.equal((await h.query('router.source-status',{sourceId:'historical'})).event,null)
+})

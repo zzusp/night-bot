@@ -1,8 +1,10 @@
 import {createHash} from 'node:crypto'
+import {querySourceHistory,queryCurrentSource,sourceHistorySchema} from './source-history.js'
 
 export const routerSchemaVersion = '1'
 export const routerTables = ['conversations','router_inbox','triage','source_links','dependencies','completion_evaluations','router_rotations','router_actions','router_upgrade_audit']
 export const routerSchema = routerTables.map(name => `CREATE TABLE IF NOT EXISTS dynamic_${name}(id TEXT PRIMARY KEY,body TEXT NOT NULL CHECK(json_valid(body)));`).join('\n') + `
+${sourceHistorySchema}
 CREATE INDEX IF NOT EXISTS dynamic_source_link_task ON dynamic_source_links(json_extract(body,'$.taskId'),json_extract(body,'$.conversationId'));
 CREATE INDEX IF NOT EXISTS dynamic_source_link_source ON dynamic_source_links(json_extract(body,'$.conversationId'),json_extract(body,'$.sourceId'));
 CREATE UNIQUE INDEX IF NOT EXISTS dynamic_router_event ON dynamic_router_inbox(json_extract(body,'$.conversationId'),json_extract(body,'$.eventId'));
@@ -255,6 +257,23 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         const row=rows('router_inbox').find(item=>item.conversationId===a.conversationId&&(item.id===eventId||item.eventId===eventId))
         if(!row)fail('ROUTER_EVENT_SCOPE')
         if(row.state==='consumed')continue
+        // A frozen first reply is feedback, not proof of task arrangement or
+        // authority. Require an explicit source-grounded no-task decision when
+        // an acknowledged source has no durable task action. Never infer intent
+        // by matching reply text, or automatically create work from triage.
+        if(row.sourceId && row.triageReplyId && !rows('source_links').some(link=>link.conversationId===a.conversationId&&link.sourceId===row.sourceId&&link.messageVersion===row.messageVersion)) {
+          const decisions=a.noTaskDispositions
+          const matches=Array.isArray(decisions)?decisions.filter(item=>item.eventId===row.id):[]
+          if(matches.length!==1)fail('ROUTER_SOURCE_DISPOSITION_REQUIRED')
+          const decision=matches[0], original=read('sources',row.sourceId)
+          if(decision.sourceQuote!==original.text || !['handled-inline','clarification','not-assigned'].includes(decision.outcome) || typeof decision.reason!=='string' || !decision.reason.trim())fail('ROUTER_SOURCE_DISPOSITION_INVALID')
+          if(decision.outcome==='clarification' && (!Array.isArray(decision.missingInformation)||!decision.missingInformation.length||decision.missingInformation.some(value=>typeof value!=='string'||!value.trim())))fail('ROUTER_CLARIFICATION_INFORMATION_REQUIRED')
+          if(decision.outcome==='clarification') {
+            const notification=typeof decision.notificationId==='string'?read('notifications',decision.notificationId,true):null
+            if(notification?.kind!=='router-reply'||notification.payload?.conversationId!==a.conversationId||notification.payload.sourceId!==row.sourceId||notification.payload.sourceVersion!==row.messageVersion||notification.state==='failed')fail('ROUTER_CLARIFICATION_RECEIPT_REQUIRED')
+          }
+          row.noTaskDisposition=decision
+        }
         row.state='consumed';row.operationId=a.operationId;row.processedGeneration=conversation.generation;row.processedCursor=++conversation.cursor;write('router_inbox',row)
       }
       write('conversations',conversation);return changed({conversation})
@@ -282,6 +301,8 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     }
   }
   function query(q) {
+    if(q.kind==='router.source-history')return querySourceHistory(db,q)
+    if(q.kind==='router.source-current')return queryCurrentSource(db,q)
     if(q.kind==='triage.pending')return rows('triage').filter(row=>row.state==='pending'&&(!q.conversationId||row.conversationId===q.conversationId)).map(row=>read('sources',row.sourceId)).filter(row=>!row.routed&&!row.authorizationRevoked&&!row.triageHold&&!row.archiveRestoreHold&&latest(row)).slice(0,bounded(q.limit))
     if(q.kind==='router.upgrade-held')return {sources:rows('sources').filter(row=>row.triageHold&&(!q.conversationId||row.groupId===q.conversationId)),audit:rows('router_upgrade_audit').filter(row=>!q.conversationId||row.conversationId===q.conversationId)}
     if(q.kind==='router.source-status')return {triage:read('triage',`triage:${q.sourceId}`,true),event:rows('router_inbox').find(row=>row.sourceId===q.sourceId)??null}

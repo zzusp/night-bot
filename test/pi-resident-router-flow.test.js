@@ -210,7 +210,7 @@ test('all four default dispositions keep original handling independent of an unk
     const first=triage(body)
     if(requestTools(body).includes('channel_triage_submit'))return submit(first,source=>({needsHandling:source.text.includes('HANDLE'),
       ...source.text.includes('REPLY')?{reply:'Concise '+source.messageId}:{}}))
-    if(requestTools(body).includes('resident_router_settle')){const input=router(body);observed.push(input);return settle(body,input)}
+    if(requestTools(body).includes('resident_router_settle')){const input=router(body);observed.push(input);const answer=settle(body,input);if(answer.args)answer.args.noTaskDispositions=input.events.filter(event=>event.source&&event.triageReply).map(event=>({eventId:event.id,outcome:'handled-inline',sourceQuote:event.source.text,reason:'Synthetic dialogue is handled inline, no requested business work.'}));return answer}
     return {text:'No other work'}
   },{send:async()=>{throw Error('Simulated lost acknowledgement after external send')},readback:async()=>{throw Error('Readback not yet available')}})
   const originals=[channelMessage('silent',{text:'QUIET'}),channelMessage('reply',{text:'REPLY'}),
@@ -365,7 +365,7 @@ test('messages after idle and cold restart continue the same Router generation e
   const h=await residentRouterHost(t,body=>{
     assert.equal(requestEnvelope(body,'Router 交接请求：'),undefined)
     if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
-    if(requestTools(body).includes('resident_router_settle')){const input=router(body);observed.push(input);return settle(body,input)}
+    if(requestTools(body).includes('resident_router_settle')){const input=router(body);observed.push(input);const answer=settle(body,input);if(answer.args)answer.args.noTaskDispositions=input.events.filter(event=>event.source&&event.triageReply).map(event=>({eventId:event.id,outcome:'handled-inline',sourceQuote:event.source.text,reason:'Synthetic dialogue is handled inline, no requested business work.'}));return answer}
     return {text:'No other work'}
   })
   const first=channelMessage('before-idle'),late=channelMessage('after-idle'),id=h.host.ctx.channels.identity(first).sessionId
@@ -1265,7 +1265,8 @@ for(const scenario of ['newer-cancellation','committed-reply','failed-tool','lat
         assert.ok(requestText(body).some(text=>text.includes('Do not release; postpone until next week.')))
       }
       if(body.messages.at(-1)?.role==='tool')return {text:'The current request and later constraint are settled without release.'}
-      return {tool:'resident_router_settle',args:{operationId:'settle-aborted-after-current-inputs',eventIds:resumedSources}}
+      const pending=await h.query('router.inbox',{conversationId:input.conversationId})
+      return {tool:'resident_router_settle',args:{operationId:'settle-aborted-after-current-inputs',eventIds:resumedSources,noTaskDispositions:pending.filter(event=>event.source&&event.triageReply).map(event=>({eventId:event.id,outcome:'handled-inline',sourceQuote:event.source.text,reason:'Later authenticated cancellation postpones the original preparation; no task was started.'}))}}
     }
     if(first){
       first=false

@@ -908,7 +908,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,
     readTasks:readPlatformTasks,appendOutbox:prepareDirectPlatformReply,
     notify:undefined})
-  const triage=createChannelTriage({ctx,root,recordStage:recordResidentStage,models:()=>roleModels('triage'),legacy,responsibilityFor,
+  const triage=createChannelTriage({ctx,root,query,recordStage:recordResidentStage,models:()=>roleModels('triage'),legacy,responsibilityFor,
     observe:(groupId,record)=>observationQueue.enqueue(record,{runtimeOwner:'channel-triage',groupId}),
     commit:async(groupId,decision)=>{
     const receipt=await command('triage.commit',decision,'triage:'+hash(decision.dispositions))

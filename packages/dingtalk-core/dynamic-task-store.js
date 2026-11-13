@@ -1,3 +1,4 @@
+import {sourceHistorySchema} from '../../src/channels/source-history.js'
 import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
 import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
 import {effectReconciliationAuditKinds,taskEffectBinding,taskEffectDigest,taskEffectReconciliationIdentity} from '../../src/tasks/effect-reconciliation.js'
@@ -453,6 +454,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       db.exec(`CREATE INDEX IF NOT EXISTS dynamic_pending_source_sender
         ON dynamic_sources(json_extract(body,'$.groupId'),json_extract(body,'$.actorId'))
         WHERE coalesce(json_extract(body,'$.routed'),0)=0 AND json_type(body,'$.processingCompleted') IS NULL`)
+      db.exec(sourceHistorySchema) // Derived read indexes, after installation identity and owner checks.
       // Recovery never authorizes a second send. Tool/process state must first be drained or reconciled.
       installTaskArchive(db, { indexes: !existed || paginationMigrate || migrate })
       installTopicFacts(db)
