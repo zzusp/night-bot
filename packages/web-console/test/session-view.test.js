@@ -428,3 +428,24 @@ test('authorization and cookie headers hide their complete multi-part values', (
   }
   assert.match(visibleText('Cookie: session=FIRST_VALUE\npublic response').text,/public response/)
 })
+
+test('retained pre-upgrade Router history only falls back to published same-conversation predecessors', async () => {
+  const router = {id: 'conversation-legacy', activeSessionId: 'router-new', generation: 2, phase: 'active'}
+  const current = {header: {id: 'router-new', runtimeOwner: 'conversation-router', conversationId: router.id, generation: 2},
+    entries: [{id: 'new-commit'}], context: {projection: {entries: []}}}
+  const previous = {header: {...current.header, id: 'router-old', generation: 1}, entries: [{id: 'old-commit'}],
+    context: {projection: {entries: [project('old-message', {role: 'assistant', content: '已提交的旧安排'})]}}}
+  const rotation = {state: 'published', conversationId: router.id, oldGeneration: 1, oldSessionId: 'router-old', oldCommit: 'old-commit'}
+  const reads = [], options = {conversationId: router.id, readRouter: async () => router,
+    persistence: {readNative: async id => {reads.push(id); return id === 'router-new' ? current : previous}}}
+  const page = await routerSessionView({...options, readRotations: async () => [rotation]})
+  assert.equal(page.scope, 'previous-committed-router-context'); assert.equal(page.generation, 1); assert.equal(page.activeGeneration, 2)
+  assert.equal(page.items[0].text, '已提交的旧安排'); assert.deepEqual(reads, ['router-new', 'router-old'])
+  await assert.rejects(routerSessionView({...options, readRotations: async () => [rotation], revision: 'stale'}), {code: 'SESSION_PAGE_STALE'})
+  for (const invalid of [{conversationId: 'foreign'}, {state: 'candidate'}, {oldCommit: null}, {oldGeneration: 2}]) {
+    reads.length = 0
+    const excluded = await routerSessionView({...options, readRotations: async () => [{...rotation, ...invalid}]})
+    assert.equal(excluded.scope, 'current-router-session-context'); assert.equal(excluded.items.length, 0)
+    assert.deepEqual(reads, ['router-new'], 'unpublished or foreign predecessors must not be read')
+  }
+})
