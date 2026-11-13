@@ -635,3 +635,7 @@ html, body, #root { width: 100%; min-width: 0; }
 .pi-card-sweep-layer::before { content: ''; position: absolute; top: 0; bottom: 0; left: -460px; right: -460px; background-image: repeating-linear-gradient(90deg, transparent 0 60px, rgb(234 179 8 / 16%) 230px, transparent 400px 460px), linear-gradient(rgb(234 179 8 / 5%),rgb(234 179 8 / 5%)); animation: pi-card-translate 3.4s linear infinite; }
 @keyframes pi-card-translate { to { transform: translateX(460px); } }
 @media(prefers-reduced-motion:reduce) { .pi-card-sweep-layer::before { animation: none; } }
+.pi-task-status { position: relative; display: inline-flex; align-items: center; justify-content: center; padding: 2px; width: 20px; height: 20px; border-radius: 50%; border: none; background: var(--board-hover); }
+.pi-task-status-dot { position: absolute; right: -2px; bottom: -2px; width: 6px; height: 6px; border: 1px solid var(--board-surface); border-radius: 50%; background: var(--board-muted); }
+.pi-task-status.is-running .pi-task-status-dot { background: #eab308; }
+.pi-task-meta, .agent-progress .agent-progress-current { margin-left: 26px; }

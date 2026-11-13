@@ -7,6 +7,9 @@ import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitive
 import { ApiError, errorText, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
 import { dateTime, useResource } from '../hooks';
 import { executionItems, toolState, type ToolItem } from '../execution-items';
+import { mdiCheck, mdiAlertCircle, mdiLoading, mdiChevronRight, mdiHeadLightbulb, mdiFileDocumentOutline, mdiConsoleLine, mdiPencil, mdiMagnify, mdiWrenchOutline } from '@mdi/js';
+import { PiIcon } from './PiIcon';
+import { codeLanguage, highlightedLines } from './PiPresentation';
 import '../styles/execution-groups.css';
 
 const states: Record<string, [string, 'neutral' | 'success' | 'warning' | 'danger' | 'info']> = {
@@ -148,10 +151,11 @@ function toolInputPresentation(name: string, text: string): ReactNode {
 }
 function readOutputPresentation(text: string, offset: number, input?: string): ReactNode {
   let start = 1;
-  try { const n = JSON.parse(input || '{}').offset; if (Number.isInteger(n) && n > 0) start = n; } catch { /* no supplied source offset */ }
+  let language: string | undefined;
+  try { const args = JSON.parse(input || '{}'); language = codeLanguage(args.path); const n = args.offset; if (Number.isInteger(n) && n > 0) start = n; } catch { /* no supplied source offset */ }
   // Subsequent body pages use character offsets, not source line offsets.
   // Do not invent a line number when the preceding fragments are unavailable.
-  const lines = text.split('\n');
+  const lines = highlightedLines(text, language);
   return <pre className="tool-content pi-read-output"><code>{lines.map((line, index) => <span className="pi-code-line" key={index}>{offset === 0 && <span className="pi-line-number" data-line={start + index} aria-hidden="true" />}<span>{line}{index < lines.length - 1 ? '\n' : ''}</span></span>)}</code></pre>;
 }
 
@@ -184,10 +188,10 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
       if (event.currentTarget.open) setOpened(true);
     }}>
       <summary className={running ? 'pi-tool-shimmer' : undefined}>
-        <span key={state} className={`pi-tool-status${completionCue ? ' pi-motion-cue' : ''}${running ? ' is-running' : failed ? ' is-error' : result ? ' is-complete' : ''}`} aria-hidden="true">{running ? <RiLoader4Line size={14} /> : failed ? <RiErrorWarningLine size={14} /> : result ? <RiCheckLine size={14} /> : <span>·</span>}</span>
+        <span key={state} className={`pi-tool-status${completionCue ? ' pi-motion-cue' : ''}${running ? ' is-running' : failed ? ' is-error' : result ? ' is-complete' : ''}`} aria-hidden="true">{running ? <PiIcon path={mdiLoading} size={14} /> : failed ? <PiIcon path={mdiAlertCircle} size={14} /> : result ? <PiIcon path={mdiCheck} size={14} /> : <span>·</span>}</span>
         <span className="pi-tool-title">{summaryHidden ? message.toolName || '工具' : toolSummary(item)}</span>
         {!result && <span className="pi-tool-state">{states[state]?.[0] || state}</span>}
-        <RiArrowRightSLine className="pi-tool-chevron" size={14} aria-hidden="true" />
+        <PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} />
       </summary>
       {opened && <div className={`pi-tool-body${['read', 'bash', 'pwsh'].includes(message.toolName || '') ? ' pi-specialized-tool' : ''}`}>
         <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain formatText={['read', 'bash', 'pwsh'].includes(message.toolName || '') ? text => toolInputPresentation(message.toolName!, text) : undefined} onUnavailable={() => setSummaryHidden(true)} /> : <span className="execution-tool-missing">{item.inputElsewhere ? '输入见上方调用。' : '本页无输入记录。'}</span>}</section>
@@ -231,7 +235,7 @@ function ToolActivityGroup({ tools, history, compact = false, anchorId }: { tool
   return <details className="execution-tool-group" data-message-id={anchorId} open={open} onToggle={event => {
     if (event.target === event.currentTarget) setOpen(event.currentTarget.open);
   }}>
-    <summary>{compact ? <RiCheckLine className="pi-tool-status is-complete" size={14} aria-hidden="true" /> : <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="pi-tool-count">{tools.length} 项工具调用</span><span className="execution-tool-group-summary sr-only">{summary}</span><span className="pi-tool-breakdown">{[...counts].map(([label, count]) => { const Icon = label === '读取' ? RiFileTextLine : label === '脚本' ? RiTerminalBoxLine : label === '编辑' || label === '写入' ? RiPencilLine : label === '检索' || label === '搜索' ? RiSearchLine : RiToolsLine; return <span key={label} title={label} aria-label={`${label} ${count} 次`}><Icon size={12} aria-hidden="true" /><span>{count}</span></span>; })}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<RiArrowRightSLine className="pi-tool-chevron" size={14} aria-hidden="true" /><span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
+    <summary>{compact ? <PiIcon path={mdiCheck} className="pi-tool-status is-complete" size={14} /> : <span className="execution-tool-group-chevron" aria-hidden="true">›</span>}<span className="pi-tool-count">{tools.length} 项工具调用</span><span className="execution-tool-group-summary sr-only">{summary}</span><span className="pi-tool-breakdown">{[...counts].map(([label, count]) => { const icon = label === '读取' ? mdiFileDocumentOutline : label === '脚本' ? mdiConsoleLine : label === '编辑' || label === '写入' ? mdiPencil : label === '检索' || label === '搜索' ? mdiMagnify : mdiWrenchOutline; return <span key={label} title={label} aria-label={`${label} ${count} 次`}><PiIcon path={icon} size={12} /><span>{count}</span></span>; })}</span><span className="sr-only">，共 {tools.length} 项工具调用与脚本执行</span>{failures > 0 && (compact ? <span className="execution-tool-state is-error">{failures} 项失败</span> : <Badge tone="danger">{failures} 项失败</Badge>)}<PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /><span className={compact ? 'sr-only' : 'execution-tool-group-action'}>{open ? '收起' : '展开'}</span></summary>
     <div className="execution-tool-group-items">{tools.map(item => <ToolActivity key={item.id} item={item} history={history} compact={compact} />)}</div>
   </details>;
 }
@@ -342,7 +346,7 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>}
-          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <details className="thinking-message"><summary><RiLightbulbLine className="pi-thinking-icon" size={14} aria-hidden="true" /><span>模型思考</span><RiArrowRightSLine className="pi-tool-chevron" size={14} aria-hidden="true" /></summary><MessageBody message={message} history={history} showSource={!compact} /></details> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
+          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <details className="thinking-message"><summary><PiIcon path={mdiHeadLightbulb} className="pi-thinking-icon" size={14} /><span>模型思考</span><PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /></summary><MessageBody message={message} history={history} showSource={!compact} /></details> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
         </article>;
       })}
       {pending && <div className="thinking" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>Bot 正在处理，完成后会更新回复</div>}

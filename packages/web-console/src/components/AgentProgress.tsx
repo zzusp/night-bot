@@ -1,3 +1,5 @@
+import { mdiConsoleLine } from '@mdi/js';
+import { PiIcon } from './PiIcon';
 import { RiArrowRightLine, RiCheckLine, RiArrowDownSLine } from '@remixicon/react';
 
 interface ProgressItem { text: string; status: string; redacted?: boolean }
@@ -16,12 +18,12 @@ export function AgentProgress({ items, title, status }: { items: ProgressItem[];
       <summary className="agent-progress-heading">
         {running && <span className="pi-card-sweep-layer" aria-hidden="true" />}
         <span className="pi-task-heading">
-          <span className={`pi-task-status${running ? ' is-running' : ''}`}>{stateLabel}</span>
+          <span className={`pi-task-status${running ? ' is-running' : ''}`} title={stateLabel} aria-label={stateLabel}><PiIcon path={mdiConsoleLine} size={12} /><span className="pi-task-status-dot" aria-hidden="true" /></span>
           <strong className="pi-task-title">{title || '任务进展'}</strong>
           <RiArrowDownSLine className="agent-progress-collapse" size={14} aria-hidden="true" />
         </span>
-        <span className="pi-task-meta"><span className="agent-progress-label">{label}</span><span>{completed} / {items.length}</span></span>
         {active && <span className="agent-progress-current"><RiArrowRightLine size={12} aria-hidden="true" /><span>{active.text}</span></span>}
+        <span className="pi-task-meta"><span className="agent-progress-label">{label}</span><span>{completed} / {items.length}</span></span>
         <span className="sr-only">任务待办，{completed} / {items.length} 步已完成，展开或收起</span>
       </summary>
       {!!items.length && <ol className="agent-progress-steps">{items.map((item, index) => <li className={`agent-progress-step todo-${item.status}`} key={index} aria-current={item.status === 'in_progress' ? 'step' : undefined}>

@@ -47,3 +47,22 @@ test('numbered read output copies exact blank lines and shell timeout is not ela
  await shell.locator('.pi-tool-step > summary').click();
  await expect(shell.locator('.pi-shell-command small')).toHaveText('timeout: 7s');
 });
+
+test('Prism read output highlights multiline syntax without changing copied source or executing markup',async({page,context})=>{
+ await context.grantPermissions(['clipboard-read','clipboard-write']);
+ const source='/* first\nsecond */\nconst value = "<script>window.bad=true</script>";\n\n';
+ const items=[{id:'syntax',role:'tool',kind:'tool-call',callId:'syntax',toolName:'read',text:JSON.stringify({path:'/fixture/code.ts'}),status:'pending'},{id:'syntax-out',role:'tool',kind:'tool-result',callId:'syntax',toolName:'read',text:source,status:'completed'}];
+ await page.route('**/api/tasks/task-research/session?*',r=>r.fulfill({json:{status:'ready',scope:'current-context',items,total:2,revision:'syntax'}}));
+ await page.goto('/#/tasks/task-research');
+ await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+ await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+ await page.locator('.pi-tool-step > summary').click();
+ const code=page.locator('.pi-read-output > code');
+ await expect(code.locator('.token.keyword')).toContainText('const');
+ await expect(code.locator('.token.comment')).toHaveCount(2);
+ expect(await code.textContent()).toBe(source);
+ await code.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const s=window.getSelection()!;s.removeAllRanges();s.addRange(range);});
+ await page.keyboard.press('Control+c');
+ expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe(source);
+ expect(await page.evaluate(()=>Object.hasOwn(window,'bad'))).toBe(false);
+});
