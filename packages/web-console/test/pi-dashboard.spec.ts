@@ -45,7 +45,7 @@ test('numbered read output copies exact blank lines and shell timeout is not ela
  expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe(content);
  const shell=page.locator('[data-message-id="shell-timeout"]');
  await shell.locator('.pi-tool-step > summary').click();
- await expect(shell.locator('.pi-shell-command small')).toHaveText('timeout: 7s');
+ await expect(shell.locator('.pi-shell-command small')).toHaveText('(timeout: 7s)');
 });
 
 test('Prism read output highlights multiline syntax without changing copied source or executing markup',async({page,context})=>{
@@ -78,11 +78,12 @@ test('native shell arguments remain compact and real output copies its final new
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
  await page.locator('.pi-tool-step > summary').click();
  await expect(page.locator('.pi-shell-command code')).toHaveText(args.command);
- await expect(page.locator('.pi-shell-command small')).toHaveText('timeout: 7s');
+ await expect(page.locator('.pi-shell-command small')).toHaveText('(timeout: 7s)');
  await page.locator('.pi-shell-parameters > summary').click();
  await expect(page.locator('.pi-shell-parameters')).toContainText(args.description);
  const code=page.locator('.pi-plain-output > code');
  expect(await code.textContent()).toBe(output);
+ expect(await code.locator('..').evaluate(el=>({max:getComputedStyle(el).maxHeight,bg:getComputedStyle(el).backgroundColor,radius:getComputedStyle(el).borderRadius}))).toEqual({max:'320px',bg:'rgb(245, 245, 245)',radius:'4px'});
  await code.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const s=window.getSelection()!;s.removeAllRanges();s.addRange(range);});
  await page.keyboard.press('Control+c');
  expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe(output);

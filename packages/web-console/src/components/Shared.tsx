@@ -148,7 +148,7 @@ function toolInputPresentation(name: string, text: string): ReactNode {
     if (['bash', 'pwsh'].includes(name) && typeof args.command === 'string') {
       const timeout = typeof args.timeoutMs === 'number' ? args.timeoutMs / 1000 : args.timeout;
       const extra = Object.fromEntries(Object.entries(args).filter(([key]) => !['command', 'timeout', 'timeoutMs'].includes(key)));
-      return <><div className="pi-shell-command"><span aria-hidden="true">$</span><code>{args.command}</code>{typeof timeout === 'number' && <small>timeout: {timeout}s</small>}</div>{Object.keys(extra).length > 0 && <details className="pi-shell-parameters"><summary>参数</summary><pre className="tool-content"><code>{JSON.stringify(extra, null, 2)}</code></pre></details>}</>;
+      return <><div className="pi-shell-command"><span aria-hidden="true">$</span><code>{args.command}</code>{typeof timeout === 'number' && <small>(timeout: {timeout}s)</small>}</div>{Object.keys(extra).length > 0 && <details className="pi-shell-parameters"><summary>参数</summary><pre className="tool-content"><code>{JSON.stringify(extra, null, 2)}</code></pre></details>}</>;
     }
   } catch { /* Unknown/public custom tools retain complete input. */ }
   return <pre className="tool-content"><code>{text}</code></pre>;
