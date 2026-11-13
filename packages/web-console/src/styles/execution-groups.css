@@ -91,3 +91,18 @@
 }
 
 .pi-offscreen .pi-tool-shimmer::after, .pi-offscreen .pi-tool-status.is-running svg { animation-play-state: paused; }
+
+/* ChatView and ThinkingBlock: use the available pane, not the old 760px rail. */
+.execution-transcript .message-column { padding: 16px; }
+.execution-transcript .message-assistant { align-items: flex-start; padding: 8px 0; }
+.execution-transcript .message-assistant:not(:has(.thinking-message)) > .message-body { width: fit-content; max-width: 80%; padding: 8px 16px; border: 1px solid var(--board-border); border-radius: 12px; background: var(--board-surface); box-shadow: 0 2px 5px rgb(0 0 0 / 5%); }
+.execution-transcript .message-assistant .markdown { font-size: 14px; line-height: 1.6; }
+.execution-transcript .message-assistant:has(.thinking-message) { padding: 4px 16px; }
+.execution-transcript .thinking-message { border-left: 2px solid rgb(168 85 247 / 30%); padding-left: 12px; font-size: 12px; }
+.execution-transcript .thinking-message > summary { min-height: 28px; align-content: center; cursor: pointer; }
+.execution-transcript .thinking-message[open] > .markdown { margin: 4px 0 4px 16px; padding: 8px; border: 1px solid rgb(168 85 247 / 10%); border-radius: 12px; background: rgb(168 85 247 / 5%); }
+@media(max-width:760px) {
+ .execution-transcript .message-assistant:not(:has(.thinking-message)) > .message-body { max-width: 95%; }
+ .execution-transcript .message-assistant:has(.thinking-message) { padding-inline: 8px; }
+ .execution-transcript .thinking-message > summary { min-height: 44px; }
+}
