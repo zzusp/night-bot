@@ -54,7 +54,7 @@ function sampleSession(task, historyRounds = 0) {
   const sessionId = task.session.sessionId
   const projected = [
     {sourceEntry: {id: 'fixture-source', type: 'message', timestamp: at(45)}, messages: [
-      {role: 'user', content: [{type: 'text', text: task.objective}]},
+      {role: 'custom', customType: 'night.business-input', details: {source: {kind: 'task-input', taskSession: {taskId: task.taskId, sessionId}}}, content: [{type: 'text', text: JSON.stringify({task: {request: '先核对已有资料，再逐项验证差异；不要重复执行已经完成的步骤。', objective: task.objective, requirements: ['区分事实与假设', '保留验证依据']}, sources: [{sourceId: 'fixture-source', version: 1, text: '原始请求：帮我看一下'}]})}]},
     ]},
     {sourceEntry: {id: 'fixture-assistant', type: 'message', timestamp: at(43)}, messages: [
       {role: 'assistant', content: [

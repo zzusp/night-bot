@@ -1,3 +1,5 @@
+import {randomUUID} from 'node:crypto'
+import {diagnosticQueryFailure} from './diagnostic-contract.js'
 import {AGENT_PHASES} from '../runtime/pi-agent-observation.js'
 import {buildTraceLedger} from '../runtime/performance-trace.js'
 import {responseTiming} from '../../packages/web-console/server/response-times.js'
@@ -5,64 +7,118 @@ import {responseTiming} from '../../packages/web-console/server/response-times.j
 const stamp=value=>typeof value==='string'&&Number.isFinite(Date.parse(value))?new Date(value).toISOString():null
 const epoch=value=>typeof value==='number'&&Number.isFinite(value)&&Math.abs(value)<=8640000000000000?new Date(value).toISOString():null
 const number=value=>typeof value==='number'&&Number.isFinite(value)?value:null
-const state=value=>['pending','committed','consumed','prepared','starting','delivered','unknown','failed','running','queued','completed','waiting','cancelled','paused','active','idle','open-or-missing-boundary','clock-order-unknown','observed'].includes(value)?value:null
+const state=value=>['pending','committed','consumed','prepared','starting','delivered','unknown','failed','running','queued','completed','waiting','cancelled','paused','active','inactive','idle','open-or-missing-boundary','clock-order-unknown','observed'].includes(value)?value:null
 const pickNumbers=(value,keys)=>Object.fromEntries(keys.map(key=>[key,number(value?.[key])]))
 const normalize=value=>String(value??'').normalize('NFKC').toLowerCase().replace(/\s+/g,' ').trim()
 const phases=new Set([...AGENT_PHASES,'ingress','queue','turn','host','send','readback','triage','router','source-read','resource-read','image-save','resident-store','source-record','task-commit','old-drain','materialize'])
-const fail=()=>{throw new Error('FEEDBACK_EVIDENCE_SCOPE')}
+const fail=(code='FEEDBACK_EVIDENCE_SCOPE')=>{throw Object.assign(new Error(code),{code})}
 /** Consent is enforced by the caller. No filesystem, command, network or mutation
  * capability is exposed. Private bodies are used for local matching only. */
-export function createChainEvidence({application,description,secrets=[],getSessionPersistence}) {
- const sources=new Map(),tasks=new Map(),identities=new Map(),sessions=new Map(),pageCache=new Map();let calls=0,scans=0,groupsCache
+export function createChainEvidence({application,title='',description,secrets=[],getSessionPersistence,getSchedule}) {
+ const sources=new Map(),tasks=new Map(),schedules=new Map(),conversations=new Map(),identities=new Map(),sessions=new Map(),pageCache=new Map(),catalogCache=new Map(),continuationQueries=new Map();let calls=0,groupsCache,catalogRows=0,catalogBytes=0
  const identity=(kind,id)=>{if(!id)return null;const key=kind+':'+id;if(!identities.has(key))identities.set(key,kind+'-'+(identities.size+1));return identities.get(key)}
+ const conversation=id=>{const alias=identity('conversation',id);if(alias)conversations.set(alias,id);return alias}
  const registerSession=(id,scope)=>{if(!id)return null;const alias=identity('session',id);const previous=sessions.get(alias);sessions.set(alias,{...previous,sessionId:id,...scope,windows:[...(previous?.windows??[]),...(scope.windows??(scope.window?[scope.window]:[]))]});return alias}
-
  const app=()=>typeof application==='function'?application():application
  const query=(kind,args)=>app().tasks.store.query({kind,...args})
- const terms=[...new Set([...(String(description??'').matchAll(/[“「"]([^”」"\n]{4,500})[”」"]/g))].map(match=>normalize(match[1])))]
- if(!terms.length){const full=normalize(description).slice(0,2000);if(full.length>=4)terms.push(full);for(const part of full.split(/[，。！？：；,!?;:\n]/))if(part.trim().length>=6)terms.push(part.trim())}
- const sourceFor=alias=>{const value=sources.get(alias);if(!value)fail();return value}
- const taskFor=alias=>{const value=tasks.get(alias);if(!value)fail();return value}
- const addTask=row=>{const alias=identity('task',row.taskId);tasks.set(alias,{taskId:row.taskId,groupId:row.conversationId});return alias}
+ const input=[title,description].filter(Boolean).join('\n'),terms=[...new Set([...input.matchAll(/[“「"]([^”」"\n]{1,500})[”」"]/g)].map(match=>normalize(match[1])))]
+ if(!terms.length)for(const part of [title,description,...String(description??'').split(/[，。！？：；,!?;:\n]/)]){const term=normalize(part);if(term)terms.push(term)}
+ const sourceFor=alias=>{const value=sources.get(alias);if(!value)fail('FEEDBACK_ALIAS_INVALID');return value}
+ const taskFor=alias=>{const value=tasks.get(alias);if(!value)fail('FEEDBACK_ALIAS_INVALID');return value}
+ const addTask=row=>{const alias=identity('task',row.taskId);tasks.set(alias,{taskId:row.taskId,groupId:row.groupId??row.conversationId});return alias}
+ const addSource=(source,match='literal-description-fragment')=>{const alias=identity('message',source.sourceId+':'+source.version);sources.set(alias,{sourceId:source.sourceId,groupId:source.groupId,messageId:source.messageId,version:source.version});return {alias,conversation:conversation(source.groupId),version:source.version,receivedAt:stamp(source.receivedAt),platformAt:stamp(source.timestamp),match}}
  const unavailable=reason=>({status:'unavailable',reason,complete:false})
  return async function collect(action,signal,args={}) {
-  signal?.throwIfAborted();if(++calls>24)throw new Error('FEEDBACK_EVIDENCE_LIMIT')
-  const service=app()?.tasks;if(!service?.store?.query)return unavailable('task-service-unavailable')
+  signal?.throwIfAborted();if(++calls>24)fail('FEEDBACK_EVIDENCE_LIMIT')
+  const service=app()?.tasks
+  if(!service?.store?.query&&action!=='schedule'&&action!=='discover')return unavailable('task-service-unavailable')
   let result
   if(action==='discover'){
-   if(scans&&args.query===undefined)return {status:'already-scanned',candidates:[...sources.keys()],complete:false}
-   if(scans>=3)throw new Error('FEEDBACK_DISCOVERY_LIMIT')
-   if(args.query!==undefined){const text=normalize(args.query);if(text.length<4||text.length>500||!normalize(description).includes(text))fail();terms.splice(0,terms.length,text)}
-   scans++
-   if(!terms.length)return unavailable('no-specific-message-text-in-description')
-   if(!service.listObserverGroups||!service.observerGroupPage)return unavailable('message-index-unavailable')
-   const groups=groupsCache??=await service.listObserverGroups(),candidates=[];let inspected=0,groupsScanned=0,truncated=groups.length>20,failures=0
-   for(const group of groups.slice(0,20)){
-    groupsScanned++;let offset=0
-    // Fair recent window per conversation, bounded in both rows and calls.
-    while(offset<100&&inspected<2000){
-     signal?.throwIfAborted();let page
-     try{const key=JSON.stringify([group.groupId,offset]);if(pageCache.has(key))page=pageCache.get(key);else{page=await service.observerGroupPage(group.groupId,{collection:'messages',offset,limit:50,filter:'all'});pageCache.set(key,page)}}catch{failures++;break}
-     if(!page)break
-     inspected+=page.items.length
-     const matches=page.items.filter(row=>{const body=normalize(row.text);return body&&terms.some(term=>body.includes(term)||term.includes(body)&&body.length>=8)})
-     if(matches.length){
-      const refs=matches.map(row=>({messageId:row.messageId,version:row.messageVersion??1}))
-      const context=await query('observer.message-contexts',{groupId:group.groupId,messageIds:refs.map(row=>row.messageId),messages:refs})
-      for(const row of matches){
-       const exact=context.sources.filter(source=>source.messageId===row.messageId&&source.version===(row.messageVersion??1))
-       if(exact.length!==1)continue
-       const source=exact[0],alias=identity('message',source.sourceId+':'+source.version)
-       if(sources.has(alias)||sources.size<10){sources.set(alias,{sourceId:source.sourceId,groupId:source.groupId,messageId:source.messageId,version:source.version});candidates.push({alias,conversation:identity('conversation',source.groupId),version:source.version,receivedAt:stamp(source.receivedAt),platformAt:stamp(source.timestamp),match:'literal-description-fragment'})}
-       else if(sources.size>=10)truncated=true
-      }
+   let selectedTerms=terms
+   if(args.cursor!==undefined){
+    const saved=continuationQueries.get(args.cursor)
+    if(!saved||args.query!==undefined||['target','alias','offset'].some(key=>args[key]!==undefined&&args[key]!==saved.args[key]))fail('FEEDBACK_CURSOR_INVALID')
+    args={...saved.args};selectedTerms=saved.terms
+   }else if(args.query!==undefined){const text=normalize(args.query);if(!text||text.length>500||![title,description].some(value=>normalize(value).includes(text)))fail('FEEDBACK_QUERY_INVALID');selectedTerms=[text]}
+   const matches=value=>{const body=normalize(value);return body&&selectedTerms.some(term=>body.includes(term)||term.includes(body)&&body.length>=8)}
+   // A diagnosis may span scheduler ticks or interleave narrowed queries. Keep
+   // candidate order stable within each query; selected detail reads stay live.
+   const catalogFor=async(target,load,project)=>{
+    const key=JSON.stringify([target,selectedTerms]);let snapshot=catalogCache.get(key)
+    if(!snapshot){
+     const catalog=await load(),rows=[];let bytes=0
+     for(const row of catalog){
+      signal?.throwIfAborted()
+      if(![row.title,target==='tasks'?row.request:row.prompt].some(matches))continue
+      const value=project(row);bytes+=Buffer.byteLength(JSON.stringify(value),'utf8')
+      if(catalogRows+rows.length+1>10000||catalogBytes+bytes>2*1024*1024)fail('FEEDBACK_CATALOG_BUDGET_EXCEEDED')
+      rows.push(value)
      }
-     if(page.nextOffset==null)break
-     if(page.nextOffset<=offset)break
-     offset=page.nextOffset;if(offset>=100)truncated=true
+     snapshot={inspected:catalog.length,rows};catalogCache.set(key,snapshot);catalogRows+=rows.length;catalogBytes+=bytes
     }
+    return snapshot
    }
-   result={candidates,ambiguous:candidates.length>1,complete:false,coverage:'recent-indexed-messages-only',inspected,groupsScanned,truncated,unavailableGroups:failures,limits:{groups:20,messagesPerGroup:100,candidates:10},limitations:['no-match-does-not-prove-absence','candidates-are-not-automatic-selection','message-content-not-returned']}
+   const start=args.offset??0
+   if(!Number.isSafeInteger(start)||start<0)fail('FEEDBACK_OFFSET_INVALID')
+   if(args.target!==undefined&&!['messages','tasks','schedules'].includes(args.target))fail()
+   if(args.alias!==undefined&&(!conversations.has(args.alias)||args.target&&args.target!=='messages'))fail('FEEDBACK_ALIAS_INVALID')
+   if(!selectedTerms.length)return unavailable('no-specific-text-in-description')
+   const candidates=[],taskCandidates=[],scheduleCandidates=[],continuations=[],failures=[]
+   let inspected=0,groupsScanned=0,inspectedTasks=0,inspectedSchedules=0
+   const failed=(target,error)=>{signal?.throwIfAborted();failures.push({target,...diagnosticQueryFailure(error)})}
+   if(!args.alias&&(!args.target||args.target==='tasks')){
+    if(!service?.store?.query)failures.push({target:'tasks',...unavailable('task-service-unavailable')})
+    else try{
+     const {rows,inspected:count}=await catalogFor('tasks',()=>query('task.list',{archived:'all'}),row=>({taskId:row.taskId,groupId:row.groupId??row.conversationId,status:row.status,createdAt:row.createdAt}));inspectedTasks=count
+     for(const row of rows.slice(start,start+10))taskCandidates.push({alias:addTask(row),conversation:conversation(row.groupId),state:state(row.status),createdAt:stamp(row.createdAt),match:'literal-description-fragment'})
+     if(start+10<rows.length)continuations.push({target:'tasks',offset:start+10})
+    }catch(error){failed('tasks',error)}
+   }
+   if(!args.alias&&(!args.target||args.target==='schedules')){
+    const schedule=getSchedule?.()
+    if(!schedule?.catalog)failures.push({target:'schedules',...unavailable('schedule-service-unavailable')})
+    else try{
+     const {rows,inspected:count}=await catalogFor('schedules',()=>schedule.catalog(),row=>({id:row.id,sessionId:row.sessionId,kind:row.kind,status:row.status,scheduledAt:row.scheduledAt}));inspectedSchedules=count
+     for(const row of rows.slice(start,start+10)){const alias=identity('schedule',row.id);schedules.set(alias,{id:row.id,sessionId:row.sessionId});scheduleCandidates.push({alias,kind:['at','after','every','daily','weekly','cron'].includes(row.kind)?row.kind:null,state:state(row.status),scheduledAt:stamp(row.scheduledAt),match:'literal-description-fragment'})}
+     if(start+10<rows.length)continuations.push({target:'schedules',offset:start+10})
+    }catch(error){failed('schedules',error)}
+   }
+   if(!args.target||args.target==='messages'){
+    if(!service?.store?.query||!service.listObserverGroups||!service.observerGroupPage)failures.push({target:'messages',...unavailable('message-index-unavailable')})
+    else try{
+     const groups=groupsCache??=await service.listObserverGroups(),selected=args.alias?[{groupId:conversations.get(args.alias)}]:groups.slice(start,start+20)
+     if(!args.alias&&start+20<groups.length)continuations.push({target:'messages',offset:start+20})
+     for(const group of selected){
+      const alias=conversation(group.groupId),first=args.alias?start:0;groupsScanned++;let offset=first
+      if(candidates.length>=10){continuations.push({target:'messages',alias,offset});continue}
+      try{
+       // 每次只读一段；返回准确游标，旧消息可在后续调用继续定位。
+       while(offset<first+100){
+        signal?.throwIfAborted();const key=JSON.stringify([group.groupId,offset]);let page=pageCache.get(key)
+        if(!page){page=await service.observerGroupPage(group.groupId,{collection:'messages',offset,limit:50,filter:'all'});if(page)pageCache.set(key,page)}
+        if(!page)break
+        const matched=page.items.filter(row=>matches(row.text)),refs=matched.map(row=>({messageId:row.messageId,version:row.messageVersion??1}))
+        const context=refs.length?await query('observer.message-contexts',{groupId:group.groupId,messageIds:refs.map(row=>row.messageId),messages:refs}):{sources:[]}
+        let consumed=0
+        for(const row of page.items){
+         if(candidates.length>=10)break
+         consumed++;inspected++
+         if(!matches(row.text))continue
+         const exact=context.sources.filter(source=>source.groupId===group.groupId&&source.messageId===row.messageId&&source.version===(row.messageVersion??1))
+         if(exact.length===1)candidates.push(addSource(exact[0]))
+        }
+        if(consumed<page.items.length){continuations.push({target:'messages',alias,offset:offset+consumed});break}
+        if(page.nextOffset==null)break
+        if(!Number.isSafeInteger(page.nextOffset)||page.nextOffset<=offset)fail('FEEDBACK_OFFSET_INVALID')
+        offset=page.nextOffset
+        if(offset>=first+100||candidates.length>=10){continuations.push({target:'messages',alias,offset});break}
+       }
+      }catch(error){failed('messages',error)}
+     }
+    }catch(error){failed('messages',error)}
+   }
+   for(const next of continuations){const cursor='cursor-'+randomUUID().replace(/[0-9]/g,d=>'ghijklmnop'[Number(d)]);continuationQueries.set(cursor,{args:{...next},terms:[...selectedTerms]});next.cursor=cursor}
+   result={candidates,taskCandidates,scheduleCandidates,ambiguous:candidates.length+taskCandidates.length+scheduleCandidates.length>1,complete:false,coverage:'indexed-messages-and-task-schedule-catalogs',inspected,groupsScanned,inspectedTasks,inspectedSchedules,truncated:continuations.length>0,continuations,failures,unavailableGroups:failures.filter(row=>row.target==='messages').length,limitations:['no-match-does-not-prove-absence','candidates-are-not-automatic-selection','message-content-not-returned','deleted-schedules-not-in-catalog']}
   }else if(action==='message'){
    const ref=sourceFor(args.alias)
    const context=await query('observer.message-contexts',{groupId:ref.groupId,messageIds:[ref.messageId],messages:[{messageId:ref.messageId,version:ref.version}]})
@@ -80,7 +136,7 @@ export function createChainEvidence({application,description,secrets=[],getSessi
     tasks:links.slice(0,20).map(addTask),tasksTruncated:links.length>20,limitations:['host-receipt-is-not-platform-send','delivery-confirmation-is-not-client-render','missing-time-is-not-zero','shared-spans-must-not-be-summed']}
   }else if(action==='trace'){
    const ref=sourceFor(args.alias),offset=args.offset??0
-   if(!Number.isSafeInteger(offset)||offset<0||offset>450)fail()
+   if(!Number.isSafeInteger(offset)||offset<0||offset>450)fail('FEEDBACK_OFFSET_INVALID')
    if(!service.listExecutionTrace)return unavailable('execution-trace-unavailable')
    const trace=await service.listExecutionTrace({sourceId:ref.sourceId,sourceVersion:ref.version,groupId:ref.groupId,limit:15,offset})
    result={alias:args.alias,offset,nextOffset:Number.isSafeInteger(trace.nextOffset)&&trace.nextOffset<=450?trace.nextOffset:null,total:number(trace.total),complete:false,coverage:'retained-metadata-only',
@@ -91,14 +147,28 @@ export function createChainEvidence({application,description,secrets=[],getSessi
   }else if(action==='task'){
    const ref=taskFor(args.alias),task=await query('task.get',{taskId:ref.taskId})
    if(!task||task.groupId!==ref.groupId)return unavailable('associated-task-no-longer-available')
-   result={alias:args.alias,state:state(task.status),control:state(task.control),createdAt:stamp(task.createdAt),updatedAt:stamp(task.updatedAt),completedAt:stamp(task.completedAt),session:registerSession(task.sessionId,{groupId:ref.groupId,taskId:ref.taskId}),drained:task.drained===true,complete:false,limitations:['task-body-and-private-results-not-returned']}
+   const links=(await query('router.source-links',{taskId:ref.taskId})).filter(row=>row.taskId===ref.taskId&&row.conversationId===ref.groupId),linkedSources=[]
+   for(const link of links.slice(0,20)){
+    const source=await query('source.get',{sourceId:link.sourceId})
+    if(source?.groupId===ref.groupId&&source.version===link.messageVersion)linkedSources.push(addSource(source,'associated-task-source'))
+   }
+   result={alias:args.alias,state:state(task.status),control:state(task.control),createdAt:stamp(task.createdAt),updatedAt:stamp(task.updatedAt),completedAt:stamp(task.completedAt),session:registerSession(task.sessionId,{groupId:ref.groupId,taskId:ref.taskId}),drained:task.drained===true,sources:linkedSources,sourcesTruncated:links.length>20,complete:false,limitations:['task-body-and-private-results-not-returned']}
+  }else if(action==='schedule'){
+   const ref=schedules.get(args.alias);if(!ref)fail('FEEDBACK_ALIAS_INVALID')
+   const schedule=getSchedule?.();if(!schedule?.catalog)return unavailable('schedule-service-unavailable')
+   const row=(await schedule.catalog()).find(row=>row.id===ref.id&&row.sessionId===ref.sessionId)
+   if(!row)return unavailable('selected-schedule-no-longer-retained')
+   const kind=['at','after','every','daily','weekly','cron'].includes(row.kind)?row.kind:null
+   // 仅暴露原生合同中的时间参数，不公开指令，也不猜测其中的停止条件。
+   result={alias:args.alias,kind,recurring:kind?['every','daily','weekly','cron'].includes(kind):null,state:state(row.status),scheduledAt:stamp(row.scheduledAt),timing:{afterSeconds:number(row.afterSeconds),everySeconds:number(row.everySeconds),time:row.time??null,timeZone:row.timeZone??null,weekdays:row.weekdays??null,expression:row.expression??null},lastDelivery:row.lastDelivery?{deliveredAt:stamp(row.lastDelivery.deliveredAt),scheduledAt:stamp(row.lastDelivery.scheduledAt)}:null,stopCondition:'not-a-structured-schedule-field',complete:false,limitations:['prompt-and-private-identities-not-returned','stop-condition-in-prompt-not-verified','deleted-schedules-not-in-catalog','accepted-delivery-is-not-business-completion']}
   }else if(action==='journal'){
    const ref=sessions.get(args.alias),offset=args.offset??0
-   if(!ref||!Number.isSafeInteger(offset)||offset<0||offset>180)fail()
+   if(!ref)fail('FEEDBACK_ALIAS_INVALID')
+   if(!Number.isSafeInteger(offset)||offset<0||offset>180)fail('FEEDBACK_OFFSET_INVALID')
    const persistence=getSessionPersistence?.()
    if(!persistence?.readNative)return unavailable('native-journal-unavailable')
    let snapshot
-   try{snapshot=await persistence.readNative(ref.sessionId,{requireComplete:true,signal})}catch{return unavailable('native-journal-uncommitted-or-unavailable')}
+   try{snapshot=await persistence.readNative(ref.sessionId,{requireComplete:true,signal})}catch{signal?.throwIfAborted();return unavailable('native-journal-uncommitted-or-unavailable')}
    if(snapshot.header?.id!==ref.sessionId||!Array.isArray(snapshot.entries))return unavailable('native-journal-identity-unproven')
    const taskIdentities=(snapshot.audit??[]).filter(row=>row.domain==='task'&&row.kind==='identity')
    const validTask=ref.taskId&&taskIdentities.length===1&&taskIdentities[0].version===1&&taskIdentities[0].payload?.taskId===ref.taskId&&taskIdentities[0].payload?.sessionId===ref.sessionId

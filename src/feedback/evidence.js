@@ -7,10 +7,11 @@ import {inside} from '../runtime/paths.js'
 const codes=new Set(['AUTH_REQUIRED','BOT_NOT_READY','CSRF_INVALID','REFLECTION_SCAN_FAILED','REFLECTION_MODEL_FAILED','TASK_REVIEW_ARCHIVE_FAILED','CHANNEL_AUTH_REQUIRED','CHANNEL_ADAPTER_ERROR','CHANNEL_HISTORY_INCOMPLETE','CHANNEL_HISTORY_RECOVERY_FAILED','CHANNEL_DRAIN_FAILED','WEB_ASSETS_NOT_BUILT','MODEL_REQUEST_FAILED','ECONNREFUSED','ETIMEDOUT','SQLITE_BUSY','SQLITE_LOCKED'])
 export async function feedbackErrorCodes(logRoot,signal){
  const counts={};let files=0,bytes=0
- if(!logRoot)return {counts,files,bytes}
+ const summary=()=>({counts,files,bytes,coverage:'allowlisted-recent-log-tails',complete:false,limitations:['empty-counts-do-not-prove-no-errors','only-latest-three-log-tails-up-to-32768-bytes-each']})
+ if(!logRoot)return summary()
  const stat=await lstat(logRoot).catch(()=>null)
- if(!stat?.isDirectory()||stat.isSymbolicLink())return {counts,files,bytes}
- const root=await realpath(logRoot);if(root!==resolve(logRoot))return {counts,files,bytes}
+ if(!stat?.isDirectory()||stat.isSymbolicLink())return summary()
+ const root=await realpath(logRoot);if(root!==resolve(logRoot))return summary()
  const entries=[];let inspected=0
  for await(const entry of await opendir(root)){signal?.throwIfAborted();if(++inspected>128)break;if(entry.isFile()&&/\.log$/.test(entry.name)){const stat=await lstat(join(root,entry.name)).catch(()=>null);if(stat?.isFile()&&!stat.isSymbolicLink()&&stat.nlink===1)entries.push({name:entry.name,mtime:stat.mtimeMs})}}
  entries.sort((a,b)=>b.mtime-a.mtime);entries.splice(3)
@@ -23,5 +24,5 @@ export async function feedbackErrorCodes(logRoot,signal){
    for(const word of buffer.toString('utf8',0,result.bytesRead).match(/\b[A-Z][A-Z_]{3,64}\b/g)??[])if(codes.has(word))counts[word]=(counts[word]??0)+1
   }finally{await handle.close()}
  }
- return {counts,files,bytes}
+ return summary()
 }

@@ -24,7 +24,8 @@ test('执行历史展示业务文字、路径和思考，排除系统、签名�
   assert.deepEqual(calls, [{id: 'pi-one', options: {requireComplete: true}}])
   assert.equal(result.status, 'ready'); assert.equal(result.scope, 'current-session-context')
   assert.equal(result.items.length, 5)
-  assert.equal(result.items[0].text, '用户原始来源')
+  assert.equal(result.items[0].text, '核对目标')
+  assert.equal(result.items[0].kind, 'instruction')
   assert.equal(result.items.find(row => row.kind === 'tool-call').toolName, 'read')
   assert.match(result.items.find(row => row.kind === 'tool-result').text, /已有结果/)
   assert.equal(result.items.find(row => row.kind === 'thinking').text, '先核对任务材料，再比较实际结果')
@@ -39,7 +40,7 @@ test('session pages keep revision identity and latest-first pages without claimi
   const first = await taskSessionView({task, persistence, limit: 2})
   assert.equal(first.items.length, 2); assert.equal(first.nextOffset, 2)
   const older = await taskSessionView({task, persistence, offset: 2, limit: 3, revision: first.revision})
-  assert.equal(older.items[0].text, '用户原始来源'); assert.equal(older.nextOffset, null)
+  assert.equal(older.items[0].text, '核对目标'); assert.equal(older.nextOffset, null)
   value.entries.push({id: 'next-commit'})
   await assert.rejects(taskSessionView({task, persistence, offset: 2, limit: 3, revision: first.revision}), {code: 'SESSION_PAGE_STALE'})
   await assert.rejects(taskSessionView({task, persistence, limit: 51}), {code: 'PAGE_INVALID'})
@@ -448,4 +449,50 @@ test('retained pre-upgrade Router history only falls back to published same-conv
     assert.equal(excluded.scope, 'current-router-session-context'); assert.equal(excluded.items.length, 0)
     assert.deepEqual(reads, ['router-new'], 'unpublished or foreign predecessors must not be read')
   }
+})
+
+test('task bubbles show admitted Router request, goal and requirements, not raw source or current task state', async () => {
+  const value = snapshot(), entries = value.context.projection.entries
+  const message = entries[1].messages[0]
+  const input = JSON.parse(message.content[0].text)
+  input.task = {request: '先核对失败原因，再修复并验证。', objective: '恢复发布流程', requirements: ['保留数据', '报告验证结果'], metadata: {secret: 'HIDDEN_META'}}
+  message.content[0].text = JSON.stringify(input)
+  const result = await taskSessionView({task: {...task, request: 'FUTURE_REQUEST', objective: 'FUTURE_GOAL'}, persistence: {readNative: async () => value}})
+  assert.equal(result.items[0].text, '先核对失败原因，再修复并验证。\n\n目标：\n恢复发布流程\n\n要求：\n- 保留数据\n- 报告验证结果')
+  assert.doesNotMatch(JSON.stringify(result), /用户原始来源|FUTURE_|HIDDEN_META/)
+})
+
+test('resume and live supplements keep each admitted instruction even for repeated source or identical requests', async () => {
+  const value = snapshot(), make = (id, request, kind = 'task-input') => project(id, {role: 'custom', customType: 'night.business-input',
+    details: {source: {kind, taskSession: {taskId: task.taskId, sessionId: 'pi-one'}}}, content: [{type: 'text', text: JSON.stringify({
+      task: {request, objective: '持续目标', requirements: []}, sources: [{sourceId: 'same', version: 1, text: '继续'}], supplement: {contextRevision: 2}})}]})
+  const request = '初始执行要求\n\n[原消息补充]\n检查构建结果，不重复发布'
+  value.context.projection.entries = [make('first', '初始执行要求'), make('resume', request), make('live', request)]
+  const rows = (await taskSessionView({task, persistence: {readNative: async () => value}})).items
+  assert.equal(rows.length, 3); assert.equal(new Set(rows.map(row => row.id)).size, 3)
+  assert.equal(rows[1].text, request + '\n\n目标：\n持续目标'); assert.equal(rows[2].text, rows[1].text)
+  assert.ok(rows.every(row => row.kind === 'instruction'))
+})
+
+test('legacy task packets fall back to original text only when no usable instruction exists', async () => {
+  const value = snapshot(), message = value.context.projection.entries[1].messages[0]
+  for (const empty of [undefined, {}, {request: '', objective: ' ', requirements: [null, 2, {}]}]) {
+    message.content[0].text = JSON.stringify({task: empty, sources: [{text: '旧来源正文'}]})
+    const rows = (await taskSessionView({task, persistence: {readNative: async () => value}})).items
+    assert.equal(rows[0].text, '原始消息：\n旧来源正文'); assert.equal(rows[0].kind, 'source')
+  }
+  message.content[0].text = JSON.stringify({task: {request: '同一个目标', objective: '同一个目标'}, sources: [{text: '旧来源正文'}]})
+  assert.equal((await taskSessionView({task, persistence: {readNative: async () => value}})).items[0].text, '同一个目标')
+})
+
+test('instruction bodies remain paginated and redact secrets without serializing private task fields', async () => {
+  const value = snapshot(), message = value.context.projection.entries[1].messages[0]
+  const instruction = '执行要求'.repeat(4500) + ' password=hidden-password FINAL'
+  message.content[0].text = JSON.stringify({task: {request: instruction, requirements: ['保留数据'], capabilities: {value: 'PRIVATE_CAPABILITY'}}, sources: [{text: 'SOURCE_ONLY'}]})
+  const options = {task, persistence: {readNative: async () => value}}, page = await taskSessionView(options), row = page.items[0]
+  let body = row.text, offset = row.textNextOffset
+  assert.ok(offset); assert.equal(row.redacted, true)
+  while (offset !== null) {const next = await taskSessionMessageView({...options, revision: page.revision, messageId: row.id, offset}); body += next.text; offset = next.nextOffset}
+  assert.match(body, /FINAL/); assert.match(body, /保留数据/)
+  assert.doesNotMatch(body, /hidden-password|PRIVATE_CAPABILITY|SOURCE_ONLY/)
 })

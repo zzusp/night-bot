@@ -27,7 +27,7 @@ export function latestInput(request) {
     for (const part of message.content ?? []) {
       if (part.type !== 'text') continue
       if (part.text.startsWith('[AGENT_PLATFORM_QUERY]\n')) return JSON.parse(part.text.slice('[AGENT_PLATFORM_QUERY]\n'.length))
-      if (part.text.startsWith('[SCHEDULE REMINDER]')) return { schedule: part.text }
+      if (part.text.startsWith('[SCHEDULE REMINDER]') || part.text.startsWith('[SCHEDULE REMINDER BATCH]')) return { schedule: part.text }
       try { const parsed = JSON.parse(part.text); if (parsed.task || parsed.sources || parsed.contextReadRequired || parsed.reservationId && parsed.source) return resolveContextInput(request, inline(parsed)) } catch (error) { if (error.contextReads) throw error }
       for(const prefix of ['一级分诊请求：','Router 请求：','Router 交接请求：']){const line=part.text.split(String.fromCharCode(10)).find(line=>line.startsWith(prefix));if(line)return JSON.parse(line.slice(prefix.length))}
       const topicLine = part.text.split('\n').find(line => line.startsWith('Topic 请求：'))
