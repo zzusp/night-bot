@@ -19,6 +19,9 @@
 .feedback-handoff-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .feedback-github-handoff p { color: var(--board-muted); line-height: 1.6; margin: 12px 0 0; }
 
-.feedback-privacy { margin-block: 0 16px; min-width: 0; }
+.feedback-privacy { margin-block: 0; min-width: 0; }
 .feedback-privacy-summary { margin: 0; color: var(--board-muted); font-size: 12px; line-height: 1.65; }
 .feedback-image-notice { color: var(--board-muted); font-size: 12px; line-height: 1.65; }
+
+/* The form grid owns spacing; do not stack privacy and consent margins. */
+.feedback-page .feedback-privacy + .feedback-consent { margin-top: 0; }

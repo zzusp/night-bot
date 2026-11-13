@@ -27,6 +27,18 @@ test('inline privacy disclosure keeps explicit collection and publication separa
   await expect(consent).not.toBeChecked()
   await expect(consent).toHaveAccessibleName(/fixture\/model.*https:\/\/models.example/)
   await expect(page.getByRole('button', {name:'开始诊断',exact:true})).toBeDisabled()
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({width,height:960})
+    const noticeBox = await page.locator('.feedback-privacy').boundingBox()
+    const consentBox = await consent.locator('..').boundingBox()
+    expect(noticeBox).not.toBeNull()
+    expect(consentBox).not.toBeNull()
+    const gap = consentBox!.y - (noticeBox!.y + noticeBox!.height)
+    expect(gap).toBeGreaterThanOrEqual(8)
+    expect(gap).toBeLessThanOrEqual(12)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({path:test.info().outputPath(`feedback-ai-inline-${width}.png`)})
+  }
   expect(writes).toEqual([])
   await page.getByLabel('标题',{exact:true}).fill('测试问题')
   await page.getByLabel('问题详情',{exact:true}).fill('仅使用合成测试数据')
