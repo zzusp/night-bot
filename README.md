@@ -185,6 +185,10 @@ pnpm --dir packages/web-console test:browser
 
 官网与文档站独立位于 [`website/`](website)，本地构建和 GitHub Pages 发布说明见 [网站维护说明](website/README.md)。网站依赖不会进入 Bot 的运行时依赖图。
 
+## 报错反馈取证
+
+Web 报错反馈在操作者明确同意后启动只读 Pi 调查；标题与描述中的原文片段可用于定位消息、业务任务和原生定时事项，不要求先找到最近的创建消息。查询失败会说明固定错误原因与纠正方法，历史消息和候选目录可按返回游标续查；无匹配、日志空计数或读取失败都不表示没有记录或错误。调度证据区分单次/循环并展示保存的时间参数，指令内的停止条件仍须另外核实。调查只生成可编辑草稿，发布 Issue 仍需预览后单独确认；详见 [Web 运维](docs/ops/web-console-local.md#报错反馈现场取证)。
+
 ## 来源与许可
 
 Night Bot 使用 Pi SDK，早期移植来源为 `HiQ-AI/dingtalk-dsh-assistant@93e431a`，Web 设计参考 [BoardUI](https://github.com/BoardUI/boardui)。具体来源、版本、保留实现及许可见 [THIRD_PARTY.md](THIRD_PARTY.md) 和 [`licenses/`](licenses)。
