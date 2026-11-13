@@ -664,6 +664,7 @@ html, body, #root { width: 100%; min-width: 0; }
 /* Conversation-only controls float within the content, not a second header. */
 .chat-panel { position: relative; }
 .conversation-tools { position: absolute; top: 8px; right: 16px; z-index: 3; }
+.conversation-tools .rail-toggle { display: inline-flex; }
 .chat-panel .message-column { padding-top: 56px; }
 .chat-panel .transcript { scroll-padding-top: 52px; }
 @media (max-width: 760px) { .main-frame { --content-inset: 16px; } }
