@@ -68,3 +68,11 @@ test('public progressive recall opens only the requested Markdown layers',async 
  reads.length=0;const detail=await read.execute({topic:'preferences',key:'reports'},{agent:actor});assert.equal(detail.entries[0].text,'Concise reports');assert.deepEqual(reads.filter(name=>name.includes('/entries/')),['categories/preferences/entries/reports.md']);assert.ok(!reads.some(name=>name.startsWith('sources/')));assert.doesNotMatch(JSON.stringify(detail),/SOURCE_ONLY/)
  reads.length=0;const source=await read.execute({topic:'preferences',key:'reports',includeSources:true},{agent:actor});assert.equal(source.entries[0].context.background.quote,'SOURCE_ONLY');assert.equal(reads.filter(name=>name.startsWith('sources/')).length,1)
 })
+
+test('matching completed context includes effective requirements and latest instruction, not supplement history',()=>{
+ const task={taskId:'t',requirementRevision:2,controlRevision:1,contextRevision:3,runSequence:1,request:'Current brief',requirements:['Current requirement'],currentInput:{text:'Latest scoped change'},supplements:[{text:'Obsolete scope'}]}
+ const event={id:'done',requirementRevision:2,controlRevision:1,contextRevision:3,runSequence:1,result:{summary:'Done'}}
+ const input=reflectionInput(task,event)
+ assert.deepEqual(input.facts[0].requirements,['Current requirement']);assert.equal(input.facts[0].latestInstruction,'Latest scoped change');assert.doesNotMatch(JSON.stringify(input),/Obsolete scope/)
+ const stale=reflectionInput({...task,requirementRevision:3},event);assert.equal(stale.facts[0].latestInstruction,undefined);assert.equal(stale.facts[0].requirements,undefined)
+})

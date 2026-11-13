@@ -69,7 +69,7 @@ export function committedLiveSupplementAdmissions(manager,task){
   if(packet.source.kind!=='task-input'||!isDeepStrictEqual(input.details,{packetId,source:packet.source})||!isDeepStrictEqual(input.content,packet.content)||acks[0].payload.entryId!==input.id||binding.taskId!==task.taskId||binding.sessionId!==task.sessionId||binding.leaseEpoch!==row.leaseEpoch||binding.requirementRevision!==row.requirementRevision||binding.controlRevision!==row.controlRevision||binding.contextRevision!==row.contextRevision)fail('TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT')
   let body;try{body=JSON.parse(packet.content[0].text)}catch{fail('TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT')}
   // The committed packet remains byte-exact; SQL snapshots have one old or neutral model view.
-  if(!Array.isArray(row.sourceSnapshots)||!isDeepStrictEqual(body.sources,row.sourceSnapshots)&&!isDeepStrictEqual(body.sources,row.sourceSnapshots.map(conversationSource))||body.task?.request!==row.request||body.task.contextRevision!==row.contextRevision||body.supplement?.messageId!==row.messageId||body.supplement.contextRevision!==row.contextRevision)fail('TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT')
+  if(!Array.isArray(row.sourceSnapshots)||!isDeepStrictEqual(body.sources,row.sourceSnapshots)&&!isDeepStrictEqual(body.sources,row.sourceSnapshots.map(conversationSource))||body.task?.request!==row.request||body.task.contextRevision!==row.contextRevision||body.supplement?.messageId!==row.messageId||body.supplement.contextRevision!==row.contextRevision||row.text!==undefined&&body.supplement.text!==row.text)fail('TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT')
   result.push({messageId:row.messageId,entryId:input.id,packetId,binding:{kind:'task-session',...binding}})
  }
  return result

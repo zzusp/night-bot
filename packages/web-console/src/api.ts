@@ -56,6 +56,7 @@ export interface MessageBodyPage { messageId: string; text: string; offset: numb
 export interface HistoryReader { endpoint: string; revision: string; onRecover?: () => void }
 export interface Message {
   messageVersion?: number;
+  transient?: boolean;
   id: string; role: 'user' | 'assistant' | 'tool'; text: string; createdAt?: string;
   status?: string; senderName?: string; requestId?: string; taskIds?: string[];
   kind?: string; toolName?: string; callId?: string; isError?: boolean; redacted?: boolean; truncated?: boolean;
@@ -70,7 +71,8 @@ export interface TaskTodos {
   items: { text: string; status: 'pending' | 'in_progress' | 'completed'; redacted: boolean }[];
   updatedAt: string | null; source: MessageSource;
 }
-export interface ExecutionPage extends Page<Message> { status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number; checkpoint?: string | null; before?: string | null; hasNewer?: boolean; todos?: TaskTodos | null }
+export interface ExecutionLive {items: Message[]; active: boolean; revision?: string; phase?: 'waiting' | 'thinking' | 'text' | 'tool'; phaseStartedAt?: string}
+export interface ExecutionPage extends Page<Message> { live?: ExecutionLive; status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number; checkpoint?: string | null; before?: string | null; hasNewer?: boolean; todos?: TaskTodos | null }
 export interface LearningSource { taskId: string; eventId: string; reviewId: string }
 export interface TaskReview { reviewId: string; taskId: string; status: 'done' | 'skipped' | 'failed'; summary: string; at: string; eventId: string }
 export interface LearningChange {

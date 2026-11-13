@@ -877,7 +877,9 @@ for(const audience of ['operator','requester'])test(`Router resumes a waiting ta
       assert.equal(input.humanReview,undefined,'Router alone judges whether the supplemental information answers the question')
       runs.push(input.task.sessionId)
       if(taskStep++===0){writes++;return {tool:'write',args:{path:'work/proof.txt',content:'original-session-proof'}}}
-      if(!input.task.humanRequests?.some(row=>row.status==='answered'))return {tool:'task_result',args:{decision:{action:'wait',audience,question:'Which environment variable identifies the read-only target?',summary:'Waiting for the target variable name',evidence:['Original proof saved'],limitations:['Target variable name missing']}}}
+      assert.equal(input.task.humanRequests,undefined,'execution gets the current brief, not the historical human-request ledger')
+      const hasAnswer=input.updates?.some(row=>row.text.includes('VERIFY_TARGET'))&&input.sources?.some(row=>row.text.includes('VERIFY_TARGET'))
+      if(!hasAnswer)return {tool:'task_result',args:{decision:{action:'wait',audience,question:'Which environment variable identifies the read-only target?',summary:'Waiting for the target variable name',evidence:['Original proof saved'],limitations:['Target variable name missing']}}}
       if(reads++===0)return {tool:'read',args:{path:'work/proof.txt'}}
       assert.match(JSON.stringify(body),/original-session-proof/,'continuation reads the actual original file')
       return {tool:'task_result',args:{decision:{action:'complete',summary:'Original proof read after the Router continuation',evidence:['Original proof read: original-session-proof'],limitations:[]}}}

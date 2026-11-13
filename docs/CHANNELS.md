@@ -381,3 +381,18 @@ Batching uses projected UTF-8 bytes (128 KiB target) and at most 15 user sources
 with at most 30 inbox events. A single larger original is delivered intact and
 alone, not silently truncated. Pending overflow remains in the inbox. This is a
 packing target, not a promise that arbitrary user content fits the model window.
+
+### 执行会话交接：当前简报与本轮增量
+
+Router 的 `resident_task_action.request` 是可显式替换的当前有效任务简报，
+`text` 是本轮指令，不再把历次补充、修订或操作员输入拼接到 request。
+目标或约束改变时，Router 使用 revise/reopen 同步提交完整有效的 request、
+objective 与 requirements，明确移除已失效要求；Host 不通过关键词或截断猜测
+哪些要求过时。升级前已有的累计 request 不自动重写，由 Router 回查真实来源后
+显式修订。来源消息、来源关联、动作回执和 Pi 历史仍保留。
+
+执行输入采用业务字段白名单，不再发送任务的历史审计数组和调度队列。
+同一 Pi 会话后续轮只补入未正式 admitted 的来源版本和本轮增量；人工答复核对
+仍携带完整候选来源。初次执行保留完整原始来源与材料。已持久化的待处理输入
+按原字节恢复，不因升级重新生成；旧格式仍可读。当前简报不能清除 Host 的
+未知效果、档案恢复待核验和精确旧调用 noReplay 约束。

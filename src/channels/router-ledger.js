@@ -216,13 +216,15 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(task.conversationId!==source.groupId)fail('ROUTER_CONVERSATION_SCOPE')
       if(!['task.supplement','task.resume','task.revise','task.reopen','task.control','task.arrange'].includes(a.kind))fail('ROUTER_TASK_ACTION_INVALID')
       if(a.action.expectedRequirementRevision!==task.requirementRevision || a.action.expectedControlRevision!==task.controlRevision)fail('DYNAMIC_TASK_REVISION_STALE')
+      if(a.action.request!==undefined&&!['task.revise','task.reopen'].includes(a.kind))fail('TASK_CONTEXT_CLASSIFICATION_CONFLICT')
       if(a.sameGoal===true&&(a.kind!=='task.reopen'||['objective','title','requirements'].some(key=>a.action[key]!==undefined&&digest(a.action[key])!==digest(task[key]))))fail('ROUTER_SAME_GOAL_CONFLICT')
       if(a.kind==='task.arrange')return arrange(task,a.action,source,a.operationId,commandId)
       // Host 派生值只在未命中业务回执后计算，避免跨代重试受当前任务或 actor 变化影响。
       const action={...a.action,sourceRefs:[...new Set([...(task.sourceRefs??[]),source.sourceId])],operationId:a.operationId,sameGoal:a.sameGoal}
       if(['task.supplement','task.resume','task.revise','task.reopen'].includes(a.kind)) {
         const message=required(a.action.text??source.text)
-        action.request=[task.request,['task.supplement','task.resume'].includes(a.kind)?'[原消息补充]':'[原消息调整]',message].join(String.fromCharCode(10,10))
+        action.currentInput={id:a.operationId,text:message,sourceId:source.sourceId,messageVersion:source.version}
+        if(a.action.request!==undefined)action.request=required(a.action.request)
         if(['task.supplement','task.resume'].includes(a.kind)) {action.text=message;if(a.hostLiveBinding!==undefined)action.liveBinding=a.hostLiveBinding}
       }
       const result=a.kind==='task.resume'

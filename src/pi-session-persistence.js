@@ -1,3 +1,4 @@
+import {readPiLiveOutput} from './runtime/pi-live-output.js'
 import {nativeStore} from './runtime/pi-native-store.js'
 import {decodePiJournal,piJournalFilename} from './runtime/pi-journal.js'
 import { Service } from '@deepseek-ai/cordis'
@@ -124,6 +125,12 @@ export default class PiSessionPersistence extends Service {
       manager.appendCustomEntry('night.header',{header:this.ctx.get('portablePaths')?.header(header)??header,storage:{engine:'pi-native',version:1}})
       return nativeStore({backend:this,path,header,manager,lease,options})
     }catch(error){await lease.close();throw error}
+  }
+  readLive(id) {
+    if(this.closed)return null
+    const actor=this.ctx.get('agents')?.get(id)
+    if(!actor||actor.id!==id||actor.metadata?.id!==id||actor.piSession?.sessionId!==id||actor.lifecycle?.isLive()!==true)return null
+    return readPiLiveOutput(actor)
   }
   async readNative(id,options={}) {
     options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED')

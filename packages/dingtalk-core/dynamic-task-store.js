@@ -673,10 +673,10 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         if(task.humanReviewLease===task.leaseEpoch||taskHumanWait(task)||wakes(task.taskId).some(item=>item.state==='claimed'&&item.leaseEpoch===task.leaseEpoch&&item.kind==='task.dialogue'))fail('TASK_LIVE_SUPPLEMENT_FORBIDDEN')
       }
       task.contextRevision = previousContextRevision + 1
-      for (const field of ['request', 'sourceRefs', 'topicRefs']) if (a[field] !== undefined) task[field] = clone(a[field])
+      for (const field of ['request', 'sourceRefs', 'topicRefs','currentInput']) if (a[field] !== undefined) task[field] = clone(a[field])
       if (a.replyBindings !== undefined) task.replyBindings = topicFacts.bindings(task, a.replyBindings)
       if (a.operationId) task.appliedOperations = [...new Set([...(task.appliedOperations ?? []), a.operationId])]
-      ;(task.supplements ??= []).push({ id: messageId, text: message, receivedAt: stamp, contextRevision: task.contextRevision })
+      ;(task.supplements ??= []).push({ id: messageId, text: message, receivedAt: stamp, contextRevision: task.contextRevision,requirementRevision:task.requirementRevision })
       // 待答来源先由统筹核对；不能把未经确认的摘要提前反馈给仍在运行的执行。
       for (const execution of execs(task.taskId)) if (!task.humanRequests?.some(item => item.status === 'waiting-reply') && !terminalExecutions.has(execution.status) && executionCurrent(execution)) {
         execution.feedback ??= []
@@ -685,7 +685,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         put('dynamic_executions', execution)
       }
       const supplementWakeId=`wake:${commandId}`
-      if(a.liveBinding!==undefined)(task.liveSupplements??=[]).push({messageId,wakeId:supplementWakeId,fromContextRevision:previousContextRevision,contextRevision:task.contextRevision,leaseEpoch:task.leaseEpoch,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,sourceRefs:clone(task.sourceRefs??[]),sourceSnapshots:(task.sourceRefs??[]).map(id=>{const {stages,...source}=get('dynamic_sources',id);return clone(source)}),request:task.request,state:'pending'})
+      if(a.liveBinding!==undefined)(task.liveSupplements??=[]).push({messageId,wakeId:supplementWakeId,fromContextRevision:previousContextRevision,contextRevision:task.contextRevision,leaseEpoch:task.leaseEpoch,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,sourceRefs:clone(task.sourceRefs??[]),sourceSnapshots:(a.currentInput?.sourceId?[a.currentInput.sourceId]:(task.sourceRefs??[])).map(id=>{const {stages,...source}=get('dynamic_sources',id);return clone(source)}),request:task.request,text:message,...(task.currentInput?{currentInput:clone(task.currentInput)}:{}),state:'pending'})
       saveTask(task); wake(task.taskId, kind, { messageId, contextRevision: task.contextRevision,
         ...(reviewSources.length ? { humanRequestId: request.requestId, sourceIds: reviewSources.map(source => source.sourceId) } : {}) }, supplementWakeId)
       return changed({ task })
@@ -803,6 +803,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         task.controlRevision++; task.control = a.control
         if (a.control === 'cancelled') { task.status = 'cancelled'; task.cancelledAt ??= stamp }
       }
+      if(a.currentInput!==undefined)task.currentInput=clone(a.currentInput)
+      else if(['task.revise','task.reopen'].includes(kind))delete task.currentInput
       if (a.sourceRefs !== undefined) task.sourceRefs = clone(array(a.sourceRefs))
       if (a.topicRefs !== undefined) task.topicRefs = clone(array(a.topicRefs))
       if (a.operationId) task.appliedOperations = [...new Set([...(task.appliedOperations ?? []), text(a.operationId, 'operationId')])]
