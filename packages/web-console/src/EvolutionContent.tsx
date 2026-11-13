@@ -28,6 +28,7 @@ export default function EvolutionContent({ item, onClose, onRefreshList }: {
     <div className="evolution-reader-toolbar"><Button variant="ghost" icon={<RiArrowLeftLine size={16}/>} onClick={onClose}>返回列表</Button><Button variant="ghost" icon={<RiRefreshLine size={16}/>} busy={query.loading} onClick={query.refresh}>刷新内容</Button></div>
     <header className="evolution-content-heading">
       <h2 id="evolution-content-title" ref={heading} tabIndex={-1}>{item.name || '未命名记录'}</h2>
+      {item.kind === 'memory' && item.summary && item.summary !== item.name && <p className="evolution-content-summary">{item.summary}</p>}
     </header>
     <div className="evolution-reader-tabs"><div className="evolution-content-switch" role="group" aria-label="内容视图">
       <Button variant="ghost" aria-pressed={view === 'current'} onClick={() => setView('current')}>当前内容</Button>

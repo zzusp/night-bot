@@ -29,11 +29,12 @@ const hooks = registerHooks({
     return next(url, context)
   },
 })
-let UsageSummary, EvolutionListActions, EvolutionEntryList, EvolutionEntryMetadata, Pagination
+let UsageSummary, EvolutionListActions, EvolutionEntryList, EvolutionEntryMetadata, EvolutionContent, Pagination
 try {
   ({UsageSummary, EvolutionListActions} = await import('../src/EvolutionPage.tsx'))
   ;({default: EvolutionEntryList, EvolutionEntryMetadata} = await import('../src/components/EvolutionEntryList.tsx'))
   ;({Pagination} = await import('../src/components/Shared.tsx'))
+  ;({default: EvolutionContent} = await import('../src/EvolutionContent.tsx'))
 } finally { hooks.deregister() }
 
 const data = {
@@ -133,4 +134,22 @@ test('evolution ten-row pagination keeps shared twenty-row default unchanged', (
   const props = {offset:10,total:23,nextOffset:20,onPage(){},pageSize:10}
   assert.match(renderToStaticMarkup(createElement(Pagination, props)), /第 2 页/)
   assert.match(renderToStaticMarkup(createElement(Pagination, {...props,offset:20,pageSize:undefined})), /第 2 页/)
+})
+
+
+test('memory list shows escaped index labels without wrapping; detail preserves the full summary', () => {
+  const summary = '文件创建与读回验证通过，不等于已通过渠道送达。'
+  const item = {id:'readable', kind:'memory', name:'验证与交付 <script>', summary, scope:'bot', status:'applied', revision:1}
+  const html = renderToStaticMarkup(createElement(EvolutionEntryList, {items:[item], onView(){}}))
+  assert.match(html, /验证与交付 &lt;script&gt;/)
+  assert.match(html, /class="evolution-item-summary">文件创建与读回验证通过，不等于已通过渠道送达。/)
+  assert.doesNotMatch(html, /<script>/)
+  const promoted = renderToStaticMarkup(createElement(EvolutionEntryList, {items:[{...item,name:summary,summary}], onView(){}}))
+  assert.doesNotMatch(promoted, /class="evolution-item-summary"/)
+  const css = readFileSync(new URL('../src/styles/evolution.css', import.meta.url), 'utf8')
+  for (const name of ['title', 'summary']) assert.match(css, new RegExp('\\.evolution-item-' + name + ' \\{[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;'))
+  assert.match(css, /\.evolution-content-summary \{[^}]*overflow-wrap: anywhere/)
+  const detail = renderToStaticMarkup(createElement(EvolutionContent, {item:{...item,summary:summary.repeat(12)}, onClose(){}, onRefreshList(){}}))
+  assert.ok(detail.includes(summary.repeat(12)))
+  assert.match(detail, /class="evolution-content-summary"/)
 })

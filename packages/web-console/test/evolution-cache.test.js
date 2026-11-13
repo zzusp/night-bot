@@ -268,7 +268,7 @@ test('invalid or private item metadata never leaves a requested page', async t =
   const f=await setup(t); await f.cache.close()
   const path=join(f.directory,filename('reader'))
   for(const mutate of [
-    item=>{item.origins='broken'}, item=>{item.taskIds={length:1}},
+    item=>{item.summary={unexpected:'value'}}, item=>{item.origins='broken'}, item=>{item.taskIds={length:1}},
     item=>{item.provenance={conversationName:{private:1}}},
     item=>{item.memoryUse={lastAccess:{counter:'read',at:'now',provenance:3}}},
     item=>{item.scope='__proto__'}, item=>{item.status='constructor'},

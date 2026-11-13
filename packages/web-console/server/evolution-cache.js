@@ -30,6 +30,7 @@ const itemValid = item => object(item) && string(item.id) && item.id.length > 0
   && ['memory', 'skill'].includes(item.kind) && string(item.name)
   && ['applied', 'candidate', 'disabled', 'invalid', 'shadowed', 'undiscovered', 'unsupported'].includes(item.status)
   && optional(item.scope, value => ['bot', 'personal', 'group', 'project'].includes(value))
+  && optional(item.summary, string)
   && optional(item.origin, value => ['installed', 'learned'].includes(value))
   && optional(item.revision, value => string(value) || count(value)) && optional(item.location, string)
   && optional(item.taskIds, strings) && optional(item.provenance, provenance)

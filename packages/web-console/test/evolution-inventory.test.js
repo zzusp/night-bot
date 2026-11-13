@@ -16,7 +16,7 @@ async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'web-evolution-readonly-'))
   t.after(() => rm(root, {recursive: true, force: true}))
   const store = new MarkdownMemoryStore(join(root, 'memory')), binding = {actorId: 'reader'}, scope = memoryScope(binding)
-  await store.remember(scope, {topic: 'facts', key: 'one', text: 'Known fact', source: {sessionId: 'task-one', messageId: 'one'}})
+  await store.remember(scope, {topic: 'facts', key: 'one', text: 'Known fact\n\nPRIVATE_DETAIL_BODY', source: {sessionId: 'task-one', messageId: 'one'}})
   await store.remember(scope, {topic: 'experience', key: 'support', text: 'Verified lesson', source: {sessionId: 'task-one', messageId: 'two'}})
   const directory = store.directory(scope)
   await mkdir(join(directory, 'evolution'), {recursive: true})
@@ -48,7 +48,7 @@ test('Web inventory is read-only, scope-bound and keeps private matching keys ou
   assert.equal(inventory.memoryResources.length, 2)
   assert.equal(inventory.skillResources.length, 2)
   assert.ok(inventory.skillResources.find(row => row.provider === 'filesystem').path.endsWith('SKILL.md'))
-  assert.doesNotMatch(JSON.stringify(inventory.items), /storageId|scopeToken|contentVersion|Known fact|Verified procedure/)
+  assert.doesNotMatch(JSON.stringify(inventory.items), /storageId|scopeToken|contentVersion|PRIVATE_DETAIL_BODY|Verified procedure/)
   assert.deepEqual(await tree(f.root), before)
   await assert.rejects(readEvolutionInventory({...f, binding: {actorId: ''}}))
 })
@@ -99,7 +99,7 @@ test('inventory waits for the actual writer to finish its pending journal and re
   } finally {finish.resolve(); await write}
   const inventory = await read
   assert.equal(inventory.memory.acceptedCount, 3)
-  assert.equal(inventory.items.filter(item => item.name === 'facts/two').length, 1)
+  assert.equal(inventory.items.filter(item => item.name === 'New committed fact').length, 1)
   await assert.rejects(lstat(join(f.directory, 'pending.json')), {code: 'ENOENT'})
 })
 
@@ -217,6 +217,36 @@ test('layered inventory includes every category descriptor beyond the Bot read w
   assert.equal(second.snapshot.items.length, 13)
   assert.equal(new Set([...first.snapshot.items, ...second.snapshot.items].map(row => row.id)).size, 63)
 })
+
+
+test('memory display uses index title and summary, with generated-key and missing-label fallbacks', async () => {
+  const {memoryDisplayLabel} = await import('../server/evolution-inventory.js')
+  const entry = {topic: 'experience', key: 'separate-file-verification-from-delivery'}
+  const summary = '文件创建与读回验证通过，不等于已通过渠道送达。'
+  assert.deepEqual(memoryDisplayLabel({...entry, title: '交付与验证', summary}), {name: '交付与验证', summary})
+  assert.deepEqual(memoryDisplayLabel({...entry, title: entry.key, summary}), {name: summary})
+  assert.deepEqual(memoryDisplayLabel({...entry, title: 'experience/' + entry.key, summary}), {name: summary})
+  assert.deepEqual(memoryDisplayLabel({...entry, title: '  ', summary}), {name: summary})
+  assert.deepEqual(memoryDisplayLabel({...entry, title: summary, summary}), {name: summary})
+  assert.deepEqual(memoryDisplayLabel(entry), {name: 'experience/' + entry.key})
+})
+
+test('inventory projects index labels without changing identity or reading the leaf file', async t => {
+  const f = await fixture(t)
+  const old = await readEvolutionInventory(f)
+  const path = join(f.directory, 'index.md')
+  const source = await readFile(path, 'utf8')
+  await writeFile(path, source.replace('[one]', '[可读标题]').replace('Known fact', '文件创建与读回验证通过，不等于已通过渠道送达。'))
+  await writeFile(join(f.directory, entryPath('facts', 'one')), 'UNREADABLE_DETAIL_SENTINEL')
+  const before = await tree(f.root)
+  const result = await readEvolutionInventory(f)
+  const row = result.items.find(item => item.name === '可读标题')
+  assert.equal(row.summary, '文件创建与读回验证通过，不等于已通过渠道送达。')
+  assert.equal(row.id, old.items.find(item => item.name === 'Known fact').id)
+  assert.doesNotMatch(JSON.stringify(result.items), /UNREADABLE_DETAIL_SENTINEL|PRIVATE_DETAIL_BODY/)
+  assert.deepEqual(await tree(f.root), before)
+})
+
 
 test('today updates count distinct skills in Bot timezone, excluding old, future and invalid timestamps', () => {
   const now = Date.parse('2026-11-13T00:30:00Z')

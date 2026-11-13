@@ -84,7 +84,7 @@ export interface Overview { tasks: Page<Task> | null; running: Page<Task> | null
 
 export interface MemoryProvenance {channelId?: string;conversationId?: string;conversationName?: string;conversationType?: 'chat'|'chat-room';conversationKey?: string;taskId?: string;taskTitle?: string;messageId?: string;resolvedFrom?: string}
 export interface EvolutionItem {
-  id: string; kind: 'memory' | 'skill'; name: string; scope: 'bot'|'personal'|'group'|'project';
+  id: string; kind: 'memory' | 'skill'; name: string; summary?: string; scope: 'bot'|'personal'|'group'|'project';
   status: 'applied'|'candidate'|'disabled'|'invalid'|'shadowed'|'undiscovered'|'unsupported'; revision: string | number; updatedAt: string | null; taskId?: string;
   origin?: 'installed'|'learned';location?:string;modelUseCount?:number|null;userUseCount?:number|null;fileReadCount?:number|null;lastUsedAt?:string|null;updatedSinceUse?:boolean;
   memoryUse?:{readCount:number;searchCount:number;lastAccess?:{counter:string;at:string;provenance:MemoryProvenance|null}|null}|null;
