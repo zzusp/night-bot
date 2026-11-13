@@ -268,7 +268,7 @@ function LivePhase({live}: {live?: ExecutionLive}) {
 function ThinkingMessage({message, history, compact, live}: {message: Message; history?: HistoryReader; compact: boolean; live?: ExecutionLive}) {
   const [open, setOpen] = useState(!!message.transient);
   const isThinking = !!message.transient && live?.active && live.phase === 'thinking';
-  return <details className="thinking-message" open={open} onToggle={event => {if(event.target === event.currentTarget)setOpen(event.currentTarget.open);}}><summary><PiIcon path={mdiHeadLightbulb} className="pi-thinking-icon" size={14} /><span>{isThinking ? '思考中' : '模型思考'}</span>{isThinking && <LiveElapsed startedAt={live?.phaseStartedAt} />}<PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /></summary><MessageBody message={message} history={history} showSource={!compact} /></details>;
+  return <details className="thinking-message" open={open} onToggle={event => {if(event.target === event.currentTarget)setOpen(event.currentTarget.open);}}><summary><span>{isThinking ? '思考中' : '模型思考'}</span>{isThinking && <LiveElapsed startedAt={live?.phaseStartedAt} />}<PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /></summary><MessageBody message={message} history={history} showSource={!compact} /></details>;
 }
 
 export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat', older, live }: { live?: ExecutionLive; presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void; older?: OlderHistory }) {
