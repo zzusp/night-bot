@@ -1095,7 +1095,7 @@ test('Router synthesizes project memory with linked evidence, cold recall and re
   t.diagnostic(JSON.stringify({case:'router-contextual-memory',sections:3,contextResolved:true,historyIsEvidenceOnly:true,subject:'context-dependent',diskAndDetailVerified:true,coldRecall:true,duplicateNoReplay:true,updateAndDiff:true,noSpeculation:true,deleted:true,realMessages:0}))
 })
 
-test('taskless triage persists preparation phases and native metrics through disposal and restart',{timeout:nativeTestTimeout(60000)},async t=>{
+test('taskless persistent triage retains owner and native metrics through service restart',{timeout:nativeTestTimeout(60000)},async t=>{
  const h=await residentRouterHost(t,body=>{
   if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:false}))
   return {text:'No further work'}
@@ -1108,9 +1108,9 @@ test('taskless triage persists preparation phases and native metrics through dis
  },'durable triage tail')
  assert.equal(rows.length,1);const row=rows[0]
  assert.equal(row.taskId,undefined);assert.equal(row.groupId,h.host.ctx.channels.identity(message).sessionId)
- assert.ok(row.sessionId.startsWith('session-triage-'));assert.equal(h.host.ctx.agents.get(row.sessionId),undefined)
+ assert.ok(row.sessionId.startsWith('session-triage-'));assert.ok(h.host.ctx.agents.get(row.sessionId),'successful batch retains its owner')
  assert.equal(row.modelCalls,1);assert.equal(row.toolCalls,1);assert.equal(row.toolResults,1)
- for(const phase of ['triage-total','session-create','workspace','session-store-open','session-prepare-actor','session-resolve-resources','session-sdk-create','resources-before-run','instructions','skills','sdk-reload','input-enqueue','input-acknowledge','request-prepare','request-guards','request-commit','triage-commit','session-dispose']){
+ for(const phase of ['triage-total','session-create','workspace','session-store-open','session-prepare-actor','session-resolve-resources','session-sdk-create','resources-before-run','instructions','skills','sdk-reload','input-enqueue','input-acknowledge','request-prepare','request-guards','request-commit','triage-commit']){
   assert.ok(row.phaseMs[phase]?.count>0,phase);assert.equal(row.phaseMs[phase].failures,0,phase)
  }
  assert.equal(row.phaseMs['resources-deliver'],undefined,'custom delivery must not duplicate before-run reads')

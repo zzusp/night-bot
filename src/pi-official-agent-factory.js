@@ -228,6 +228,12 @@ export class OfficialAgentFactory {
     return {conversationId:store.header.conversationId,generation:store.header.generation,sessionId:id,packetId:packet.id,inputEntryId:input.id,failedEntryId,checkpointRevision:store.snapshot().revision}
    }
    const handle={actor,agent:actor,session:bundle.session,
+    async retireTriagePending(){
+     active();check()
+     if(store.header.runtimeOwner!=='channel-triage'||ownerCtx.agents.currentInitiator?.()!==undefined)throw fail('PI_TRIAGE_RECOVERY_HOST_ONLY')
+     if(pending.size||!bundle.session.isIdle)throw fail('PI_TRIAGE_RECOVERY_BUSY')
+     return admission.cancelPending('triage-batch-refreshed')
+    },
     enqueue:packet=>{active();if(routerFrozen||routerContinuing)throw fail('PI_ROUTER_FROZEN');return admission.enqueue(packet)},
     deliver:(packetId,deliveryOptions)=>{
      active();if(routerFrozen||routerContinuing)throw fail('PI_ROUTER_FROZEN');const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,()=>bundle.deliver(packetId,deliveryOptions)));pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation
