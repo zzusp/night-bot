@@ -516,3 +516,9 @@ TODO-card color correction: retain the approved card structure and real TODO sta
 Model streaming feedback follows actual Pi phase events: waiting, thinking, text generation, and tools. The active view polls single-flight every 250ms, stops when hidden, and clears provisional feedback on authorization/error. This is live cumulative SDK output, not fake typing or a token-rate estimate. Phase elapsed time uses the received native phase start; no token counter is invented. Already-public thinking blocks open while live and respect the user's manual collapse; redacted/hidden reasoning remains unavailable. Safe short Chinese natural prose can update before block_end. Structured/ASCII or potentially sensitive text remains buffered until safely projectable; status feedback continues even when no body can be exposed. Tool preview safety is unchanged.
 
 Thinking display correction: use original neutral board-text/board-muted colors, no purple rail or purple panel. Remove stacked left indents: thinking header/body share the normal message text inset (16px plus its 1px border offset), without a leading icon, with no nested body margin or padding. Streaming state, timestamps, disclosure and safety remain unchanged.
+
+### 任务内容区紧凑展示（2026-11-13）
+
+右侧消息以实际排版行盒判断：超过三行默认只显示前三行，提供「展开 / 收起」；三行以内不添加控制。随容器宽度及字体重新测量，普通轮询不重置手动展开。原文、Markdown、授权和正文续读保持不变，不生成摘要，不改写历史累计输入；收起时裁切区域内的链接不进入键盘焦点顺序。
+
+任务详情桌面左执行面板直接顶齐页面外框，全局工具仍在右元信息栏上方；窄屏保留独立工具栏避免遮挡。执行记录左右对称内边距，桌面24px、窄屏16px，滚动条两侧对称占位。TODO卡片在执行画布右上悬浮，不随消息滚走，展开不推动记录；首屏预留紧凑卡片安全空间，长清单自身滚动。颜色继续使用既有中性色和蓝色用户消息。
