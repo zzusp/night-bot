@@ -629,3 +629,9 @@ html, body, #root { width: 100%; min-width: 0; }
 .agent-progress-steps { border-top: 1px solid var(--board-border); padding-top: 6px; }
 .agent-progress-heading { border-radius: 11px; }
 .agent-progress[open] > .agent-progress-heading { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+/* Upstream compositor-only layer: clipping stays stationary; only the band moves. */
+.pi-session-card.is-running::before, .pi-session-card.is-running::after { content: none; }
+.pi-card-sweep-layer { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: -1; }
+.pi-card-sweep-layer::before { content: ''; position: absolute; top: 0; bottom: 0; left: -460px; right: -460px; background-image: repeating-linear-gradient(90deg, transparent 0 60px, rgb(234 179 8 / 16%) 230px, transparent 400px 460px), linear-gradient(rgb(234 179 8 / 5%),rgb(234 179 8 / 5%)); animation: pi-card-translate 3.4s linear infinite; }
+@keyframes pi-card-translate { to { transform: translateX(460px); } }
+@media(prefers-reduced-motion:reduce) { .pi-card-sweep-layer::before { animation: none; } }

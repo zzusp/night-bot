@@ -63,7 +63,7 @@ function MessageProvenance({ source }: { source?: MessageSource }) {
     {source.callId && <><dt>工具调用</dt><dd><code>{source.callId}</code></dd></>}
   </dl></details> : null;
 }
-function MessageBody({ message, history, plain = false, showSource = true, disclosure, onUnavailable }: { onUnavailable?: () => void; message: Message; history?: HistoryReader; plain?: boolean; showSource?: boolean; disclosure?: { kind: 'input' | 'output'; name: string; state?: string } }) {
+function MessageBody({ message, history, plain = false, showSource = true, disclosure, onUnavailable, formatText }: { formatText?: (text: string, offset: number) => ReactNode; onUnavailable?: () => void; message: Message; history?: HistoryReader; plain?: boolean; showSource?: boolean; disclosure?: { kind: 'input' | 'output'; name: string; state?: string } }) {
   const [bodyOpen, setBodyOpen] = useState(false);
   const [bodyOpened, setBodyOpened] = useState(false);
   const [cursor, setCursor] = useState<{ offsets: number[]; revision?: string }>({ offsets: [0] });
@@ -91,7 +91,7 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
   const body = <>
     {query.error && <Notice error={query.error} stale={!!page} onRetry={reset} />}
     {offset && !page ? query.loading ? <Loading>正在读取正文…</Loading> : <p className="message-scope">这一段正文暂不可读，可回到首段重新获取。</p>
-      : plain ? <pre className="tool-content" tabIndex={0}><code>{text || '此记录没有可展示的文字。'}</code></pre> : <Markdown text={text || ''} />}
+      : plain && formatText ? formatText(text || '', offset) : plain ? <pre className="tool-content" tabIndex={0}><code>{text || '此记录没有可展示的文字。'}</code></pre> : <Markdown text={text || ''} />}
     {((nextOffset != null && history) || offset > 0) && <nav className="body-pagination" aria-label="正文分页">
       <span>{text !== undefined ? `正文 ${text.length ? offset + 1 : offset}–${offset + text.length}${total !== undefined ? ` / ${total}` : ''}` : '正文读取中'}</span><div>
         <Button variant="ghost" disabled={!offset} onClick={() => setCursor(previous => ({ ...previous, offsets: previous.offsets.slice(0, -1) }))}>上一段</Button>
@@ -134,6 +134,27 @@ function toolSummary(item: ToolItem): string {
   } catch { return name; }
 }
 
+// Specialized read/bash presentation uses the same public body reader, so
+// pagination, redaction and denied-read behavior still apply to every field.
+function toolInputPresentation(name: string, text: string): ReactNode {
+  try {
+    const args = JSON.parse(text);
+    const allowed = name === 'read' ? ['path', 'offset', 'limit'] : ['command', 'timeout'];
+    if (!args || typeof args !== 'object' || Object.keys(args).some(key => !allowed.includes(key))) throw new Error('generic');
+    if (name === 'read' && typeof args.path === 'string') return <div className="pi-read-path"><code>{args.path}</code>{Number.isInteger(args.offset) && <small>从第 {args.offset} 行</small>}{Number.isInteger(args.limit) && <small>{args.limit} 行</small>}</div>;
+    if (['bash', 'pwsh'].includes(name) && typeof args.command === 'string') return <div className="pi-shell-command"><span aria-hidden="true">$</span><code>{args.command}</code>{typeof args.timeout === 'number' && <small>{args.timeout}s</small>}</div>;
+  } catch { /* Unknown/public custom tools retain complete input. */ }
+  return <pre className="tool-content"><code>{text}</code></pre>;
+}
+function readOutputPresentation(text: string, offset: number, input?: string): ReactNode {
+  let start = 1;
+  try { const n = JSON.parse(input || '{}').offset; if (Number.isInteger(n) && n > 0) start = n; } catch { /* no supplied source offset */ }
+  // Subsequent body pages use character offsets, not source line offsets.
+  // Do not invent a line number when the preceding fragments are unavailable.
+  const lines = text.split('\n');
+  return <pre className="tool-content pi-read-output"><code>{lines.map((line, index) => <span className="pi-code-line" key={index}>{offset === 0 && <span className="pi-line-number" data-line={start + index} aria-hidden="true" />}<span>{line || '\u200b'}{index < lines.length - 1 ? '\n' : ''}</span></span>)}</code></pre>;
+}
+
 function ToolActivity({ item, history, compact = false }: { item: ToolItem; history?: HistoryReader; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState(false);
@@ -168,9 +189,9 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
         {!result && <span className="pi-tool-state">{states[state]?.[0] || state}</span>}
         <RiArrowRightSLine className="pi-tool-chevron" size={14} aria-hidden="true" />
       </summary>
-      {opened && <div className="pi-tool-body">
-        <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain onUnavailable={() => setSummaryHidden(true)} /> : <span className="execution-tool-missing">{item.inputElsewhere ? '输入见上方调用。' : '本页无输入记录。'}</span>}</section>
-        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出</h4><MessageBody message={output} history={history} plain onUnavailable={() => setSummaryHidden(true)} /></section>)}
+      {opened && <div className={`pi-tool-body${['read', 'bash', 'pwsh'].includes(message.toolName || '') ? ' pi-specialized-tool' : ''}`}>
+        <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain formatText={['read', 'bash', 'pwsh'].includes(message.toolName || '') ? text => toolInputPresentation(message.toolName!, text) : undefined} onUnavailable={() => setSummaryHidden(true)} /> : <span className="execution-tool-missing">{item.inputElsewhere ? '输入见上方调用。' : '本页无输入记录。'}</span>}</section>
+        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出</h4><MessageBody message={output} history={history} plain formatText={message.toolName === 'read' ? (text, offset) => readOutputPresentation(text, offset, item.call?.text) : undefined} onUnavailable={() => setSummaryHidden(true)} /></section>)}
         {!result && <section className="tool-part"><h4>输出</h4><span className="execution-tool-missing">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</span></section>}
       </div>}
     </details>
@@ -189,7 +210,7 @@ function ToolActivity({ item, history, compact = false }: { item: ToolItem; hist
       {opened && <>
         <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain />
           : <p className="message-scope">{item.inputElsewhere ? '见上方调用。' : '本页无输入记录。'}</p>}</section>
-        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain onUnavailable={() => setSummaryHidden(true)} /></section>)}
+        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain formatText={message.toolName === 'read' ? (text, offset) => readOutputPresentation(text, offset, item.call?.text) : undefined} onUnavailable={() => setSummaryHidden(true)} /></section>)}
         {!result && <section className="tool-part"><h4>输出</h4><p className="message-scope">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</p></section>}
       </>}
     </details></div>

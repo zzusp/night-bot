@@ -128,3 +128,14 @@
 @media(max-width:760px) { .execution-transcript .execution-tool-group > summary, .pi-tool-step > summary, .execution-transcript .thinking-message > summary { min-height: 44px; } }
 @media(prefers-reduced-motion:reduce) { .pi-tool-status.is-running { animation:none; } }
 .pi-offscreen .pi-tool-status.is-running { animation-play-state:paused; }
+.pi-specialized-tool .tool-part h4 { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
+.pi-specialized-tool .tool-part + .tool-part { margin-top: 4px; }
+.pi-read-path, .pi-shell-command { display: flex; align-items: flex-start; gap: 8px; font: 12px/1.5 var(--execution-mono); color: var(--board-muted); }
+.pi-read-path code, .pi-shell-command code { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pi-read-path small, .pi-shell-command small { font: 10px/1.8 var(--execution-mono); }
+.pi-shell-command > span { color: var(--board-success, #4d9c70); }
+.execution-transcript .pi-tool-body .pi-read-output { padding: 8px; background: var(--board-panel); border-radius: 4px; max-height: 320px; overflow: auto; }
+.pi-code-line { display: flex; }
+.pi-code-line > span:last-child { min-width: 0; }
+.pi-line-number { min-width: 2em; padding-right: 12px; text-align: right; user-select: none; opacity: .55; font-style: italic; }
+.pi-line-number::before { content: attr(data-line); }

@@ -14,6 +14,7 @@ export function AgentProgress({ items, title, status }: { items: ProgressItem[];
   return <section className="execution-todos" aria-label="任务待办">
     <details className={`agent-progress pi-session-card${running ? ' is-running' : ''}`}>
       <summary className="agent-progress-heading">
+        {running && <span className="pi-card-sweep-layer" aria-hidden="true" />}
         <span className="pi-task-heading">
           <span className={`pi-task-status${running ? ' is-running' : ''}`}>{stateLabel}</span>
           <strong className="pi-task-title">{title || '任务进展'}</strong>
