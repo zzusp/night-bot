@@ -17,7 +17,7 @@ let FeedbackPage;try{({default:FeedbackPage}=await import('../src/FeedbackPage.t
 const render=()=>renderToStaticMarkup(createElement(FeedbackPage));
 test('feedback defaults to no collection with visible scope and model destination, never starts collection on render',()=>{
  destination={target:'zzusp/night-bot',model:'provider/model',revision:'configuration-1',endpoint:'https://models.example'};paths.length=0;const html=render();
- assert.match(html,/独立 Pi 会话/);assert.match(html,/运行信息、渠道状态汇总和日志错误码/);assert.match(html,/自动脱敏可能遗漏/);assert.match(html,/当前模型服务/);assert.match(html,/zzusp\/night-bot/);assert.match(html,/provider\/model/);assert.match(html,/https:\/\/models.example/);
+ assert.match(html,/独立 Pi 会话/);assert.match(html,/关联 Pi 会话中的工具调用计时及结构化错误码/);assert.match(html,/由 AI 收集诊断/);assert.match(html,/自动脱敏可能遗漏/);assert.match(html,/当前模型服务/);assert.match(html,/zzusp\/night-bot/);assert.match(html,/provider\/model/);assert.match(html,/https:\/\/models.example/);
  assert.match(html,/type="radio"[^>]*checked=""[^>]*value="none"/);assert.doesNotMatch(html,/type="checkbox"/);assert.match(html,/>生成预览/);assert.deepEqual(paths,['/feedback',null]);assert.doesNotMatch(html,/确认提交 Issue/);
 });
 test('scope remains visible before configuration is available, submit stays unavailable',()=>{destination=undefined;const html=render();assert.match(html,/数据收集与提交提示/);assert.match(html,/提交 GitHub 前请核对完整内容/);assert.match(html,/<button[^>]*disabled=""[^>]*><span[^>]*>生成预览/)});

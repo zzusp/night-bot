@@ -7,7 +7,7 @@ import './styles/feedback.css';
 
 type Feedback = { id: string; state: 'collecting' | 'editing' | 'ready' | 'failed' | 'submitting' | 'submitted' | 'unknown'; title: string; body: string; target: string; error?: string; url?: string };
 type Destination = { target: string; model: string | null; revision?: string; endpoint?: string };
-export const feedbackPrivacyNotice = '默认不收集：只处理您填写的标题和正文，不启动 Pi、不读取本地现场、不调用模型。选择收集并明确同意后，才会启动独立 Pi 会话收集本地诊断信息，并将脱敏后的问题与诊断信息发送给当前模型服务。采集时会在本地按您的描述检索消息，并读取相关消息阶段、路由、任务、模型及工具计时、关联 Pi 会话中的工具调用与结果片段和错误记录；上述证据经脱敏及匿名化后发送给模型用于排查。不会发送聊天或记忆正文、密钥或整份原始日志。调查有范围与数量限制，未找到不代表没有发生。自动脱敏可能遗漏，请勿填写敏感内容；提交 GitHub 前请核对完整内容。';
+export const feedbackPrivacyNotice = '默认不收集：只处理您填写的标题和正文，不启动 Pi、不读取本地现场、不调用模型。选择收集并明确同意后，才会启动独立 Pi 会话收集本地诊断信息，并将脱敏后的问题与诊断信息发送给当前模型服务。采集时会在本地按您的描述检索消息，并读取相关消息阶段、路由、任务、模型及工具计时、关联 Pi 会话中的工具调用计时及结构化错误码、错误类别、退出码和 HTTP 状态；上述证据经脱敏及匿名化后发送给模型用于排查。不会发送聊天或记忆正文、工具输入输出正文、密钥或整份原始日志。调查有范围与数量限制，未找到不代表没有发生。自动脱敏可能遗漏，请勿填写敏感内容；提交 GitHub 前请核对完整内容。';
 
 export const feedbackImageNotice = '图片在 GitHub 页面中手动粘贴或拖入，不会由 Night Bot 读取、上传或发送给 Pi。图片可能包含隐私，无法保证自动脱敏，请先遮盖敏感信息。发布前请在 GitHub 核对正文和图片，最终提交后可能公开可见。';
 

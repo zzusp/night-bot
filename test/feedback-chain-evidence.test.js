@@ -45,16 +45,17 @@ test('discovery performs bounded page reads and reports partial coverage',async(
  const found=await collect('discover');assert.equal(reads,2);assert.equal(found.inspected,100);assert.equal(found.complete,false);assert.equal(found.truncated,true)
 })
 
-test('journal requires associated owner and pairs only ancestor calls; redacts diagnostic lines',async()=>{
+test('journal requires associated owner and pairs only ancestor calls; withholds arbitrary business prose',async()=>{
  const snapshot={header:{id:'private-session'},audit:[{domain:'task',kind:'identity',version:1,payload:{taskId:'private-task',sessionId:'private-session'}}],entries:[
   {id:'a',type:'message',timestamp:at(10),message:{role:'assistant',content:[{type:'text',text:'PRIVATE_THINKING'},{type:'toolCall',id:'call-private',name:'bash',arguments:{command:'PRIVATE_COMMAND',timeoutMs:1000}}]}},
-  {id:'b',parentId:'a',type:'message',timestamp:at(20),message:{role:'toolResult',toolCallId:'call-private',isError:true,content:[{type:'text',text:'Error: SECRET at /home/user/private.txt\nPRIVATE_NORMAL_OUTPUT'}]}},
-  {id:'c',parentId:null,type:'message',timestamp:at(30),message:{role:'toolResult',toolCallId:'call-private',isError:true,content:[{type:'text',text:'Error: WRONG_BRANCH'}]}}
+  {id:'b',parentId:'a',type:'message',timestamp:at(20),message:{role:'toolResult',toolName:'bash',toolCallId:'call-private',isError:true,content:[{type:'text',text:'Error: 原始聊天正文：测试客户商业计划，预算五十万元 ETIMEDOUT HTTP 503 exit code 1\nPRIVATE_NORMAL_OUTPUT'}]}},
+  {id:'c',parentId:null,type:'message',timestamp:at(30),message:{role:'toolResult',toolName:'bash',toolCallId:'call-private',isError:true,content:[{type:'text',text:'Error: WRONG_BRANCH'}]}}
  ]}
  const {collect}=fixture({persistence:{readNative:async(id,options)=>{assert.equal(id,'private-session');assert.equal(options.requireComplete,true);return snapshot}}})
  const found=await collect('discover'),message=await collect('message',undefined,{alias:found.candidates[0].alias}),task=await collect('task',undefined,{alias:message.tasks[0]})
- const journal=await collect('journal',undefined,{alias:task.session});assert.equal(journal.items.length,1);assert.equal(journal.items[0].input.timeoutMs,1000);assert.match(journal.items[0].diagnostic,/已脱敏/)
- assert.doesNotMatch(JSON.stringify(journal),/SECRET|PRIVATE_|WRONG_BRANCH|call-private|\/home\/user/)
+ const journal=await collect('journal',undefined,{alias:task.session});assert.equal(journal.items.length,1);assert.equal(journal.items[0].input.timeoutMs,1000);assert.deepEqual(journal.items[0].diagnostic.errorCodes,['ETIMEDOUT']);assert.equal(journal.items[0].diagnostic.httpStatus,503);assert.equal(journal.items[0].diagnostic.exitCode,1)
+ assert.doesNotMatch(JSON.stringify(journal),/SECRET|PRIVATE_|WRONG_BRANCH|call-private|\/home\/user|测试客户|商业计划|五十万元/)
+ snapshot.entries[1].message.toolName='read';assert.equal((await collect('journal',undefined,{alias:task.session})).items.length,0);snapshot.entries[1].message.toolName='bash';snapshot.entries[0].message.content.push({...snapshot.entries[0].message.content[1]});assert.equal((await collect('journal',undefined,{alias:task.session})).items.length,0);snapshot.entries[0].message.content.pop();
  snapshot.audit=[];assert.equal((await collect('journal',undefined,{alias:task.session})).reason,'native-journal-owner-unproven')
  await assert.rejects(collect('journal',undefined,{alias:'private-session'}),/SCOPE/)
 })

@@ -1,4 +1,3 @@
-import {redactFeedback} from './redaction.js'
 import {AGENT_PHASES} from '../runtime/pi-agent-observation.js'
 import {buildTraceLedger} from '../runtime/performance-trace.js'
 import {responseTiming} from '../../packages/web-console/server/response-times.js'
@@ -16,8 +15,8 @@ const fail=()=>{throw new Error('FEEDBACK_EVIDENCE_SCOPE')}
 export function createChainEvidence({application,description,secrets=[],getSessionPersistence}) {
  const sources=new Map(),tasks=new Map(),identities=new Map(),sessions=new Map(),pageCache=new Map();let calls=0,scans=0,groupsCache
  const identity=(kind,id)=>{if(!id)return null;const key=kind+':'+id;if(!identities.has(key))identities.set(key,kind+'-'+(identities.size+1));return identities.get(key)}
- const registerSession=(id,scope)=>{if(!id)return null;const alias=identity('session',id);const previous=sessions.get(alias);sessions.set(alias,{...previous,sessionId:id,...scope,windows:[...(previous?.windows??[]),...(scope.window?[scope.window]:[])]});return alias}
- const safeExcerpt=value=>{let text=redactFeedback(value,secrets);for(const [key,alias] of identities){const id=key.slice(key.indexOf(':')+1);if(id.length>=4)text=text.replaceAll(id,alias)}return text.slice(0,1000)}
+ const registerSession=(id,scope)=>{if(!id)return null;const alias=identity('session',id);const previous=sessions.get(alias);sessions.set(alias,{...previous,sessionId:id,...scope,windows:[...(previous?.windows??[]),...(scope.windows??(scope.window?[scope.window]:[]))]});return alias}
+
  const app=()=>typeof application==='function'?application():application
  const query=(kind,args)=>app().tasks.store.query({kind,...args})
  const terms=[...new Set([...(String(description??'').matchAll(/[“「"]([^”」"\n]{4,500})[”」"]/g))].map(match=>normalize(match[1])))]
@@ -85,7 +84,7 @@ export function createChainEvidence({application,description,secrets=[],getSessi
    if(!service.listExecutionTrace)return unavailable('execution-trace-unavailable')
    const trace=await service.listExecutionTrace({sourceId:ref.sourceId,sourceVersion:ref.version,groupId:ref.groupId,limit:15,offset})
    result={alias:args.alias,offset,nextOffset:Number.isSafeInteger(trace.nextOffset)&&trace.nextOffset<=450?trace.nextOffset:null,total:number(trace.total),complete:false,coverage:'retained-metadata-only',
-    items:(trace.items??[]).slice(0,15).map(row=>({span:identity('span',row.spanId),parent:identity('span',row.parentSpanId),session:registerSession(row.sessionId,{groupId:ref.groupId,sourceId:ref.sourceId,sourceVersion:ref.version,window:Number.isFinite(row.startedAt)&&Number.isFinite(row.endedAt)?[row.startedAt,row.endedAt]:null}),kind:['model','tool','phase','source-stage'].includes(row.kind)?row.kind:null,
+    items:(trace.items??[]).slice(0,15).map(row=>({span:identity('span',row.spanId),parent:identity('span',row.parentSpanId),session:registerSession(row.sessionId,{groupId:ref.groupId,sourceId:ref.sourceId,sourceVersion:ref.version,windows:row.scopeIntervals??(Number.isFinite(row.startedAt)&&Number.isFinite(row.endedAt)?[[row.startedAt,row.endedAt]]:[])}),kind:['model','tool','phase','source-stage'].includes(row.kind)?row.kind:null,
      phase:phases.has(row.phase)?row.phase:null,startedAt:epoch(row.startedAt),endedAt:epoch(row.endedAt),durationMs:Number.isFinite(row.startedAt)&&Number.isFinite(row.endedAt)&&row.endedAt>=row.startedAt?row.endedAt-row.startedAt:null,status:state(row.status),shared:(row.sourceLinks??[]).some(link=>link.shared===true)})),
     ledger:ref.receivedAt&&ref.firstReplyAt?{...buildTraceLedger(trace.items??[],{startedAt:Date.parse(ref.receivedAt),endedAt:Date.parse(ref.firstReplyAt)}),startedAt:stamp(ref.receivedAt),endedAt:stamp(ref.firstReplyAt),scope:'this-trace-page-only'}:null,
     retention:{dropped:number(trace.retention?.dropped),evictedFrom:epoch(trace.retention?.evictedFrom),evictedThrough:epoch(trace.retention?.evictedThrough)},limitations:['retention-may-omit-earlier-events','unobserved-time-is-not-idle','sdk-model-start-is-not-network-start','first-token-not-exposed-by-retained-span-api','overlapping-spans-must-not-be-summed','raw-tool-arguments-and-results-not-returned']}
@@ -113,7 +112,7 @@ export function createChainEvidence({application,description,secrets=[],getSessi
     if(message?.role==='assistant')for(const block of Array.isArray(message.content)?message.content:[]){if(block.type==='toolCall'&&typeof block.id==='string')pending.set(block.id,{entry,block})}
     if(message?.role!=='toolResult'||typeof message.toolCallId!=='string')continue
     let ancestor=entries.get(entry.parentId),call;const visited=new Set()
-    while(ancestor&&!visited.has(ancestor.id)){visited.add(ancestor.id);const found=ancestor.message?.role==='assistant'&&Array.isArray(ancestor.message.content)?ancestor.message.content.find(block=>block.type==='toolCall'&&block.id===message.toolCallId):null;if(found){call={entry:ancestor,block:found};break}ancestor=entries.get(ancestor.parentId)}
+    while(ancestor&&!visited.has(ancestor.id)){visited.add(ancestor.id);const matches=ancestor.message?.role==='assistant'&&Array.isArray(ancestor.message.content)?ancestor.message.content.filter(block=>block.type==='toolCall'&&block.id===message.toolCallId):[];if(matches.length){if(matches.length===1&&message.toolName===matches[0].name)call={entry:ancestor,block:matches[0]};break}ancestor=entries.get(ancestor.parentId)}
     if(!call)continue
     if(!ref.taskId){const start=Date.parse(call.entry.timestamp),end=Date.parse(entry.timestamp);if(!ref.windows?.some(([a,b])=>Number.isFinite(start)&&Number.isFinite(end)&&start<=b&&end>=a))continue}
     pending.delete(message.toolCallId)
@@ -121,11 +120,14 @@ export function createChainEvidence({application,description,secrets=[],getSessi
     const content=Array.isArray(message.content)?message.content.filter(block=>block.type==='text'&&typeof block.text==='string').map(block=>block.text).join('\n'):''
     // Read/file/search outputs may be private documents. Only diagnostic lines
     // from execution tools, or explicitly errored tool results, are selected.
-    const diagnostic=message.isError===true||['bash','pwsh','job_output'].includes(tool)?content.split('\n').filter(line=>/\b(?:error|failed|failure|timeout|timed out|exception|exit code|ENOENT|EACCES|ECONNREFUSED|SQLITE_BUSY)\b|错误|失败|超时|找不到/i.test(line)).slice(0,5).join('\n'):''
-    rows.push({call:identity('call',message.toolCallId),tool,startedAt:stamp(call.entry.timestamp),endedAt:stamp(entry.timestamp),isError:message.isError===true,resultCharacters:content.length,diagnostic:safeExcerpt(diagnostic),truncated:diagnostic.length>1000,input:{timeoutMs:number(call.block.arguments?.timeoutMs??call.block.arguments?.timeout_ms),runInBackground:typeof call.block.arguments?.run_in_background==='boolean'?call.block.arguments.run_in_background:null},limitation:'diagnostic-lines-only-not-full-output'})
+    const knownCodes=new Set(['ENOENT','EACCES','EPERM','ECONNREFUSED','ECONNRESET','ETIMEDOUT','SQLITE_BUSY','SQLITE_LOCKED','MODEL_REQUEST_FAILED','CHANNEL_ADAPTER_ERROR','AUTH_REQUIRED','BOT_NOT_READY'])
+    const errorCodes=[...new Set(content.match(/\b[A-Z][A-Z0-9_]{2,64}\b/g)??[])].filter(code=>knownCodes.has(code)).slice(0,12)
+    const categories=[['timeout',/\b(?:timeout|timed out)\b|超时/i],['permission',/\b(?:permission denied|access denied)\b/i],['not-found',/\b(?:not found|no such file)\b/i],['connection',/\bconnection (?:refused|reset)\b/i]].filter(([,pattern])=>pattern.test(content)).map(([label])=>label)
+    const exitMatch=content.match(/\bexit(?:ed)?(?: with)?(?: code)?[: ]+(-?\d{1,3})\b/i),httpMatch=content.match(/\bHTTP(?:\/\d(?:\.\d)?)?\s+(?:status[: ]+)?([45]\d{2})\b/i)
+    rows.push({call:identity('call',message.toolCallId),tool,startedAt:stamp(call.entry.timestamp),endedAt:stamp(entry.timestamp),isError:message.isError===true,resultCharacters:content.length,diagnostic:{errorCodes,categories,exitCode:exitMatch?Number(exitMatch[1]):null,httpStatus:httpMatch?Number(httpMatch[1]):null,unsharedText:content.length>0},input:{timeoutMs:number(call.block.arguments?.timeoutMs??call.block.arguments?.timeout_ms),runInBackground:typeof call.block.arguments?.run_in_background==='boolean'?call.block.arguments.run_in_background:null},limitation:'structured-error-evidence-only-result-text-not-disclosed'})
    }
    const items=rows.slice(offset,offset+5)
-   result={alias:args.alias,items,total:rows.length,offset,nextOffset:offset+items.length<rows.length&&offset+items.length<=180?offset+items.length:null,complete:false,unmatchedToolCalls:pending.size,coverage:'committed-associated-session-tool-results',limitations:['source-journal-limited-to-observed-span-windows','no-user-or-assistant-prose','no-arbitrary-tool-arguments','diagnostic-lines-redacted-not-proof-of-no-sensitive-data','manual-preview-required-before-publishing']}
+   result={alias:args.alias,items,total:rows.length,offset,nextOffset:offset+items.length<rows.length&&offset+items.length<=180?offset+items.length:null,complete:false,unmatchedToolCalls:pending.size,coverage:'committed-associated-session-tool-results',limitations:['source-journal-limited-to-observed-span-windows','no-user-or-assistant-prose','no-arbitrary-tool-arguments','unrecognized-error-details-withheld-not-absence-of-error','manual-preview-required-before-publishing']}
   }else fail()
   signal?.throwIfAborted();return result
  }
