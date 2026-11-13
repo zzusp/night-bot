@@ -257,6 +257,23 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         const row=rows('router_inbox').find(item=>item.conversationId===a.conversationId&&(item.id===eventId||item.eventId===eventId))
         if(!row)fail('ROUTER_EVENT_SCOPE')
         if(row.state==='consumed')continue
+        // A frozen first reply is feedback, not proof of task arrangement or
+        // authority. Require an explicit source-grounded no-task decision when
+        // an acknowledged source has no durable task action. Never infer intent
+        // by matching reply text, or automatically create work from triage.
+        if(row.sourceId && row.triageReplyId && !rows('source_links').some(link=>link.conversationId===a.conversationId&&link.sourceId===row.sourceId&&link.messageVersion===row.messageVersion)) {
+          const decisions=a.noTaskDispositions
+          const matches=Array.isArray(decisions)?decisions.filter(item=>item.eventId===row.id):[]
+          if(matches.length!==1)fail('ROUTER_SOURCE_DISPOSITION_REQUIRED')
+          const decision=matches[0], original=read('sources',row.sourceId)
+          if(decision.sourceQuote!==original.text || !['handled-inline','clarification','not-assigned'].includes(decision.outcome) || typeof decision.reason!=='string' || !decision.reason.trim())fail('ROUTER_SOURCE_DISPOSITION_INVALID')
+          if(decision.outcome==='clarification' && (!Array.isArray(decision.missingInformation)||!decision.missingInformation.length||decision.missingInformation.some(value=>typeof value!=='string'||!value.trim())))fail('ROUTER_CLARIFICATION_INFORMATION_REQUIRED')
+          if(decision.outcome==='clarification') {
+            const notification=typeof decision.notificationId==='string'?read('notifications',decision.notificationId,true):null
+            if(notification?.kind!=='router-reply'||notification.payload?.conversationId!==a.conversationId||notification.payload.sourceId!==row.sourceId||notification.payload.sourceVersion!==row.messageVersion||notification.state==='failed')fail('ROUTER_CLARIFICATION_RECEIPT_REQUIRED')
+          }
+          row.noTaskDisposition=decision
+        }
         row.state='consumed';row.operationId=a.operationId;row.processedGeneration=conversation.generation;row.processedCursor=++conversation.cursor;write('router_inbox',row)
       }
       write('conversations',conversation);return changed({conversation})

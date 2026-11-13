@@ -12,11 +12,17 @@ function handoff(body){const input=requestEnvelope(body,'Router 交接请求：'
 test('一级分诊收到明确交办即承接，在 Router 未完成时可靠引用回复且不重复发送',{timeout:nativeTestTimeout(40000)},async t=>{
   const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
   const acknowledgement='收到，我会排查这个内存告警，核实后反馈。'
-  let triageRequest,routerInput
+  let triageRequest,routerInput,planned=false
   const h=await residentRouterHost(t,async body=>{
     const summary=handoff(body);if(summary)return summary
     if(requestTools(body).includes('channel_triage_submit')){triageRequest=body;const value=handling(triage(body),()=>acknowledgement);for(const row of value.args.dispositions)row.needsHandling=true;return value}
-    if(requestTools(body).includes('resident_router_settle')){routerInput=requestEnvelope(body,'Router 请求：');entered.resolve();await release.promise;return settle(body)}
+    if(requestTools(body).includes('resident_router_settle')){
+      routerInput=requestEnvelope(body,'Router 请求：');entered.resolve();await release.promise
+      if(!planned){planned=true;const event=routerInput.events.find(event=>event.source);return {tool:'resident_task_plan',args:{operationId:'memory-investigation',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'memory-investigation',title:'Investigate memory alert',objective:'Read-only investigation',requirements:['Do not modify configuration']}],dependencies:[]}}}
+      return body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'?{text:'本批必要处置已可靠入账'}:{tool:'resident_router_settle',args:{operationId:'settle:'+routerInput.events.map(event=>event.id).join(','),eventIds:routerInput.events.map(event=>event.id)}}
+    }
+    if(requestTools(body).includes('task_result'))return {tool:'task_result',args:{decision:{action:'complete',summary:'Local fixture investigation completed',evidence:['fixture:investigation'],limitations:[]}}}
+
     return {text:'无其他工作'}
   })
   const original=channelMessage('reply-before-router',{text:'请排查这个测试节点的内存告警，仅调查，不修改配置。'})
@@ -37,7 +43,7 @@ test('一级分诊收到明确交办即承接，在 Router 未完成时可靠引
   const [notice]=await h.query('notification.list');assert.equal(notice.kind,'triage-reply');assert.equal(notice.state,'delivered')
   assert.equal(notice.payload.sourceRef.messageId,original.messageId);assert.equal(notice.payload.sourceRef.actorId,source.actorId)
   await h.receive(original);await h.service.whenIdle();assert.equal(h.sent.length,1)
-  assert.deepEqual(await h.query('task.list'),[])
+  const tasks=await h.query('task.list');assert.equal(tasks.length,1);assert.equal(tasks[0].status,'completed')
 })
 
 test('cold recovery reclassifies only uncommitted original sources and reads back an unknown private send without resending',{timeout:nativeTestTimeout(45000)},async t=>{
