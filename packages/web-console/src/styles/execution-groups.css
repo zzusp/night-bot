@@ -163,3 +163,15 @@
 
 .pi-shell-command code { word-break: break-all; }
 .pi-tool-body .tool-part:first-child > h4 { display: none; }
+
+/* Native model phase, not simulated typing or an estimated token counter. */
+.pi-live-phase { display: flex; align-items: center; gap: 6px; margin: 8px 16px; font-size: 12px; color: var(--board-muted); }
+.pi-live-phase.phase-thinking { color: #a855f7; }
+.pi-live-spinner { animation: pi-tool-spin 1.8s linear infinite; }
+.pi-live-elapsed { font-size: 10px; color: var(--board-muted); font-variant-numeric: tabular-nums; }
+.execution-transcript .pi-live-message > .message-body::after { content: none; }
+@media(prefers-reduced-motion:reduce) { .pi-live-spinner { animation: none; } }
+
+.pi-model-streaming .markdown > :last-child::after { content: ''; display: inline-block; width: 2px; height: 1em; margin-left: 3px; vertical-align: -.12em; background: currentColor; animation: pi-tool-opacity 1.2s ease-in-out infinite; }
+.pi-model-streaming:has(.thinking-message) .markdown { color: #a855f7; }
+@media(prefers-reduced-motion:reduce) { .pi-model-streaming .markdown > :last-child::after { animation: none; } }

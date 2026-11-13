@@ -307,8 +307,24 @@ function taskTodos(snapshot, identity, secrets) {
 // (at least 512 chars and every configured secret's maximum length) so a secret
 // split over provider chunks cannot leak its earlier prefix. Credential-shaped
 // unfinished content is withheld as a whole until its native block ends.
-export function visibleLiveText(value, secrets = [], complete = false) {
+export function visibleLiveText(value, secrets = [], complete = false, {shortProse = false} = {}) {
   const text = String(value ?? '')
+  if(shortProse&&!complete){
+    // Narrow incremental prose lane: Chinese natural-language characters and
+    // punctuation only. ASCII/structured/opaque values wait for block_end,
+    // rather than guessing whether an incomplete credential is harmless.
+    if(/密码|密钥|令牌|口令|凭据|私钥|验证码/.test(text))return ''
+    if(!/^[\p{Script=Han}\s，。！？、；：（）《》“”‘’…—·]*$/u.test(text))return ''
+    const visible=visibleText(text,secrets,{maxLength:Infinity,preservePaths:true})
+    if(visible.redacted)return ''
+    let end=text.length
+    const word=text.match(/[A-Za-z0-9_./:=+@\\-]+$/)
+    if(word)end=Math.min(end,text.length-word[0].length)
+    for(const secret of secrets)for(let n=Math.min(text.length,secret.length-1);n>0;n--)if(text.endsWith(secret.slice(0,n))){end=Math.min(end,text.length-n);break}
+    // Do not split a UTF-16 surrogate when an event ends mid-character.
+    if(end>0&&/[\uD800-\uDBFF]/.test(text[end-1]))end--
+    return text.slice(0,end)
+  }
   if (complete) {
     // A completed block is not the whole assistant turn. Withhold a configured
     // secret prefix at its tail until a later complete snapshot can disambiguate.
@@ -332,10 +348,10 @@ function projectLive(snapshot, identity, secrets, raw) {
   if (raw.assistant?.message?.role === 'assistant' && typeof raw.assistant.id === 'string') {
     const message = raw.assistant.message
     const blocks = (crossBlockSensitive(message.content, secrets) ? [] : message.content ?? []).flatMap(block => {
-      if (block.type !== 'text' && block.type !== 'thinking') return []
+      if (block.type !== 'text' && block.type !== 'thinking') return [{type:'omitted'}]
       const field = block.type === 'text' ? 'text' : 'thinking'
-      const text = visibleLiveText(block[field], secrets, block.complete === true)
-      return text ? [{type:block.type,[field]:text}] : []
+      const text = visibleLiveText(block[field], secrets, block.complete === true, {shortProse:true})
+      return text ? [{type:block.type,[field]:text}] : [{type:'omitted'}]
     })
     if (blocks.length) extra.push({sourceEntry:{id:raw.assistant.id},messages:[{role:'assistant',timestamp:message.timestamp,content:blocks}]})
   }
@@ -356,7 +372,7 @@ function projectLive(snapshot, identity, secrets, raw) {
   }
   const liveEntryIds = new Set(extra.map(row=>digest(JSON.stringify([identity.sessionId,row.sourceEntry.id]))))
   const combined={...snapshot,context:{...snapshot.context,projection:{...snapshot.context.projection,entries:[...native,...extra]}}}
-  return {active:true,revision:raw.revision,items:projectEntries(combined,identity,secrets).filter(row=>liveEntryIds.has(row.source.entryId)).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
+  return {active:true,revision:raw.revision,...(['waiting','thinking','text','tool'].includes(raw.phase)?{phase:raw.phase}:{}),...(typeof raw.phaseStartedAt==='string'&&Number.isFinite(Date.parse(raw.phaseStartedAt))?{phaseStartedAt:raw.phaseStartedAt}:{}),items:projectEntries(combined,identity,secrets).filter(row=>liveEntryIds.has(row.source.entryId)).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
 }
 
 async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = []}) {

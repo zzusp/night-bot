@@ -48,3 +48,31 @@ test('live tool result replaces each snapshot without accumulating partial copie
  await expect(tool).toContainText('line 3');
  await expect(page.locator('.pi-tool-frame.is-running')).toHaveCount(0);
 });
+
+test('native model phases show without body; short deltas update one bubble and public thinking stays user controlled',async({page})=>{
+ let phase='waiting';let body='';let thinking=false;
+ await page.route('**/api/tasks/task-research/session?*',r=>r.fulfill({json:{status:'ready',scope:'current-context',items:phase==='done'?[{id:'final-model',role:'assistant',text:'你好，已完成。'}]:[],total:0,revision:'model',live:{active:phase!=='done',phase,phaseStartedAt:new Date(Date.now()-2200).toISOString(),items:body?[{id:thinking?'public-thought':'model-live',role:'assistant',kind:thinking?'thinking':'message',text:body,status:'running',transient:true}]:[]}}}));
+ await page.goto('/#/tasks/task-research');
+ await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+ await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+ await expect(page.locator('.pi-live-phase')).toContainText('等待模型响应');
+ await expect(page.locator('.execution-transcript')).not.toContainText('暂无可展示');
+ phase='thinking';
+ await expect(page.locator('.pi-live-phase')).toContainText('思考中');
+ // Only provider-public, authorized DTO text is available to the component.
+ thinking=true;body='检查已公开的步骤';
+ await expect(page.locator('.thinking-message')).toHaveAttribute('open');
+ await page.locator('.thinking-message > summary').click();
+ body='检查已公开的步骤与结果';
+ await expect(page.locator('.thinking-message')).not.toHaveAttribute('open');
+ phase='text';thinking=false;body='你好，';
+ await expect(page.locator('.pi-live-phase')).toContainText('生成中');
+ await expect(page.locator('.pi-live-message')).toContainText('你好，');
+ body='你好，已完成。';
+ await expect(page.locator('.pi-live-message')).toHaveCount(1);
+ await expect(page.locator('.pi-live-message')).toContainText('已完成');
+ phase='done';body='';
+ await expect(page.locator('.pi-live-phase')).toHaveCount(0);
+ await expect(page.locator('.pi-live-message')).toHaveCount(0);
+ await expect(page.locator('.execution-transcript .message-assistant')).toHaveCount(1);
+});

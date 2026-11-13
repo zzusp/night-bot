@@ -26,11 +26,11 @@ test('live snapshot replaces cumulative outputs, preserves official checkpoint a
  const persistence={readNative:async()=>snapshot,readLive:()=>buffer.snapshot()}
  const first=await taskSessionView({task,persistence,stream:true})
  assert.equal(first.live.active,true);assert.deepEqual(first.live.items,[])
- buffer.accept(update('第一段\n'+'x'.repeat(600)))
+ buffer.accept(update('第一段\n'))
  let next=await taskSessionView({task,persistence,stream:true,checkpoint:first.checkpoint})
  assert.deepEqual(next.items,[]);assert.equal(next.checkpoint,first.checkpoint)
  assert.equal(next.live.items[0].text,'第一段\n');const stable=next.live.items[0].id
- buffer.accept(update('第一段\n第二段\n'+'x'.repeat(600)))
+ buffer.accept(update('第一段\n第二段\n'))
  next=await taskSessionView({task,persistence,stream:true,checkpoint:first.checkpoint})
  assert.equal(next.live.items[0].id,stable);assert.equal(next.live.items[0].text,'第一段\n第二段\n')
  buffer.accept({type:'message_end',message:{role:'assistant'}})
@@ -101,4 +101,46 @@ test('cross-block configured credentials are withheld in live and committed view
  const view=await taskSessionView({task,persistence,stream:true,secrets:[secret]});assert.ok(!JSON.stringify(view).includes('private-credential-'));assert.deepEqual(view.live.items,[])
  assert.equal(visibleLiveText('private-credential-',[secret],true),'')
  reads=0;snapshot.audit=[];await assert.rejects(taskSessionView({task,persistence,stream:true}),{code:'SESSION_IDENTITY_INVALID'});assert.equal(reads,0)
+})
+
+test('short model prose grows before block completion while all structured credential prefixes remain buffered',()=>{
+ const live=(s,secrets=[])=>visibleLiveText(s,secrets,false,{shortProse:true})
+ assert.equal(live('正在检查'),'正在检查');assert.equal(live('正在检查完整链路'),'正在检查完整链路')
+ assert.equal(live('公开中文隐藏前半',['隐藏前半后半']),'公开中文')
+ for(const secret of ['https://user:password@host','{"env":{"X":"opaque"}}','{"api_key":"value"}','Authorization: Bearer abc','-----BEGIN PRIVATE KEY-----\nabc','sk-abcdefghijklmn','ghp_abcdefghijklmnopqrst','eyJabc.def.ghi','\\u53e3\\u4ee4']){
+  for(let end=1;end<=secret.length;end++)assert.equal(live(secret.slice(0,end)), '',secret.slice(0,end))
+ }
+ assert.equal(live('English generation'),'')
+})
+
+test('native thinking and text deltas expose short cumulative prose with real phases before text_end',async t=>{
+ const f=await officialToolsFixture(t,()=>{}),binding=bindPiLiveOutput(f.owner),first=Promise.withResolvers(),next=Promise.withResolvers(),second=Promise.withResolvers(),finish=Promise.withResolvers()
+ t.after(()=>{next.resolve();finish.resolve();binding.close()})
+ const model=f.session.agent.state.model
+ f.session.agent.streamFunction=()=>{
+  const stream=createAssistantMessageEventStream(),message={role:'assistant',content:[{type:'thinking',thinking:'正在分析',thinkingSignature:'NO_SIGNATURE'},{type:'thinking',thinking:'NO_HIDDEN',redacted:true}],api:model.api,provider:model.provider,model:model.id,timestamp:1,stopReason:'stop',usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}}
+  queueMicrotask(async()=>{
+   stream.push({type:'start',partial:message});stream.push({type:'thinking_delta',contentIndex:0,delta:'正在分析',partial:message});await new Promise(r=>setTimeout(r,0));first.resolve();await next.promise
+   message.content[0].thinking='正在分析完整链路';message.content.push({type:'text',text:'已经找到'})
+   stream.push({type:'thinking_delta',contentIndex:0,delta:'完整链路',partial:message});stream.push({type:'text_delta',contentIndex:2,delta:'已经找到',partial:message});await new Promise(r=>setTimeout(r,0));second.resolve();await finish.promise
+   stream.push({type:'done',reason:'stop',message});stream.end(message)
+  });return stream
+ }
+ const running=f.run([]);await first.promise
+ const makeView=async()=>{const snapshot=fixture();snapshot.header.id=f.owner.id;snapshot.audit[0].payload.sessionId=f.owner.id;return taskSessionView({task:{...task,session:{sessionId:f.owner.id,sessionBound:true}},persistence:{readNative:async()=>snapshot,readLive:()=>readPiLiveOutput(f.owner)},stream:true})}
+ let view=await makeView();assert.equal(view.live.phase,'thinking');assert.ok(Number.isFinite(Date.parse(view.live.phaseStartedAt)));assert.equal(view.live.items[0].text,'正在分析');assert.ok(!JSON.stringify(view.live).includes('NO_'))
+ next.resolve();await second.promise;view=await makeView();assert.equal(view.live.phase,'text');assert.equal(view.live.items[0].text,'正在分析完整链路');assert.equal(view.live.items[1].text,'已经找到');assert.ok(!JSON.stringify(view.live).includes('NO_'))
+ finish.resolve();await running;assert.equal(readPiLiveOutput(f.owner).active,false)
+})
+
+test('filtered thinking keeps following text identity stable and phases follow native tool completion',async()=>{
+ let now=1000;const buffer=createPiLiveOutputBuffer('pi-live',{clock:()=>now}),snapshot=fixture(),persistence={readNative:async()=>snapshot,readLive:()=>buffer.snapshot()}
+ buffer.accept({type:'agent_start'});const started=buffer.snapshot().phaseStartedAt
+ now=2000;buffer.accept({type:'message_update',message:{role:'assistant',content:[{type:'thinking',thinking:'English pending'},{type:'text',text:'公开正文'}]},assistantMessageEvent:{type:'text_delta',contentIndex:1}})
+ let view=await taskSessionView({task,persistence,stream:true});const textId=view.live.items[0].id;assert.equal(view.live.phase,'text');assert.notEqual(view.live.phaseStartedAt,started)
+ buffer.accept({type:'message_update',message:{role:'assistant',content:[{type:'thinking',thinking:'已完成思考'},{type:'text',text:'公开正文继续'}]},assistantMessageEvent:{type:'text_delta',contentIndex:1}})
+ view=await taskSessionView({task,persistence,stream:true});assert.equal(view.live.items[1].id,textId)
+ buffer.accept({type:'tool_execution_start',toolCallId:'one',toolName:'bash'});buffer.accept({type:'tool_execution_start',toolCallId:'two',toolName:'bash'})
+ buffer.accept({type:'message_end',message:{role:'toolResult',toolCallId:'one'}});assert.equal(buffer.snapshot().phase,'tool')
+ buffer.accept({type:'message_end',message:{role:'toolResult',toolCallId:'two'}});assert.equal(buffer.snapshot().phase,'waiting');buffer.close()
 })

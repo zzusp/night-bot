@@ -4,7 +4,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiArrowRightSLine, RiLightbulbLine, RiFileTextLine, RiTerminalBoxLine, RiPencilLine, RiToolsLine } from '@remixicon/react';
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
-import { ApiError, errorText, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
+import { ApiError, errorText, type ExecutionLive, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
 import { dateTime, useResource } from '../hooks';
 import { executionItems, toolState, type ToolItem } from '../execution-items';
 import { mdiCheck, mdiAlertCircle, mdiLoading, mdiChevronRight, mdiHeadLightbulb, mdiFileDocumentOutline, mdiConsoleLine, mdiPencil, mdiMagnify, mdiWrenchOutline } from '@mdi/js';
@@ -254,7 +254,24 @@ function ToolActivityGroup({ tools, history, compact = false, anchorId, disclosu
   </details>;
 }
 type OlderHistory = {hasMore: boolean; loading: boolean; error: Error | null; disabled: boolean; onLoad: () => void};
-export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat', older }: { presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void; older?: OlderHistory }) {
+function LiveElapsed({startedAt}: {startedAt?: string}) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => { if (!startedAt) return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [startedAt]);
+  const start = Date.parse(startedAt || '');
+  return Number.isFinite(start) ? <span className="pi-live-elapsed">{Math.max(0, Math.floor((now - start) / 1000))}s</span> : null;
+}
+function LivePhase({live}: {live?: ExecutionLive}) {
+  if (!live?.active || !live.phase) return null;
+  const labels = {waiting: '等待模型响应', thinking: '思考中', text: '生成中', tool: '工具执行中'};
+  return <div className={`pi-live-phase phase-${live.phase}`} role="status"><PiIcon path={mdiLoading} className="pi-live-spinner" size={14} /><span>{labels[live.phase]}</span><LiveElapsed startedAt={live.phaseStartedAt} /></div>;
+}
+function ThinkingMessage({message, history, compact, live}: {message: Message; history?: HistoryReader; compact: boolean; live?: ExecutionLive}) {
+  const [open, setOpen] = useState(!!message.transient);
+  const isThinking = !!message.transient && live?.active && live.phase === 'thinking';
+  return <details className="thinking-message" open={open} onToggle={event => {if(event.target === event.currentTarget)setOpen(event.currentTarget.open);}}><summary><PiIcon path={mdiHeadLightbulb} className="pi-thinking-icon" size={14} /><span>{isThinking ? '思考中' : '模型思考'}</span>{isThinking && <LiveElapsed startedAt={live?.phaseStartedAt} />}<PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /></summary><MessageBody message={message} history={history} showSource={!compact} /></details>;
+}
+
+export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat', older, live }: { live?: ExecutionLive; presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void; older?: OlderHistory }) {
   const disclosures = useRef(new Map<string, boolean>()).current;
   const brand = useAssistantBrand();
   const compact = presentation === 'execution';
@@ -342,13 +359,13 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
     captureAnchor();
     if (el.scrollTop < 160) loadOlder();
   }} role="region" aria-label="消息记录" tabIndex={0}>
-    <div className={`message-column${messages.length ? '' : ' is-empty'}`}>
+    <div className={`message-column${messages.length || live?.active ? '' : ' is-empty'}`}>
       {older && messages.length > 0 && <div className="execution-history-start" role="status">{older.error ? <Notice error={older.error} onRetry={older.onLoad} /> : older.loading ? '正在载入更早记录…' : older.hasMore ? '向上滚动载入更早记录' : '已到当前上下文的开始'}</div>}
-      {!messages.length ? empty ?? <EmptyState title="暂无消息" /> : keyedItems.map(({item, key}) => {
+      {!messages.length ? (live?.active ? null : empty ?? <EmptyState title="暂无消息" />) : keyedItems.map(({item, key}) => {
         if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} disclosures={disclosures} />;
         if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} disclosures={disclosures} />;
         const message = item.message;
-        return <article data-message-id={message.id} className={`message message-${message.role}${message.transient ? ' pi-live-message' : ''}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
+        return <article data-message-id={message.id} className={`message message-${message.role}${message.transient ? ' pi-live-message' : ''}${message.transient && live?.active && ((message.kind === 'thinking' && live.phase === 'thinking') || (message.kind !== 'thinking' && live.phase === 'text')) ? ' pi-model-streaming' : ''}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
           // The visually hidden native button makes the bubble keyboard accessible without adding a separate action label.
           const target = event.target as HTMLElement;
@@ -361,9 +378,10 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>}
-          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <details className="thinking-message"><summary><PiIcon path={mdiHeadLightbulb} className="pi-thinking-icon" size={14} /><span>模型思考</span><PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /></summary><MessageBody message={message} history={history} showSource={!compact} /></details> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
+          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <ThinkingMessage message={message} history={history} compact={compact} live={live} /> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
         </article>;
       })}
+      {live?.active && !(live.phase === 'thinking' && messages.some(message => message.transient && message.kind === 'thinking')) && <LivePhase live={live} />}
       {pending && <div className="thinking" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>Bot 正在处理，完成后会更新回复</div>}
       {footer}
     </div>
