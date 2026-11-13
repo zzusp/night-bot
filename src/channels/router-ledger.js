@@ -1,8 +1,10 @@
 import {createHash} from 'node:crypto'
+import {querySourceHistory,queryCurrentSource,sourceHistorySchema} from './source-history.js'
 
 export const routerSchemaVersion = '1'
 export const routerTables = ['conversations','router_inbox','triage','source_links','dependencies','completion_evaluations','router_rotations','router_actions','router_upgrade_audit']
 export const routerSchema = routerTables.map(name => `CREATE TABLE IF NOT EXISTS dynamic_${name}(id TEXT PRIMARY KEY,body TEXT NOT NULL CHECK(json_valid(body)));`).join('\n') + `
+${sourceHistorySchema}
 CREATE INDEX IF NOT EXISTS dynamic_source_link_task ON dynamic_source_links(json_extract(body,'$.taskId'),json_extract(body,'$.conversationId'));
 CREATE INDEX IF NOT EXISTS dynamic_source_link_source ON dynamic_source_links(json_extract(body,'$.conversationId'),json_extract(body,'$.sourceId'));
 CREATE UNIQUE INDEX IF NOT EXISTS dynamic_router_event ON dynamic_router_inbox(json_extract(body,'$.conversationId'),json_extract(body,'$.eventId'));
@@ -282,6 +284,8 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     }
   }
   function query(q) {
+    if(q.kind==='router.source-history')return querySourceHistory(db,q)
+    if(q.kind==='router.source-current')return queryCurrentSource(db,q)
     if(q.kind==='triage.pending')return rows('triage').filter(row=>row.state==='pending'&&(!q.conversationId||row.conversationId===q.conversationId)).map(row=>read('sources',row.sourceId)).filter(row=>!row.routed&&!row.authorizationRevoked&&!row.triageHold&&!row.archiveRestoreHold&&latest(row)).slice(0,bounded(q.limit))
     if(q.kind==='router.upgrade-held')return {sources:rows('sources').filter(row=>row.triageHold&&(!q.conversationId||row.groupId===q.conversationId)),audit:rows('router_upgrade_audit').filter(row=>!q.conversationId||row.conversationId===q.conversationId)}
     if(q.kind==='router.source-status')return {triage:read('triage',`triage:${q.sourceId}`,true),event:rows('router_inbox').find(row=>row.sourceId===q.sourceId)??null}

@@ -277,3 +277,42 @@ the recent-conversation list still includes retained Web histories and external 
 ### Router 空闲交接与任务完成延迟
 
 Router inbox 暂时为空不代表会话已空闲。会话仍有未归档的 active/active 任务时，保留当前 Pi generation，优先接纳后续补充和任务完成事件，不在每次安排结束后立即启动无工具交接。任务结清后仍经原来的耐久摘要、候选提交和唯一 owner 发布流程轮换；长会话的上下文仍由 Pi 管理。已开始的交接不能旁路，期间到达的事件继续耐久排队。此优化避免可预见的完成事件等待不必要轮换，不表示已开始的交接耗时已被消除。
+
+### Historical source context
+
+A first-tier `needsHandling=false` decision consumes only the immediate routing
+work; the authenticated original remains in the existing source ledger. Before a
+new triage batch, Host reads up to five preceding same-conversation messages as
+explicitly read-only background. Each background preview is bounded to 600 text characters
+(and 200 quote characters); background is not in the actionable `messages` array,
+not counted against the 15-source batch limit, and cannot be submitted to triage.
+Steered current-message versions are excluded from the background. This adds no
+model call and no separate memory/history store.
+
+Router can call `resident_source_query` for same-conversation history, including
+ignored sources: keyword literal substring, message-time `before`/`after`, a
+same-conversation `anchorSourceId`, and keyset `cursor`, with at most 20 previews
+per page (1,200 text characters and 400 quote characters per preview). Ordering is ledger receipt order, newest first; time filters refer to
+source timestamps, not that ordering. The SQLite query selects only the requested
+page and uses the conversation/message/version index to discard obsolete versions.
+Latest revoked, held, or restored-but-unreviewed versions hide earlier versions;
+internal sources are not returned. No caller-provided conversation selector is
+exposed in the model tool. Private sender/channel isolation follows the existing
+authenticated conversation identity.
+
+`resident_source_get` resolves full current content and attachment references;
+stale IDs return a superseded marker with the current ID/version, and unavailable
+sources do not return old bodies. Previews are not full attachment evidence and
+must not be mistaken for new instructions, fresh authorization or unprocessed
+messages. History reads never enqueue routing work or change disposition. Use
+existing task plan requirements and `resident_task_action` supplements to retain
+needed context, exact source/version links and original execution session rather
+than creating a task for background alone. Current task revisions and existing
+permission/no-replay boundaries continue to apply.
+
+These tools preserve source evidence, not model semantic accuracy: scripted tests
+exercise retrieval and task linkage, not a guarantee that a real model will
+always choose the right context. Very large histories can still incur SQLite
+search work; keyword matching is not semantic/vector retrieval. Already-admitted
+model context is a snapshot, so current source versions must be rechecked before
+relying on facts after a later edit or withdrawal.
