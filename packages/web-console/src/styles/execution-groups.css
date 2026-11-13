@@ -144,13 +144,13 @@
 /* Empty source lines keep their height without inserting copyable filler. */
 .pi-code-line { min-height: 1.5em; }
 /* Prism token palette, scoped to file output; syntax never changes text content. */
-.pi-read-output .token.comment, .pi-read-output .token.prolog { color: #a0a1a7; }
-.pi-read-output .token.keyword, .pi-read-output .token.boolean { color: #a626a4; }
-.pi-read-output .token.string, .pi-read-output .token.attr-value { color: #50a14f; }
-.pi-read-output .token.number, .pi-read-output .token.function { color: #986801; }
-.pi-read-output .token.property, .pi-read-output .token.tag { color: #4078f2; }
-[data-theme="dark"] .pi-read-output .token.comment { color: #5c6370; }
-[data-theme="dark"] .pi-read-output .token.keyword, [data-theme="dark"] .pi-read-output .token.boolean { color: #c678dd; }
-[data-theme="dark"] .pi-read-output .token.string, [data-theme="dark"] .pi-read-output .token.attr-value { color: #98c379; }
-[data-theme="dark"] .pi-read-output .token.number, [data-theme="dark"] .pi-read-output .token.function { color: #d19a66; }
-[data-theme="dark"] .pi-read-output .token.property, [data-theme="dark"] .pi-read-output .token.tag { color: #61afef; }
+.pi-read-output .token.pi-token-comment, .pi-read-output .token.pi-token-prolog { color: #a0a1a7; }
+.pi-read-output .token.pi-token-keyword, .pi-read-output .token.pi-token-boolean { color: #a626a4; }
+.pi-read-output .token.pi-token-string, .pi-read-output .token.pi-token-attr-value { color: #50a14f; }
+.pi-read-output .token.pi-token-number, .pi-read-output .token.pi-token-function { color: #986801; }
+.pi-read-output .token.pi-token-property, .pi-read-output .token.pi-token-tag { color: #4078f2; }
+[data-theme="dark"] .pi-read-output .token.pi-token-comment { color: #5c6370; }
+[data-theme="dark"] .pi-read-output .token.pi-token-keyword, [data-theme="dark"] .pi-read-output .token.pi-token-boolean { color: #c678dd; }
+[data-theme="dark"] .pi-read-output .token.pi-token-string, [data-theme="dark"] .pi-read-output .token.pi-token-attr-value { color: #98c379; }
+[data-theme="dark"] .pi-read-output .token.pi-token-number, [data-theme="dark"] .pi-read-output .token.pi-token-function { color: #d19a66; }
+[data-theme="dark"] .pi-read-output .token.pi-token-property, [data-theme="dark"] .pi-read-output .token.pi-token-tag { color: #61afef; }

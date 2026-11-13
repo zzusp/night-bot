@@ -58,8 +58,8 @@ test('Prism read output highlights multiline syntax without changing copied sour
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
  await page.locator('.pi-tool-step > summary').click();
  const code=page.locator('.pi-read-output > code');
- await expect(code.locator('.token.keyword')).toContainText('const');
- await expect(code.locator('.token.comment')).toHaveCount(2);
+ await expect(code.locator('.token.pi-token-keyword')).toContainText('const');
+ await expect(code.locator('.token.pi-token-comment')).toHaveCount(2);
  expect(await code.textContent()).toBe(source);
  await code.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const s=window.getSelection()!;s.removeAllRanges();s.addRange(range);});
  await page.keyboard.press('Control+c');

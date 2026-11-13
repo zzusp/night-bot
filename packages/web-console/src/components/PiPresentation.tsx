@@ -17,7 +17,7 @@ export function highlightedCode(text:string,language?:string):ReactNode {
  function render(token: string | Prism.Token, key:number):ReactNode {
   if(typeof token==='string') return <Fragment key={key}>{token}</Fragment>;
   const value=typeof token.content==='string' ? token.content : Array.isArray(token.content) ? token.content.map(render) : render(token.content,0);
-  return <span key={key} className={`token ${token.type}`}>{value}</span>;
+  return <span key={key} className={`token pi-token-${token.type}`}>{value}</span>;
  }
  // React renders text tokens, never interpolated HTML from file contents.
  return Prism.tokenize(text,Prism.languages[language]).map(render);
@@ -27,7 +27,7 @@ export function highlightedLines(text:string,language?:string): ReactNode[][] {
  const lines: ReactNode[][]=[[]];
  function visit(token:string|Prism.Token, classes:string[]=[]) {
   if(typeof token !== 'string') {
-   const nested=[...classes,'token',token.type];
+   const nested=[...classes,'token',`pi-token-${token.type}`];
    if(Array.isArray(token.content)) token.content.forEach(part=>visit(part,nested)); else visit(token.content,nested);
    return;
   }
