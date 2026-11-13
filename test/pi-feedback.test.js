@@ -122,7 +122,7 @@ test('registered feedback secrets are redacted before the output length limit cu
 })
 test('scoped evidence factory starts only after consent and isolates report capabilities',async()=>{
  let factories=0,diagnoses=0
- const f=fixture({createEvidence:({description,secrets})=>{factories++;assert.equal(description,input.description);assert.ok(secrets.includes('PRIVATE_SECRET'));const local=factories;return async()=>({local})},diagnose:async({evidence})=>{diagnoses++;return JSON.stringify(await evidence('discover'))}})
+ const f=fixture({createEvidence:({title,description,secrets})=>{assert.equal(title,input.title);factories++;assert.equal(description,input.description);assert.ok(secrets.includes('PRIVATE_SECRET'));const local=factories;return async()=>({local})},diagnose:async({evidence})=>{diagnoses++;return JSON.stringify(await evidence('discover'))}})
  f.service.metadata();f.service.draft('owner',{title:'manual',description:'manual'})
  assert.equal(factories,0)
  assert.throws(()=>f.service.collect('owner',{...input,consent:false}),{code:'FEEDBACK_CONSENT_REQUIRED'})

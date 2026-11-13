@@ -42,7 +42,7 @@ export function createFeedbackService({model,modelConsent=()=>({revision:'defaul
     signal.throwIfAborted();r.title=redactFeedback(input.title.trim(),secrets)
     const description=redactFeedback(input.description.trim(),secrets)
     const resolved=await resolveModel({...selection,signal});signal.throwIfAborted();if(input.revision!==modelConsent().revision)fail('FEEDBACK_MODEL_CHANGED',409)
-    const scopedEvidence=createEvidence?createEvidence({description:input.description,secrets}):evidence
+    const scopedEvidence=createEvidence?createEvidence({title:input.title,description:input.description,secrets}):evidence
     const result=await diagnose({resolved,paths,title:r.title,description,evidence:scopedEvidence,signal,secrets});signal.throwIfAborted()
     r.body=redactFeedback(`## 问题描述\n${description}\n\n## Pi 诊断\n${result}`,secrets);r.state='ready'
    }catch{if(r.state!=='cancelled'){r.state='failed';r.error='FEEDBACK_COLLECTION_FAILED'}}})()
@@ -90,8 +90,8 @@ export function hostFeedback(ctx,config,paths){
   resolveModel:selection=>ctx.get('nativePiProvider').official.resolve(selection),
   getSecrets:async()=>[...(await ctx.get('credentials')?.redactionValues?.()??[]),...(launchEnvironmentOf(ctx).redactionValues?.()??[])],
   getToken:()=>ctx.get('credentials')?.resolveCurrent?.('GITHUB_TOKEN')?.value??launchEnvironmentOf(ctx).getFrom('GITHUB_TOKEN',['process'])?.value,
-  createEvidence:({description,secrets})=>{
-   const chain=createChainEvidence({application:ctx.get('application'),getSessionPersistence:()=>ctx.sessionPersistence,description,secrets})
+  createEvidence:({title,description,secrets})=>{
+   const chain=createChainEvidence({application:ctx.get('application'),getSessionPersistence:()=>ctx.sessionPersistence,getSchedule:()=>ctx.get('schedule'),title,description,secrets})
    return async(section,signal,args)=>{
    signal.throwIfAborted()
    if(section==='runtime')return {node:process.version,platform:process.platform,architecture:process.arch,uptimeSeconds:Math.floor(process.uptime()),rssMiB:Math.ceil(process.memoryUsage().rss/1048576)}
