@@ -6,6 +6,7 @@ import NativeSchedule from '../src/native-schedule.js'
 import NativeAgents from '../src/native-agents.js'
 import {openNativeDomains} from '../src/native-domain.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
+import {redactFeedback} from '../src/feedback/redaction.js'
 import {diagnosticQueryFailure} from '../src/feedback/diagnostic-contract.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -136,6 +137,7 @@ test('catalog continuations retain their query and candidate order across schedu
   const first=await collect('discover',undefined,{target,query:'发布'})
   assert.equal(first[field].length,10)
   const continuation=first.continuations[0]
+  assert.match(continuation.cursor,/^cursor-[a-p-]+$/);assert.equal(redactFeedback(continuation.cursor),continuation.cursor)
   rows=[...rows.slice(1),rows[0]] // recurring due time or archive moves the first row
   await collect('discover',undefined,{target,query:'检查'})
   const last=await collect('discover',undefined,continuation)

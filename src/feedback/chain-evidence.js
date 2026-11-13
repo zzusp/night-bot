@@ -117,7 +117,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
      }
     }catch(error){failed('messages',error)}
    }
-   for(const next of continuations){const cursor='cursor-'+randomUUID();continuationQueries.set(cursor,{args:{...next},terms:[...selectedTerms]});next.cursor=cursor}
+   for(const next of continuations){const cursor='cursor-'+randomUUID().replace(/[0-9]/g,d=>'ghijklmnop'[Number(d)]);continuationQueries.set(cursor,{args:{...next},terms:[...selectedTerms]});next.cursor=cursor}
    result={candidates,taskCandidates,scheduleCandidates,ambiguous:candidates.length+taskCandidates.length+scheduleCandidates.length>1,complete:false,coverage:'indexed-messages-and-task-schedule-catalogs',inspected,groupsScanned,inspectedTasks,inspectedSchedules,truncated:continuations.length>0,continuations,failures,unavailableGroups:failures.filter(row=>row.target==='messages').length,limitations:['no-match-does-not-prove-absence','candidates-are-not-automatic-selection','message-content-not-returned','deleted-schedules-not-in-catalog']}
   }else if(action==='message'){
    const ref=sourceFor(args.alias)
