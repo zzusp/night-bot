@@ -43,14 +43,24 @@ test('only a finished exact Pi mutation can attest a failure before the write bo
  assert.equal(isPiFileMutationNotStarted(edit,{...definition,execute:async()=>{throw Error('same-name replacement')}}),false)
  await f.handle.dispose();assert.equal(isPiFileMutationNotStarted(edit,definition),false)
 })
+test('an unobserved existing-file rejection attests not-started and preserves the original error',{timeout:15000},async t=>{
+ let n=0;const executions=[],plan=[{tool:'write',args:{path:'existing.txt',content:'must not replace'}},{tool:'read',args:{path:'existing.txt'}},{tool:'write',args:{path:'existing.txt',content:'corrected after reading'}}]
+ const f=await fixture(t,()=>plan[n++]??{text:'observed overwrite completed'},{configure(ctx){ctx.on('tools/execute',async(exec,next)=>{executions.push(exec);return next()})}})
+ await writeFile(join(f.root,'existing.txt'),'created outside file observations');await f.start();await f.handle.whenIdle()
+ const outcomes=(await f.history()).filter(e=>e.type==='message'&&e.message.role==='toolResult').map(e=>e.message)
+ assert.equal(outcomes[0].isError,true);assert.match(JSON.stringify(outcomes[0]),/Cannot overwrite an unobserved file/)
+ assert.equal(isPiFileMutationNotStarted(executions[0],f.ctx.get('tools').get('write',f.actor)),true)
+ assert.equal(isPiFileMutationNotStarted(executions[2],f.ctx.get('tools').get('write',f.actor)),false)
+ assert.equal(await readFile(join(f.root,'existing.txt'),'utf8'),'corrected after reading')
+})
 test('a real filesystem write followed by a lost response never attests not-started',{timeout:15000},async t=>{
  let n=0,exec,writes=0
- class LostResponseFileSystem extends PrivateFileSystem {static inject=['sandboxPolicy','memoryPrivacy'];async writeText(...args){await super.writeText(...args);writes++;throw Error('response lost after real file write')}}
+ class LostResponseFileSystem extends PrivateFileSystem {static inject=['sandboxPolicy','memoryPrivacy'];async writeText(...args){await super.writeText(...args);writes++;throw Object.assign(Error('Cannot overwrite an unobserved file'),{code:'FS_NOT_OBSERVED',effect:'not-started'})}}
  const f=await fixture(t,()=>n++===0?{tool:'write',args:{path:'partial.txt',content:'actual retained effect'}}:{text:'failed write observed'},{async serviceFactory(ctx,owner){return {fs:new LostResponseFileSystem(ctx.root.isolate('fs'),{cwd:owner.metadata.cwd,diffBasisMaxBytes:1048576})}},configure(ctx){ctx.on('tools/execute',async(value,next)=>{exec=value;return next()})}})
  await f.start();await f.handle.whenIdle();assert.equal(writes,1);assert.equal(await readFile(join(f.root,'partial.txt'),'utf8'),'actual retained effect')
  assert.equal(isPiFileMutationNotStarted(exec,f.ctx.get('tools').get('write',f.actor)),false)
  const result=(await f.history()).find(row=>row.type==='message'&&row.message.role==='toolResult').message
- assert.equal(result.isError,true);assert.match(result.content[0].text,/response lost after real file write/)
+ assert.equal(result.isError,true);assert.match(result.content[0].text,/Cannot overwrite an unobserved file/)
 })
 test('exact definition and native execution admission reject direct calls, foreign owners and private mutations before effect middleware',{timeout:15000},async t=>{
  let n=0,started=0;let file

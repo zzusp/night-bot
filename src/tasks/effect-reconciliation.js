@@ -97,6 +97,31 @@ function intentOrigin(entries,receipts,manager,task,currentBinding,intentEntryId
  return {target,intent,call,...source}
 }
 
+function effectOwnerDrain(entries,manager,task,currentBinding,intentEntryId,originBinding,scopeDigest){
+ const receipts=entries.filter(entry=>audit(entry)),drains=receipts.filter(entry=>entry.data.domain==='task'&&['owner-drained','owner-drained-inputs'].includes(entry.data.kind))
+ assert(drains.every(entry=>entry.data.version===1&&(entry.data.kind==='owner-drained'?drainSchema:inputsDrainSchema).safeParse(entry.data.payload).success),'TASK_EFFECT_DRAIN_ATTESTATION_INVALID')
+ const original=drains.findLast(entry=>entry.data.kind==='owner-drained'?isDeepStrictEqual(entry.data.payload.binding,originBinding):entry.data.payload.inputs.some(item=>item.intentEntryId===intentEntryId&&isDeepStrictEqual(item.originBinding,originBinding)))
+ const validate=drain=>{
+  assert(drain&&drain.data.payload.scopeDigest===scopeDigest&&drain.parentId===drain.data.payload.cutEntryId&&drain.data.payload.proof.ownerId===task.sessionId,'TASK_EFFECT_DRAIN_ATTESTATION_REQUIRED')
+  const branch=manager.getBranch(drain.id)
+  assert(branch.some(entry=>entry.id===intentEntryId),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
+  const owner=inputOrigin(branch,task,currentBinding)
+  assert(isDeepStrictEqual(owner.originBinding,drain.data.payload.binding),'TASK_EFFECT_DRAIN_OWNER_INPUT_MISMATCH')
+  if(drain.data.kind==='owner-drained-inputs')for(const covered of drain.data.payload.inputs){
+   const checked=intentOrigin(entries,receipts,manager,task,currentBinding,covered.intentEntryId)
+   assert(taskEffectDigest(checked.target)===covered.intentDigest&&isDeepStrictEqual(checked.originBinding,covered.originBinding),'TASK_EFFECT_DRAIN_INPUT_MISMATCH')
+   assert(branch.some(entry=>entry.id===covered.intentEntryId),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
+  }
+ }
+ // A later readback owner cannot substitute for the original producer's join.
+ validate(original)
+ const drain=drains.at(-1);if(drain!==original)validate(drain)
+ assert(manager.getBranch(drain.id).some(entry=>entry.id===original.id)&&manager.getBranch(entries.at(-1).id).some(entry=>entry.id===drain.id),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
+ const later=entries.slice(entries.findIndex(entry=>entry.id===drain.id)+1)
+ assert(later.every(entry=>entry.type==='custom'&&entry.customType==='night.commit'),'TASK_EFFECT_DRAIN_CUT_CHANGED')
+ return drain
+}
+
 /** Read already committed Night closures against the original official calls.
  * This verifies durable identities; it neither closes an effect nor grants a
  * model authority. Callers must independently authenticate the new action. */
@@ -118,8 +143,8 @@ export function verifyTaskEffectClosures({task,stored,closedIntentEntryIds}){
   assert(taskEffectDigest(origin.target)===payload.intentDigest&&origin.intent.payload.key===payload.key&&origin.intent.payload.name===payload.toolName&&origin.intent.payload.callId===payload.callId&&origin.call.entry.id===payload.callEntryId&&taskEffectDigest(origin.call.block.arguments)===payload.argumentsDigest&&origin.input.id===payload.inputEntryId&&origin.packet.payload.id===payload.packetId&&taskEffectDigest(origin.packet.payload)===payload.inputDigest&&isDeepStrictEqual(origin.originBinding,payload.originBinding),'TASK_EFFECT_INVOCATION_MISMATCH')
   const closureBranch=manager.getBranch(entry.id),drain=closureBranch.find(item=>item.id===payload.ownerDrainEntryId),drainReceipt=audit(drain??{})
   assert(drain&&taskEffectDigest(drain)===payload.ownerDrainDigest&&drainReceipt?.version===1&&drainReceipt.domain==='task'&&['owner-drained','owner-drained-inputs'].includes(drainReceipt.kind)&&(drainReceipt.kind==='owner-drained'?drainSchema:inputsDrainSchema).safeParse(drainReceipt.payload).success&&drainReceipt.payload.proof.ownerId===task.sessionId&&drainReceipt.payload.scopeDigest===payload.scopeDigest&&drain.parentId===drainReceipt.payload.cutEntryId,'TASK_EFFECT_DRAIN_ATTESTATION_INVALID')
-  assert(closureBranch.some(item=>item.id===row.intentEntryId),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
-  assert(closureBranch.slice(closureBranch.indexOf(drain)+1,-1).every(item=>item.type==='custom'&&item.customType==='night.commit'),'TASK_EFFECT_DRAIN_CUT_CHANGED')
+  const checked=effectOwnerDrain(entries.slice(0,entries.indexOf(entry)),manager,task,payload.currentBinding,row.intentEntryId,origin.originBinding,payload.scopeDigest)
+  assert(checked.id===drain.id,'TASK_EFFECT_DRAIN_ATTESTATION_INVALID')
   return {entryId:entry.id,parentId:entry.parentId,receipt:structuredClone(receipt)}
  })
 }
@@ -183,26 +208,7 @@ export function createTaskEffectReconciliation({persistence,readTask,readScope,i
    assert(!(entry.data.payload.key===intent.payload.key&&(entry.data.payload.isError===false||entry.data.payload.effect==='not-started')),'TASK_EFFECT_ALREADY_SETTLED')
   }
   assert(!receipts.some(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-reconciled'&&entry.data.payload.intentEntryId===intentEntryId),'TASK_EFFECT_ALREADY_RECONCILED')
-  const drains=receipts.filter(entry=>entry.data.domain==='task'&&['owner-drained','owner-drained-inputs'].includes(entry.data.kind))
-  assert(drains.every(entry=>entry.data.version===1&&(entry.data.kind==='owner-drained'?drainSchema:inputsDrainSchema).safeParse(entry.data.payload).success),'TASK_EFFECT_DRAIN_ATTESTATION_INVALID')
-  const drain=drains.findLast(entry=>entry.data.kind==='owner-drained'?isDeepStrictEqual(entry.data.payload.binding,originBinding):entry.data.payload.inputs.some(item=>item.intentEntryId===intentEntryId&&item.intentDigest===taskEffectDigest(target)&&isDeepStrictEqual(item.originBinding,originBinding)))
-  if(drain?.data.kind==='owner-drained-inputs'){
-   const branch=manager.getBranch(drain.id),owner=inputOrigin(branch,task,currentBinding)
-   assert(isDeepStrictEqual(owner.originBinding,drain.data.payload.binding),'TASK_EFFECT_DRAIN_OWNER_INPUT_MISMATCH')
-   for(const covered of drain.data.payload.inputs){
-    const checked=intentOrigin(entries,receipts,manager,task,currentBinding,covered.intentEntryId)
-    assert(taskEffectDigest(checked.target)===covered.intentDigest&&isDeepStrictEqual(checked.originBinding,covered.originBinding),'TASK_EFFECT_DRAIN_INPUT_MISMATCH')
-    assert(branch.some(entry=>entry.id===covered.intentEntryId),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
-   }
-  }
-  assert(drain&&drain.data.payload.scopeDigest===scopeDigest&&drain.parentId===drain.data.payload.cutEntryId&&drain.data.payload.proof.ownerId===task.sessionId,'TASK_EFFECT_DRAIN_ATTESTATION_REQUIRED')
-  assert(manager.getBranch(drain.id).some(entry=>entry.id===intentEntryId),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
-  assert(manager.getBranch(entries.at(-1).id).some(entry=>entry.id===drain.id),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
-  const later=entries.slice(entries.findIndex(entry=>entry.id===drain.id)+1)
-  // A new business receipt can admit work or change a producer's state even
-  // without adding a model message. Only physical commit markers may follow
-  // the attested cut; a later business write needs a fresh real drain.
-  assert(later.every(entry=>entry.type==='custom'&&entry.customType==='night.commit'),'TASK_EFFECT_DRAIN_CUT_CHANGED')
+  const drain=effectOwnerDrain(entries,manager,task,currentBinding,intentEntryId,originBinding,scopeDigest)
   assert(unresolvedNativeJobReceipts(stored.audit,task.sessionId).length===0,'TASK_EFFECT_JOB_UNRESOLVED')
   const again=await readTask(taskId),againScope=scopeSchema.parse(await readScope(again,stored))
   assert(stableTask(again)&&isDeepStrictEqual(taskEffectBinding(again),currentBinding)&&taskEffectScopeDigest(againScope)===scopeDigest&&await isSessionLive(task.sessionId)===false,'TASK_EFFECT_CURRENT_BINDING_CHANGED')

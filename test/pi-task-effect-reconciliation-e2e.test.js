@@ -5,6 +5,7 @@ import {mkdir,writeFile,readFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {createHash} from 'node:crypto'
 import {memoryHost} from './fixtures/memory-host.js'
+import {verifyTaskEffectClosures} from '../src/tasks/effect-reconciliation.js'
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {openTaskSessionService} from '../packages/dingtalk-core/task-session-service.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
@@ -49,4 +50,30 @@ for(const crash of [false,true,'prepared-only'])test('real Host unknown effect '
  const final=await f.host.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true});assert.equal(final.audit.filter(r=>r.domain==='task'&&r.kind==='effect-reconciled').length,1);assert.equal(final.audit.filter(r=>r.domain==='task'&&r.kind==='effect-result').length,0);assert.deepEqual(final.entries.find(e=>e.id===inspection.callEntryId),stored.entries.find(e=>e.id===inspection.callEntryId))
  assert.equal(effects,1);assert.equal(f.requests.length,requests,'reconciliation and recovery never invoke the model');const replay=await h.service.reconcileTaskEffect(request);assert.equal(replay.state,'committed');assert.equal(effects,1)
  if(!crash){continuing=true;await h.store.command({id:'explicit-trusted-host-resume',kind:'task.control',args:{taskId:row.taskId,control:'active',expectedControlRevision:closed.controlRevision}});await h.service.recover();await h.service.whenIdle();assert.equal(effects,2,'An independent native invocation needs no task-wide new-action grant');assert.equal(attemptedAgain,true);assert.doesNotMatch(JSON.stringify(f.requests),/TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED/);const resumed=await h.store.query({kind:'task.get',taskId:row.taskId});assert.equal(resumed.drained,true);assert.equal(resumed.lastDecision.action,'wait')}
+})
+
+test('a cold readback owner refreshes the cut without replacing the original unknown producer drain',{timeout:nativeTestTimeout(25000)},async t=>{
+ let h,effects=0,phase='effect',step=0;t.after(()=>h?.close())
+ const f=await memoryHost(t,body=>{
+  if(!body.tools?.some(tool=>tool.function.name==='task_result'))return
+  if(phase==='effect')return {tool:'partial_write',args:{}}
+  if(step++===0)return {tool:'read',args:{path:'work/uncertain.txt'}}
+  return {tool:'task_result',args:{decision:{action:'wait',summary:'Retained output inspected without repeating the operation',evidence:['read retained partial output'],limitations:['prior effect remains unknown']}}}
+ })
+ f.host.ctx.get('tools').register({name:'partial_write',description:'Retain output then lose its response',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){effects++;await writeFile(join(exec.agent.metadata.cwd,'work/uncertain.txt'),'retained original output');throw Error('lost response')}})
+ h=await open(f);const task=await h.service.createTask({requestId:'unknown-before-readback',objective:'Preserve the original invocation and inspect retained effects'})
+ await until(async()=>!!(await h.service.taskDialogue(task.taskId)).error);await h.service.whenIdle()
+ const before=await h.store.query({kind:'task.get',taskId:task.taskId}),original=await f.host.ctx.sessionPersistence.readNative(before.sessionId,{requireComplete:true}),intent=original.auditEntries.find(row=>row.data.domain==='task'&&row.data.kind==='effect-intent')
+ const first=await h.service.inspectTaskEffect({taskId:task.taskId,intentEntryId:intent.entryId})
+ await h.close();await f.close();await f.boot();h=await open(f,{initialize:false});phase='readback'
+ await h.service.sendTaskDialogue({taskId:task.taskId,requestId:'readback-only',text:'Read the retained result only and report; do not repeat the original operation.'})
+ await until(async()=>(await h.service.taskDialogue(task.taskId)).messages.some(row=>row.id==='readback-only'&&row.reply==='Retained output inspected without repeating the operation'))
+ await h.service.whenIdle()
+ const latest=await h.service.inspectTaskEffect({taskId:task.taskId,intentEntryId:intent.entryId}),stored=await f.host.ctx.sessionPersistence.readNative(before.sessionId,{requireComplete:true})
+ assert.equal(effects,1);assert.equal(stored.audit.filter(row=>row.domain==='task'&&row.kind==='effect-intent').length,1)
+ assert.notEqual(latest.ownerDrainEntryId,first.ownerDrainEntryId)
+ assert.ok(stored.entries.some(row=>row.id===first.ownerDrainEntryId));assert.ok(latest.currentBinding.leaseEpoch>latest.originBinding.leaseEpoch)
+ const request=await proposal(h.service,latest);await h.service.reconcileTaskEffect(request)
+ const closed=await h.store.query({kind:'task.get',taskId:task.taskId});assert.equal(closed.effectReconciliations[0].state,'committed');assert.equal(effects,1)
+ const final=await f.host.ctx.sessionPersistence.readNative(before.sessionId,{requireComplete:true});assert.equal(verifyTaskEffectClosures({task:closed,stored:final,closedIntentEntryIds:[intent.entryId]}).length,1)
 })

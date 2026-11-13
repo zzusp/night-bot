@@ -1,6 +1,7 @@
 // Night-owned IO adapter for Pi tool operations. Pi owns model-facing read/edit/write
 // semantics; this adapter owns canonical identities, bounded IO and guarded publication.
 import {constants} from 'node:buffer'
+import {symbols} from '@deepseek-ai/cordis'
 import {createReadStream} from 'node:fs'
 import {chmod,link,lstat,mkdir,mkdtemp,open,readdir,realpath,rename,rm,stat} from 'node:fs/promises'
 import {basename,dirname,isAbsolute,join,relative,resolve,sep} from 'node:path'
@@ -45,6 +46,10 @@ function text(bytes,path){
  try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes)}catch(e){throw failure('FS_NOT_TEXT',`cannot read "${path}": invalid UTF-8 text`,e)}
 }
 const normalize=value=>value.replaceAll('\r\n','\n')
+
+const notStartedWrites=new WeakMap()
+/** Only this backend's actual pre-publication failure is evidence, not error fields. */
+export const isLocalFileWriteNotStarted=(fs,error)=>!!fs&&notStartedWrites.get(error)===(fs[symbols.original]??fs)
 
 export class LocalFileSystem extends FileSystem{
  static Config=z.object({cwd:z.string().default(process.cwd()),diffBasisMaxBytes:z.number().default(10*1024*1024)})
@@ -183,14 +188,18 @@ export class LocalFileSystem extends FileSystem{
  }
  async writeText(target,content,expected,signal){
   return this.withLock(target.targetKey,async()=>{
-   canceled(signal);const existing=await inspect(this.processPath(target))
-   if(existing&&existing.type!=='file')throw failure('FS_NOT_REGULAR_FILE','Cannot replace a non-regular file')
-   if(expected?.kind==='replaceIfVersion'&&existing?.version!==expected.version)throw failure('FS_STALE_VERSION','File changed since its observation')
-   if(expected?.kind==='createIfAbsent'&&existing)throw failure('FS_NOT_OBSERVED','Cannot overwrite an unobserved file')
-   const before=existing&&Buffer.byteLength(content)<this.config.diffBasisMaxBytes?await this._basis(this.processPath(target),signal):null
-   await this._publish(target,content,existing,expected,signal)
-   const after=await inspect(this.processPath(target))
-   return {operation:existing?'update':'create',version:after?.version??`missing:${target.targetKey}`,before,after:normalize(content)}
+   let publishing=false
+   try{
+    canceled(signal);const existing=await inspect(this.processPath(target))
+    if(existing&&existing.type!=='file')throw failure('FS_NOT_REGULAR_FILE','Cannot replace a non-regular file')
+    if(expected?.kind==='replaceIfVersion'&&existing?.version!==expected.version)throw failure('FS_STALE_VERSION','File changed since its observation')
+    if(expected?.kind==='createIfAbsent'&&existing)throw failure('FS_NOT_OBSERVED','Cannot overwrite an unobserved file')
+    const before=existing&&Buffer.byteLength(content)<this.config.diffBasisMaxBytes?await this._basis(this.processPath(target),signal):null
+    publishing=true
+    await this._publish(target,content,existing,expected,signal)
+    const after=await inspect(this.processPath(target))
+    return {operation:existing?'update':'create',version:after?.version??`missing:${target.targetKey}`,before,after:normalize(content)}
+   }catch(error){if(!publishing&&error instanceof Error)notStartedWrites.set(error,this[symbols.original]??this);throw error}
   })
  }
 }

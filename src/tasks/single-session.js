@@ -196,9 +196,8 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           if(typeof readEffectScope!=='function'||proof?.modelIdle!==true||proof?.toolsIdle!==true||proof?.processes!==0||proof?.jobs!==0||proof?.scope!=='registered-owned-provider-ranges')throw fail('TASK_EFFECT_DRAIN_UNPROVEN')
           await actor.receipts.commit()
           const stored=await ctx.sessionPersistence.readNative(binding.sessionId,{requireComplete:true}),scope=await readEffectScope(binding,stored)
-          // 旧租约未知效果沿用原 owner 的排空证明；本轮核验不能给旧调用伪造新 owner 证明。
+          // 旧调用仍需原 owner 的证明；本轮只为实际核验 owner 记录新的排空切点。
           const inputs=unresolvedTaskInputOrigins(actor.piSession.sessionManager,intents,binding).filter(item=>item.originBinding.leaseEpoch===binding.leaseEpoch)
-          if(!inputs.length)return
           const identity={binding:Object.fromEntries(['taskId','sessionId','requirementRevision','controlRevision','contextRevision','leaseEpoch'].map(name=>[name,binding[name]??0])),scopeDigest:taskEffectScopeDigest(scope),cutEntryId:actor.piSession.sessionManager.getLeafId()}
           const differentOrigin=inputs.some(item=>!isDeepStrictEqual(item.originBinding,identity.binding))
           actor.receipts.append(await (differentOrigin?ownerDrainedInputsReceipt:ownerDrainedReceipt)({...identity,...differentOrigin?{inputs}:{}},async()=>({issuer:'night-owned-provider-drain-v1',scope:proof.scope,ownerId:actor.id,modelIdle:proof.modelIdle,toolsIdle:proof.toolsIdle,processes:proof.processes,jobs:proof.jobs,observedAt:new Date().toISOString(),evidenceDigest:fingerprint({phase,proof:{scope:proof.scope,processes:proof.processes,jobs:proof.jobs,modelIdle:proof.modelIdle,toolsIdle:proof.toolsIdle},binding})})))
