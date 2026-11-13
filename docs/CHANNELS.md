@@ -360,3 +360,24 @@ Native Schedule 仍是唯一计时与冷启动投递者，停机后只补最新�
 拒绝后续输入，冷恢复清理已终止但尚未来得及撤销的 native 排期。桥接检查与
 发送只限原会话。任务 completed 是任务账本完成证据，不替代生产现场验收；
 原任务必须完整保留用户要求的上线条件。旧一次性排期不会凭文本自动升级。
+
+### Router input packing
+
+New Router turns receive an explicit business view of each inbox event, not the
+notification/source ledger serialization. It retains exact source text, author,
+version, quotes, attachment references, and the first reply's text and delivery
+state. Prepared/unknown replies still do not establish delivery. Duplicate
+transport identifiers, send/readback tokens, receipts and processing metadata are
+not model instructions. Original ledger records and same-conversation source
+history/get tools remain authoritative and unchanged.
+
+The view is versioned and bound to the immutable ledger identity outside the
+model text. Recovery accepts the exact persisted compact, old neutral, or old raw
+packet, without rewriting its journal or admitting the batch twice. Mutable
+first-reply delivery progress and observation timing do not change input identity;
+changed source version, content or frozen reply payload still fail identity checks.
+
+Batching uses projected UTF-8 bytes (128 KiB target) and at most 15 user sources,
+with at most 30 inbox events. A single larger original is delivered intact and
+alone, not silently truncated. Pending overflow remains in the inbox. This is a
+packing target, not a promise that arbitrary user content fits the model window.

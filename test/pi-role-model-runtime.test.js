@@ -26,7 +26,7 @@ test('headless actual ingress sends triage Router and single-task models and eff
    const input=requestEnvelope(body,'Router 请求：'),source=(await h.query('source.list')).find(row=>row.messageId==='models-'+round),task=await h.query('task.get',{taskId:'role-task-'+round})
    assert.ok(input,'Router original input remains present')
    if(source&&!task)return {tool:'resident_task_plan',args:{operationId:'role-plan-'+round,sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'role-task-'+round,title:'Synthetic role '+round,objective:'Verify selected model',requirements:['Capture the official request']}],dependencies:[]}}
-   return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'role-settle:'+input.events.map(event=>event.eventId).join(',')}}
+   return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'role-settle:'+input.events.map(event=>event.id).join(',')}}
   }
   return {text:'No further work'}
  },{hostOptions:{hostConfig,inheritedEnvironment:environment}})

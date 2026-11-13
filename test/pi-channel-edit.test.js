@@ -200,7 +200,7 @@ async function editModel(body){
  if(tools.includes('resident_router_settle')){
   if(body.messages.at(-1)?.role==='tool')return {text:'Committed'}
   const input=requestEnvelope(body,'Router 请求：')
-  return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'edit-settle:'+input.events.map(event=>event.eventId).join(',')}}
+  return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'edit-settle:'+input.events.map(event=>event.id).join(',')}}
  }
  if(tools.includes('task_result'))return {tool:'task_result',args:{decision:{action:'complete',summary:'Local edit fixture completed',evidence:[],limitations:[]}}}
  return {text:'verified'}
