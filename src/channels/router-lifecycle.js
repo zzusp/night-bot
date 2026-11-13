@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {sessionWorkspace} from '../../packages/dingtalk-core/session-workspaces.js'
 import {conversationSource} from './message-safety.js'
+import {routerModelBody,routerModelBatch} from './router-model-input.js'
 import {pendingBusinessInputs} from '../runtime/pi-business-inputs.js'
 
 const fail=code=>{throw Object.assign(new Error(code),{code})}
@@ -24,6 +25,17 @@ function comparableRouterPacket(packet){
   return copy
 }
 export const sameRouterPacket=(left,right)=>isDeepStrictEqual(comparableRouterPacket(left),comparableRouterPacket(right))
+export function routerPacketViews(row,batch){
+    const id=`router-input:${hash([row.id,batch.map(event=>event.id)])}`
+    const body={conversationId:row.id,generation:row.generation,events:batch.map(event=>({...event,...event.source?{source:withoutTiming(event.source)}:{}}))}
+    const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id),...traceSourcesMetadata(batch.filter(event=>event.kind==='source.message'&&event.source).map(event=>event.source)),...traceTaskEventsMetadata(batch)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:body.events.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
+    // Bind the compact view to every immutable ledger field, including fields
+    // omitted from model text. Delivery progress alone may change during recovery.
+    const identityBody={...body,events:body.events.map(event=>({...event,...event.triageReply?{triageReply:triageReplyIdentity(event.triageReply)}:{}}))}
+    const compact={...packet,source:{...packet.source,modelViewVersion:1,ledgerIdentity:hash(identityBody)},content:[{type:'text',text:'Router 请求：'+JSON.stringify(routerModelBody(row,batch))}]}
+    return [compact,packet,{...packet,content:[{type:'text',text:'Router 请求：'+JSON.stringify(body)}]}]
+  }
+
 /** 串行调度只负责 Host 生命周期；推理、队列和历史始终由官方 Pi 执行。 */
 export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPreset='night-bot',recordStage}){
   const handles=new Map(),tails=new Map(),inflight=new Set(),packets=new Map(),errors=new Map(),interruptions=new Map(),cancellationReasons=new Set()
@@ -138,12 +150,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
       await command('router.handoff.abort',{conversationId:row.id,generation:row.generation,handoffId:rotation.id,safeToResume:true,error:recoveryReason})
     }else fail('ROUTER_RECOVERY_BLOCKED')
   }
-  function packetViews(row,batch){
-    const id=`router-input:${hash([row.id,batch.map(event=>event.id)])}`
-    const body={conversationId:row.id,generation:row.generation,events:batch.map(event=>({...event,...event.source?{source:withoutTiming(event.source)}:{}}))}
-    const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id),...traceSourcesMetadata(batch.filter(event=>event.kind==='source.message'&&event.source).map(event=>event.source)),...traceTaskEventsMetadata(batch)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:body.events.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
-    return [packet,{...packet,content:[{type:'text',text:'Router 请求：'+JSON.stringify(body)}]}]
-  }
+
   async function drain(conversationId){
     assertOpen();ctx.get('channels').assertGroupTarget(conversationId)
     let row=await query('router.get',{conversationId})
@@ -182,11 +189,10 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
         if(!isDeepStrictEqual(ids,batch.map(event=>event.id)))fail('ROUTER_PACKET_ID_CONFLICT')
       }else{
         // 每批用户来源不超过15；内部事件另受总量和编码预算约束。
-        let users=0,bytes=0
-        for(const event of inbox){if(event.kind==='source.message'&&users>=15)break;const size=Buffer.byteLength(JSON.stringify({...event,...event.source?{source:withoutTiming(event.source)}:{}}));if(batch.length&&bytes+size>131072)break;batch.push(event);bytes+=size;if(event.kind==='source.message')users++}
+        batch=routerModelBatch(row,inbox)
       }
-      const [currentPacket,legacyPacket]=packetViews(row,batch),id=currentPacket.id
-      if(persistedPacket&&!sameRouterPacket(persistedPacket,currentPacket)&&!sameRouterPacket(persistedPacket,legacyPacket))fail('ROUTER_PACKET_ID_CONFLICT')
+      const views=routerPacketViews(row,batch),currentPacket=views[0],id=currentPacket.id
+      if(persistedPacket&&!views.some(view=>sameRouterPacket(persistedPacket,view)))fail('ROUTER_PACKET_ID_CONFLICT')
       const packet=persistedPacket??currentPacket
       packets.set(id,packet)
       const observed=timing(row,id)
@@ -225,16 +231,16 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     const inbox=await query('router.inbox',{conversationId,limit:30});assertOpen()
     const pendingCount=await query('router.inbox-count',{conversationId});assertOpen()
     // 不漏掉分页外的后续取消；联合续轮仍受原批次消息数与编码预算约束。
-    if(pendingCount!==inbox.length||inbox.filter(event=>event.kind==='source.message').length>15||!isDeepStrictEqual(ids,inbox.slice(0,ids.length).map(event=>event.id))||inbox.reduce((bytes,event)=>bytes+Buffer.byteLength(JSON.stringify({...event,...event.source?{source:withoutTiming(event.source)}:{}})),0)>131072)fail('ROUTER_RESUME_BATCH_STALE')
-    if(!packetViews(row,inbox.slice(0,ids.length)).some(value=>sameRouterPacket(value,packet)))fail('ROUTER_PACKET_ID_CONFLICT')
-    const supplements=inbox.length>ids.length?[packetViews(row,inbox.slice(ids.length))[0]]:[]
-    const snapshot=packetViews(row,inbox)[0],allIds=inbox.map(event=>event.id)
+    if(pendingCount!==inbox.length||inbox.filter(event=>event.kind==='source.message').length>15||!isDeepStrictEqual(ids,inbox.slice(0,ids.length).map(event=>event.id))||routerModelBatch(row,inbox).length!==inbox.length)fail('ROUTER_RESUME_BATCH_STALE')
+    if(!routerPacketViews(row,inbox.slice(0,ids.length)).some(value=>sameRouterPacket(value,packet)))fail('ROUTER_PACKET_ID_CONFLICT')
+    const supplements=inbox.length>ids.length?[routerPacketViews(row,inbox.slice(ids.length))[0]]:[]
+    const snapshot=routerPacketViews(row,inbox)[0],allIds=inbox.map(event=>event.id)
     const validate=async()=>{
       assertOpen()
       const current=await query('router.get',{conversationId});assertOpen()
       if(!current||current.phase!=='active'||current.generation!==row.generation||current.activeSessionId!==row.activeSessionId||agents.get(row.activeSessionId)!==handle.agent||handle.agent.lifecycle.signal.aborted)fail('ROUTER_RESUME_STALE')
       const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
-      if(await query('router.inbox-count',{conversationId})!==allIds.length||!sameRouterPacket(packetViews(current,pending)[0],snapshot))fail('ROUTER_RESUME_BATCH_STALE')
+      if(await query('router.inbox-count',{conversationId})!==allIds.length||!sameRouterPacket(routerPacketViews(current,pending)[0],snapshot))fail('ROUTER_RESUME_BATCH_STALE')
     }
     await validate();assertOpen()
     for(const input of [packet,...supplements])packets.set(input.id,input)

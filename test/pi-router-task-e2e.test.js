@@ -59,7 +59,7 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
         }
       }
       if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1).result.isError)return {text:'Current batch disposition is committed.'}
-      return call('resident_router_settle',{eventIds:input.events.map(event=>event.id),operationId:'settle:'+input.events.map(event=>event.eventId).join(',')})
+      return call('resident_router_settle',{eventIds:input.events.map(event=>event.id),operationId:'settle:'+input.events.map(event=>event.id).join(',')})
     }
     return {text:'No additional work'}
   })

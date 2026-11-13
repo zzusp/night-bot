@@ -258,7 +258,7 @@ test('configured channel responsibilities isolate all model roles through the de
       }
       const lastCall=body.messages.findLast(message=>message.role==='assistant')?.tool_calls?.at(-1)?.function?.name
       if(body.messages.at(-1)?.role==='tool'&&lastCall==='resident_router_settle')return {text:'The current batch is settled.'}
-      return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'role-settle:'+input.events.map(event=>event.eventId).join(',')}}
+      return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'role-settle:'+input.events.map(event=>event.id).join(',')}}
     }
     record('channel',rooms[0],body);return {text:'The configured channel context is available.'}
   })

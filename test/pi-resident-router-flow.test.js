@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {hash} from '../src/memory/format.js'
+import {conversationSource} from '../src/channels/message-safety.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {residentRouterHost,channelMessage,requestEnvelope,requestText,requestTools,eventually} from './fixtures/resident-router-host.js'
 
@@ -28,7 +29,7 @@ function submit(input,select) {
 }
 function settle(body,input) {
   if(body.messages.at(-1)?.role==='tool')return {text:'The necessary business disposition is committed.'}
-  return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle:'+input.events.map(event=>event.eventId).join(',')}}
+  return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle:'+input.events.map(event=>event.id).join(',')}}
 }
 
 test('explicit channel preference is accepted memory before acknowledgement and survives cold cross-conversation recall',{timeout:nativeTestTimeout(180000)},async t=>{
@@ -489,7 +490,7 @@ test('legacy prepared replyRequest and cold unknown retain original payload byte
 })
 
 
-test('cold Router resumes an exact legacy pending packet before a later event without changing its body or replaying either batch',{timeout:nativeTestTimeout(60000)},async t=>{
+for(const format of ['legacy','neutral','compact'])test(`cold Router resumes an exact ${format} pending packet before a later event without changing its body or replaying either batch`,{timeout:nativeTestTimeout(60000)},async t=>{
   const batches=[];let injected=false,legacyPacket
   const h=await residentRouterHost(t,body=>{
     const summary=handoff(body);if(summary)return summary
@@ -510,7 +511,11 @@ test('cold Router resumes an exact legacy pending packet before a later event wi
         if(injected)throw Object.assign(Error('TEST_ROUTER_ENQUEUE_INTERRUPTED'),{code:'TEST_ROUTER_ENQUEUE_INTERRUPTED'})
         if(!injected){
           const input=JSON.parse(packet.content[0].text.slice('Router 请求：'.length))
-          for(const event of input.events)if(event.source)event.source=await h.query('source.get',{sourceId:event.source.sourceId})
+          if(format!=='compact'){
+            input.events=(await h.query('router.inbox',{conversationId:input.conversationId})).filter(event=>packet.source.eventIds.includes(event.id))
+            if(format==='neutral')input.events=input.events.map(event=>({...event,source:conversationSource(event.source)}))
+            delete packet.source.modelViewVersion;delete packet.source.ledgerIdentity
+          }
           // 模拟旧Host编码，在正式enqueue提交后、SDK接纳前中断；不改journal或SQLite。
           packet.content[0].text='Router 请求：'+JSON.stringify(input)
           delete packet.source.traceSources;delete packet.source.traceTaskEvents
@@ -535,7 +540,9 @@ test('cold Router resumes an exact legacy pending packet before a later event wi
   assert.equal(stored.entries.filter(entry=>entry.type==='message'&&entry.message.role==='assistant').length,0);assert.equal(batches.length,0)
   assert.equal((await h.query('router.inbox',{conversationId})).length,1)
   const originalBody=JSON.parse(legacyPacket.content[0].text.slice('Router 请求：'.length)),source=originalBody.events[0].source
-  assert.equal(source.groupId,conversationId);assert.equal(Object.hasOwn(source,'conversationId'),false)
+  if(format==='legacy'){assert.equal(source.groupId,conversationId);assert.equal(Object.hasOwn(source,'conversationId'),false)}
+  else if(format==='neutral')assert.equal(source.conversationId,conversationId)
+  else {assert.equal(source.groupId,undefined);assert.equal(source.routeReceipt,undefined);assert.equal(legacyPacket.source.modelViewVersion,1)}
   await h.store.command({id:'fixture-later-source',kind:'source.record-direct',args:{source:{sourceId:'late-router-source',groupId:conversationId,messageId:'late-router-message',actorId:source.actorId,channel:source.channel,version:1,text:'LATE_EVENT_NOT_IN_COMMITTED_PACKET',resources:[]},conversation:{conversationId}}})
   await h.store.command({id:'fixture-later-triage',kind:'triage.commit',args:{dispositions:[{sourceId:'late-router-source',messageVersion:1,needsHandling:true,reason:'A later independently recorded event'}]}})
   const pending=await h.query('router.inbox',{conversationId});assert.equal(pending.length,2)
@@ -870,7 +877,9 @@ for(const audience of ['operator','requester'])test(`Router resumes a waiting ta
       assert.equal(input.humanReview,undefined,'Router alone judges whether the supplemental information answers the question')
       runs.push(input.task.sessionId)
       if(taskStep++===0){writes++;return {tool:'write',args:{path:'work/proof.txt',content:'original-session-proof'}}}
-      if(!input.task.humanRequests?.some(row=>row.status==='answered'))return {tool:'task_result',args:{decision:{action:'wait',audience,question:'Which environment variable identifies the read-only target?',summary:'Waiting for the target variable name',evidence:['Original proof saved'],limitations:['Target variable name missing']}}}
+      assert.equal(input.task.humanRequests,undefined,'execution gets the current brief, not the historical human-request ledger')
+      const hasAnswer=input.updates?.some(row=>row.text.includes('VERIFY_TARGET'))&&input.sources?.some(row=>row.text.includes('VERIFY_TARGET'))
+      if(!hasAnswer)return {tool:'task_result',args:{decision:{action:'wait',audience,question:'Which environment variable identifies the read-only target?',summary:'Waiting for the target variable name',evidence:['Original proof saved'],limitations:['Target variable name missing']}}}
       if(reads++===0)return {tool:'read',args:{path:'work/proof.txt'}}
       assert.match(JSON.stringify(body),/original-session-proof/,'continuation reads the actual original file')
       return {tool:'task_result',args:{decision:{action:'complete',summary:'Original proof read after the Router continuation',evidence:['Original proof read: original-session-proof'],limitations:[]}}}
