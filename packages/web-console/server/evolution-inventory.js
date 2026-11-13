@@ -6,7 +6,7 @@ import {decodeTopic, hash, label} from '../../../src/memory/format.js'
 import {decodeRootIndex} from '../../../src/memory/layered-format.js'
 import {boundedRead} from '../../../src/memory/previous.js'
 import {learnedSkillSupported} from '../../../src/memory/evolution.js'
-import {installedSkills, contentVersion, pathSafe} from '../../../src/memory/skill-usage.js'
+import {installedSkills, contentVersion, pathSafe} from '../../../src/memory/skill-inventory.js'
 import {fail} from './security.js'
 
 const stamp = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null

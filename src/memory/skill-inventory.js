@@ -1,9 +1,8 @@
 import {boundedRead} from './previous.js'
-import {DatabaseSync} from 'node:sqlite'
-import {lstat,chmod,readdir,readFile} from 'node:fs/promises'
+import {lstat,readdir} from 'node:fs/promises'
 import {join,resolve,relative,dirname,basename} from 'node:path'
 import {parseFrontmatter} from '@earendil-works/pi-coding-agent'
-import {privateDirectory,readRegular,failure} from '../runtime/files.js'
+import {failure} from '../runtime/files.js'
 import {inside} from '../runtime/paths.js'
 import {parseSkillFrontmatter} from '../native-skill-filesystem.js'
 import {hash} from './format.js'
@@ -12,15 +11,6 @@ export const skillIdentity=({name,provider,path,installRoot})=>hash(JSON.stringi
 export function botSkillRoots(paths,extra=[]){return [...new Set([paths.skills,paths.agentsHome&&join(paths.agentsHome,'skills'),paths.harnessHome&&join(paths.harnessHome,'skills'),...extra.map(path=>resolve(paths.installRoot,path))].filter(Boolean))]}
 export function commonSkillPath(paths,path){const owned=[paths.skills,paths.agentsHome&&join(paths.agentsHome,'skills'),paths.harnessHome&&join(paths.harnessHome,'skills')].filter(Boolean);return owned.some(root=>inside(root,path))||![paths.state,paths.memory,paths.secrets,paths.workspaces,paths.cache,paths.logs,paths.runtime,paths.temp,paths.attachments].filter(Boolean).some(root=>inside(root,path))}
 export async function pathSafe(path,root,installRoot=root){if(!inside(root,path)||!inside(installRoot,root))throw failure('SKILL_INVENTORY_PATH_UNSAFE');let at=resolve(path);for(;;){const info=await lstat(at).catch(error=>{if(error.code==='ENOENT')return;throw error});if(info?.isSymbolicLink()||info?.isFile()&&info.nlink!==1)throw failure('SKILL_INVENTORY_PATH_UNSAFE');if(at===installRoot||dirname(at)===at)break;at=dirname(at)}}
-export async function openSkillUsage(directory){
- await privateDirectory(directory);const file=join(directory,'skill-usage.sqlite')
- for(const suffix of ['','-wal','-shm','-journal']){const info=await lstat(file+suffix).catch(error=>{if(error.code==='ENOENT')return;throw error});if(info&&(!info.isFile()||info.isSymbolicLink()||info.nlink!==1))throw failure('SKILL_USAGE_PATH_UNSAFE')}
- const db=new DatabaseSync(file);if(process.platform!=='win32')await chmod(file,0o600)
- db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS calls(id TEXT PRIMARY KEY,resource TEXT NOT NULL,name TEXT NOT NULL,provider TEXT NOT NULL,version TEXT NOT NULL,mode TEXT NOT NULL,at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS calls_resource ON calls(resource,at); CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
- db.prepare('INSERT OR IGNORE INTO metadata VALUES (?,?)').run('trackingSince',new Date().toISOString())
- return {record({eventId,resource,name,provider,version,mode}){if(!/^[a-f0-9]{64}$/.test(eventId)||!/^[a-f0-9]{64}$/.test(resource)||!/^[a-f0-9]{64}$/.test(version)||!['model','user','file-read'].includes(mode)||typeof name!=='string'||typeof provider!=='string')throw failure('SKILL_USAGE_INVALID');db.prepare('INSERT OR IGNORE INTO calls VALUES (?,?,?,?,?,?,?)').run(eventId,resource,name,provider,version,mode,new Date().toISOString())},
-  inspect(){const items=db.prepare("SELECT resource,name,provider,count(*) AS count,sum(mode='model') AS modelCount,sum(mode='user') AS userCount,sum(mode='file-read') AS fileReadCount,max(CASE WHEN mode<>'file-read' THEN at END) AS lastInvocationAt,max(at) AS lastUsedAt FROM calls GROUP BY resource,name,provider").all().map(row=>({...row,lastVersion:db.prepare("SELECT version FROM calls WHERE resource=? AND mode<>'file-read' ORDER BY at DESC,rowid DESC LIMIT 1").get(row.resource)?.version??null}));return {trackingSince:db.prepare('SELECT value FROM metadata WHERE key=?').get('trackingSince').value,items}},close(){db.close()}}
-}
 // File inventory is not a model use. Metadata/body hashing never increments calls.
 export async function installedSkills(paths,extra=[],{onContent}={}){
  const roots=botSkillRoots(paths,extra),items=[],issues=[],selected=new Set(),files=new Map();let visited=0

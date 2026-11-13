@@ -112,7 +112,7 @@ export class OfficialAgentFactory {
    }
    await measurePhase('session-store-commit',()=>store.commit())
    let publishInternal
-   const admission=await measurePhase('session-admission-restore',()=>createBusinessAdmission({store,measurePhase,onSkillCommand:value=>ownerCtx.get('memory')?.recordUserSkill?.(actor,value),authorize:packet=>authorize(packet,actor),authorizeSkillCommand:async(packet,name)=>{
+   const admission=await measurePhase('session-admission-restore',()=>createBusinessAdmission({store,measurePhase,authorize:packet=>authorize(packet,actor),authorizeSkillCommand:async(packet,name)=>{
     const authorizeCommand=options.authorizeSkillCommand??ports.authorizeSkillCommand
     if(typeof authorizeCommand!=='function')return false
     await bundle.bridge.refreshResources();await bundle.bridge.reloadResources()

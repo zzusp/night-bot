@@ -23,7 +23,7 @@ export function skillCommand(packet){
 /** Correlate one authorized Host command with Pi's actual user entry. The
  * original packet remains authority; expanded skill text never becomes input
  * authority. Incomplete starts are deliberately not repaired or replayed. */
-export async function createSkillCommandInput({store,lookupPacket,authorize,onAdmitted}){
+export async function createSkillCommandInput({store,lookupPacket,authorize}){
  const starts=new Map(),acks=new Map(),byEntry=new Map();let session,unsubscribe,detachAbort,active,tail=Promise.resolve(),closed=false,failure
  const append=(kind,payload)=>store.appendAudit({version:1,domain:'admission',kind,payload})
  const healthy=()=>{if(failure)throw failure;if(closed)throw fail('PI_SKILL_COMMAND_CLOSED')}
@@ -52,7 +52,7 @@ export async function createSkillCommandInput({store,lookupPacket,authorize,onAd
   append('command-admitted',ack)
   try{await store.commit()}catch(error){failure=error;throw error}
   acks.set(ack.id,ack);byEntry.set(ack.entryId,ack)
-  const completed=active;active=undefined;await onAdmitted?.({name:completed.command.name,entryId:entry.id,content:entry.message.content});completed.resolve(ack)
+  const completed=active;active=undefined;completed.resolve(ack)
  }
  return {
   bindSession(value,{signal}={}){

@@ -158,3 +158,12 @@ test('old unfinished layout migration cannot be silently repurposed for a new ta
  await writeFile(join(dir,'layout-migration.pending.json'),JSON.stringify({version:1,installRoot:root,now:Date.now(),sourceDigest:'a'.repeat(64),backup:'backups/memory-layout-'+'a'.repeat(64)}))
  const before=await snapshot(root);await assert.rejects(checkMemoryMigration(root),/JOURNAL_TARGET_UNSUPPORTED/);await assert.rejects(applyMemoryMigration(root),/JOURNAL_TARGET_UNSUPPORTED/);assert.deepEqual(await snapshot(root),before)
 })
+
+test('retired skill usage database and all sidecars remain untouched during migration',async t=>{
+ const {root,dir}=await fixture(t)
+ const files=['','-wal','-shm','-journal'].map(suffix=>'skill-usage.sqlite'+suffix)
+ for(const name of files)await writeFile(join(dir,name),'RETIRED:'+name)
+ assert.equal((await checkMemoryMigration(root)).status,'ready')
+ assert.equal((await applyMemoryMigration(root)).status,'completed')
+ for(const name of files)assert.equal(await readFile(join(dir,name),'utf8'),'RETIRED:'+name)
+})

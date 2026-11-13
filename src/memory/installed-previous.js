@@ -2,7 +2,7 @@ import {watch} from 'chokidar'
 import {join} from 'node:path'
 import {atomicWrite,withLock,failure} from '../runtime/files.js'
 import {inside} from '../runtime/paths.js'
-import {installedSkills,botSkillRoots,commonSkillPath} from './skill-usage.js'
+import {installedSkills,botSkillRoots,commonSkillPath} from './skill-inventory.js'
 import {boundedRead,contentSnapshot,priorSnapshot,CONTENT_LIMIT} from './previous.js'
 
 const MAX_ITEMS=128,STATE_LIMIT=MAX_ITEMS*CONTENT_LIMIT*5

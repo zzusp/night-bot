@@ -758,7 +758,6 @@ function apply(ctx, config = {}) {
 			const skill = await ctx.skills.get(args.name, lookup);
 			if (!skill) throw new Error(`skill "${args.name}" is unknown or no longer available`);
 			if (!isModelInvocable(skill)) throw new Error(`skill "${args.name}" is not available for model invocation`);
-			ctx.get('memory')?.prepareSkillUse?.(exec,skill);
 			return {
 				name: skill.name,
 				provider: skill.provider,

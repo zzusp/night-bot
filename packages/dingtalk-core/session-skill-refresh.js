@@ -79,14 +79,13 @@ export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
   }else if(observation&&filesystem){
    try{const target=await filesystem.resolve(observation.path,{cwd:currentCwd(),signal});for(const skill of loaded.values())if(skill.resourceBase?.kind==='directory'){const root=await filesystem.resolve(skill.resourceBase.path,{cwd:currentCwd(),signal});if(filesystem.contains(root,target)){record={kind:'reference',key:observation.path,name:skill.name,...observation};break}}}catch(error){if(signal?.aborted)throw error;for(const skill of loaded.values())legacy.add(skill.name)}
   }
-  const usagePrepared=observation&&await get('memory')?.prepareSkillFileUse?.(exec,observation);
-  if(record||usagePrepared)prepared.set(exec,{usagePrepared:!!usagePrepared,...(record?{record:recordSchema.parse(record)}:{usageOnly:true}),valueDigest:resultDigest(result)})
+  if(record)prepared.set(exec,{record:recordSchema.parse(record),valueDigest:resultDigest(result)})
   return decision
  }))
  disposers.push(ctx.on('tools/result',(exec,result)=>{
   const item=prepared.get(exec);prepared.delete(exec)
   if(!item||exec.agent!==actor||result.isError||resultDigest(result)!==item.valueDigest)return
-  pendingResults.set(exec.callId,{...item,toolName:exec.name,execution:exec})
+  pendingResults.set(exec.callId,{...item,toolName:exec.name})
  }))
  disposers.push(session.agent.subscribe(async event=>{
   if(event.type!=='message_end'||event.message.role!=='toolResult')return
@@ -94,7 +93,7 @@ export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
   if(!item||message.isError||message.toolName!==item.toolName)return
   const entry=session.sessionManager.getEntries().findLast(entry=>entry.type==='message'&&entry.message.role==='toolResult'&&entry.message.toolCallId===message.toolCallId&&entry.message.toolName===message.toolName&&!entry.message.isError)
   if(!entry)throw fail('PI_SKILL_OBSERVATION_RESULT_ENTRY_REQUIRED')
-  const operation=tail.then(async()=>{alive();if(item.usageOnly){await actor.receipts.commit();await get('memory')?.commitSkillUse?.(item.execution,{entryId:entry.id,callId:message.toolCallId});return;}const previous=(item.record.kind==='skill'?loaded:references).get(item.record.key);if(previous&&digest(previous)===digest(item.record)){await actor.receipts.commit();if(item.record.kind==='skill'||item.usagePrepared)await get('memory')?.commitSkillUse?.(item.execution,{entryId:entry.id,callId:message.toolCallId});return;}await actor.receipts.append({version:1,domain:'skill-observation',kind:'read',payload:{callId:message.toolCallId,resultEntryId:entry.id,record:item.record}});await actor.receipts.commit();remember(item.record);if(item.record.kind==='skill'||item.usagePrepared)await get('memory')?.commitSkillUse?.(item.execution,{entryId:entry.id,callId:message.toolCallId})})
+  const operation=tail.then(async()=>{alive();const previous=(item.record.kind==='skill'?loaded:references).get(item.record.key);if(previous&&digest(previous)===digest(item.record)){await actor.receipts.commit();return;}await actor.receipts.append({version:1,domain:'skill-observation',kind:'read',payload:{callId:message.toolCallId,resultEntryId:entry.id,record:item.record}});await actor.receipts.commit();remember(item.record)})
   tail=operation.catch(cause=>{failure??=cause})
   await operation
  }))

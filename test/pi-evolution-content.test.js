@@ -9,7 +9,7 @@ import {memoryScope} from '../src/memory/scope.js'
 import {hash} from '../src/memory/format.js'
 import {inspectEvolutionItem,latestComparison} from '../src/memory/evolution-content.js'
 import {InstalledSkillPrevious} from '../src/memory/installed-previous.js'
-import {installedSkills} from '../src/memory/skill-usage.js'
+import {installedSkills} from '../src/memory/skill-inventory.js'
 import {boundedRead,CONTENT_LIMIT} from '../src/memory/previous.js'
 
 async function fixture(t){
