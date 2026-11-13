@@ -2,7 +2,7 @@
 
 > 状态：ACTIVE
 > Goal ID：local-merged-pr-review
-> 最近维护：2026-11-13T03:08:03.406474+00:00
+> 最近维护：2026-11-13T03:41:58.388864+00:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -21,7 +21,7 @@
 - 本轮恢复修复分支worktree-local-recovery-status，继承worktree-evolution-cache-deploy的验收记录；原修复分支的PR #96已合并为aaa6d97，不继续向已合并分支push。
 - 原复查14个PR：#76、#77、#78、#79、#80、#81、#84、#85、#87、#88、#89、#90、#92、#93。
 - 操作者明确授权合并及部署，并再次要求“部署最新代码”；最终采用最新main 457585e5879a707c7be33d3e6737081934272f86（含后续#94/#95），部署后fetch核实未变化。
-- 独立干净发行，原data留在原位；v3迁移已完成，不重复迁移。本地不备份、不手动触发CI，不改权限模式或渠道实例配置。
+- 独立干净发行，原data留在原位；此前v3迁移已完成；最新代码要求另一次v3→v4显式离线升级，无备份决策见[本次迁移快照](../../spec/offline-memory-without-backup.md)。本地不备份、不手动触发CI，不改权限模式或渠道实例配置。
 - 两项最新界面回归已告知，按用户重申仍部署最新代码；不回退、不改测试标准，恢复仅沿原 Host 合同和效果核验入口；不改账本清警、不重放未知效果。
 
 ## sub goal matrix
@@ -34,12 +34,12 @@
 | SG4 | Git交付 | 本地验证后提交并回读PR | 已合并 | PR #96 MERGED；aaa6d97dcf6e318f2c815b39b31ab1e6d7c6d3fa |
 | SG5 | 本地最新部署和真实验收 | 最新发行启动且实际记忆页fresh | 已部署，附遗留问题 | 实际进程457585e；两次真实强刷31/0且无stale/error；round-2.md |
 
-| SG6 | 本地恢复告警与接入状态 | 修复确认缺陷并独立核实真实恢复终态；受阻项保留证据 | Router 修复已验证，待合并及本地部署 | round-3.md：误报回归先红后绿；6/6和项目守卫通过；原任务排空证明过期及Router aborted/action+新输入仍阻断 |
+| SG6 | 本地恢复告警与接入状态 | 修复确认缺陷并独立核实真实恢复终态；受阻项保留证据 | Router 修复已合并，v4迁移阻断启动 | round-3.md：误报回归先红后绿；6/6和项目守卫通过；原任务排空证明过期及Router aborted/action+新输入仍阻断 |
 
 ## 当前检查点
 
 - 当前子目标：SG6
-- 唯一下一步：合并已验证的 PR #100，再 fetch 部署时最新 main，独立发行且保留原 data；正常 IPC 停机、自检启动后，核实原群4项事件真实处理终态及后续取消/延期先可见。修复代码971da32：恢复专项7项、工厂13/13、完整路由109/109（无失败/取消/跳过）与来源守卫通过。旧任务未知效果独立保留，不为健康计数处置。
+- 唯一下一步：显式无备份v3→v4修复已完成，迁移全套33/33及来源守卫通过；等待最新主线Router关联复验，随后合并并重新fetch最新main部署。旧457585e三进程已正常退出，de3378b依赖/守卫/Web构建通过但实际启动失败；真实Cordis日志为MEMORY_LAYOUT_MIGRATION_REQUIRED，上层表现为channels.plugins未发布。当前正式服务离线。官方只读--check核实31条/0候选、源digest a7d4495e4e4a5f514510d3d842c6f50c5a8ddd3aea5868108e34364e29726885；未apply、未创建备份、未领取Router检查点。已fetch并整合最新main 51fa58f（含#103）。本次Router生产代码已通过恢复专项7项、工厂13/13、完整路由109/109；这些不能替代实际启动与原群终态。
 - 未闭环项：两个最新界面回归、usageCoverage=partial、钉钉ingress recovering、resident degraded的原任务阻塞与新增ROUTER_BATCH_UNSETTLED；不宣称全系统健康或全绿。
 
 生产修复原提交210b521，最后来源测试blob e7f5d2d909bb18dd768548240216e5d9f39da750；修复与验收增量4297f39已随PR96合并。第1轮历史保留，不用最终提交替代原整批加载版本。
@@ -52,6 +52,8 @@
 
 第3轮确认真实回填游标推进且两路多次 receiving；普通增量拉取的 inProgress 引起周期误报，已修复并通过6项相关回归和 pnpm check。原任务正式 inspect 返回 TASK_EFFECT_DRAIN_CUT_CHANGED；原 Router 为 aborted 检查点、未配对 action 且有3项较新输入。未执行 close/resume、未重放或清警，实际 degraded 仍为2项。已整合主线77acd68，修复提交3164123与实跑源码blob一致且项目守卫复跑通过；安装保持457585e。完整证据和处置比较仅见 round-3.md；SG6未完成。
 
-修复交付：[PR #100](https://github.com/zzusp/night-bot/pull/100)，标题“fix(channels): 修复普通增量拉取误报恢复中”。已核实 OPEN、base=main、head=worktree-local-recovery-status、MERGEABLE；未合并、未部署，SG6仍为BLOCKED。
+修复交付：[PR #100](https://github.com/zzusp/night-bot/pull/100)，最终标题“fix(router): 恢复停机中断批次并接纳后续约束”。已核实MERGED，base=main、head=worktree-local-recovery-status、合并提交de3378b；当前实际启动受v4记忆迁移阻断，SG6尚未闭环。
 
 当前决策入口：[Router 中止批次恢复](../../spec/router-aborted-batch-recovery.md)。第3轮历史结论保留；新修复与部署证据集中进入第4轮。已整合最新 main 281b4d0（反馈诊断增量），工作树干净后开始本次实施。
+
+合并后不再向 worktree-local-recovery-status push。最终部署证据在 worktree-local-recovery-acceptance 归档；保持一个 goal，不新建状态文档。
