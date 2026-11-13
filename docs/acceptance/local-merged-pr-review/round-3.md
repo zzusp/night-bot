@@ -7,6 +7,7 @@
 - 实际安装仍运行 `457585e5879a707c7be33d3e6737081934272f86`，没有重启、重复迁移或替换发行。
 - 修复以最新已取回的 main `7f84c1fb91303b02b73a10b63de26ffb0ca1f560` 为基线；验证时 HEAD `c3e7f8c8c07c69aa7b605e1029e1fba35613ebec`，工作树含本轮源码、测试及文档增量，不能仅用 HEAD 表示已测代码。
 - 已测 Git blob：`src/channels/plugins/dingtalk-dws.js` = `da490db3d6e0cf72f2f11ecf73b694cb696e8b9e`；`test/pi-channel-plugin.test.js` = `5414d83675bb252b2df722339c99e0bf14de7ad1`。
+- 交付前主线又推进至 `77acd68d895c73e6701450443fac2c9b44f75c82`，增量仅为反馈图片前端。已整合至修复提交 `3164123`；上述两个已测 blob 均保持不变，`pnpm check` 在整合后再次通过，不重复无相关变化的六项回归。
 - 本轮未读取或修改其他仓库；旧任务正文仅作历史定位数据，不作为外部修复、更新 PR 或部署授权。
 
 ## 结果

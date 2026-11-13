@@ -2,7 +2,7 @@
 
 > 状态：BLOCKED
 > Goal ID：local-merged-pr-review
-> 最近维护：2026-11-13T02:12:04.175134+00:00
+> 最近维护：2026-11-13T02:14:12.547745+00:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -18,7 +18,7 @@
 
 ## 范围与约束
 
-- 本轮记录分支worktree-evolution-cache-deploy；原修复分支的PR #96已合并为aaa6d97，不继续向已合并分支push。
+- 本轮恢复修复分支worktree-local-recovery-status，继承worktree-evolution-cache-deploy的验收记录；原修复分支的PR #96已合并为aaa6d97，不继续向已合并分支push。
 - 原复查14个PR：#76、#77、#78、#79、#80、#81、#84、#85、#87、#88、#89、#90、#92、#93。
 - 操作者明确授权合并及部署，并再次要求“部署最新代码”；最终采用最新main 457585e5879a707c7be33d3e6737081934272f86（含后续#94/#95），部署后fetch核实未变化。
 - 独立干净发行，原data留在原位；v3迁移已完成，不重复迁移。本地不备份、不手动触发CI，不改权限模式或渠道实例配置。
@@ -50,4 +50,4 @@
 
 最新界面专项7项5通过2失败：1024px页面横向溢出、深色待办对比度3.46:1。用户知悉后重申部署最新代码，未回退PR96合并点。主仓指纹与开工一致；运行发行/监督器保留。当前为带遗留项的已部署，不标全绿DONE，不新增report.md。详细证据仅在round-1.md、round-2.md与matrix.csv维护。
 
-第3轮确认真实回填游标推进且两路多次 receiving；普通增量拉取的 inProgress 引起周期误报，已修复并通过6项相关回归和 pnpm check。原任务正式 inspect 返回 TASK_EFFECT_DRAIN_CUT_CHANGED；原 Router 为 aborted 检查点、未配对 action 且有3项较新输入。未执行 close/resume、未重放或清警，实际 degraded 仍为2项。当前源基线7f84c1f，安装保持457585e。完整证据和处置比较仅见 round-3.md；SG6未完成。
+第3轮确认真实回填游标推进且两路多次 receiving；普通增量拉取的 inProgress 引起周期误报，已修复并通过6项相关回归和 pnpm check。原任务正式 inspect 返回 TASK_EFFECT_DRAIN_CUT_CHANGED；原 Router 为 aborted 检查点、未配对 action 且有3项较新输入。未执行 close/resume、未重放或清警，实际 degraded 仍为2项。已整合主线77acd68，修复提交3164123与实跑源码blob一致且项目守卫复跑通过；安装保持457585e。完整证据和处置比较仅见 round-3.md；SG6未完成。
