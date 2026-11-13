@@ -203,6 +203,29 @@ test('a pre-write Pi edit error preserves its original result, accepts a correct
  assert.equal(stored.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result'&&row.payload.isError===false).length,2)
  assert.equal(stored.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result'&&row.payload.effect==='not-started').length,1)
 })
+test('unobserved and stale native write rejections settle without replay across cold task continuation',{timeout:nativeTestTimeout(25000)},async t=>{
+ t=cleanupContext(t);let h,task,step=0;t.after(()=>h?.close())
+ const path='work/native-write.txt',calls=[{tool:'read',args:{path}},{tool:'write',args:{path,content:'unobserved replacement'}},{tool:'read',args:{path}},{tool:'write',args:{path,content:'stale replacement'}},{tool:'read',args:{path}},{tool:'write',args:{path,content:'corrected after current read'}},{tool:'task_result',args:{decision:{action:'wait',summary:'Both native guard failures were corrected',evidence:['read and version checked the retained file'],limitations:[]}}},{tool:'read',args:{path}},result]
+ const f=await memoryHost(t,async body=>{
+  if(!requestTools(body).includes('task_result'))return {text:'{"lessons":[]}'}
+  if(step===1)await writeFile(join(task.session.workspaceDir,path),'created by another operation')
+  if(step===2){assert.match(JSON.stringify(body),/Cannot overwrite an unobserved file/);assert.equal(await readFile(join(task.session.workspaceDir,path),'utf8'),'created by another operation')}
+  if(step===3)await writeFile(join(task.session.workspaceDir,path),'changed after the tool read')
+  if(step===4){assert.match(JSON.stringify(body),/File changed since its observation/);assert.equal(await readFile(join(task.session.workspaceDir,path),'utf8'),'changed after the tool read')}
+  assert.doesNotMatch(JSON.stringify(body),/Error: TASK_EFFECT_UNCERTAIN_NO_REPLAY/)
+  assert.ok(step<calls.length,'independent correction, never replay');return calls[step++]
+ })
+ h=await serviceFor(f);task=await h.service.createTask({requestId:'native-write-guards',objective:'Correct native file write admission failures without losing the original results'})
+ await h.service.whenIdle();const paused=await h.store.query({kind:'task.get',taskId:task.taskId})
+ assert.equal(paused.lastDecision.action,'wait',JSON.stringify(paused.lastDecision));assert.deepEqual(paused.lastDecision.limitations,[]);assert.equal(step,7);assert.equal(paused.drained,true)
+ const stored=await f.host.ctx.sessionPersistence.readNative(paused.sessionId,{requireComplete:true})
+ assert.equal(stored.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result'&&row.payload.effect==='not-started').length,2)
+ assert.equal(stored.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result'&&row.payload.isError===false).length,1)
+ assert.equal(await readFile(join(task.session.workspaceDir,path),'utf8'),'corrected after current read')
+ await h.close();await f.close();await f.boot();h=await serviceFor(f,false);await h.service.recover();await h.service.whenIdle();assert.equal(step,7)
+ await h.store.command({id:'native-write-independent-continuation',kind:'task.wake',args:{taskId:task.taskId,kind:'operator.continue',payload:{requestId:'read-corrected-native-write'}}});await h.service.recover();await h.service.whenIdle()
+ const done=await h.store.query({kind:'task.get',taskId:task.taskId});assert.equal(done.status,'completed');assert.equal(done.sessionId,paused.sessionId);assert.equal(step,9)
+})
 test('Router room unknown effect drains and inspects with distinct conversation and memory groups',async t=>{
  let f,effects=0
  f=await residentRouterHost(t,async body=>{

@@ -76,6 +76,28 @@ test('scripted Host drain plus strict evidence yields only a failed-partial/noRe
  assert.deepEqual(stored.entries.find(entry=>entry.id===f.callEntryId).message,f.assistant)
  await assert.rejects(f.inspect(),{code:'TASK_EFFECT_ALREADY_RECONCILED'})
 })
+async function appendReadbackDrain(f){
+ const binding={...f.bindings,leaseEpoch:2};f.state.task.leaseEpoch=2
+ const packet={id:'readback-input',source:{kind:'task-input',taskSession:binding},content:[{type:'text',text:'Read retained output only'}]}
+ f.receipt('enqueued',packet,'admission')
+ const input=f.writer.manager.appendCustomMessageEntry('night.business-input',packet.content,false,{packetId:packet.id,source:packet.source})
+ f.receipt('admitted',{id:packet.id,entryId:input},'admission')
+ f.readbackDrainEntryId=f.writer.appendAudit(await ownerDrainedReceipt({binding,scopeDigest:taskEffectScopeDigest(f.state.scope),cutEntryId:f.writer.manager.getLeafId()},async()=>({issuer:'night-owned-provider-drain-v1',scope:'registered-owned-provider-ranges',ownerId:'session',modelIdle:true,toolsIdle:true,processes:0,jobs:0,observedAt:new Date().toISOString(),evidenceDigest:taskEffectDigest({fixture:'actual independent readback join'})})))
+}
+test('a later attested readback cut retains the original producer attestation',async t=>{
+ const f=await fixture(t,{mutate:appendReadbackDrain}),inspection=await f.inspect()
+ assert.equal(inspection.ownerDrainEntryId,f.readbackDrainEntryId);assert.notEqual(inspection.ownerDrainEntryId,f.ownerDrainEntryId)
+ assert.equal(inspection.originBinding.leaseEpoch,1);assert.equal(inspection.currentBinding.leaseEpoch,2)
+})
+test('a readback owner drain never replaces a missing original producer attestation',async t=>{
+ const f=await fixture(t,{withDrain:false,mutate:appendReadbackDrain});await assert.rejects(f.inspect(),{code:'TASK_EFFECT_DRAIN_ATTESTATION_REQUIRED'})
+})
+test('a readback drain rejects an unadmitted owner and later business content',async t=>{
+ const unadmitted=await fixture(t,{mutate:async f=>{await appendReadbackDrain(f);f.writer.manager.getEntry(f.readbackDrainEntryId).data.payload.binding.contextRevision=1}})
+ await assert.rejects(unadmitted.inspect(),{code:'TASK_EFFECT_DRAIN_OWNER_INPUT_MISMATCH'})
+ const changed=await fixture(t,{mutate:async f=>{await appendReadbackDrain(f);f.writer.manager.appendMessage({role:'user',content:'new input after readback join',timestamp:1})}})
+ await assert.rejects(changed.inspect(),{code:'TASK_EFFECT_DRAIN_CUT_CHANGED'})
+})
 test('a drain receipt constructor requires an awaited Host capability, not JSON zero counts',async()=>{
  const binding={taskId:'task',sessionId:'session',requirementRevision:1,controlRevision:1,contextRevision:0,leaseEpoch:1}
  await assert.rejects(ownerDrainedReceipt({binding,scopeDigest:'a'.repeat(64),cutEntryId:'cut'}, {processes:0,jobs:0}),TypeError)

@@ -6,6 +6,7 @@ import {officialWorkingDirectoryOrigin} from './native-working-directory.js'
 import {inspectImage} from './native-attachment-codec.js'
 import {snapshotJsonValue,deepFreeze} from './native-values.js'
 import {FsError} from './native-fs-protocol.js'
+import {isLocalFileWriteNotStarted} from './native-fs-local.js'
 import {approveEscalation,validateEscalationArgs,ESCALATION_TARGETS} from './native-sandbox-protocol.js'
 
 const fail=(code,message=code)=>new FsError(message,code)
@@ -142,7 +143,8 @@ export function createPiFileTools({ctx,actor,sourceConfig={},services={},imageBu
     const current=policy();control.throwIfAborted();await fresh(args.path,cwd,target,control)
     if(Buffer.byteLength(content)>config.maxWriteBytes)throw fail('PI_FILE_WRITE_LIMIT')
     const mutation=mutationExecutions.get(exec);if(mutation)mutation.started=true
-    outcome=await fs.writeText(target,content,kind==='edit'?{kind:'replaceIfVersion',version:snapshot.version}:expected,control,current)
+    try{outcome=await fs.writeText(target,content,kind==='edit'?{kind:'replaceIfVersion',version:snapshot.version}:expected,control,current)}
+    catch(error){if(mutation&&isLocalFileWriteNotStarted(fs,error))mutation.started=false;throw error}
    })
    const detectImageMimeType=()=>track(async()=>{
     const {bytes}=await stableBytes();let metadata
