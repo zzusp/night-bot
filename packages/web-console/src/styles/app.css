@@ -606,7 +606,7 @@ html, body, #root { width: 100%; min-width: 0; }
 .agent-progress-label { font-size: 14px; font-weight: 600; }
 .agent-progress-heading:hover { background: transparent; }
 .agent-progress-step { border-radius: 6px; }
-.agent-progress-step.todo-in_progress { border-color: transparent; background: rgb(234 179 8 / 7%); }
+.agent-progress-step.todo-in_progress { border-color: var(--board-border); background: transparent; color: var(--board-text); }
 .agent-progress-step.todo-completed { color: var(--board-muted); }
 .agent-progress-collapse { display: flex; }
 .chat-execution-group.pi-session-card { overflow: hidden; margin: 10px 0; }
@@ -639,3 +639,8 @@ html, body, #root { width: 100%; min-width: 0; }
 .pi-task-status-dot { position: absolute; right: -2px; bottom: -2px; width: 6px; height: 6px; border: 1px solid var(--board-surface); border-radius: 50%; background: var(--board-muted); }
 .pi-task-status.is-running .pi-task-status-dot { background: #eab308; }
 .pi-task-meta, .agent-progress .agent-progress-current { margin-left: 26px; }
+
+/* TODO card keeps the original Night Bot palette, not the session amber sweep. */
+.agent-progress.pi-session-card { color: var(--board-muted); background: var(--board-surface); }
+.agent-progress .pi-task-status.is-running { color: var(--board-muted); border-color: var(--board-border); }
+.agent-progress-heading:hover, .agent-progress-heading:active { background: var(--board-hover); }

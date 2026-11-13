@@ -17,10 +17,13 @@ test('Pi dashboard execution and task card surfaces preserve data and responsive
  await expect(page.locator('.pi-tool-frame.is-running .pi-tool-shimmer')).toBeVisible();
  const card=page.locator('.agent-progress.pi-session-card');
  await expect(card).toContainText('检查执行结果');
+ await expect(card.locator('.pi-card-sweep-layer')).toHaveCount(0);
  for(const width of [1440,390])for(const theme of ['light','dark']){
   await page.setViewportSize({width,height:960});
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  expect(await card.evaluate(el=>getComputedStyle(el).backgroundImage)).toBe('none');
+  expect(await card.locator('.todo-in_progress').evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
   await page.screenshot({path:test.info().outputPath(`pi-dashboard-${width}-${theme}.png`),fullPage:true});
  }
  await page.emulateMedia({reducedMotion:'reduce'});

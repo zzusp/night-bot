@@ -510,3 +510,5 @@ Unfinished content is cumulatively redacted and buffered to safe complete-line b
 Shell expansion follows the pinned upstream BashToolRenderer rather than the generic plain pre: outer panel #fafafa/#141414, code output #f5f5f5/#1a1a1a, 8px padding, 4px radius, max-height 320px with scrolling, 12px/1.5 mono text and 4px command/output gap. Long commands wrap with a nonshrinking timeout; large outputs scroll inside their code surface. Test-load character walls are not visual-review screenshots; visual evidence uses actual readable process logs, while stress cases still test overflow and exact copy.
 
 Shell expansion displays only the original renderer command, timeout, and result. Do not add an extra parameters disclosure for Night Bot-specific input metadata; authorized raw inputs remain unchanged in the source data, while this renderer does not display them.
+
+TODO-card color correction: retain the approved card structure and real TODO states, but remove its amber sweep. Restore original Night Bot board-surface/board-muted palette and neutral bordered active step in both themes; tool shimmer and other accepted execution styling are unchanged.
