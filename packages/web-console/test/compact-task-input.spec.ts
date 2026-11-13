@@ -102,3 +102,57 @@ test('task and chat share responsive message reading width and side insets', asy
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   }
 });
+
+const balancedInputs = [
+  {id:'padding-short',role:'user',text:'仅核对最新结果。'},
+  {id:'padding-paragraphs',role:'user',text:'第一段说明。\n\n第二段补充。'},
+  {id:'padding-heading',role:'user',text:'## 验收要求\n\n核对当前状态。'},
+  {id:'padding-list',role:'user',text:'- 核对记录\n- 返回结果'},
+  {id:'padding-code',role:'user',text:'```text\n核对已有材料\n保留完整结果\n```'},
+  {id:'padding-long',role:'user',text:long},
+];
+for (const width of [1440,390]) for (const theme of ['light','dark']) {
+  test(`right message vertical insets remain balanced ${width}px ${theme}`, async ({page}) => {
+    await page.setViewportSize({width,height:960});
+    await page.route('**/api/tasks/task-research/session?*', route=>route.fulfill({json:{
+      status:'ready',scope:'current-context',items:balancedInputs,total:balancedInputs.length,revision:'padding-fixture',todos:{items:[]}
+    }}));
+    await page.goto('/#/tasks/task-research');
+    await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+    await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+    await page.evaluate(theme=>{document.documentElement.dataset.theme=theme;},theme);
+    for (const item of balancedInputs) {
+      const message=page.locator(`[data-message-id="${item.id}"]`);
+      await expect(message).toBeVisible();
+      const verify=async()=>{
+        const geometry=await message.locator('.message-body').evaluate(body=>{
+          const content=body.querySelector('.three-line-content')!;
+          const first=content.querySelector('.markdown')!.firstElementChild!;
+          const last=content.querySelector('.markdown')!.lastElementChild!;
+          const button=body.querySelector('.message-disclosure');
+          const box=body.getBoundingClientRect(), inner=content.getBoundingClientRect();
+          return {top:inner.top-box.top,bottom:box.bottom-(button||content).getBoundingClientRect().bottom,
+            firstMargin:getComputedStyle(first).marginTop,lastMargin:getComputedStyle(last).marginBottom,
+            firstInset:first.getBoundingClientRect().top-inner.top};
+        });
+        expect(geometry.top).toBe(13);
+        expect(geometry.bottom).toBe(13);
+        expect(geometry.firstMargin).toBe('0px');
+        expect(geometry.lastMargin).toBe('0px');
+        expect(geometry.firstInset).toBe(0);
+      };
+      await verify();
+      const disclosure=message.locator('.message-disclosure');
+      if(await disclosure.count()) {
+        await disclosure.click();
+        await expect(disclosure).toHaveAttribute('aria-expanded','true');
+        await verify();
+        await disclosure.click();
+        await expect(disclosure).toHaveAttribute('aria-expanded','false');
+        await verify();
+      }
+    }
+    await page.locator('[data-message-id="padding-long"]').scrollIntoViewIfNeeded();
+    await page.screenshot({path:test.info().outputPath(`task-padding-${width}-${theme}.png`)});
+  });
+}
