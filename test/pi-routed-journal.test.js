@@ -44,3 +44,10 @@ test('maintenance resolves a task archive only through its matching Host-owned i
  await writeFile(marker,JSON.stringify({version:1,taskId:'task',sessionId:'foreign'}))
  assert.throws(()=>readNativeHistory(f.root,{taskId:'task',sessionId:'owned'}),/DEPLOY_NATIVE_LOG_IDENTITY/)
 })
+test('warm read snapshots follow the current task route rather than the old session cache',async t=>{
+ const f=await fixture(t),writer=await f.backend.createNative(f.header)
+ writer.manager.appendMessage(f.message);await writer.close()
+ await f.backend.readNative('owned',{requireComplete:true})
+ f.routes.set('owned',join(f.root,'missing','other.pi.jsonl'))
+ await assert.rejects(f.backend.readNative('owned',{requireComplete:true}),{name:'SessionPersistenceNotFoundError'})
+})
