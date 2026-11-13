@@ -62,6 +62,8 @@ test('native model phases show without body; short deltas update one bubble and 
  // Only provider-public, authorized DTO text is available to the component.
  thinking=true;body='检查已公开的步骤';
  await expect(page.locator('.thinking-message')).toHaveAttribute('open');
+ const thinkingStyle=await page.locator('.thinking-message').evaluate(el=>({border:getComputedStyle(el).borderLeftWidth,padding:getComputedStyle(el).paddingLeft,bodyMargin:getComputedStyle(el.querySelector('.markdown')!).marginLeft}));
+ expect(thinkingStyle).toEqual({border:'0px',padding:'16px',bodyMargin:'0px'});
  await page.locator('.thinking-message > summary').click();
  body='检查已公开的步骤与结果';
  await expect(page.locator('.thinking-message')).not.toHaveAttribute('open');
