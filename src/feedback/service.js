@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto'
 import {redactFeedback} from './redaction.js'
 import {diagnoseWithPi} from './pi-session.js'
+import {createChainEvidence} from './chain-evidence.js'
 import {feedbackErrorCodes} from './evidence.js'
 import {roleModelSelection,legacyRoleModelSelection} from '../role-models.js'
 import {launchEnvironmentOf} from '../native-environment.js'
@@ -9,7 +10,7 @@ const validText=(value,max)=>typeof value==='string'&&value.trim().length>0&&val
 const target='zzusp/night-bot'
 /** Ephemeral, browser-session-bound previews; no automatic retry of external
  * creates. A transport failure is unknown, never permission to send again. */
-export function createFeedbackService({model,modelConsent=()=>({revision:'default',endpoint:'配置的模型服务'}),resolveModel,getSecrets=async()=>[],evidence,diagnose=diagnoseWithPi,paths,getToken,fetchImpl=fetch,now=Date.now}){
+export function createFeedbackService({model,modelConsent=()=>({revision:'default',endpoint:'配置的模型服务'}),resolveModel,getSecrets=async()=>[],evidence,createEvidence,diagnose=diagnoseWithPi,paths,getToken,fetchImpl=fetch,now=Date.now}){
  const reports=new Map(),operations=new Set();let closed=false
  const track=fn=>{const promise=fn();operations.add(promise);promise.finally(()=>operations.delete(promise)).catch(()=>{});return promise}
  const metadata=()=>{try{return {target,model:model().provider+'/'+model().model,...modelConsent()}}catch{return {target,model:null,revision:null,endpoint:null}}}
@@ -37,11 +38,12 @@ export function createFeedbackService({model,modelConsent=()=>({revision:'defaul
    const controller=new AbortController(),r={id:randomUUID(),owner,title:'',state:'collecting',expires:now()+30*60*1000,controller,additionalSecrets};reports.set(r.id,r)
    r.timer=setTimeout(()=>{r.controller.abort();reports.delete(r.id)},30*60*1000);r.timer.unref?.()
    r.done=(async()=>{try{
-    const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(120000)]),secrets=[...(r.manual?[]:await getSecrets()),...r.additionalSecrets]
+    const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(300000)]),secrets=[...(r.manual?[]:await getSecrets()),...r.additionalSecrets]
     signal.throwIfAborted();r.title=redactFeedback(input.title.trim(),secrets)
     const description=redactFeedback(input.description.trim(),secrets)
     const resolved=await resolveModel({...selection,signal});signal.throwIfAborted();if(input.revision!==modelConsent().revision)fail('FEEDBACK_MODEL_CHANGED',409)
-    const result=await diagnose({resolved,paths,title:r.title,description,evidence,signal,secrets});signal.throwIfAborted()
+    const scopedEvidence=createEvidence?createEvidence({description:input.description,secrets}):evidence
+    const result=await diagnose({resolved,paths,title:r.title,description,evidence:scopedEvidence,signal,secrets});signal.throwIfAborted()
     r.body=redactFeedback(`## 问题描述\n${description}\n\n## Pi 诊断\n${result}`,secrets);r.state='ready'
    }catch{if(r.state!=='cancelled'){r.state='failed';r.error='FEEDBACK_COLLECTION_FAILED'}}})()
    return view(r)
@@ -88,7 +90,9 @@ export function hostFeedback(ctx,config,paths){
   resolveModel:selection=>ctx.get('nativePiProvider').official.resolve(selection),
   getSecrets:async()=>[...(await ctx.get('credentials')?.redactionValues?.()??[]),...(launchEnvironmentOf(ctx).redactionValues?.()??[])],
   getToken:()=>ctx.get('credentials')?.resolveCurrent?.('GITHUB_TOKEN')?.value??launchEnvironmentOf(ctx).getFrom('GITHUB_TOKEN',['process'])?.value,
-  evidence:async(section,signal)=>{
+  createEvidence:({description,secrets})=>{
+   const chain=createChainEvidence({application:ctx.get('application'),getSessionPersistence:()=>ctx.sessionPersistence,description,secrets})
+   return async(section,signal,args)=>{
    signal.throwIfAborted()
    if(section==='runtime')return {node:process.version,platform:process.platform,architecture:process.arch,uptimeSeconds:Math.floor(process.uptime()),rssMiB:Math.ceil(process.memoryUsage().rss/1048576)}
    if(section==='errors')return feedbackErrorCodes(paths.logs,signal)
@@ -96,7 +100,8 @@ export function hostFeedback(ctx,config,paths){
     const channels=ctx.get('channels')
     return {registered:channels?.plugins?.size??0,transports:channels?.transports?.size??0,closed:channels?.closed===true}
    }
-   fail('FEEDBACK_SECTION_INVALID')
+   return chain(section,signal,args)
+   }
   },
  })
 }

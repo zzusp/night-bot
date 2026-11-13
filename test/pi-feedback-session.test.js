@@ -23,3 +23,15 @@ test('real official Pi diagnostic session has only scoped tool, no home context 
  assert.ok(JSON.stringify(requests).includes('diagnosis_evidence'));assert.ok(!JSON.stringify(requests).includes('Execute a bash command'))
  assert.ok(!JSON.stringify(requests).includes(root),'private working path not sent to model')
 })
+test('investigation budget stops repeated tools and preserves a partial editable report',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'feedback-budget-'));t.after(()=>rm(root,{recursive:true,force:true}))
+ const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false})
+ const model=runtime.getModels().find(m=>m.provider==='openai');await runtime.setRuntimeApiKey(model.provider,'test-only')
+ let calls=0,reads=0
+ runtime.registerProvider(model.provider,{api:model.api,streamSimple:()=>{
+  calls++;const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:1,usage,stopReason:'toolUse',content:[{type:'toolCall',id:'budget-'+calls,name:'diagnosis_evidence',arguments:{section:'runtime'}}]}
+  queueMicrotask(()=>{stream.push({type:'done',reason:'toolUse',message});stream.end(message)});return stream
+ }})
+ const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model},paths:{installRoot:root,runtime:join(root,'runtime')},title:'故障',description:'排查',signal:AbortSignal.timeout(10000),evidence:async()=>{reads++;return{node:'v24'}}})
+ assert.equal(reads,24);assert.ok(calls<=26);assert.match(result,/调查未完成/);assert.match(result,/call-budget-exhausted/);assert.match(result,/v24/);assert.ok(result.length<48000)
+})

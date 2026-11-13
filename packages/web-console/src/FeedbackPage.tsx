@@ -7,7 +7,7 @@ import './styles/feedback.css';
 
 type Feedback = { id: string; state: 'collecting' | 'editing' | 'ready' | 'failed' | 'submitting' | 'submitted' | 'unknown'; title: string; body: string; target: string; error?: string; url?: string };
 type Destination = { target: string; model: string | null; revision?: string; endpoint?: string };
-export const feedbackPrivacyNotice = '默认不收集：只处理您填写的标题和正文，不启动 Pi、不读取本地现场、不调用模型。选择收集并明确同意后，才会启动独立 Pi 会话收集本地诊断信息，并将脱敏后的问题与诊断信息发送给当前模型服务。仅采集运行信息、渠道状态汇总和日志错误码，不收集密钥、聊天或记忆正文，不上传原始日志。自动脱敏可能遗漏，请勿填写敏感内容；提交 GitHub 前请核对完整内容。';
+export const feedbackPrivacyNotice = '默认不收集：只处理您填写的标题和正文，不启动 Pi、不读取本地现场、不调用模型。选择收集并明确同意后，才会启动独立 Pi 会话收集本地诊断信息，并将脱敏后的问题与诊断信息发送给当前模型服务。采集时会在本地按您的描述检索消息，并读取相关消息阶段、路由、任务、模型及工具计时、关联 Pi 会话中的工具调用计时及结构化错误码、错误类别、退出码和 HTTP 状态；上述证据经脱敏及匿名化后发送给模型用于排查。不会发送聊天或记忆正文、工具输入输出正文、密钥或整份原始日志。调查有范围与数量限制，未找到不代表没有发生。自动脱敏可能遗漏，请勿填写敏感内容；提交 GitHub 前请核对完整内容。';
 
 export const feedbackImageNotice = '图片在 GitHub 页面中手动粘贴或拖入，不会由 Night Bot 读取、上传或发送给 Pi。图片可能包含隐私，无法保证自动脱敏，请先遮盖敏感信息。发布前请在 GitHub 核对正文和图片，最终提交后可能公开可见。';
 
@@ -114,7 +114,7 @@ export default function FeedbackPage() {
       <label htmlFor="feedback-description">问题详情</label><textarea className="resize-none" id="feedback-description" rows={7} maxLength={6000} value={description} disabled={busy || !!record || requestLock.current} onChange={event => setDescription(event.target.value)} placeholder="发生了什么、操作步骤、期望结果" />
       {!record && <><fieldset disabled={busy || requestLock.current} className="feedback-mode"><legend>本地现场信息</legend>
         <label className="feedback-consent"><input type="radio" name="feedback-mode" value="none" checked={!collectEvidence} onChange={() => { setCollectEvidence(false); setConsent(false); }} />不收集</label>
-        <label className="feedback-consent"><input type="radio" name="feedback-mode" value="collect" checked={collectEvidence} onChange={() => { setCollectEvidence(true); setConsent(false); }} />收集并由 Pi 诊断</label>
+        <label className="feedback-consent"><input type="radio" name="feedback-mode" value="collect" checked={collectEvidence} onChange={() => { setCollectEvidence(true); setConsent(false); }} />由 AI 收集诊断</label>
       </fieldset>
       {collectEvidence && <label className="feedback-consent"><input type="checkbox" checked={consent} disabled={busy || requestLock.current || !destination.data?.model} onChange={event => setConsent(event.target.checked)} />我同意上述范围的本地采集与模型分析，本次不提交 GitHub。</label>}<div><Button variant="primary" type="submit" busy={busy} disabled={!destination.data || requestLock.current || (collectEvidence && (!consent || !destination.data.model || !destination.data.revision))}>{collectEvidence ? '开始诊断' : '生成预览'}</Button></div></>}
     </form></section>
