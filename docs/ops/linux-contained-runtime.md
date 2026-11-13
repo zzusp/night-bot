@@ -91,7 +91,7 @@ pnpm test:containment
 
 这些命令是代码/合同验证，不等于当前部署已完成真实模型或真实渠道验收。需要迁移既有 Night Bot 数据时，先停机排空并使用脚本的零副作用检查；当前迁移入口支持 `scripts/migrate-resident-router.mjs --check --config <CONFIG>`，检查未通过不得执行写入。不要导入旧 DSH 数据。
 
-冷启动中确定的 `ROUTER_BATCH_UNSETTLED` 会保留任务服务 `recover()` 的 `degraded` 结果和现有恢复告警；入口仍在不代表原批次已结。续办只由受信 Host 集成按[原批次续办合同](../CHANNELS.md#已接纳未结批次的显式续办)绑定原失败 checkpoint，不新增操作者 HTTP/CLI，不直调 SDK，不重跑任务/业务输入或改写 journal、DB、通知收据；其它恢复错误继续失败关闭。[第八轮报告](../acceptance/resident-conversation-routing/round-8.md)已有 Windows/loopback 脚本模型下的续办与原安装普通交接恢复结果，均按各组受验指纹成立；这些结果不证明 Linux 已部署或本页 bwrap/内核/shell/job 已在 Linux 实跑，目标 Linux 宿主仍须独立验证。
+冷启动中确定的 `ROUTER_BATCH_UNSETTLED` 会保留任务服务 `recover()` 的 `degraded` 结果和现有恢复告警；入口仍在不代表原批次已结。严格满足中止生成条件时由 Host 自动领取一次，普通 error 仍只由受信 Host 显式按[原批次续办合同](../CHANNELS.md#已接纳未结批次的安全续办)绑定原失败 checkpoint，不新增操作者 HTTP/CLI，不直调 SDK，不重跑任务/业务输入或改写 journal、DB、通知收据；其它恢复错误继续失败关闭。[第八轮报告](../acceptance/resident-conversation-routing/round-8.md)已有 Windows/loopback 脚本模型下的续办与原安装普通交接恢复结果，均按各组受验指纹成立；这些结果不证明 Linux 已部署或本页 bwrap/内核/shell/job 已在 Linux 实跑，目标 Linux 宿主仍须独立验证。
 
 ## 可选渠道与账号前置
 
