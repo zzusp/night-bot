@@ -666,3 +666,5 @@ html, body, #root { width: 100%; min-width: 0; }
   .content-topbar { padding-block: 8px; gap: 6px; }
   .content-topbar .header-location { gap: 6px; }
 }
+
+.task-table-wrap:focus-visible { outline: 2px solid var(--board-focus); outline-offset: -2px; }
