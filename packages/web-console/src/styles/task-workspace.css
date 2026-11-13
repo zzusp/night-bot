@@ -84,24 +84,15 @@
 /* Keep progress inside the execution canvas, aligned with the record content. */
 .task-dialogue .execution-todos { display: flex; justify-content: flex-end; background: transparent; }
 
-/* The desktop command bar occupies the metadata rail, not a blank full row. */
-@media (min-width: 761px) {
-  .task-detail-frame { position: relative; }
-  .task-detail-frame > .conversation-global-topbar { position: absolute; right: 0; top: 0; width: 320px; z-index: 2; }
-  .task-detail-frame .task-info-rail { padding-top: 44px; }
-}
-@media (min-width: 1024px) and (max-width: 1250px) {
-  .task-detail-frame > .conversation-global-topbar { width: 280px; }
-}
-/* Match the canvas gutters on both sides, including its scrollbar gutter. */
-.task-dialogue .execution-transcript .message-column { padding: 16px 24px 24px; }
-.task-dialogue .execution-transcript .transcript { scrollbar-gutter: stable both-edges; }
+/* Reuse chat reading width and gutters, not a task-specific full-width stream. */
+.task-dialogue .execution-transcript .message-column { max-width: calc(var(--board-content-width) + 32px); padding: 16px var(--message-inline-inset) 24px; }
+.task-dialogue .execution-transcript .transcript { scrollbar-gutter: stable; }
 @media (max-width: 760px) {
-  .task-dialogue .execution-transcript .message-column { padding: 12px 16px 20px; }
+  .task-dialogue .execution-transcript .message-column { padding: 12px var(--message-inline-inset) 20px; }
 }
 /* TODOs float over the execution canvas; opening does not push the history. */
 .task-dialogue .execution-history { position: relative; }
-.task-dialogue .execution-todos { position: absolute; inset: 8px 24px auto auto; z-index: 3; padding: 0; max-width: calc(100% - 48px); pointer-events: none; }
+.task-dialogue .execution-todos { position: absolute; inset: 8px max(var(--message-inline-inset), calc((100% - var(--board-content-width) - 32px) / 2 + var(--message-inline-inset))) auto auto; z-index: 3; padding: 0; max-width: calc(100% - 32px); pointer-events: none; }
 .task-dialogue .execution-todos .agent-progress { pointer-events: auto; max-height: min(340px, 50dvh); overflow-y: auto; }
 .task-dialogue .execution-history:has(> .execution-todos) .message-column { padding-top: 132px; }
 @media (max-width: 760px) {
@@ -115,3 +106,12 @@
 .task-dialogue .agent-progress[open] .pi-task-meta { display: none; }
 .task-dialogue .agent-progress-steps { max-height: 78px; overflow-y: auto; }
 .task-dialogue .agent-progress-steps:focus-visible { outline: 2px solid var(--board-primary); outline-offset: -2px; }
+
+.task-dialogue .execution-transcript .message-user { width: fit-content; max-width: 90%; align-self: flex-end; }
+.task-dialogue .execution-transcript .message-user > .message-body { max-width: none; }
+.task-dialogue .execution-transcript .message-assistant:not(:has(.thinking-message)) { width: fit-content; max-width: 90%; align-self: flex-start; }
+.task-dialogue .execution-transcript .message-assistant:not(:has(.thinking-message)) > .message-body { max-width: none; }
+@media (max-width: 520px) {
+  .task-dialogue .execution-transcript .message-user,
+  .task-dialogue .execution-transcript .message-assistant:not(:has(.thinking-message)) { max-width: 96%; }
+}
