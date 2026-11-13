@@ -120,3 +120,23 @@ test('headless Host refuses startup when the required native provider failed to 
  const root=await mkdtemp(join(tmpdir(),'night-pi-provider-startup-'));t.after(()=>rm(root,{recursive:true,force:true}))
  await assert.rejects(createHost({stateDir:join(root,'state'),workspaceDir:join(root,'work'),model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',baseURL:'http://127.0.0.1:1/v1',streamIdleTimeoutMs:0,models:[{id:'m'}]}}}),/NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE/)
 })
+
+test('headless CLI captures shutdown while HTTP is listening but startup recovery is pending', {timeout:20000}, async t=>{
+ const root=await mkdtemp(join(tmpdir(),'night-pi-cli-startup-stop-'))
+ const portServer=createServer();await new Promise(r=>portServer.listen(0,'127.0.0.1',r));const port=portServer.address().port;await new Promise(r=>portServer.close(r))
+ const config={installRoot:root,dataDir:'data',model:{provider:'fixture',model:'first'},providers:{fixture:{api:'openai-completions',baseURL:'http://127.0.0.1:1/v1',models:[{id:'first'}]}},resident:{port,taskSessions:{instanceId:'cli-stop',ownerActorId:'fixture',webActorId:'fixture',ingressEpoch:'2026-11-04T00:00:00Z',initialize:true}}}
+ const path=join(root,'config.json'),preload=join(root,'pause-startup.mjs');await writeFile(path,JSON.stringify(config))
+ // Gate the real application exactly after listen, before recovery completes.
+ // No production test-only switch or sleep-dependent scheduling is needed.
+ await writeFile(preload,`import {registerHooks} from 'node:module';
+ registerHooks({load(url,context,next){const result=next(url,context);if(url.endsWith('/src/application.js'))return {...result,source:String(result.source).replace('  await tasks.recover();',\`  process.send({type:'fixture-http-listening'});await new Promise(resolve=>{const release=message=>{if(message?.type==='fixture-release-startup'){process.off('message',release);resolve()}};process.on('message',release)});await tasks.recover();\`)};return result}});`)
+ const child=spawn(process.execPath,['--import',preload,'bin/night-bot.js',path],{cwd:process.cwd(),stdio:['ignore','pipe','pipe','ipc']})
+ let output='';child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b)
+ const exited=once(child,'close');t.after(async()=>{if(child.exitCode===null&&child.signalCode===null){if(child.connected)child.send({type:'fixture-release-startup'});child.kill('SIGTERM')}await exited;await rm(root,{recursive:true,force:true})})
+ const [message]=await once(child,'message');assert.equal(message.type,'fixture-http-listening')
+ const stop=()=>process.platform==='win32'?child.send({type:'night-bot-shutdown'}):child.kill('SIGTERM')
+ stop();assert.equal((await jsonGet(`http://127.0.0.1:${port}/health`)).status,'ok',output)
+ stop();child.send({type:'fixture-release-startup'})
+ const [code,signal]=await exited;assert.equal(signal,null,output);assert.equal(code,0,output)
+ await assert.rejects(jsonGet(`http://127.0.0.1:${port}/health`))
+})
