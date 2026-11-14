@@ -119,7 +119,7 @@ html { scrollbar-gutter: stable; }
   .nb-task-thread li:not(:last-child)::after { background: CanvasText; }
 }
 
-/* Night desk: a quiet graphite navigation rail around a clear reading sheet.
+/* Night desk: a quiet tonal navigation rail around a clear reading sheet.
    Semantic palette remains sourced from boardui.css; VitePress owns behavior. */
 :root {
   --vp-sidebar-width: 264px;
@@ -127,30 +127,29 @@ html { scrollbar-gutter: stable; }
   --vp-code-block-bg: var(--board-panel);
   --vp-code-bg: var(--board-primary-soft);
   --vp-code-color: var(--board-info);
-  --nb-rail-bg: var(--board-logo-background);
-  --nb-rail-text: var(--board-on-primary);
-  --nb-rail-muted: color-mix(in srgb, var(--board-on-primary) 70%, var(--board-logo-background));
+  --nb-rail-bg: var(--board-canvas);
+  --nb-rail-text: var(--board-text);
+  --nb-rail-muted: var(--board-muted);
 }
 .Layout:has(.VPDoc) { background: var(--board-panel); }
 .VPNavBar { border-bottom: 1px solid var(--board-border); }
 .VPNavBar.has-sidebar .divider { display: none; }
 .VPNavBar .VPNavBarSearch .DocSearch-Button { border: 1px solid var(--board-border-strong); border-radius: 10px; background: var(--board-panel); }
 .Layout aside.VPSidebar {
-  background: var(--nb-rail-bg); color: var(--nb-rail-text); border: 1px solid var(--board-logo-border);
+  background: var(--nb-rail-bg); color: var(--nb-rail-text); border: 1px solid var(--board-border);
   --vp-c-text-1: var(--nb-rail-text); --vp-c-text-2: var(--nb-rail-muted); --vp-c-text-3: var(--nb-rail-muted);
-  --vp-c-brand-1: var(--nb-rail-text); --vp-c-divider: var(--board-logo-border);
-  --board-focus: var(--board-on-primary);
+  --vp-c-brand-1: var(--board-info); --vp-c-divider: var(--board-border);
 }
 .Layout .VPSidebar .curtain { display: none; }
 .nb-sidebar-label { display: flex; align-items: center; gap: 12px; margin: 4px 0 24px; padding: 0 10px; color: var(--nb-rail-text); font-size: 18px; font-weight: 600; letter-spacing: -.03em; }
-.nb-sidebar-mark { font-size: 27px; line-height: 1; color: var(--board-on-primary); }
+.nb-sidebar-mark { font-size: 27px; line-height: 1; color: var(--board-info); }
 .Layout .VPSidebar .group { border-top: 0; padding-top: 0; margin-bottom: 18px; }
 .Layout .VPSidebarItem.level-0 > .item { padding: 0 12px 9px; }
 .Layout .VPSidebarItem.level-0 > .item .text { font-size: 11px; color: var(--nb-rail-muted); font-weight: 500; letter-spacing: .04em; }
 .Layout .VPSidebarItem.level-1 > .item { border-radius: 9px; padding: 3px 12px; margin: 3px 0; }
-.Layout .VPSidebarItem.level-1 > .item:hover { background: var(--board-logo-border); }
-.Layout .VPSidebarItem.level-1.is-active > .item { background: var(--board-primary); box-shadow: inset 0 1px 0 rgb(255 255 255 / 15%); }
-.Layout .VPSidebarItem.level-1.is-active > .item .text { color: var(--board-on-primary); font-weight: 600; }
+.Layout .VPSidebarItem.level-1 > .item:hover { background: var(--board-hover); }
+.Layout .VPSidebarItem.level-1.is-active > .item { background: var(--board-primary-soft); box-shadow: inset 2px 0 0 var(--board-info); }
+.Layout .VPSidebarItem.level-1.is-active > .item .text { color: var(--board-info); font-weight: 600; }
 .Layout .VPSidebarItem.level-1 .text { font-size: 13px; line-height: 24px; color: var(--nb-rail-text); }
 .nb-doc-context { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; position: relative; font-size: 12px; line-height: 20px; color: var(--board-info); font-weight: 600; }
 .nb-doc-context a { color: var(--board-muted); font-weight: 400; }
