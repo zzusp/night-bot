@@ -6,6 +6,7 @@ import {readEvolutionInventory} from './evolution-inventory.js'
 import {queryEvolutionUsage} from './evolution-usage.js'
 import {latestComparison} from '../../../src/memory/evolution-content.js'
 import {responseTiming,selectedResponseTiming} from './response-times.js'
+import {stageTiming} from './stage-times.js'
 import {createServer} from 'node:http'
 import {readFile, lstat, realpath} from 'node:fs/promises'
 import {fileURLToPath} from 'node:url'
@@ -446,6 +447,24 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const tasks = await store.query({kind: 'task.list', groupId: conversationId, archived: 'all'})
       const linked = [...new Map(tasks.filter(task => task.groupId === conversationId).map(task => [task.taskId, task])).values()]
       return send(response, 200, {taskIds: linked.map(task => task.taskId), taskSummaries: linked.map(task => taskSummaryView(task, [credential.token])), taskHistoryStatus: 'ready'})
+    }
+    const stageTimes = /^\/api\/(chat|conversations)\/([^/]+)\/stage-times$/.exec(path)
+    if (request.method === 'GET' && stageTimes) {
+      if ([...url.searchParams.keys()].some(key=>key!=='limit')) fail('PAGE_INVALID')
+      const limit=pageNumber(url.searchParams,'limit',8,20),id=decodeURIComponent(stageTimes[2])
+      const conversationId=executionContext(stageTimes[1],id),app=application(),store=app.tasks.store
+      const base={scope:'recent-message-host-stage-spans',limit,coverage:stageTimes[1]==='chat'?'retained-web-message-window':'paged-channel-messages'}
+      if(!store?.query)return send(response,200,{...base,status:'unavailable',items:[]})
+      let messages
+      if(stageTimes[1]==='chat'){
+        const rows=ledger.chat(id).messages.filter(row=>row.role==='user').toReversed()
+        messages={items:rows.slice(0,limit).map(row=>({messageId:row.id,messageVersion:1})),total:rows.length}
+      }else messages=await app.tasks.observerGroupPage(conversationId,{collection:'messages',filter:'all',offset:0,limit})
+      if(!messages)fail('CONVERSATION_NOT_FOUND',404)
+      const refs=messages.items.map(row=>({messageId:row.messageId,version:row.messageVersion??1}))
+      const context=await store.query({kind:'observer.message-contexts',groupId:conversationId,messages:refs,messageIds:refs.map(row=>row.messageId)})
+      const items=messages.items.map(row=>stageTiming(row,context.sources,conversationId))
+      return send(response,200,{...base,status:'ready',items})
     }
     const responseTimes = /^\/api\/(chat|conversations)\/([^/]+)\/response-times$/.exec(path)
     if (request.method === 'GET' && responseTimes) {
