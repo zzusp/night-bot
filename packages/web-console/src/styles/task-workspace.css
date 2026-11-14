@@ -90,22 +90,24 @@
 @media (max-width: 760px) {
   .task-dialogue .execution-transcript .message-column { padding: 12px var(--message-inline-inset) 20px; }
 }
-/* TODOs float over the execution canvas; opening does not push the history. */
-.task-dialogue .execution-history { position: relative; }
-.task-dialogue .execution-todos { position: absolute; inset: 8px max(var(--message-inline-inset), calc((100% - var(--board-content-width) - 32px) / 2 + var(--message-inline-inset))) auto auto; z-index: 3; padding: 0; max-width: calc(100% - 32px); pointer-events: none; }
-.task-dialogue .execution-todos .agent-progress { pointer-events: auto; max-height: min(340px, 50dvh); overflow-y: auto; }
-.task-dialogue .execution-history:has(> .execution-todos) .message-column { padding-top: 132px; }
-@media (max-width: 760px) {
-  .task-dialogue .execution-todos { right: 16px; max-width: calc(100% - 32px); }
-}
-/* Expanded TODOs stay inside the same safe overlay band. The checklist has its
-   own scrollbar; opening it never covers the first record or moves the stream. */
-.task-dialogue .execution-todos .agent-progress { max-height: 120px; overflow: hidden; }
+/* Reserve a right-hand lane only when the execution canvas has real room.
+   Narrow canvases retain an intentional overlay, never shrink the transcript. */
+.task-dialogue .execution-history { position: relative; container: execution-canvas / inline-size; }
+.task-dialogue .execution-todos { position: absolute; inset: 56px 16px auto auto; z-index: 3; padding: 0; max-width: calc(100% - 32px); pointer-events: none; }
+.task-dialogue .execution-todos .agent-progress { width: 300px; pointer-events: auto; max-height: min(560px, calc(100dvh - 180px)); overflow: hidden; }
+.task-dialogue .execution-history:has(> .execution-todos) .message-column { padding-top: 56px; }
 .task-dialogue .agent-progress[open] > .agent-progress-heading { min-height: 36px; }
 .task-dialogue .agent-progress[open] .agent-progress-current,
 .task-dialogue .agent-progress[open] .pi-task-meta { display: none; }
-.task-dialogue .agent-progress-steps { max-height: 78px; overflow-y: auto; }
+.task-dialogue .agent-progress-steps { max-height: min(500px, calc(100dvh - 230px)); overflow-y: auto; }
 .task-dialogue .agent-progress-steps:focus-visible { outline: 2px solid var(--board-primary); outline-offset: -2px; }
+@container execution-canvas (min-width: 1120px) {
+  .task-dialogue .execution-transcript { margin-right: 332px; }
+  .task-dialogue .execution-history:has(> .execution-todos) .message-column { padding-top: 16px; }
+}
+.task-workspace.task-rail-hidden { grid-template-columns: minmax(0, 1fr); }
+.task-info-rail[hidden] { display: none; }
+.task-panel-tools { z-index: 4; }
 
 .task-dialogue .execution-transcript .message-user { width: fit-content; max-width: 90%; align-self: flex-end; }
 .task-dialogue .execution-transcript .message-user > .message-body { max-width: none; }

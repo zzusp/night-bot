@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { RiArrowRightLine, RiCheckboxCircleLine, RiTimeLine, RiPulseLine } from '@remixicon/react';
+import { RiArrowRightLine, RiCheckboxCircleLine, RiTimeLine, RiPulseLine, RiLayoutRightLine } from '@remixicon/react';
 import { ApiError, type Page, type Task } from './api';
 import { dateTime, navigate, textOf, useResource, useRoute } from './hooks';
-import { Button, EmptyState } from './components/BoardPrimitives';
+import { Button, EmptyState, IconButton } from './components/BoardPrimitives';
 import { Loading, Markdown, Notice, Pagination, Search, Status } from './components/Shared';
 import { ConversationFrame } from './components/ConversationFrame';
 import { ExecutionHistory } from './components/ExecutionHistory';
@@ -49,20 +49,22 @@ export function TaskDetail({ id, header }: { id: string; header?: ReactNode }) {
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
   const [recordControls, setRecordControls] = useState<HTMLDivElement | null>(null);
+  const [rail, setRail] = useState(true);
   const infoContent = useRef<HTMLDivElement>(null);
   useEffect(() => { if (infoContent.current) infoContent.current.scrollTop = 0; }, [tab]);
   useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
   useEffect(() => { if (!query.error) setDenied(false); }, [query.updatedAt]);
   const task = forbidden || denied ? undefined : query.data;
   const sections = [['task', '任务'], ['execution', '执行'], ['review', '复盘'], ['learning', '学习']];
-  return <div className="task-workspace">
+  return <div className={`task-workspace${rail ? '' : ' task-rail-hidden'}`}>
     <ConversationFrame label="任务执行记录">
       {header}
+      <div className="conversation-tools task-panel-tools"><div className="topbar-actions"><IconButton label={rail ? '隐藏任务面板' : '显示任务面板'} aria-expanded={rail} aria-controls="task-info-panel" onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>
       {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
       {!task ? query.loading ? <Loading>正在读取任务…</Loading> : <EmptyState title="无法读取任务" /> :
         <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={recordControls} /></div>}
     </ConversationFrame>
-    <aside className="task-info-rail" aria-label="任务详情">
+    <aside id="task-info-panel" hidden={!rail} className="task-info-rail" aria-label="任务详情">
       <nav className="filter-tabs task-info-nav" aria-label="任务信息分类">{sections.map(([value, label]) => <a key={value} href={`#/tasks/${encodeURIComponent(id)}${value === 'task' ? '' : `?view=${value}`}`} aria-current={tab === value ? 'page' : undefined}>{label}</a>)}</nav>
       <div className="task-info-content" ref={infoContent}>
         <section className="task-execution-overview" hidden={tab !== 'execution'} aria-label="执行状态">
