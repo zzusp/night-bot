@@ -1,3 +1,4 @@
+import {learningCoverage} from './learning-coverage.js'
 import {contentSnapshot} from './previous.js'
 import {learnedSkillSupported} from './evolution.js'
 import {officialReflectionText} from './reflection-inference.js'
@@ -258,7 +259,7 @@ export default class Reflection extends Service {
       const source={taskId:task.taskId,eventId:report.eventId,reviewId}
       const currentVersion=hash(JSON.stringify([id,value,text??null]))
       const canRead=allowed&&typeof text==='string'
-      changes.push({id,reviewId,taskId:task.taskId,kind,action:kind==='memory'?'upsert':'current-version',status:value.status,scope:scope.kind,name:key,version:currentVersion,canRead,source})
+      changes.push({id,entryId:hash(JSON.stringify([kind,key,scope.kind,scope.id])),reviewId,taskId:task.taskId,kind,action:kind==='memory'?'upsert':'current-version',status:value.status,scope:scope.kind,name:key,version:currentVersion,canRead,source})
       if(canRead)bodies.set(id,{id,kind,text,version:currentVersion,source})
     }
     for(const [reviewId,report]of Object.entries(state.reviews)){
@@ -290,7 +291,8 @@ export default class Reflection extends Service {
       return bodies.get(changeId)
     }
     reviews.sort((a,b)=>(b.at??'').localeCompare(a.at??'')||a.reviewId.localeCompare(b.reviewId))
-    return {status:'ready',reviews,changes,revision:hash(JSON.stringify([reviews,changes]))}
+    const changesComplete=learningCoverage(task.taskId,state.reviews,state.skills,changes)
+    return {status:'ready',reviews,changes,changesComplete,revision:hash(JSON.stringify([reviews,changes,changesComplete]))}
   }
   async supportEntries(scope,state){
     if(!Object.values(state.skills).some(skill=>skill.active&&skill.origin!=='router'))return []

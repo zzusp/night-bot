@@ -76,6 +76,11 @@ export function useExecutionStream(endpoint: string) {
         if (disposed || controller.signal.aborted) return;
         const problem = error instanceof Error ? error : new Error('REQUEST_FAILED');
         if (revoked(problem)) publish({data: null, error: problem, olderError: null, epoch: current.epoch + 1});
+        else if (problem instanceof ApiError && /^(SESSION_IDENTITY_INVALID|SESSION_SOURCE_IDENTITY_INVALID|SESSION_USAGE_INVALID)$/.test(problem.code)) {
+          // A previously valid live proof must never resurrect token metadata
+          // after an identity failure. Only a full authorized read restores it.
+          publish({data:current.data ? {...current.data,tokenUsage:undefined,liveProof:undefined,live:{active:false,items:[]}} : null,error:problem});
+        }
         else if (problem instanceof ApiError && problem.status === 409) {publish({data:null, error:problem, olderError:null, epoch:current.epoch+1}); queued='reset';}
         else if (kind === 'older' && !(problem instanceof ApiError && problem.status === 409)) publish({olderError: problem});
         else publish({error: problem});

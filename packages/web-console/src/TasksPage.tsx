@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { RiArrowRightLine, RiCheckboxCircleLine, RiTimeLine, RiPulseLine, RiLayoutRightLine } from '@remixicon/react';
 import { ApiError, type Page, type Task } from './api';
-import { dateTime, navigate, textOf, useResource, useRoute } from './hooks';
+import { dateTime, navigate, textOf, useResource } from './hooks';
 import { Button, EmptyState, IconButton } from './components/BoardPrimitives';
-import { Loading, Markdown, Notice, Pagination, Search, Status } from './components/Shared';
+import { Loading, Notice, Pagination, Search, Status } from './components/Shared';
 import { ConversationFrame } from './components/ConversationFrame';
 import { ExecutionHistory } from './components/ExecutionHistory';
-import { LearningChanges } from './components/LearningChanges';
+import { TaskLearningSummary } from './components/TaskLearningSummary';
 import { taskDurationText } from './task-duration';
 import { taskConclusion, taskConclusionDuration } from './task-conclusion';
-import { TaskExecutionDetails } from './components/TaskExecutionDetails';
+import { TaskOverview } from './components/TaskOverview';
 
 export function TaskList({ route }: { route: URL }) {
   const state = route.searchParams.get('state') || '';
@@ -44,41 +44,24 @@ export function TaskList({ route }: { route: URL }) {
 
 export function TaskDetail({ id, header }: { id: string; header?: ReactNode }) {
   const query = useResource<Task>(`/tasks/${encodeURIComponent(id)}`, 4000);
-  const route = useRoute();
-  const view = route.searchParams.get('view');
-  const tab = view === 'execution' || view === 'review' || view === 'learning' ? view : 'task';
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
-  const [recordControls, setRecordControls] = useState<HTMLDivElement | null>(null);
+  const [tokenTarget, setTokenTarget] = useState<HTMLDivElement | null>(null);
   const [rail, setRail] = useState(true);
-  const infoContent = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (infoContent.current) infoContent.current.scrollTop = 0; }, [tab]);
   useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
   useEffect(() => { if (!query.error) setDenied(false); }, [query.updatedAt]);
   const task = forbidden || denied ? undefined : query.data;
-  const sections = [['task', '任务'], ['execution', '执行'], ['review', '复盘'], ['learning', '学习']];
   return <div className={`task-workspace${rail ? '' : ' task-rail-hidden'}`}>
     <ConversationFrame label="任务执行记录">
       {header}
       <div className="conversation-tools task-panel-tools"><div className="topbar-actions"><IconButton label={rail ? '隐藏任务面板' : '显示任务面板'} aria-expanded={rail} aria-controls="task-info-panel" onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>
       {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
       {!task ? query.loading ? <Loading>正在读取任务…</Loading> : <EmptyState title="无法读取任务" /> :
-        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={recordControls} conclusion={!query.error ? taskConclusion(task) : null} conclusionDuration={taskConclusionDuration(task)} /></div>}
+        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={null} tokenTarget={tokenTarget} taskError={query.error} taskRetry={query.refresh} conclusion={!query.error ? taskConclusion(task) : null} conclusionDuration={taskConclusionDuration(task)} /></div>}
     </ConversationFrame>
     <aside id="task-info-panel" hidden={!rail} className="task-info-rail" aria-label="任务详情">
-      <nav className="filter-tabs task-info-nav" aria-label="任务信息分类">{sections.map(([value, label]) => <a key={value} href={`#/tasks/${encodeURIComponent(id)}${value === 'task' ? '' : `?view=${value}`}`} aria-current={tab === value ? 'page' : undefined}>{label}</a>)}</nav>
-      <div className="task-info-content" ref={infoContent}>
-        <section className="task-execution-overview" hidden={tab !== 'execution'} aria-label="执行状态">
-          {task && <dl className="task-execution-states"><div><dt>执行会话</dt><dd><Status value={task.session?.status} /></dd></div><div><dt>任务控制</dt><dd><Status value={task.controlState} /></dd></div></dl>}
-          <div className="task-record-controls" ref={setRecordControls} />
-        </section>
-        <div key={tab}>
-        {!task ? <p className="muted">{query.loading ? '正在读取任务信息…' : '任务信息暂不可读。'}</p> : tab === 'review' || tab === 'learning' ? <LearningChanges key={id} taskId={id} section={tab === 'review' ? 'reviews' : 'changes'} /> : tab === 'task' ? <>
-          <section className="detail-section"><h2 className="task-info-title">{task.title || '未命名任务'}</h2><dl className="task-facts"><div><dt>当前状态</dt><dd><Status value={task.state} /></dd></div><div><dt>最近更新</dt><dd><time dateTime={task.updatedAt}>{dateTime(task.updatedAt)}</time></dd></div><div><dt>创建时间</dt><dd><time dateTime={task.createdAt}>{dateTime(task.createdAt)}</time></dd></div></dl></section>
-          <section className="detail-section"><h3>任务目标</h3>{task.objective ? <Markdown text={task.objective} /> : <p>未记录任务目标。</p>}</section>
-          <section className="detail-section blockers"><h3>等待处理</h3>{task.blockers?.length ? task.blockers.map(blocker => <p key={blocker.kind + ':' + blocker.id}>{blocker.title} {blocker.status && <Status value={blocker.status} />}</p>) : <p>暂无已记录的阻断项。</p>}</section>
-        </> : <TaskExecutionDetails task={task} />}
-        </div>
+      <div className="task-info-content">
+        {!task ? <p className="muted">{query.loading ? '正在读取任务信息…' : '任务信息暂不可读。'}</p> : <><TaskOverview task={task} /><div ref={setTokenTarget} /><TaskLearningSummary key={id} taskId={id} /></>}
       </div>
     </aside>
   </div>;
