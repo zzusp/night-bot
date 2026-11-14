@@ -1,9 +1,10 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
-import { RiBugLine, RiArrowRightLine, RiChat3Line, RiCheckboxCircleLine, RiCloseLine, RiEyeLine, RiEyeOffLine, RiGlobalLine, RiLayoutRightLine, RiLogoutBoxRLine, RiMenuLine, RiMoonLine, RiPulseLine, RiRefreshLine, RiSeedlingLine, RiSettings3Line, RiShieldCheckLine, RiSunLine, RiCalendarScheduleLine } from '@remixicon/react';
+import { RiBugLine, RiArrowRightLine, RiChat3Line, RiCheckboxCircleLine, RiCloseLine, RiEyeLine, RiEyeOffLine, RiGlobalLine, RiLayoutRightLine, RiLogoutBoxRLine, RiMenuLine, RiMoonLine, RiRefreshLine, RiSeedlingLine, RiSettings3Line, RiShieldCheckLine, RiSunLine, RiCalendarScheduleLine } from '@remixicon/react';
 import { api, errorText, setSession, type ChatSummary, type RecentConversation, type Conversation, type Overview, type Page, type Session, type OperatorSettings } from './api';
-import { dateTime, navigate, useResource, useRoute } from './hooks';
+import { navigate, useResource, useRoute } from './hooks';
 import { Badge, Button, EmptyState, IconButton, Logo } from './components/BoardPrimitives';
-import { Loading, Notice, Status } from './components/Shared';
+import { Loading, Notice } from './components/Shared';
+import { ActivityPanel } from './components/ActivityPanel';
 import ChatPage, { createDrafts, type Drafts } from './ChatPage';
 import { TaskDetail, TaskList } from './TasksPage';
 import ChannelsPage from './ChannelsPage';
@@ -111,19 +112,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
       <div className={`workspace-body${isConversation ? ' conversation-workspace' : ''}`}><main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : ''}`}>{isConversation && conversationHeader}<div className={isConversation ? 'conversation-content' : 'page-content-slot'}><PageBoundary resetKey={route.pathname}>
         {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} /> : <TaskList route={route} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'settings' && !id ? <SettingsPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></div></main>
-      {isConversation && rail && <aside id="activity-panel" className="activity-rail" aria-label="任务与渠道概览"><div className="rail-heading"><h2>工作动态</h2><RiPulseLine size={18} /></div>
-        {overview.error && <Notice error={overview.error} stale={!!overview.data} onRetry={overview.refresh} />}
-        {!!Object.keys(overview.data?.sectionErrors || {}).length && <p className="rail-empty" role="status">部分工作动态暂不可读，可刷新概览重新获取。</p>}
-        {!overview.data && overview.loading ? <Loading /> : <>
-          <div className="activity-counts"><a href="#/tasks?state=running"><span>执行中</span><strong>{overview.data?.running?.total ?? '—'}</strong><span className="count-dot info" /></a><a href="#/tasks?state=waiting"><span>等待中</span><strong>{overview.data?.waiting?.total ?? '—'}</strong><span className="count-dot warning" /></a></div>
-          <section className="rail-section"><div className="rail-section-title"><h3>最近任务</h3><a href="#/tasks">查看全部<RiArrowRightLine size={14} /></a></div>
-            {overview.data?.tasks?.items.length ? overview.data.tasks.items.slice(0, 5).map(task => <a className="rail-task" key={task.taskId} href={`#/tasks/${encodeURIComponent(task.taskId)}`}><div><Status value={task.state} /><time>{dateTime(task.updatedAt || task.createdAt)}</time></div><strong>{task.title || task.objective || '未命名任务'}</strong></a>) : <p className="rail-empty">{overview.data?.sectionErrors?.tasks || (overview.error && !overview.data) ? '暂时无法读取任务，请刷新。' : '暂无任务'}</p>}
-          </section>
-          <section className="rail-section"><div className="rail-section-title"><h3>已配置渠道</h3><a href="#/channels">查看<RiArrowRightLine size={14} /></a></div>
-            {overview.data?.channels?.length ? overview.data.channels.slice(0, 5).map(item => <a className="rail-channel" key={item.channelId} href="#/channels"><span><RiGlobalLine size={18} /></span><div><strong>{item.channelId}</strong><span>{item.type === 'dingtalk-dws' ? '钉钉' : item.type === 'web-console' ? 'Web 对话' : item.type}</span></div><Badge tone={item.connectionState === 'pending-restart' ? 'warning' : item.enabled ? 'success' : 'neutral'}>{item.connectionState === 'pending-restart' ? '待重启' : item.enabled ? '已启用' : '未启用'}</Badge></a>) : <p className="rail-empty">{overview.data?.sectionErrors?.channels || (overview.error && !overview.data) ? '暂时无法读取渠道，请刷新。' : '尚未配置渠道'}</p>}
-          </section>
-        </>}
-      </aside>}
+      {isConversation && rail && <ActivityPanel data={overview.data ?? undefined} loading={overview.loading} error={overview.error} onRetry={overview.refresh}/>}
       </div>
     </div>
   </div></AssistantBrandContext.Provider>;
