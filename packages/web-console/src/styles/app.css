@@ -666,6 +666,10 @@ html, body, #root { width: 100%; min-width: 0; }
 .conversation-tab-content { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
 .conversation-tab-content[hidden] { display: none; }
 .conversation-session-records .execution-transcript .message-column { max-width: calc(var(--board-content-width) + 32px); padding: 16px var(--message-inline-inset) 24px; }
+.conversation-session-records .session-records-empty > .board-empty { align-items: center; justify-content: center; text-align: center; gap: 14px; padding: 24px; }
+.conversation-session-records .session-records-empty .board-empty-icon { display: grid; width: 56px; height: 56px; margin: 0; border: 1px solid var(--board-border); border-radius: 18px; color: var(--board-muted); background: var(--board-surface); box-shadow: none; }
+.conversation-session-records .session-records-empty .board-empty-icon svg { width: 26px; height: 26px; }
+.conversation-session-records .session-records-empty .board-empty h2 { color: var(--board-muted); font-size: 15px; line-height: 24px; font-weight: 500; }
 .conversation-with-tabs .transcript { scroll-padding-top: 0; }
 .chat-panel .conversation-with-tabs .message-column { padding-top: 16px; }
 @media (max-width: 520px) { .conversation-session-tabs { padding-left: 12px; min-height: 48px; } }

@@ -26,7 +26,7 @@ export function ConversationFrame({label, channel = false, endpoint, children}: 
       </div>
       <div className="conversation-tab-content" role="tabpanel" id={`${prefix}-panel-dialogue`} aria-labelledby={`${prefix}-dialogue`} hidden={view !== 'dialogue'}>{children}</div>
       {tabs.slice(1).map(tab => <div key={tab.id} className="conversation-tab-content conversation-session-records" role="tabpanel" id={`${prefix}-panel-${tab.id}`} aria-labelledby={`${prefix}-${tab.id}`} hidden={view !== tab.id} tabIndex={0}>
-        {view === tab.id && <ExecutionHistory key={`${endpoint}:${tab.id}`} endpoint={`${endpoint}/${tab.id === 'triage' ? 'triage/session' : 'session'}`} router controlsTarget={null} />}
+        {view === tab.id && <ExecutionHistory key={`${endpoint}:${tab.id}`} endpoint={`${endpoint}/${tab.id === 'triage' ? 'triage/session' : 'session'}`} router sessionKind={tab.id === 'triage' ? 'triage' : 'router'} controlsTarget={null} />}
       </div>)}
     </> : children}
   </section>;
