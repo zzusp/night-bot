@@ -694,3 +694,9 @@ html, body, #root { width: 100%; min-width: 0; }
 .conversation-with-tabs .transcript { scroll-padding-top: 0; }
 .chat-panel .conversation-with-tabs .message-column { padding-top: 16px; }
 @media (max-width: 520px) { .conversation-session-tabs { padding-left: 12px; min-height: 48px; } }
+
+/* Final Host result shares the assistant bubble; it remains in the record scroller. */
+.task-final-conclusion { margin-top: 12px; }
+.task-conclusion-label { color: var(--board-muted); font-size: 11px; margin-bottom: 6px; }
+.task-final-conclusion .message-body > :first-child { margin-top: 0; }
+.task-final-conclusion .message-body > :last-child { margin-bottom: 0; }

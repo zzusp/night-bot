@@ -8,6 +8,7 @@ import { ConversationFrame } from './components/ConversationFrame';
 import { ExecutionHistory } from './components/ExecutionHistory';
 import { LearningChanges } from './components/LearningChanges';
 import { taskDurationText } from './task-duration';
+import { taskConclusion } from './task-conclusion';
 import { TaskExecutionDetails } from './components/TaskExecutionDetails';
 
 export function TaskList({ route }: { route: URL }) {
@@ -62,7 +63,7 @@ export function TaskDetail({ id, header }: { id: string; header?: ReactNode }) {
       <div className="conversation-tools task-panel-tools"><div className="topbar-actions"><IconButton label={rail ? '隐藏任务面板' : '显示任务面板'} aria-expanded={rail} aria-controls="task-info-panel" onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>
       {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
       {!task ? query.loading ? <Loading>正在读取任务…</Loading> : <EmptyState title="无法读取任务" /> :
-        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={recordControls} /></div>}
+        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={recordControls} conclusion={!query.error ? taskConclusion(task) : null} /></div>}
     </ConversationFrame>
     <aside id="task-info-panel" hidden={!rail} className="task-info-rail" aria-label="任务详情">
       <nav className="filter-tabs task-info-nav" aria-label="任务信息分类">{sections.map(([value, label]) => <a key={value} href={`#/tasks/${encodeURIComponent(id)}${value === 'task' ? '' : `?view=${value}`}`} aria-current={tab === value ? 'page' : undefined}>{label}</a>)}</nav>
@@ -75,7 +76,6 @@ export function TaskDetail({ id, header }: { id: string; header?: ReactNode }) {
         {!task ? <p className="muted">{query.loading ? '正在读取任务信息…' : '任务信息暂不可读。'}</p> : tab === 'review' || tab === 'learning' ? <LearningChanges key={id} taskId={id} section={tab === 'review' ? 'reviews' : 'changes'} /> : tab === 'task' ? <>
           <section className="detail-section"><h2 className="task-info-title">{task.title || '未命名任务'}</h2><dl className="task-facts"><div><dt>当前状态</dt><dd><Status value={task.state} /></dd></div><div><dt>最近更新</dt><dd><time dateTime={task.updatedAt}>{dateTime(task.updatedAt)}</time></dd></div><div><dt>创建时间</dt><dd><time dateTime={task.createdAt}>{dateTime(task.createdAt)}</time></dd></div></dl></section>
           <section className="detail-section"><h3>任务目标</h3>{task.objective ? <Markdown text={task.objective} /> : <p>未记录任务目标。</p>}</section>
-          <section className="detail-section"><h3>处理结果</h3>{textOf(task.result) ? <Markdown text={textOf(task.result)} /> : <p>尚无已记录的处理结果。</p>}</section>
           <section className="detail-section blockers"><h3>等待处理</h3>{task.blockers?.length ? task.blockers.map(blocker => <p key={blocker.kind + ':' + blocker.id}>{blocker.title} {blocker.status && <Status value={blocker.status} />}</p>) : <p>暂无已记录的阻断项。</p>}</section>
         </> : <TaskExecutionDetails task={task} />}
         </div>

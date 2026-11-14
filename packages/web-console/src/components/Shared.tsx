@@ -272,7 +272,7 @@ function ThinkingMessage({message, history, compact, live}: {message: Message; h
   return <details className="thinking-message" open={open} onToggle={event => {if(event.target === event.currentTarget)setOpen(event.currentTarget.open);}}><summary><span>{isThinking ? '思考中' : '模型思考'}</span>{isThinking && <LiveElapsed startedAt={live?.phaseStartedAt} />}<PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /></summary><MessageBody message={message} history={history} showSource={!compact} /></details>;
 }
 
-export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat', older, live }: { live?: ExecutionLive; presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void; older?: OlderHistory }) {
+export function MessageList({ messages, pending, empty, footer, footerVersion, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat', older, live }: { live?: ExecutionLive; presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; footerVersion?: string | null; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void; older?: OlderHistory }) {
   const disclosures = useRef(new Map<string, boolean>()).current;
   const brand = useAssistantBrand();
   const compact = presentation === 'execution';
@@ -318,7 +318,7 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
       else element.scrollTop = saved.scroll + element.scrollHeight - saved.height;
     }
     captureAnchor();
-  }, [signature, pending]);
+  }, [signature, pending, footerVersion]);
   useEffect(() => {
     const element = ref.current;
     // Collapsed tool runs can turn 200 records into only a few lines. Fill the
