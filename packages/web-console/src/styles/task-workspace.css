@@ -102,7 +102,8 @@
 .task-dialogue .agent-progress-steps { max-height: min(500px, calc(100dvh - 230px)); overflow-y: auto; }
 .task-dialogue .agent-progress-steps:focus-visible { outline: 2px solid var(--board-primary); outline-offset: -2px; }
 @container execution-canvas (min-width: 1120px) {
-  .task-dialogue .execution-transcript { margin-right: 332px; }
+  /* Reserve space inside the scroller, leaving its scrollbar at the canvas edge. */
+  .task-dialogue .execution-history:has(> .execution-todos) .execution-transcript .transcript { padding-right: 332px; }
   .task-dialogue .execution-history:has(> .execution-todos) .message-column { padding-top: 16px; }
 }
 .task-workspace.task-rail-hidden { grid-template-columns: minmax(0, 1fr); }
