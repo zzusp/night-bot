@@ -636,8 +636,8 @@ html, body, #root { width: 100%; min-width: 0; }
 .workspace-topbar > .board-icon-button { width: 44px; height: 44px; min-height: 44px; }
 .workspace-topbar .header-location { flex: 1; min-width: 0; overflow: hidden; }
 .main-panel > .page-content-slot > .page-content { width: 100%; max-width: none; margin: 0; padding: 20px var(--content-inset) 24px; }
-.settings-page > .settings-card, .settings-page > .settings-grid { max-width: 1100px; }
-.feedback-page > .settings-card { max-width: 1000px; }
+.settings-page > .settings-card, .settings-page > .settings-grid { max-width: 1100px; margin-inline: auto; }
+.feedback-page > .settings-card { max-width: 1000px; margin-inline: auto; }
 /* Conversation-only controls float within the content, not a second header. */
 .chat-panel { position: relative; }
 .conversation-tools { position: absolute; top: 8px; right: 16px; z-index: 3; }
