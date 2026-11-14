@@ -29,6 +29,14 @@ releases dependencies nor creates authority for a follow-up task.
 
 每次复盘仅接收有稳定 ID 的完成、执行和操作证据，不传整段聊天或原始命令正文。模型最多提出三条有复用价值的经验，每条必须包含 summary、why、howToApply 和本任务有效 evidenceIds；没有合适经验时返回空列表。三段正文直接写结论、有依据的原因与具体用法，不保存假设或推测，不写任务流水。原因未说明时如实标明，不将用户陈述当作独立验证。证据 ID 留在既有 review 和来源元数据中，不重复铺入经验正文；合法 ID 不证明模型解释在语义上成立，当前事实和明确要求仍须重新核对。
 
+## 内置 creator 生成阶段
+
+自动复盘仍是无工具调用，只提出证据和技能候选。首次发布及正文更新另经 Pi 原生 Agent 的短生成阶段：模型必须实际调用唯一的 `skill` 工具加载本发行内置 `skill-creator`，据候选、原始证据引用和旧版正文生成新的 description 与 Markdown。生成阶段不是业务执行会话，无文件写入、shell、任务或渠道工具；不启动子代理。安装的同名技能不覆盖此内置来源，内置文件只读。
+
+Host 在共享锁外生成，发布前重核来源、权限、CAS 版本及遗忘代次。技能版本保存生成正文、creator 名称/来源/字节 SHA-256、实际工具调用 ID、模型身份、输入/输出摘要和生成时间；自动复盘报告与 Router 受管回执链接相同生成证据。返回草稿不等于发布，只有受管状态提交及派生文件读回才返回 persisted。加载缺失、模型失败、未调用 creator 或无效输出均显式失败，不回退旧步骤拼装。原业务完成不回滚，失败可在复盘报告或 generationFailures 查证。
+
+旧技能保持原样，不补造 creator 收据、不批量再生成。冷启动/重复操作只恢复已提交当前正文，删除不调用 creator。生成过程未执行独立试用或 benchmark，不能声称质量基准已通过。
+
 ## Managed skills and evidence
 
 A useful procedural lesson may propose steps, a reason, an evidence-backed
@@ -42,7 +50,7 @@ review provenance. The task-review producer admits at most 20 active learned ski
 catalog admission limit, not a repetition threshold or a Router maintenance gate. No
 executable scripts are generated.
 
-学习 Skill 的 applicability 直接作为 frontmatter 和模型目录中的 description，写清触发情境及能够解决的问题，模型无需先加载正文才能判断相关性。正文只保留可复用步骤，不重复列出 Applicability、Observed in tasks、Skill revision 或通用权限声明。任务来源、Skill 版本和支持关系仍保留在 Host 元数据中；内容精简不删除审计或改变权限校验。
+学习 Skill 的 applicability 直接作为 frontmatter 和模型目录中的 description，写清触发情境及能够解决的问题，模型无需先加载正文才能判断相关性。正文来自 creator 生成，可包含必要说明与验证步骤；不机械重复列出 Applicability、Observed in tasks、Skill revision 或通用权限声明。任务来源、Skill 版本和支持关系仍保留在 Host 元数据中；内容精简不删除审计或改变权限校验。
 
 Learned Markdown lives under `data/memory/v2/bot/evolution/skills/<name>/SKILL.md`.
 The common `learned` provider rechecks the live bound actor but selects the same Bot
@@ -78,8 +86,8 @@ cold restart skips completed reviews; a crash before state publication retries
 idempotent memory writes. Invalid/unknown evidence, oversized/incomplete model
 output, known secrets or model failures produce a maintenance failure record.
 Retries wait at least 30 seconds and stop after three recorded attempts per event;
-the status is visible through `memory_status`. Model work has a 30-second deadline,
-shutdown aborts/drains it, and failures never reverse a completed task. This does
+the status is visible through `memory_status`. Tool-free review inference has a 30-second deadline; creator drafting follows the
+provider limits and caller/Host cancellation, and shutdown aborts/drains it, and failures never reverse a completed task. This does
 not promise exactly one vendor request across an unrecorded hard crash.
 
 Correcting or forgetting an `experience` entry removes corresponding derived skill

@@ -9,7 +9,7 @@ export async function memoryHost(t,decide=()=>undefined,{background=false,portab
   const server=createServer(async(req,res)=>{
     req.setEncoding('utf8')
     let raw='';for await(const chunk of req)raw+=chunk
-    const body=JSON.parse(raw);requests.push(body);const decision=await decide(body)
+    const body=JSON.parse(raw);requests.push(body);const decision=await decide(body)??scriptedSkillGeneration(body)
     if(decision?.error){res.writeHead(400,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:decision.error,type:'invalid_request_error'}}));return}
     res.writeHead(200,{'content-type':'text/event-stream'})
     const chunk=(delta,finish_reason=null)=>res.write('data: '+JSON.stringify({id:'memory-fixture',object:'chat.completion.chunk',created:1,model:body.model,choices:[{index:0,delta,finish_reason}]})+'\n\n')
@@ -40,4 +40,13 @@ export async function initializeMemoryTaskWorkspace(store,workspaceRoot,taskId){
   const begin=await store.command({id:creationCommandId+':workspace-begin',kind:'task.workspace.begin',args:binding})
   const observation=await initializeTaskDirectories(workspaceRoot,begin.result.task)
   await store.command({id:creationCommandId+':workspace-finish',kind:'task.workspace.finish',args:{...binding,state:'ready',observation:observation.native}})
+}
+
+// 本地脚本模型仍须真正走 Pi 工具循环，不直接写受管技能状态。
+export function scriptedSkillGeneration(body){
+ if(!JSON.stringify(body.messages).includes('NIGHT_BOT_SKILL_GENERATION'))return
+ if(!body.messages.some(message=>message.role==='tool'))return {tool:'skill',args:{name:'skill-creator'}}
+ const content=body.messages.find(message=>message.role==='user').content
+ const input=JSON.parse(typeof content==='string'?content:content.map(part=>part.text??'').join(''))
+ return {text:JSON.stringify({description:input.candidate.applicability,body:input.candidate.steps.map((step,i)=>(i+1)+'. '+step).join(String.fromCharCode(10))})}
 }

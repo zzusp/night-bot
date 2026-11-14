@@ -1,5 +1,5 @@
 import {join} from 'node:path'
-import {memoryHost} from './memory-host.js'
+import {memoryHost,scriptedSkillGeneration} from './memory-host.js'
 import {nativeTestTimeout} from './native-lifecycle.js'
 import {openResidentStore} from '../../packages/dingtalk-core/store.js'
 import {openDynamicTaskStore} from '../../packages/dingtalk-core/dynamic-task-store.js'
@@ -36,7 +36,7 @@ export async function residentRouterHost(t, decide, options = {}) {
   // Persistent Router tests should not accidentally compact a scripted model's
   // fixed transcript. Compression itself has a dedicated small-window test.
   const configured=options.hostOptions?.hostConfig
-  const f = await memoryHost(t, decide, {...options.hostOptions,hostConfig:config=>{
+  const f = await memoryHost(t, body=>scriptedSkillGeneration(body)??decide(body), {...options.hostOptions,hostConfig:config=>{
     config.providers.fixture.models[0].contextWindow=262144
     return typeof configured==='function'?configured(config):configured??{}
   }}), sent = [], readbacks = [], results = []

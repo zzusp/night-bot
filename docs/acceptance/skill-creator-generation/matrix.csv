@@ -1,0 +1,10 @@
+case,round-1,evidence
+automatic-new-skill,PASS,无工具复盘、真实 creator、原完成事件与发布报告一致、再次扫描不重复
+router-create-update,PASS,实际 creator 两轮模型请求、生成正文和摘要、版本 1 到 2
+generation-fail-closed,PASS,缺失/未用/无效输出/模型错误均无正式发布，业务 completed 不回滚
+authority-and-forget,PASS,慢生成不占共享锁，撤权/遗忘后拒绝提交
+cancel-and-drain,PASS,调用者及 Host 取消均中断排空且无正式 mutation
+router-authenticated-crud,PASS,16 检查点、只读拒绝、冷启、CAS、来源及删除撤销
+default-router-program,PASS,独立运行工具链、目录和文件一致、冷启无重放、无空任务/真实外发
+affected-regression,PASS,8 文件 66 项通过；取消绑定后专项 11 项及独立程序通过
+source-and-build,PASS,pnpm check、diff --check、Web build 通过

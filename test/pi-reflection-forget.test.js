@@ -34,6 +34,7 @@ test('Router skill receipts repair current derived content, reject input reuse a
  const root=await mkdtemp(join(tmpdir(),'night-router-skill-')),store=new MarkdownMemoryStore(root),scope=memoryScope({actorId:'actor'})
  t.after(async()=>{await store.close();await rm(root,{recursive:true,force:true})})
  const reflection=Object.create(Reflection.prototype)
+ reflection.generateSkill=async({candidate})=>({description:candidate.applicability,body:candidate.steps.join(String.fromCharCode(10)),generation:{test:'persistence-only'}})
  reflection.host={memory:{store},skills:{invalidateCache(){}}}
  const source={sessionId:'router-session',messageId:'current-message',actor:hash('actor'),quoteSha256:hash('Current authenticated message')}
  const args={action:'upsert',key:'inspect-first',operationId:'create',source,steps:['读取当前证据'],reason:'当前工作可复用',applicability:'类似排障',expectedRevision:0}
@@ -67,7 +68,8 @@ test('Router skill reports committed uncertainty until derived readback succeeds
  const {mkdir}=await import('node:fs/promises'),{withLock,failure}=await import('../src/runtime/files.js')
  const root=await mkdtemp(join(tmpdir(),'night-router-skill-fault-')),store=new MarkdownMemoryStore(root),scope=memoryScope({actorId:'actor'})
  t.after(async()=>{await store.close();await rm(root,{recursive:true,force:true})})
- const reflection=Object.create(Reflection.prototype);reflection.host={memory:{store},skills:{invalidateCache(){}}}
+ const reflection=Object.create(Reflection.prototype)
+ reflection.generateSkill=async({candidate})=>({description:candidate.applicability,body:candidate.steps.join(String.fromCharCode(10)),generation:{test:'persistence-only'}});reflection.host={memory:{store},skills:{invalidateCache(){}}}
  const args={action:'upsert',key:'read-evidence',operationId:'create',source:{sessionId:'router',messageId:'message',actor:hash('actor'),quoteSha256:hash('source')},steps:['读取证据'],reason:'可复用',applicability:'排障'}
  const path=join(reflection.directory(scope),'skills',args.key,'SKILL.md')
  await mkdir(path,{recursive:true})
@@ -90,7 +92,8 @@ test('Router skill reports committed uncertainty until derived readback succeeds
 test('slow review archives are serialized outside evolution commits and forgetting wins the final archive',async t=>{
  const root=await mkdtemp(join(tmpdir(),'night-archive-order-')),store=new MarkdownMemoryStore(root),scope=memoryScope({actorId:'actor'})
  t.after(async()=>{await store.close();await rm(root,{recursive:true,force:true})})
- const reflection=Object.create(Reflection.prototype),entered=Promise.withResolvers(),release=Promise.withResolvers(),published=[]
+ const reflection=Object.create(Reflection.prototype)
+ const entered=Promise.withResolvers(),release=Promise.withResolvers(),published=[]
  t.after(()=>release.resolve())
  reflection.host={memory:{store},skills:{invalidateCache(){}}}
  const report={status:'done',eventId:'event',taskId:'task',lessons:[{key:'lesson',memoryKey:'lesson',summary:'obsolete'}],destinations:[{memory:{key:'lesson'}}]}
