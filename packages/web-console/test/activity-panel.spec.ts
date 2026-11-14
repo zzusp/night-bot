@@ -91,14 +91,18 @@ for (const scenario of [
 test('recent stage charts preserve gaps and expose equivalent point labels',async({page})=>{
   await page.route('**/api/overview',route=>route.fulfill({json:overview}));
   await login(page);
-  const card=page.getByRole('region',{name:'最近处理耗时'});
+  const card=page.getByRole('group',{name:'最近处理耗时',exact:true});
   await expect(card).toContainText('本会话 · 8 条消息');
+  await expect(card.getByRole('region',{name:'分诊耗时',exact:true})).toBeVisible();
+  await expect(card.getByRole('region',{name:'路由耗时',exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.querySelector('.stage-timing-charts')!.getBoundingClientRect().bottom <= document.querySelector('.activity-counts')!.getBoundingClientRect().top)).toBe(true);
+  await expect(card.locator('.stage-line').first()).toHaveAttribute('d',/ C /);
   await expect(card.locator('.stage-plot-triage .stage-point')).toHaveCount(8);
   await expect(card.locator('.stage-plot-router .stage-point')).toHaveCount(7);
   await expect(card.locator('.stage-plot-router .stage-missing')).toHaveCount(1);
   await expect(card.locator('.stage-plot-router .stage-line')).toHaveCount(2);
   await expect(card.locator('.stage-plot-triage .stage-plot-heading')).toContainText('4 秒');
-  await card.locator('.stage-plot-triage svg g').first().focus();
+  await card.locator('.stage-plot-triage svg g[tabindex]').first().focus();
   await expect(card.locator('.stage-plot-triage .stage-plot-foot')).not.toContainText('最新一条');
   expect((await new AxeBuilder({page}).include('#activity-panel').analyze()).violations).toEqual([]);
 });
@@ -106,6 +110,6 @@ test('recent stage charts preserve gaps and expose equivalent point labels',asyn
 test('stage chart unavailable data never becomes a zero plot',async({page})=>{
   await page.route('**/stage-times?limit=8',route=>route.fulfill({json:{status:'unavailable',items:[]}}));
   await login(page);
-  await expect(page.getByRole('region',{name:'最近处理耗时'})).toContainText('来源暂不可读');
+  await expect(page.getByRole('group',{name:'最近处理耗时',exact:true})).toContainText('来源暂不可读');
   await expect(page.locator('.stage-point')).toHaveCount(0);
 });

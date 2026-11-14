@@ -35,7 +35,7 @@
 .stage-timing-card .rail-section-title { padding-bottom: 8px; }
 .stage-scope { font-size: 10px; color: var(--board-muted); white-space: nowrap; }
 .stage-plot { padding: 6px 14px 12px; --stage-color: var(--board-info); }
-.stage-plot-router { --stage-color: var(--board-success); border-top: 1px solid var(--board-border); padding-top: 12px; }
+.stage-plot-router { --stage-color: var(--board-success);  }
 .stage-plot-heading, .stage-plot-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .stage-plot-heading > span { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--board-muted); }
 .stage-plot-heading i { width: 6px; height: 6px; background: var(--stage-color); border-radius: 50%; }
@@ -50,3 +50,11 @@
 .stage-plot-graph g:focus .stage-point { stroke-width: 4; }
 .stage-plot-graph g:focus rect { stroke: var(--board-focus); stroke-width: 1; }
 .stage-plot-foot { font-size: 9px; line-height: 16px; color: var(--board-muted); min-height: 16px; }
+
+.stage-timing-charts { display: flex; flex-direction: column; gap: 16px; flex-shrink: 0; }
+.stage-timing-card { --stage-color: var(--board-info); }
+.stage-timing-card-router { --stage-color: var(--board-success); }
+.stage-title-dot { height: 6px; width: 6px; border-radius: 50%; background: var(--stage-color); }
+.stage-plot-heading strong { font-size: 22px; line-height: 28px; }
+.stage-plot .stage-point { r: 2; }
+.stage-plot g:hover .stage-point, .stage-plot g:focus .stage-point { r: 4; }
