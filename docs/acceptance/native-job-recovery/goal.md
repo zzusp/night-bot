@@ -6,7 +6,14 @@
 
 ## 当前检查点
 
-- 原作业为任务内 lint/build；lint 有完整成功记录，构建停留 running、退出码未知。当前进程快照未发现原工具/构建进程；不据此宣称构建成功。
-- 最小离线 typed receipt 已实现。CLI/Host 同会话恢复 5 项最终通过，既有 job/context 35 项通过，源码/导入/hash guard 通过。详见 [第一轮](round-1.md)；完整测试组未运行。
-- 下一步：PR 合并、已合并发行准备、真实安装停机核验与精确作业结清，再观察原任务新执行。尚未操作真实账本或恢复原业务。
-- 决策：[前置快照](../../spec/native-job-recovery.md)。私有原命令、任务身份、业务路径与原始核验数据仅保存在本机安装数据，不进 Git。
+**本次核验与原任务恢复执行已完成**。PR [#142](https://github.com/zzusp/night-bot/pull/142) 已合并，本机实际运行 `1d7c76b48a334fc1370066fea4a21d141691e75a`，核心/插件同发行。实际证据集中在 [第二轮](round-2.md)。
+
+- 旧 shell 的 lint 成功、构建退出未知；OS 核验未发现原生产者，按操作者证据追加独立 job/reconciled，保留 partial-effects/unknown/noReplay，不伪造 settled。
+- 原 journal 完整前缀、task body 和三条未 ACK wake 在结清时不变；随后由正常 Host 在原 task/session 从 lease 17 进入 18。
+- 实际会话完成四次新 PowerShell、一次 write 及 job_list，Web 状态与发行产物匹配；原 call 仍仅一次，原未知 job 已不再阻断。业务任务仍在执行，不声称原业务修复已完成。
+- 最终新增回归 5 PASS；既有 job/context 35 PASS；source/hash/import guard 通过。完整 test/runtime/routing/containment 未跑，见 [第一轮](round-1.md)。
+- health 仍 degraded，剩余一个既有业务等待未变；未创建备份或触碰原主检出的既有修改。原命令、业务身份/路径、输出、凭据与私有核验报告仅留本机安装数据，不进 Git。
+
+## 决策与证据入口
+
+[前置快照](../../spec/native-job-recovery.md)；[第一轮](round-1.md)；[最终第二轮](round-2.md)；[历史矩阵](matrix.csv)。运行源码版本与后续纯文档归档提交分开记录。
