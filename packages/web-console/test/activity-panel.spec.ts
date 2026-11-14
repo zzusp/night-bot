@@ -41,7 +41,7 @@ test('empty and unavailable states remain distinct',async({page})=>{
   await expect(rail.locator('.activity-counts a').first()).toContainText('—');
   await expect(rail.getByRole('region',{name:'正在执行'})).toContainText('暂时无法读取');
   await expect(rail.getByRole('region',{name:'等待继续'})).toContainText('暂无等待中的任务');
-  await expect(rail.getByRole('region',{name:'最近任务'})).toBeVisible();
+  await expect(rail.getByRole('region',{name:'最近任务'})).toHaveCount(0);
 });
 
 test('narrow panel toggles below content without resetting the composer',async({page})=>{
@@ -54,3 +54,16 @@ test('narrow panel toggles below content without resetting the composer',async({
   await page.getByRole('button',{name:'隐藏活动面板'}).click();
   await expect(page.getByLabel('消息内容',{exact:true})).toBeVisible();
 });
+
+for (const scenario of [
+  {name:'confirmed idle',running:pageOf([]),waiting:pageOf([]),showRecent:true},
+  {name:'waiting unavailable',running:pageOf([]),waiting:null,showRecent:false},
+  {name:'nonempty total with empty page',running:{...pageOf([]),total:1},waiting:pageOf([]),showRecent:false},
+  {name:'running section error',running:pageOf([]),waiting:pageOf([]),sectionErrors:{running:'UNAVAILABLE'},showRecent:false},
+]) {
+  test(`recent tasks require confirmed idle: ${scenario.name}`,async({page})=>{
+    await page.route('**/api/overview',route=>route.fulfill({json:{...overview,...scenario}}));
+    await login(page);
+    await expect(page.locator('#activity-panel').getByRole('region',{name:'最近任务'})).toHaveCount(scenario.showRecent ? 1 : 0);
+  });
+}

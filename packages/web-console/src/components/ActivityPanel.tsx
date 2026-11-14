@@ -25,7 +25,10 @@ export function ActivityPanel({data, loading, error, onRetry}: {data?: Overview;
   // The overview pages own their totals and membership. Waiting never implies a
   // human approval request, and an unavailable page must not become a zero.
   const incomplete = !!Object.keys(data?.sectionErrors || {}).length;
-  const active = !!(data?.running?.items.length || data?.waiting?.items.length);
+  const idle = !error && !!data?.running && !!data?.waiting
+    && !data.sectionErrors?.running && !data.sectionErrors?.waiting
+    && data.running.total === 0 && data.waiting.total === 0
+    && data.running.items.length === 0 && data.waiting.items.length === 0;
   return <aside id="activity-panel" className="activity-rail" aria-label="任务动态">
     <div className="rail-heading"><h2>工作动态</h2><a href="#/tasks">全部任务<RiArrowRightSLine size={16} aria-hidden="true" /></a></div>
     {!!error && <Notice error={error} stale={!!data} onRetry={onRetry}/>}
@@ -37,7 +40,7 @@ export function ActivityPanel({data, loading, error, onRetry}: {data?: Overview;
       </div>
       <TaskSection title="正在执行" tasks={data?.running} href="#/tasks?state=running" tone="running" failed={!!data?.sectionErrors?.running}/>
       <TaskSection title="等待继续" tasks={data?.waiting} href="#/tasks?state=waiting" tone="waiting" failed={!!data?.sectionErrors?.waiting}/>
-      {!active && <TaskSection title="最近任务" tasks={data?.tasks} href="#/tasks" tone="recent" failed={!!data?.sectionErrors?.tasks}/>}
+      {idle && <TaskSection title="最近任务" tasks={data?.tasks} href="#/tasks" tone="recent" failed={!!data?.sectionErrors?.tasks}/>}
     </>}
   </aside>;
 }
