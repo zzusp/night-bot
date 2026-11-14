@@ -38,3 +38,36 @@ test('更早页暂时失败可重试；权限撤销清除已累积消息',async(
   await page.locator('.execution-history-start button').click();
   await expect(page.locator('[data-message-id]')).toHaveCount(0);
 });
+
+for (const width of [390, 1440]) {
+  test(`真实滚轮补页保留可见消息坐标 (${width}px)`, async ({page}) => {
+    await page.setViewportSize({width, height: 960});
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => {release = resolve;});
+    let requested = false;
+    await page.route('**/api/conversations/room-product/messages?**', async route => {
+      const offset = Number(new URL(route.request().url()).searchParams.get('messageOffset'));
+      if (offset) {requested = true; await gate;}
+      await route.fulfill({json: snapshot(offset)});
+    });
+    await login(page);
+    await expect(page.locator('[data-message-id]')).toHaveCount(50);
+    const list = page.locator('.transcript');
+    await list.evaluate(el => {el.scrollTop = 240;});
+    await list.hover();
+    await page.mouse.wheel(0, -160);
+    await expect.poll(() => requested).toBe(true);
+    await page.waitForTimeout(200);
+    const anchor = await list.evaluate(el => {
+      const top = el.getBoundingClientRect().top;
+      const row = [...el.querySelectorAll<HTMLElement>('[data-message-id]')].find(row => row.getBoundingClientRect().bottom > top)!;
+      return {id: row.dataset.messageId, y: row.getBoundingClientRect().top};
+    });
+    release();
+    await expect(page.locator('[data-message-id]')).toHaveCount(100);
+    await page.waitForTimeout(400);
+    const y = await page.locator(`[data-message-id="${anchor.id}"]`).evaluate(el => el.getBoundingClientRect().top);
+    expect(Math.abs(y - anchor.y)).toBeLessThanOrEqual(2);
+    await page.screenshot({path: test.info().outputPath(`channel-anchor-${width}.png`)});
+  });
+}

@@ -327,11 +327,11 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
   }, [signature, older?.loading, older?.hasMore, older?.disabled]);
   useEffect(() => {
     const element = ref.current;
-    if (!compact || !element) return;
-    let width = element.clientWidth, height = element.clientHeight;
+    if ((!compact && !older) || !element) return;
+    let width = element.clientWidth, height = element.clientHeight, contentHeight = element.scrollHeight;
     const observer = new ResizeObserver(() => {
-      if (width === element.clientWidth && height === element.clientHeight) return;
-      width = element.clientWidth; height = element.clientHeight;
+      if (width === element.clientWidth && height === element.clientHeight && contentHeight === element.scrollHeight) return;
+      width = element.clientWidth; height = element.clientHeight; contentHeight = element.scrollHeight;
       if (following.current) element.scrollTop = element.scrollHeight;
       else if (anchor.current) {
         const saved = anchor.current;
@@ -341,8 +341,13 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
       captureAnchor();
     });
     observer.observe(element);
+    // Prepended bubbles measure their three-line cutoff after mounting. Their
+    // second layout (and later font/image changes) must retain the same row,
+    // not only the viewport resize handled above.
+    const column = element.querySelector('.message-column');
+    if (column) observer.observe(column);
     return () => observer.disconnect();
-  }, [compact]);
+  }, [compact, !!older]);
   useEffect(() => {
     const element = ref.current;
     if (!compact || !element) return;
