@@ -198,3 +198,5 @@ Web 报错反馈在操作者明确同意后启动只读 Pi 调查；标题与描
 Night Bot 使用 Pi SDK，早期移植来源为 `HiQ-AI/dingtalk-dsh-assistant@93e431a`，Web 设计参考 [BoardUI](https://github.com/BoardUI/boardui)。具体来源、版本、保留实现及许可见 [THIRD_PARTY.md](THIRD_PARTY.md) 和 [`licenses/`](licenses)。
 
 仓库保留原 [MIT LICENSE](LICENSE)，但移植模块并未因此自动改授 MIT。当前根包标记为 `private: true`、`UNLICENSED`，不作为 npm 发布包；请按来源清单核对使用与再分发条件。
+
+丢失终态的原生 shell 作业须先核对真实进程与效果，再用离线操作者 `night-bot-jobs` 的 `inspect` / `close --check` / `close` 精确结清。它只记录可能存在部分效果和原调用禁止重放，不伪造成功或任务排空；边界及用法见 [效果对账](docs/EFFECT-RECONCILIATION.md#丢失终态的原生-shell-作业)。

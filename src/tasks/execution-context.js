@@ -23,7 +23,8 @@ export function executionContext(input,audit=[]){
  const updates=(input.task?.supplements??[]).filter(item=>item.contextRevision>revision&&(item.requirementRevision===undefined||item.requirementRevision===input.task.requirementRevision)).map(({id,text,contextRevision})=>({id,text,contextRevision}))
  if(input.task?.currentInput&&!updates.some(row=>row.id===input.task.currentInput.id)&&!prior.some(body=>body.currentInput?.id===input.task.currentInput.id||body.supplement?.messageId===input.task.currentInput.id||body.updates?.some(row=>row.id===input.task.currentInput.id)))updates.push(input.task.currentInput)
  return {task:executionTaskBrief(input.task),sources:selected,materials:input.materials?.filter(item=>ids.has(item.sourceId)).map(conversationSource),updates,
-  dialogue:input.dialogue,humanReview:input.humanReview,blockers:input.blockers}
+  dialogue:input.dialogue,humanReview:input.humanReview,blockers:input.blockers,
+  jobReconciliations:audit.filter(row=>row.domain==='job'&&row.kind==='reconciled').map(({payload:p})=>({jobId:p.jobId,toolCall:p.toolCall,outcome:p.outcome,exitStatus:p.exitStatus,producerObservation:p.producerObservation,partialEffectsPossible:true,noReplay:true,evidence:p.evidence}))}
 }
 
 /** The journal is the authority for an already enqueued packet, even if the
