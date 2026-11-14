@@ -64,6 +64,19 @@ for (const scenario of [
   test(`recent tasks require confirmed idle: ${scenario.name}`,async({page})=>{
     await page.route('**/api/overview',route=>route.fulfill({json:{...overview,...scenario}}));
     await login(page);
-    await expect(page.locator('#activity-panel').getByRole('region',{name:'最近任务'})).toHaveCount(scenario.showRecent ? 1 : 0);
+    const rail = page.locator('#activity-panel');
+    await expect(rail.getByRole('region',{name:'最近任务'})).toHaveCount(scenario.showRecent ? 1 : 0);
+    if (scenario.name === 'nonempty total with empty page') {
+      await expect(rail.locator('.activity-counts a').first()).toContainText('1');
+      await expect(rail.getByRole('region',{name:'正在执行'})).toContainText('暂时无法读取');
+      await expect(rail.getByRole('region',{name:'正在执行'})).not.toContainText('暂无执行中的任务');
+    }
+    if (scenario.name === 'running section error') {
+      await expect(rail.locator('.activity-counts a').first()).toContainText('—');
+      await expect(rail.getByRole('region',{name:'正在执行'})).toContainText('暂时无法读取');
+    }
+    if (scenario.name === 'waiting unavailable') {
+      await expect(rail.locator('.activity-counts a').last()).toContainText('—');
+    }
   });
 }
