@@ -8,6 +8,13 @@ const tasks = [
 ];
 const pageOf = (items: typeof tasks) => ({items,total:items.length,nextOffset:null});
 const overview = {tasks:pageOf(tasks),running:pageOf(tasks.slice(0,1)),waiting:pageOf(tasks.slice(1)),channels:[],conversations:[]};
+
+const timingMetric = (durationMs: number | null) => ({status:durationMs === null ? 'missing' : 'recorded',durationMs,shared:false});
+const timingPage = {status:'ready',items:[
+  [4200,14800],[5100,19200],[3600,12200],[6800,null],[4100,16400],[8400,23100],[5900,17800],[4700,13900],
+].map(([triage,router],index)=>({receivedAt:`2026-11-14T05:${String(40-index*4).padStart(2,'0')}:00Z`,triage:timingMetric(triage),router:timingMetric(router)}))};
+test.beforeEach(async({page})=>{await page.route('**/stage-times?limit=8',route=>route.fulfill({json:timingPage}));});
+
 async function login(page: import('@playwright/test').Page) {
   await page.goto('/#/chat'); await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
   await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
@@ -80,3 +87,25 @@ for (const scenario of [
     }
   });
 }
+
+test('recent stage charts preserve gaps and expose equivalent point labels',async({page})=>{
+  await page.route('**/api/overview',route=>route.fulfill({json:overview}));
+  await login(page);
+  const card=page.getByRole('region',{name:'最近处理耗时'});
+  await expect(card).toContainText('本会话 · 8 条消息');
+  await expect(card.locator('.stage-plot-triage .stage-point')).toHaveCount(8);
+  await expect(card.locator('.stage-plot-router .stage-point')).toHaveCount(7);
+  await expect(card.locator('.stage-plot-router .stage-missing')).toHaveCount(1);
+  await expect(card.locator('.stage-plot-router .stage-line')).toHaveCount(2);
+  await expect(card.locator('.stage-plot-triage .stage-plot-heading')).toContainText('4 秒');
+  await card.locator('.stage-plot-triage svg g').first().focus();
+  await expect(card.locator('.stage-plot-triage .stage-plot-foot')).not.toContainText('最新一条');
+  expect((await new AxeBuilder({page}).include('#activity-panel').analyze()).violations).toEqual([]);
+});
+
+test('stage chart unavailable data never becomes a zero plot',async({page})=>{
+  await page.route('**/stage-times?limit=8',route=>route.fulfill({json:{status:'unavailable',items:[]}}));
+  await login(page);
+  await expect(page.getByRole('region',{name:'最近处理耗时'})).toContainText('来源暂不可读');
+  await expect(page.locator('.stage-point')).toHaveCount(0);
+});

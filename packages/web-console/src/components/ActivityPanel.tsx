@@ -3,6 +3,7 @@ import type { Overview, Page, Task } from '../api';
 import { dateTime } from '../hooks';
 import { Loading, Notice, Status } from './Shared';
 import '../styles/activity-panel.css';
+import { StageTimingChart } from './StageTimingChart';
 
 function TaskRow({task}: {task: Task}) {
   const title = task.title || task.objective || '未命名任务';
@@ -21,7 +22,7 @@ function TaskSection({title, tasks, href, tone, failed}: {title: string; tasks?:
   </section>;
 }
 
-export function ActivityPanel({data, loading, error, onRetry}: {data?: Overview; loading: boolean; error: unknown; onRetry: () => void}) {
+export function ActivityPanel({data, loading, error, onRetry, conversation}: {conversation: {kind: 'chat'|'conversations'; id?: string}; data?: Overview; loading: boolean; error: unknown; onRetry: () => void}) {
   // The overview pages own their totals and membership. Waiting never implies a
   // human approval request, and an unavailable page must not become a zero.
   const incomplete = !!Object.keys(data?.sectionErrors || {}).length;
@@ -38,6 +39,7 @@ export function ActivityPanel({data, loading, error, onRetry}: {data?: Overview;
         <a href="#/tasks?state=running"><span><i className="count-dot info"/>执行中</span><strong>{data?.sectionErrors?.running ? '—' : data?.running?.total ?? '—'}</strong></a>
         <a href="#/tasks?state=waiting"><span><i className="count-dot warning"/>等待中</span><strong>{data?.sectionErrors?.waiting ? '—' : data?.waiting?.total ?? '—'}</strong></a>
       </div>
+      <StageTimingChart kind={conversation.kind} id={conversation.id}/>
       <TaskSection title="正在执行" tasks={data?.running} href="#/tasks?state=running" tone="running" failed={!!data?.sectionErrors?.running}/>
       <TaskSection title="等待继续" tasks={data?.waiting} href="#/tasks?state=waiting" tone="waiting" failed={!!data?.sectionErrors?.waiting}/>
       {idle && <TaskSection title="最近任务" tasks={data?.tasks} href="#/tasks" tone="recent" failed={!!data?.sectionErrors?.tasks}/>}

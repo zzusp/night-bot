@@ -112,7 +112,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
       <div className={`workspace-body${isConversation ? ' conversation-workspace' : ''}`}><main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : ''}`}>{isConversation && conversationHeader}<div className={isConversation ? 'conversation-content' : 'page-content-slot'}><PageBoundary resetKey={route.pathname}>
         {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} /> : <TaskList route={route} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'settings' && !id ? <SettingsPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></div></main>
-      {isConversation && rail && <ActivityPanel data={overview.data ?? undefined} loading={overview.loading} error={overview.error} onRetry={overview.refresh}/>}
+      {isConversation && rail && <ActivityPanel conversation={{kind: section === 'chat' ? 'chat' : 'conversations', id}} data={overview.data ?? undefined} loading={overview.loading} error={overview.error} onRetry={overview.refresh}/>}
       </div>
     </div>
   </div></AssistantBrandContext.Provider>;
