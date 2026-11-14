@@ -120,8 +120,8 @@
 }
 
 /* The stopped result follows the previous record at 8px, not two assistant
-   margins plus the transcript gap. Cancel only that one flex gap; leave every
-   other record unchanged, including the result-only first item. */
+   margins. The canonical execution transcript has gap: 0; add only the
+   explicit 8px separation, leaving a result-only first item unshifted. */
 .task-dialogue .execution-transcript .message-column > :has(+ .task-final-conclusion) { margin-bottom: 0; }
 .task-dialogue .execution-transcript .message-column > .task-final-conclusion { margin-top: 0; }
-.task-dialogue .execution-transcript .message-column > :not(.execution-history-start) + .task-final-conclusion { margin-top: calc(8px - var(--message-row-gap, 20px)); }
+.task-dialogue .execution-transcript .message-column > :not(.execution-history-start) + .task-final-conclusion { margin-top: 8px; }
