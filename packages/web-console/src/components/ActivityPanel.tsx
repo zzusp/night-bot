@@ -4,6 +4,23 @@ import { dateTime } from '../hooks';
 import { Loading, Notice, Status } from './Shared';
 import '../styles/activity-panel.css';
 
+function ActivityChart({running, waiting}: {running: number | null; waiting: number | null}) {
+  const known = running !== null && waiting !== null;
+  const total = known ? running + waiting : null;
+  const runningShare = total ? running! / total * 100 : 0;
+  const summary = !known ? '执行与等待：数据暂不可用' : `执行与等待：执行中 ${running}，等待中 ${waiting}`;
+  return <div className="activity-chart" role="img" aria-label={summary}>
+    <svg viewBox="0 0 112 112" aria-hidden="true">
+      <circle className="activity-ring-track" cx="56" cy="56" r="45" pathLength="100" />
+      {known && total! > 0 && <>
+        <circle className="activity-ring-running" cx="56" cy="56" r="45" pathLength="100" strokeDasharray={`${runningShare} ${100-runningShare}`} transform="rotate(-90 56 56)" />
+        <circle className="activity-ring-waiting" cx="56" cy="56" r="45" pathLength="100" strokeDasharray={`${100-runningShare} ${runningShare}`} strokeDashoffset={-runningShare} transform="rotate(-90 56 56)" />
+      </>}
+    </svg>
+    <div className="activity-chart-center"><strong>{total ?? '—'}</strong><span>执行 / 等待</span></div>
+  </div>;
+}
+
 function TaskRow({task}: {task: Task}) {
   const title = task.title || task.objective || '未命名任务';
   const updated = task.updatedAt || task.createdAt;
@@ -34,9 +51,12 @@ export function ActivityPanel({data, loading, error, onRetry}: {data?: Overview;
     {!!error && <Notice error={error} stale={!!data} onRetry={onRetry}/>}
     {incomplete && <p className="rail-empty rail-warning" role="status">部分工作动态暂不可读，可刷新概览重新获取。</p>}
     {!data && loading ? <Loading/> : <>
-      <div className="activity-counts">
+      <div className="activity-summary">
+        <ActivityChart running={data?.sectionErrors?.running ? null : data?.running?.total ?? null} waiting={data?.sectionErrors?.waiting ? null : data?.waiting?.total ?? null}/>
+        <div className="activity-counts">
         <a href="#/tasks?state=running"><span><i className="count-dot info"/>执行中</span><strong>{data?.sectionErrors?.running ? '—' : data?.running?.total ?? '—'}</strong></a>
         <a href="#/tasks?state=waiting"><span><i className="count-dot warning"/>等待中</span><strong>{data?.sectionErrors?.waiting ? '—' : data?.waiting?.total ?? '—'}</strong></a>
+      </div>
       </div>
       <TaskSection title="正在执行" tasks={data?.running} href="#/tasks?state=running" tone="running" failed={!!data?.sectionErrors?.running}/>
       <TaskSection title="等待继续" tasks={data?.waiting} href="#/tasks?state=waiting" tone="waiting" failed={!!data?.sectionErrors?.waiting}/>

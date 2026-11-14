@@ -22,6 +22,8 @@ test('activity rail prioritizes real active/waiting pages and stays a separate r
   await expect(rail.getByRole('region',{name:'正在执行'})).toContainText(tasks[0].title);
   await expect(rail.getByRole('region',{name:'等待继续'})).toContainText(tasks[1].title);
   await expect(rail).not.toContainText('已配置渠道');
+  await expect(rail.getByRole('img',{name:'执行与等待：执行中 1，等待中 1',exact:true})).toBeVisible();
+  await expect(rail.locator('.activity-ring-running')).toHaveAttribute('stroke-dasharray','50 50');
   await expect(rail.getByRole('link',{name:'查看正在执行任务'})).toHaveAttribute('href','#/tasks?state=running');
   await expect(rail.locator('.rail-task').first()).toHaveAttribute('href','#/tasks/sidebar-running');
   const boxes=await page.evaluate(()=>({rail:document.querySelector('.activity-rail')!.getBoundingClientRect().toJSON(),main:document.querySelector('.chat-panel')!.getBoundingClientRect().toJSON(),overflow:document.documentElement.scrollWidth>innerWidth}));
@@ -39,6 +41,7 @@ test('empty and unavailable states remain distinct',async({page})=>{
   await page.route('**/api/overview',route=>route.fulfill({json:{...overview,running:null,waiting:pageOf([]),sectionErrors:{running:'UNAVAILABLE'}}}));
   await login(page);const rail=page.locator('#activity-panel');
   await expect(rail.locator('.activity-counts a').first()).toContainText('—');
+  await expect(rail.locator('.activity-ring-running')).toHaveCount(0);
   await expect(rail.getByRole('region',{name:'正在执行'})).toContainText('暂时无法读取');
   await expect(rail.getByRole('region',{name:'等待继续'})).toContainText('暂无等待中的任务');
   await expect(rail.getByRole('region',{name:'最近任务'})).toHaveCount(0);
@@ -73,7 +76,12 @@ for (const scenario of [
     }
     if (scenario.name === 'running section error') {
       await expect(rail.locator('.activity-counts a').first()).toContainText('—');
+  await expect(rail.locator('.activity-ring-running')).toHaveCount(0);
       await expect(rail.getByRole('region',{name:'正在执行'})).toContainText('暂时无法读取');
+    }
+    if (scenario.name === 'confirmed idle') {
+      await expect(rail.getByRole('img',{name:'执行与等待：执行中 0，等待中 0',exact:true})).toBeVisible();
+      await expect(rail.locator('.activity-ring-running')).toHaveCount(0);
     }
     if (scenario.name === 'waiting unavailable') {
       await expect(rail.locator('.activity-counts a').last()).toContainText('—');

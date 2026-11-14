@@ -31,3 +31,21 @@
 .activity-rail a:focus-visible { outline: 2px solid var(--board-focus); outline-offset: -2px; }
 @media (min-width: 1600px) { .activity-rail { width: 320px; padding: 20px 16px; } }
 @media (forced-colors: active) { .activity-rail, .rail-section, .activity-counts { border: 1px solid CanvasText; } }
+
+/* One graph shares the existing totals, without suggesting a full task-history trend. */
+.activity-summary { display: flex; align-items: center; gap: 12px; padding: 16px 12px; border: 1px solid var(--board-border); border-radius: var(--board-radius-card); background: var(--board-surface); flex-shrink: 0; }
+.activity-chart { width: 112px; height: 112px; position: relative; flex-shrink: 0; }
+.activity-chart svg { width: 100%; height: 100%; overflow: visible; }
+.activity-chart circle { fill: none; stroke-width: 9; }
+.activity-ring-track { stroke: var(--board-border); }
+.activity-ring-running { stroke: var(--board-info); }
+.activity-ring-waiting { stroke: var(--board-warning); }
+.activity-chart-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.activity-chart-center strong { font-size: 25px; line-height: 30px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.activity-chart-center span { font-size: 10px; color: var(--board-muted); }
+.activity-summary .activity-counts { display: flex; flex-direction: column; padding: 0; border: 0; background: transparent; flex: 1; min-width: 0; gap: 12px; }
+.activity-summary .activity-counts a { flex-direction: row; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 0; }
+.activity-summary .activity-counts a + a { border: 0; }
+.activity-summary .activity-counts a > span { font-size: 11px; gap: 5px; white-space: nowrap; }
+.activity-summary .activity-counts strong { font-size: 18px; line-height: 24px; letter-spacing: 0; }
+@media (forced-colors: active) { .activity-summary { border: 1px solid CanvasText; } .activity-ring-running { stroke: Highlight; } .activity-ring-waiting { stroke: CanvasText; } }
