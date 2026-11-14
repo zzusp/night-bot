@@ -33,14 +33,14 @@ function StagePlot({items, stage, title}: {items: Sample[]; stage: 'triage'|'rou
       {items.map((item,index)=>{
         const value=values[index];
         const label=`${dateTime(item.receivedAt ?? undefined)}，${title} ${stageText(item[stage])}${item[stage].shared ? '，批次共享耗时' : ''}`;
-        return <g key={index} tabIndex={0} role="img" aria-label={label} onFocus={()=>select(index)} onBlur={()=>select(null)} onMouseEnter={()=>select(index)} onMouseLeave={()=>select(null)}>
+        return <g key={index} data-stage-sample={value !== null ? "measured" : "missing"} tabIndex={0} role="img" aria-label={label} onFocus={()=>select(index)} onBlur={()=>select(null)} onMouseEnter={()=>select(index)} onMouseLeave={()=>select(null)}>
           <title>{label}</title><rect x={x(index)-10} y="16" width="20" height="70" fill="transparent"/>
-          {value !== null ? <circle cx={x(index)} cy={y(value)} r={selected===index?4:3} className="stage-point"/> : <text x={x(index)} y="88" textAnchor="middle" className="stage-missing">—</text>}
+          {value === null && <text x={x(index)} y="88" textAnchor="middle" className="stage-missing">—</text>}
         </g>;
       })}
       <text x="2" y="79" className="stage-axis-zero">0</text>
     </svg>
-    <div className="stage-plot-foot"><span>{selected === null ? '较早 → 最近' : dateTime(current?.receivedAt ?? undefined)}</span><span>{current?.[stage].shared ? '批次共享' : ''}</span></div>
+    <div className="stage-plot-foot"><span>{selected === null ? items.length === 1 ? '仅 1 条记录' : '较早 → 最近' : dateTime(current?.receivedAt ?? undefined)}</span><span>{current?.[stage].shared ? '批次共享' : ''}</span></div>
   </div>;
 }
 

@@ -43,11 +43,9 @@
 .stage-plot-graph { width: 100%; height: auto; display: block; overflow: visible; }
 .stage-grid { stroke: var(--board-border); stroke-dasharray: 3 4; stroke-width: .75; }
 .stage-line { stroke: var(--stage-color); stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; }
-.stage-point { fill: var(--board-surface); stroke: var(--stage-color); stroke-width: 2; }
 .stage-axis-label, .stage-axis-zero, .stage-missing { fill: var(--board-muted); font-size: 9px; }
 .stage-axis-zero { font-size: 7px; }
 .stage-plot-graph g:focus { outline: none; }
-.stage-plot-graph g:focus .stage-point { stroke-width: 4; }
 .stage-plot-graph g:focus rect { stroke: var(--board-focus); stroke-width: 1; }
 .stage-plot-foot { font-size: 9px; line-height: 16px; color: var(--board-muted); min-height: 16px; }
 
@@ -56,5 +54,3 @@
 .stage-timing-card-router { --stage-color: var(--board-success); }
 .stage-title-dot { height: 6px; width: 6px; border-radius: 50%; background: var(--stage-color); }
 .stage-plot-heading strong { font-size: 22px; line-height: 28px; }
-.stage-plot .stage-point { r: 2; }
-.stage-plot g:hover .stage-point, .stage-plot g:focus .stage-point { r: 4; }
