@@ -38,6 +38,15 @@ test('真实 Host 接收到无任务首答、Router直接答复、未知投递�
   const direct=(await h.query('notification.list')).find(notice=>notice.payload?.sourceRef?.messageId==='reply-direct');assert.equal(direct.payload.replyPurpose,undefined,'真实 Router 未标用途的送达回执也必须进入 HTTP 首答结果');
   assert.equal(row('reply-unknown').durationMs,null);assert.equal(row('reply-unknown').status,'unconfirmed');assert.equal(row('reply-silent').status,'no-reply');assert.equal(row('reply-wait').status,'awaiting-reply');assert.equal((await h.query('task.list',{groupId:id})).length,0)
   assert.equal((await api('/api/conversations/foreign/response-times')).status,404)
+  const stageEndpoint='/api/conversations/'+id+'/stage-times'
+  const stageResult=await api(stageEndpoint+'?limit=3')
+  assert.equal(stageResult.status,200);assert.equal(stageResult.body.items.length,3)
+  assert.equal(stageResult.body.scope,'recent-message-host-stage-spans')
+  assert.ok(stageResult.body.items.every(item=>item.triage.status==='recorded'&&item.triage.durationMs>=0))
+  assert.doesNotMatch(JSON.stringify(stageResult.body),/FIRST_|messageId|sourceId|replyPreview/)
+  assert.equal((await api('/api/conversations/foreign/stage-times')).status,404)
+  for(const query of ['?limit=0','?limit=21','?offset=0','?selectedMessageId=reply-direct'])assert.equal((await api(stageEndpoint+query)).status,400)
+
   const selectedUser=await api(endpoint+'?selectedMessageId=reply-direct&selectedMessageVersion=1');assert.equal(selectedUser.body.items.length,1);assert.equal(selectedUser.body.items[0].messageId,'reply-direct')
   const channelMessages=await api('/api/conversations/'+id+'/messages');const assistant=channelMessages.body.items.find(message=>message.role==='assistant'&&message.id===direct.id);assert.ok(assistant)
   assert.equal(channelMessages.body.items.find(message=>message.id==='reply-direct').messageVersion,1)
@@ -49,6 +58,7 @@ test('真实 Host 接收到无任务首答、Router直接答复、未知投递�
   const csrf=(await api('/api/session')).body.csrfToken,current=(await api('/api/chat-current')).body.conversationId
   const posted=await fetch(web.origin+'/api/chat',{method:'POST',headers:{origin:web.origin,cookie,'content-type':'application/json','x-csrf-token':csrf},body:JSON.stringify({conversationId:current,requestId:'web-first-answer',text:'WEB_FIRST'})});assert.equal(posted.status,202,await posted.text());await h.service.whenIdle()
   const webTiming=await api('/api/chat/'+current+'/response-times');assert.equal(webTiming.status,200);assert.equal(webTiming.body.items[0].status,'confirmed',JSON.stringify(webTiming.body));assert.ok(webTiming.body.items[0].durationMs>=0)
+  const webStages=await api('/api/chat/'+current+'/stage-times');assert.equal(webStages.status,200);assert.equal(webStages.body.items[0].triage.status,'recorded');assert.ok(webStages.body.items[0].triage.durationMs>=0)
   const webSelected=await api('/api/chat/'+current+'/response-times?selectedMessageId=web-first-answer');assert.equal(webSelected.body.items[0].messageId,'web-first-answer')
   const webChat=await api('/api/chat/'+current),webReply=webChat.body.messages.find(message=>message.role==='assistant');assert.ok(webReply)
   const webAssistant=await api('/api/chat/'+current+'/response-times?selectedMessageId='+encodeURIComponent(webReply.id));assert.equal(webAssistant.body.items[0].messageId,'web-first-answer')
