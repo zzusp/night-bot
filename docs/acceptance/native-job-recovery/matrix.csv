@@ -1,0 +1,9 @@
+case,round-1,round-2
+cli-zero-write-and-append-only,PASS,NOT_RUN
+ownership-and-stale-evidence-rejection,PASS,NOT_RUN
+resource-and-selected-branch-rejection,PASS,NOT_RUN
+same-session-cold-host-continuation,PASS,NOT_RUN
+existing-job-and-context-regression,PASS,NOT_RUN
+native-source-hash-import-guards,PASS,NOT_RUN
+local-unknown-job-readback,PASS,NOT_RUN
+installed-task-real-continuation,NOT_RUN,NOT_RUN

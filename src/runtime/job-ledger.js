@@ -1,4 +1,5 @@
 import {z} from 'zod'
+import {createHash} from 'node:crypto'
 import {officialWorkingDirectoryOrigin} from '../native-working-directory.js'
 import {HarnessError} from '../native-llm-errors.js'
 import {parseWindowsResourceOwnership,parseWindowsResourceProof} from '../process/contracts.js'
@@ -7,6 +8,7 @@ export const JOB_REGISTERED='plugin:night-bot/job-registered'
 export const JOB_SETTLED='plugin:night-bot/job-settled'
 export const JOB_NOT_STARTED='plugin:night-bot/job-not-started'
 export const JOB_START_UNCERTAIN='plugin:night-bot/job-start-uncertain'
+export const JOB_RECONCILED='plugin:night-bot/job-reconciled'
 export const JOB_RESOURCE_OWNERSHIP='plugin:night-bot/job-resource-ownership'
 export class JobLedgerError extends HarnessError{constructor(code,cause){super(code,code,{cause});this.name='JobLedgerError'}}
 const failure=(code,cause)=>new JobLedgerError(code,cause)
@@ -23,12 +25,13 @@ const base={version:z.literal(1),jobId:nonempty,owner:nonempty,kind:nonempty,lab
 const receiptSchemas={
  registered:z.strictObject({...base,state:z.literal('admitted')}),
  settled:z.strictObject({...base,status:z.enum(['completed','failed','killed']),detail:z.string().optional(),cause:nonempty,producerReported:z.boolean(),finishedAt:time,completionNotice:z.enum(['pending','suppressed']).optional(),outputLimitBytes:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional()}).refine(value=>value.finishedAt>=value.startedAt),
+ reconciled:z.strictObject({...base,taskId:nonempty,registeredEntryId:nonempty,registrationDigest:z.string().regex(/^[a-f0-9]{64}$/),journalRevision:z.string().regex(/^[a-f0-9]{64}$/),requestDigest:z.string().regex(/^[a-f0-9]{64}$/),operatorActorId:nonempty,evidence:z.strictObject({path:z.string().regex(/^materials\/runtime-evidence\/jobs\/[a-f0-9]{64}\.json$/),sha256:z.string().regex(/^[a-f0-9]{64}$/)}),observedAt:z.iso.datetime(),outcome:z.literal('closed-with-possible-partial-effects'),exitStatus:z.literal('unknown'),producerObservation:z.literal('operator-attested-absent'),partialEffectsPossible:z.literal(true),noReplay:z.literal(true)}),
  'not-started':z.strictObject({...base,reason:nonempty}),
  'start-uncertain':z.strictObject({...base,reason:nonempty,externalEffectsPossible:z.literal(true)}),
  'resource-ownership':z.strictObject({...base,seq:time.min(1),resource:z.unknown(),privateProof:z.unknown().optional()}).refine(value=>{try{resourceEvidence(value.resource,value.privateProof);return true}catch{return false}}),
 }
 export const jobReceiptKinds=Object.freeze(Object.fromEntries(Object.entries(receiptSchemas).map(([kind,schema])=>['job/'+kind,value=>schema.safeParse(value).success])))
-const nativeKinds={registered:JOB_REGISTERED,settled:JOB_SETTLED,'not-started':JOB_NOT_STARTED,'start-uncertain':JOB_START_UNCERTAIN,'resource-ownership':JOB_RESOURCE_OWNERSHIP}
+const nativeKinds={reconciled:JOB_RECONCILED,registered:JOB_REGISTERED,settled:JOB_SETTLED,'not-started':JOB_NOT_STARTED,'start-uncertain':JOB_START_UNCERTAIN,'resource-ownership':JOB_RESOURCE_OWNERSHIP}
 /** Actor identity is authenticated by live ownership and private business ports,
  * never an id in tool arguments or messages. Drain/check callers need no active
  * tool; effect admission additionally requires the existing initiator slot. */
@@ -103,6 +106,7 @@ export async function prepareJobJournal(ctx,exec,spec,{id,startedAt}){
  return prepareOfficialJobJournal(ctx,exec,spec,{id,startedAt},identity)
 }
 
+export const jobRegistrationDigest=value=>createHash('sha256').update(JSON.stringify({version:value.version,jobId:value.jobId,owner:value.owner,kind:value.kind,label:value.label,startedAt:value.startedAt,toolCall:{callId:value.toolCall.callId,rootCallId:value.toolCall.rootCallId,toolName:value.toolCall.toolName}})).digest('hex')
 const sameBinding=(a,b)=>a?.version===1&&b?.version===1&&['jobId','owner','kind','label','startedAt'].every(key=>a[key]===b[key])
  &&['callId','rootCallId','toolName'].every(key=>a.toolCall?.[key]===b.toolCall?.[key])
 // 名称、计划范围与已知 SID 只能属于首次提交的同一资源。
@@ -179,6 +183,12 @@ export function unresolvedJobReceipts(events,owner){
     registered.resourceOwnership=resource;registered.resourceSequence=data.seq
     if(evidence.privateProof!==undefined)registered.privateProof=evidence.privateProof
    }catch{registered.uncertain=true}
+  }else if(event.type===JOB_RECONCILED&&data?.owner===owner){
+   const registered=pending.get(data.jobId)
+   // 人工核验不替代 producer/OS 资源排空；仅结清精确冷丢失调用。
+   if(!registered||registered.uncertain||registered.resourceOwnership||!sameBinding(registered,data)||data.registrationDigest!==jobRegistrationDigest(registered)||!receiptSchemas.reconciled.safeParse(data).success){
+    pending.set(data.jobId,{...(registered??data),uncertain:true});seen.add(data.jobId)
+   }else pending.delete(data.jobId)
   }else if([JOB_SETTLED,JOB_NOT_STARTED,JOB_START_UNCERTAIN].includes(event.type)&&data?.owner===owner){
    const registered=pending.get(data.jobId)
    if(!registered){pending.set(data.jobId,{...data,uncertain:true});seen.add(data.jobId);continue}
