@@ -13,7 +13,7 @@ import {resolve, join, relative, isAbsolute, sep} from 'node:path'
 import {accessCredential, browserSessions, controlledDirectory, digest, fail, jsonBody, requireLocalRequest, webListenOptions} from './security.js'
 import {openWebLedger} from './ledger.js'
 import {configuredChannels, conversationMessages, conversations, recentConversations, permissionsView, taskDialogueView, taskView, taskSummaryView} from './views.js'
-import {visibleText,taskSessionView,taskSessionMessageView,routerSessionView,routerSessionMessageView} from './session-view.js'
+import {visibleText,taskSessionView,taskSessionMessageView,routerSessionView,routerSessionMessageView,triageSessionView,triageSessionMessageView} from './session-view.js'
 
 export const inject = ['channels', 'runtimePaths', 'sessionPersistence']
 const defaultDist = fileURLToPath(new URL('../dist', import.meta.url))
@@ -496,12 +496,21 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if (chatTask[4]) return send(response, 200, await taskSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatTask[4])}))
       return send(response, 200, await taskSessionView({...options, ...sessionOptions(url.searchParams)}))
     }
+    const triageSession = /^\/api\/(chat|conversations)\/([^/]+)\/triage\/session(?:\/messages\/([^/]+))?$/.exec(path)
+    if (request.method === 'GET' && triageSession) {
+      const kind = triageSession[1], id = decodeURIComponent(triageSession[2]), conversationId = executionContext(kind, id)
+      const options = {conversationId, persistence: getSessionPersistence(), ...await sessionGuards(async()=>{
+        if (executionContext(kind, id) !== conversationId) fail('SESSION_PAGE_STALE',409)
+      })}
+      if (triageSession[3]) return send(response, 200, await triageSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(triageSession[3])}))
+      return send(response, 200, await triageSessionView({...options, ...sessionOptions(url.searchParams)}))
+    }
     const chatSession = /^\/api\/(chat|conversations)\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && chatSession) {
       const conversationId = executionContext(chatSession[1], decodeURIComponent(chatSession[2]))
       const store = application().tasks.store
       if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
-      const options = {conversationId, readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), ...await sessionGuards()}
+      const options = {conversationId, readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), ...await sessionGuards(async()=>{if(executionContext(chatSession[1],decodeURIComponent(chatSession[2]))!==conversationId)fail('SESSION_PAGE_STALE',409)})}
       if (chatSession[3]) return send(response, 200, await routerSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[3])}))
       return send(response, 200, await routerSessionView({...options, ...sessionOptions(url.searchParams)}))
     }

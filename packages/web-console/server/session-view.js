@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto'
+import {triageSessionId} from '../../../src/channels/triage.js'
 import {setImmediate as yieldToIO} from 'node:timers/promises'
 import {digest, fail} from './security.js'
 
@@ -112,6 +113,7 @@ const toolInputs = {
   memory_remember: {...toolMemory, expectedRevision: toolNumber, expiresAt: toolString},
   memory_forget: {...toolMemory, expectedRevision: toolNumber}, memory_promote: {...toolMemory, expectedRevision: toolNumber},
   task_result: {decision: toolDecision}, task_human_resolve: {reason: toolString},
+  channel_triage_submit: {dispositions: toolArray(toolObject({needsHandling: toolBoolean, reply: toolString, reason: toolString}))},
   resident_task_query: toolPage, resident_source_get: {},
   resident_task_plan: {tasks: toolArray(toolObject(toolTaskFields)), dependencies: toolDependencies},
   resident_task_action: {kind: toolEnum(['supplement', 'revise', 'reopen', 'control', 'arrange']), control: toolEnum(['active', 'paused', 'cancelled']),
@@ -130,6 +132,7 @@ const toolTask = toolObject({...toolTaskFields, state: toolStatus, status: toolS
 const toolTaskResults = {...toolPage, task: toolTask, tasks: toolArray(toolTask), total: toolNumber, hasMore: toolBoolean, nextOffset: toolNumber,
   dependencies: toolDependencies}
 const toolOutputs = {
+  channel_triage_submit: {dispositions: toolArray(toolObject({state: toolEnum(['committed']), decision: toolObject({needsHandling: toolBoolean, reply: toolString, reason: toolString})}))},
   task_result: toolReceipt, task_human_resolve: toolReceipt,
   resident_task_query: toolTaskResults, platform_task_query: {...toolTaskResults, day: toolString, timeZone: toolString},
   resident_source_get: {text: toolString, quote: toolString},
@@ -204,7 +207,7 @@ function crossBlockSensitive(blocks, secrets) {
 }
 
 async function projectEntries(snapshot, identity, secrets, calls = new Map()) {
-  const {taskId, sessionId, conversationId, generation} = identity
+  const {taskId, sessionId, conversationId, generation, triage} = identity
   const items = [], sources = new Set()
   let processed = 0
   const opaque = (...parts) => digest(JSON.stringify([sessionId, ...parts]))
@@ -268,7 +271,17 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map()) {
             const originals = Array.isArray(input?.sources) ? input.sources.filter(row => typeof row?.text === 'string') : []
             originals.forEach((row, n) => sourceText(entry, 'source-' + index + '-' + n, {...row, text: '原始消息：\n' + row.text}))
           }
-        } else if (source?.kind === 'conversation-router') {
+        } else if (triage && source?.kind === 'channel-triage') {
+          if (source.conversationId !== conversationId) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
+          const content = texts(message.content), prefix = '一级分诊请求：'
+          let input
+          try {if (!content.startsWith(prefix)) throw new Error(); input = JSON.parse(content.slice(prefix.length))} catch {fail('SESSION_SOURCE_INVALID', 503)}
+          if (input.conversationId !== conversationId || !Array.isArray(input.messages)) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
+          input.messages.forEach((row, n) => {
+            if ((row.conversationId ?? row.groupId) !== conversationId) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
+            sourceText(entry, 'triage-source-' + index + '-' + n, row)
+          })
+        } else if (!triage && source?.kind === 'conversation-router') {
           if (source.conversationId !== conversationId || source.generation !== generation) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
           const content = texts(message.content), prefix = 'Router 请求：'
           let input
@@ -516,3 +529,14 @@ export async function taskSessionView(options) {pageOptions(options); const valu
 export async function taskSessionMessageView(options) {const value = await finalRead(await taskProjection(options), options); return messagePage(value, options)}
 export async function routerSessionView(options) {pageOptions(options); const value = await finalRead(await routerProjection(options), options); return options.liveProof ? value : sessionPage(value, options)}
 export async function routerSessionMessageView(options) {const value = await finalRead(await routerProjection(options), options); return messagePage(value, options)}
+
+// Triage has one stable native Pi journal per authenticated conversation. Never
+// list arbitrary journals or accept a session ID supplied by the browser.
+async function triageProjection({conversationId, ...options}) {
+  const sessionId = triageSessionId(conversationId)
+  return projection({...options, base: {conversationId, sessionId, scope: 'current-triage-session-context', items: [], total: 0, nextOffset: null},
+    identity: {sessionId, conversationId, triage: true}, notStarted: true,
+    validIdentity: snapshot => snapshot.header.runtimeOwner === 'channel-triage' && snapshot.header.conversationId === conversationId})
+}
+export async function triageSessionView(options) {pageOptions(options); const value = await finalRead(await triageProjection(options), options); return options.liveProof ? value : sessionPage(value, options)}
+export async function triageSessionMessageView(options) {return messagePage(await finalRead(await triageProjection(options), options), options)}

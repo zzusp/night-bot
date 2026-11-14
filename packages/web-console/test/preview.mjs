@@ -13,6 +13,7 @@ import {setTimeout as delay} from 'node:timers/promises'
 import {createWebConsole} from '../server/plugin.js'
 import {openWebLedger} from '../server/ledger.js'
 import {digest} from '../server/security.js'
+import {triageSessionId} from '../../../src/channels/triage.js'
 
 export const FIXTURE_TOKEN = 'night-web-fixture-only-00000000000000000000'
 const CHANNEL_ID = 'web-preview'
@@ -97,7 +98,7 @@ function sampleSession(task, historyRounds = 0) {
   }
 }
 
-export async function startPreview({port = 3080, empty = false, replyDelayMs = 500, dingtalkHealth = {healthy: true}, dingtalkBindingActive = false, dist, historyRounds = 0} = {}) {
+export async function startPreview({port = 3080, empty = false, replyDelayMs = 500, dingtalkHealth = {healthy: true}, dingtalkBindingActive = false, dist, historyRounds = 0, sessionRecords = false} = {}) {
   const root = await mkdtemp(join(tmpdir(), 'night-web-browser-fixture-'))
   const paths = runtimePaths({installRoot:root,dataDir:'data'})
   await prepareRuntimePaths(paths)
@@ -133,12 +134,27 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
   const tasks = empty ? [] : sampleTasks()
   if (!empty) {tasks.find(task => task.taskId === 'task-history-16').groupId = 'custom-room'; tasks.find(task => task.taskId === 'task-history-17').groupId = 'custom-direct'}
   const snapshots = new Map(tasks.map(task => [task.session.sessionId, sampleSession(task, historyRounds)]))
+  const recordConversations = sessionRecords ? [...rooms.filter(room => room.groupId !== 'room-empty').map(room => room.groupId), `fixture-${CHANNEL_ID}-sample-plan`, `fixture-${CHANNEL_ID}-sample-notes`] : []
+  for (const conversationId of recordConversations) for (const kind of ['triage', 'router']) {
+    const triage = kind === 'triage', sessionId = triage ? triageSessionId(conversationId) : `fixture-router-${conversationId}`
+    const source = {sourceId: 'fixture-source', version: 1, conversationId, text: '请检查接口文档与实现的差异，并整理待确认事项。'}
+    const toolName = triage ? 'channel_triage_submit' : 'resident_task_query'
+    const arguments_ = triage ? {dispositions: [{sourceId: source.sourceId, messageVersion: 1, needsHandling: true, reason: '需要结合当前任务核对实际差异', reply: '我来核对这项任务。'}]} : {limit: 10}
+    const result = triage ? {dispositions: [{state: 'committed', decision: arguments_.dispositions[0]}]} : {tasks: [{title: '检查接口文档与实现的一致性', state: 'running', objective: '逐项核对已有接口说明'}], total: 1}
+    const rows = [
+      {id: 'input', message: {role: 'custom', customType: 'night.business-input', details: {source: triage ? {kind: 'channel-triage', conversationId} : {kind: 'conversation-router', conversationId, generation: 1}}, content: [{type:'text',text: triage ? '一级分诊请求：' + JSON.stringify({conversationId, messages:[source]}) : 'Router 请求：' + JSON.stringify({conversationId, generation:1, events:[{source}]})}]}},
+      {id: 'think', message: {role: 'assistant', content: [{type:'thinking',thinking:triage ? '这条消息需要核对已有任务，交给路由继续处理。' : '先查询已有任务，避免重复创建。'}, {type:'toolCall',name:toolName,id:'fixture-call',arguments:arguments_}]}},
+      {id: 'result', message: {role: 'toolResult', toolName, toolCallId:'fixture-call', content:[{type:'text',text:JSON.stringify(result)}]}},
+      {id: 'reply', message: {role: 'assistant', content:[{type:'text',text:triage ? '已提交本批分诊判断。' : '已找到已有任务，将继续核对当前执行情况。'}]}},
+    ]
+    snapshots.set(sessionId, {header:{id:sessionId,conversationId,runtimeOwner:triage?'channel-triage':'conversation-router',...(triage?{}:{generation:1})},entries:rows.map(row=>({id:row.id})),context:{projection:{entries:rows.map(row=>({sourceEntry:{id:row.id,timestamp:at(4)},messages:[row.message]}))}}})
+  }
   const persistence = {async readNative(sessionId, options) {
     if (options?.requireComplete !== true) throw Error('fixture requires complete Pi context')
     if (sessionId === 'fixture-pi-task-schedule') throw Object.assign(Error('fixture commit pending'), {code: 'PI_SESSION_UNCOMMITTED_TAIL'})
     if (sessionId === 'fixture-pi-task-inventory') throw Object.assign(Error('fixture session unavailable'), {code: 'FIXTURE_UNAVAILABLE'})
     const snapshot = snapshots.get(sessionId)
-    if (!snapshot) throw Error('unknown fixture session')
+    if (!snapshot) throw Object.assign(Error('unknown fixture session'), {name:'SessionPersistenceNotFoundError'})
     return snapshot
   }}
   const app = {
@@ -157,7 +173,8 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
         if (query.kind === 'task.list') return tasks.filter(task => task.groupId === query.groupId).map(task => ({taskId: task.taskId, groupId: task.groupId, title: task.title, state: task.state, updatedAt: task.updatedAt}))
         if (query.kind === 'task.get') {const task = tasks.find(task => task.taskId === query.taskId); return task && {taskId: task.taskId, groupId: task.groupId, sessionId: task.session.sessionId, sessionBound: true}}
         if (query.kind === 'observer.message-contexts') return {sources:[],notifications:[]}
-        if (query.kind === 'router.get') return null
+        if (query.kind === 'router.get') return recordConversations.includes(query.conversationId) ? {id:query.conversationId,activeSessionId:`fixture-router-${query.conversationId}`,generation:1,phase:'active'} : null
+        if (query.kind === 'router.rotations') return []
       }},
       async boardTasks(query) {return pageOf(tasks.filter(task => !query.state || task.state === query.state), query)},
       listObserverGroups() {return rooms},

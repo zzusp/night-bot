@@ -537,3 +537,9 @@ Thinking display correction: use original neutral board-text/board-muted colors,
 任务消息内容宽度与对话页复用同一 `--board-content-width`（消息列上限800px，两侧内边距默认16px、1600px以上28px）和滚动条占位；居中，不再采用任务专属全宽消息列。用户/助手正文气泡沿用对话的90%上限、窄屏96%及自然短文宽度。工具与思考仍使用执行记录展示，不改变其内容。悬浮TODO随该阅读区域右边界定位。
 
 - Right-hand message bubbles keep symmetric vertical body padding. Markdown first/last block margins are trimmed only at the bubble boundaries; disclosure controls never use negative bottom margins. Interior paragraph spacing remains intact.
+
+### 对话内部分诊与路由记录（2026-11-14）
+
+对话内容区左上提供「对话 / 分诊 / 路由」标签，覆盖 Web 与渠道会话，不改变独立 Header。默认对话；切换保留草稿与发送状态，仅当前选择的内部记录启动查询，离开即终止。键盘左右键、Home / End 可切换，使用 tab / tabpanel 语义。分诊与路由复用任务详情的 ExecutionHistory / MessageList 执行记录，含连续工具折叠、正文续读、滚动加载及真实进行中输出，不新增说明条和刷新按钮。
+
+服务端按认证会话解析 Pi 分诊固定身份和 Router 当前代际；原始 Pi 系统指令、背景整包、秘密及未授权字段不输出。分诊仅展示同会话本批来源、已返回正文和可公开思考、channel_triage_submit 的判断理由／短回复；没有启动、提交屏障及不可读分别显示真实空态或错误，不伪造记录。沿用当前上下文与自动压缩边界，不承诺压缩前全部历史。底座不新增展示统计或状态存储。

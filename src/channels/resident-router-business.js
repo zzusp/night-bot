@@ -9,7 +9,7 @@ import {conversationSource} from './message-safety.js'
 import {randomUUID,createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {scopeOf} from '../native-scope.js'
-import {TRIAGE_BATCH_LIMIT,triageParameters,validateTriageDecision} from './triage.js'
+import {TRIAGE_BATCH_LIMIT,triageSessionId,triageParameters,validateTriageDecision} from './triage.js'
 import {sessionWorkspace} from '../../packages/dingtalk-core/session-workspaces.js'
 
 const fail=code=>{throw Object.assign(new Error(code),{code})}
@@ -20,7 +20,7 @@ export const residentOperationId=(conversationId,key)=>'router-operation:'+creat
 export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,commit,recordStage,observe,query}){
   const handles=new Map(),entries=new Map()
   let closed=false
-  const idFor=conversationId=>'session-triage-'+createHash('sha256').update(JSON.stringify(['persistent-triage-v1',conversationId])).digest('hex')
+  const idFor=triageSessionId
   const active=conversationId=>{
     const entry=entries.get(conversationId)
     if(closed||!entry||entry.submitted||entry.superseded)fail('TRIAGE_INACTIVE')
