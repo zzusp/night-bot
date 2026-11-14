@@ -6,11 +6,17 @@
 
 ## 当前检查点
 
-基于 `db24b7ff1bc9fd8319f7bf4df2e973bf4cc632dd`，隔离分支 `worktree-task-recovery-state`。实现及本地验证完成：Web/账本 78 项通过，列表 24 项复验通过；真实 Host + HTTP + Edge 页面故障注入通过，原作业 noReplay、未 ACK 输入与 `drained=false` 均保留；源码守卫和 Web 构建通过。方案见 [决策快照](../../spec/task-recovery-state.md)。尚未提交、合并或部署本次修改。
+**本次修复、合并及本地部署已完成**。实现 PR [#139](https://github.com/zzusp/night-bot/pull/139)，实际运行 `3837735803f6f56d44b7b728851e070595a22d7f`；受测候选与合并树相同。相关回归 78 项及列表复验 24 项通过，真实 Host/HTTP/Edge 和原任务现场只读验收通过。
+
+原任务现为 waiting、执行会话 failed，故障持久可见；仍保留 1 个未知作业、3 条未 ACK 输入及原调用 noReplay。11 个原任务保留，9 个 completed；health degraded / 2 项恢复问题，不声称原业务已恢复或完成。更宽 quote 引用断言仍失败，未重跑全 runtime/containment；不声称全仓测试全绿。
 
 ## 必要工作项
 
 - [x] 同租约 Host 排空失败持久化与安全生命周期。
 - [x] 列表、详情、关联卡片及阻断文案一致，升级既有索引。
 - [x] 最小充分回归、真实入口及页面验证。
-- [ ] PR 合并、已合并源码本地部署、原任务只读复测及收尾。
+- [x] PR 合并、已合并源码本地部署、原任务只读复测及收尾。
+
+## 证据入口
+
+[决策快照](../../spec/task-recovery-state.md)、[第一轮最终结果](round-1.md)、[矩阵](matrix.csv)、[可复用部署复测脚本](scripts/verify-local-state.mjs)。本次后续归档提交只保存事实和已实跑脚本，不再次改变实际运行源码版本。临时 PR 正文、停机和目录切换脚本在交付事实回查后统一清理；运行发行和外部既有 supervisor 保留。

@@ -1,0 +1,12 @@
+case,round-1,evidence
+同租约故障持久化及真实排空清除,PASS,真实SQLite冷恢复与旧租约拒绝
+原输入业务决定与noReplay保留,PASS,真实Host原生guard及现场1未知作业3未ACK
+JS与SQL列表过滤及索引升级,PASS,observer-pagination 24通过
+Web账本及安全投影,PASS,其余78项相关回归通过
+实际隔离应用浏览器,PASS,真实Host与Edge及browser-final.png
+来源生产导入原生守卫,PASS,pnpm check与干净发行复验
+Web类型检查与构建,PASS,worktree与已合并发行均通过
+PR合并及本机运行版本,PASS,139 MERGED且3837735真实进程
+原问题任务现场终态,PASS,waiting与failed且只读前后日志字节一致
+更宽quote对象引用断言,FAIL,非本次状态路径且未修改图像处理
+完整runtime与containment全组,NOT_RUN,本次按状态影响选择定向验证
