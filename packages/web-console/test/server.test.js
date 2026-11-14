@@ -1073,3 +1073,14 @@ test('light execution HTTP binds login and endpoint, uses identity-only task rea
  await f.fetchApi('/api/logout',{method:'POST',body:{}})
  assert.equal((await f.fetchApi(endpoint)).status,401)
 })
+
+test('drain failure summary and blocker expose only fixed facts, never arbitrary exception details',async()=>{
+ const {taskView,taskSummaryView}=await import('../server/views.js')
+ const task={taskId:'t',status:'active',control:'active',sessionFailure:{code:'TASK_SESSION_DRAIN_FAILED',message:'SECRET_EXCEPTION',path:'C:\private\fault.txt'},blockers:{executions:[],operations:[],legacy:[]}}
+ assert.equal(taskSummaryView(task).state,'waiting')
+ assert.equal(taskSummaryView({...task,status:'completed'}).state,'completed')
+ assert.equal(taskSummaryView({...task,control:'cancelled'}).state,'cancelled')
+ const view=taskView(task);assert.equal(view.blockers.length,1);assert.equal(view.blockers[0].status,'failed');assert.match(view.blockers[0].title,/排空失败/)
+ assert.doesNotMatch(JSON.stringify(view),/SECRET_EXCEPTION|private|sessionFailure|message/)
+ assert.deepEqual(taskView({...task,sessionFailure:{code:'UNKNOWN_ERROR',message:'SECRET_EXCEPTION'}}).blockers,[])
+})

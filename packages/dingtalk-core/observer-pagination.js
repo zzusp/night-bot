@@ -11,6 +11,7 @@ const taskState = indexed => `CASE
  WHEN json_extract(t.body,'$.status')='completed' THEN 'completed'
  WHEN json_extract(t.body,'$.control')='cancelled' THEN 'cancelled'
  WHEN json_extract(t.body,'$.control')='paused' OR EXISTS(SELECT 1 FROM json_each(t.body,'$.humanRequests') h WHERE json_extract(h.value,'$.status')='waiting-reply') THEN 'waiting'
+ WHEN json_extract(t.body,'$.sessionFailure.code')='TASK_SESSION_DRAIN_FAILED' THEN 'waiting'
  WHEN json_extract(t.body,'$.drained')=0 THEN 'running'
  WHEN coalesce(json_type(t.body,'$.lastDecision'),'null')='null' AND EXISTS(SELECT 1 FROM dynamic_wakes w WHERE json_extract(w.body,'$.taskId')=t.id AND json_extract(w.body,'$.state')!='acked') THEN 'running'
  WHEN json_extract(t.body,'$.lastDecision.action')='blocked' OR length(trim(coalesce(json_extract(t.body,'$.lastDecision.question'),'')))>0 THEN 'waiting'
@@ -40,7 +41,7 @@ function migrateExecutionControl(db) {
   db.exec(`UPDATE observer_execution_index SET drained=coalesce((SELECT json_extract(body,'$.drained') FROM dynamic_executions source WHERE source.id=observer_execution_index.id)${archived},NULL);
    CREATE INDEX IF NOT EXISTS observer_execution_state ON observer_execution_index(task_id,state,drained);`)
   installExecutionControlTriggers(db)
-  installObserverArchivePagination(db)
+  if(!installObserverArchivePagination(db))db.exec(refreshTask('WHERE true','dynamic_tasks',true))
   db.exec('RELEASE observer_execution_control_migration')
  } catch(cause) {db.exec('ROLLBACK TO observer_execution_control_migration; RELEASE observer_execution_control_migration');throw cause}
 }
@@ -48,7 +49,7 @@ function migrateExecutionControl(db) {
 export function installObserverArchivePagination(db) {
  if (!tableExists(db,'observer_task_index') || !tableExists(db,'dynamic_archived_tasks') || !tableExists(db,'dynamic_archived_executions')) return false
  const indexed=hasExecutionControl(db), installed=db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='observer_archived_execution_delete'").get(), active=db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='observer_task_delete'").get()
- if(installed&&installed.sql.includes('e.drained')===indexed&&active?.sql.includes('dynamic_archived_tasks'))return true
+ if(installed&&installed.sql.includes('e.drained')===indexed&&installed.sql.includes('$.sessionFailure.code')&&active?.sql.includes('dynamic_archived_tasks'))return true
  const taskRows = id => [ ['dynamic_tasks',`WHERE t.id=${id}`], ['dynamic_archived_tasks',`WHERE t.id=${id} AND NOT EXISTS(SELECT 1 FROM dynamic_tasks live WHERE live.id=t.id)`] ]
  const reconcileTask = id => `DELETE FROM observer_task_index WHERE id=${id} AND NOT EXISTS(SELECT 1 FROM dynamic_tasks WHERE id=${id}) AND NOT EXISTS(SELECT 1 FROM dynamic_archived_tasks WHERE id=${id});`+taskRows(id).map(([table,where])=>refreshTask(where,table,indexed)).join('')
  const reconcileRefs = id => `DELETE FROM observer_task_topics WHERE task_id=${id}; DELETE FROM observer_human_index WHERE task_id=${id};`+taskRows(id).map(([table,where])=>`
@@ -69,12 +70,14 @@ export function installObserverArchivePagination(db) {
   const row=event==='DELETE'?'OLD':'NEW',name=table==='dynamic_executions'?'execution':'archived_execution',suffix=event.toLowerCase()
   db.exec(`DROP TRIGGER IF EXISTS observer_${name}_${suffix}; CREATE TRIGGER observer_${name}_${suffix} AFTER ${event} ON ${table} BEGIN ${reconcileExecution(row+'.id')}${reconcileTask(`json_extract(${row}.body,'$.taskId')`)} END;`)
  }
- if(tableExists(db,'dynamic_archived_wakes'))for(const event of ['INSERT','UPDATE','DELETE']){
-  const row=event==='DELETE'?'OLD':'NEW',name='observer_archived_wakes_'+event.toLowerCase()
-  db.exec(`DROP TRIGGER IF EXISTS ${name}; CREATE TRIGGER ${name} AFTER ${event} ON dynamic_archived_wakes BEGIN ${reconcileTask(`json_extract(${row}.body,'$.taskId')`)} END;`)
+ for(const table of ['dynamic_wakes','dynamic_archived_wakes'])if(tableExists(db,table))for(const event of ['INSERT','UPDATE','DELETE']){
+  const row=event==='DELETE'?'OLD':'NEW',name=(table==='dynamic_wakes'?'observer_wakes_':'observer_archived_wakes_')+event.toLowerCase()
+  db.exec(`DROP TRIGGER IF EXISTS ${name}; CREATE TRIGGER ${name} AFTER ${event} ON ${table} BEGIN ${reconcileTask(`json_extract(${row}.body,'$.taskId')`)} END;`)
  }
  db.exec(`CREATE INDEX IF NOT EXISTS observer_archived_execution_task ON dynamic_archived_executions(json_extract(body,'$.taskId'),json_extract(body,'$.status'));`)
  if(tableExists(db,'dynamic_archived_notifications'))db.exec(`CREATE INDEX IF NOT EXISTS observer_archived_human_notice ON dynamic_archived_notifications(json_extract(body,'$.taskId'),json_extract(body,'$.payload.humanRequestId'),json_extract(body,'$.payload.audience')); CREATE INDEX IF NOT EXISTS observer_archived_message_notification ON dynamic_archived_notifications(json_extract(body,'$.payload.conversationId'),json_extract(body,'$.payload.sourceMessageId'));`)
+ db.exec(refreshTask('WHERE true','dynamic_tasks',indexed))
+ db.exec(refreshTask('WHERE NOT EXISTS(SELECT 1 FROM dynamic_tasks live WHERE live.id=t.id)','dynamic_archived_tasks',indexed))
  return true
 }
 
