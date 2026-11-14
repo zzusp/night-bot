@@ -1,6 +1,9 @@
 import {z} from 'zod'
+import {createHash} from 'node:crypto'
 import {checkedText} from '../memory/format.js'
 
+// Stable identity shared by the runtime owner and authorized read-only viewers.
+export const triageSessionId=conversationId=>'session-triage-'+createHash('sha256').update(JSON.stringify(['persistent-triage-v1',conversationId])).digest('hex')
 export const TRIAGE_BATCH_LIMIT=15
 const disposition=z.object({sourceId:z.string().min(1),messageVersion:z.number().int().positive(),needsHandling:z.boolean(),reply:z.string().min(1).max(1000).optional(),reason:z.string().min(1).max(2000)}).strict()
 export const triageDecisionSchema=z.object({dispositions:z.array(disposition).min(1).max(TRIAGE_BATCH_LIMIT)}).strict()

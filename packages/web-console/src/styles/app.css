@@ -680,3 +680,17 @@ html, body, #root { width: 100%; min-width: 0; }
 .task-table-wrap:focus-visible { outline: 2px solid var(--board-focus); outline-offset: -2px; }
 
 @media (min-width: 1600px) { .main-frame { --message-inline-inset: 28px; } }
+
+/* Conversation, triage and Router reuse one bounded reading surface. */
+.conversation-with-tabs { position: relative; }
+.conversation-session-tabs { display: flex; flex: none; align-items: center; gap: 4px; min-height: 52px; padding: 8px 68px 8px 20px; }
+.conversation-session-tabs [role="tab"] { cursor: pointer; border: 0; border-radius: 8px; padding: 7px 14px; color: var(--board-muted); background: transparent; font: inherit; font-size: 13px; white-space: nowrap; }
+.conversation-session-tabs [role="tab"]:hover { color: var(--board-text); background: var(--board-border); }
+.conversation-session-tabs [aria-selected="true"] { color: var(--board-text); background: var(--board-surface); box-shadow: 0 1px 3px #0000000a; }
+.conversation-session-tabs [role="tab"]:focus-visible { outline: 2px solid var(--board-primary); outline-offset: 2px; }
+.conversation-tab-content { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
+.conversation-tab-content[hidden] { display: none; }
+.conversation-session-records .execution-transcript .message-column { max-width: calc(var(--board-content-width) + 32px); padding: 16px var(--message-inline-inset) 24px; }
+.conversation-with-tabs .transcript { scroll-padding-top: 0; }
+.chat-panel .conversation-with-tabs .message-column { padding-top: 16px; }
+@media (max-width: 520px) { .conversation-session-tabs { padding-left: 12px; min-height: 48px; } }

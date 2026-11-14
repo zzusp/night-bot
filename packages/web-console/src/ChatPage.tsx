@@ -91,7 +91,7 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
   const extra: Message[] = attempt && !messages.some(message => message.requestId === attempt.requestId)
     ? [{ id: attempt.requestId, role: 'user', text: attempt.text, createdAt: attempt.createdAt, status: ['sending', 'pending'].includes(attempt.state) ? 'pending' : 'unknown' }] : [];
   const busy = attempt?.state === 'sending';
-  return <ConversationFrame>
+  return <ConversationFrame endpoint={id ? `/chat/${encodeURIComponent(id)}` : undefined}>
     {query.data?.truncated && <div className="history-scope">当前显示最近 500 条消息；更早记录仍保存在 Bot 中。</div>}
     {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data} />}
     {query.loading && !query.data && id ? <Loading>正在读取会话…</Loading> : <ConversationMessages key={key} endpoint={id ? `/chat/${encodeURIComponent(id)}` : null} accessError={query.error} accessUpdatedAt={query.updatedAt} onRefresh={query.refresh} messages={[...messages, ...extra]}
