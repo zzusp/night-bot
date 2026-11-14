@@ -2,7 +2,7 @@ import {useAssistantBrand, brandGlyph} from './AssistantBrand';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiArrowRightSLine, RiLightbulbLine, RiFileTextLine, RiTerminalBoxLine, RiPencilLine, RiToolsLine } from '@remixicon/react';
+import { RiTimeLine, RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiArrowRightSLine, RiLightbulbLine, RiFileTextLine, RiTerminalBoxLine, RiPencilLine, RiToolsLine } from '@remixicon/react';
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
 import { ApiError, errorText, type ExecutionLive, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
 import { dateTime, useResource } from '../hooks';
@@ -95,7 +95,7 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
   const body = <>
     {query.error && <Notice error={query.error} stale={!!page} onRetry={reset} />}
     {offset && !page ? query.loading ? <Loading>正在读取正文…</Loading> : <p className="message-scope">这一段正文暂不可读，可回到首段重新获取。</p>
-      : plain && formatText ? formatText(text || '', offset) : plain ? <pre className="tool-content" tabIndex={0}><code>{text || '此记录没有可展示的文字。'}</code></pre> : message.role === 'user' ? <ThreeLineMessage key={offset} text={text || ''}><Markdown text={text || ''} /></ThreeLineMessage> : <Markdown text={text || ''} />}
+      : plain && formatText ? formatText(text || '', offset) : plain ? <pre className="tool-content" tabIndex={0}><code>{text || '此记录没有可展示的文字。'}</code></pre> : message.role === 'user' ? <ThreeLineMessage key={offset} text={text || ''} collapsedLabel={message.kind === 'scheduled-trigger' ? '显示更多' : undefined}><Markdown text={text || ''} /></ThreeLineMessage> : <Markdown text={text || ''} />}
     {((nextOffset != null && history) || offset > 0) && <nav className="body-pagination" aria-label="正文分页">
       <span>{text !== undefined ? `正文 ${text.length ? offset + 1 : offset}–${offset + text.length}${total !== undefined ? ` / ${total}` : ''}` : '正文读取中'}</span><div>
         <Button variant="ghost" disabled={!offset} onClick={() => setCursor(previous => ({ ...previous, offsets: previous.offsets.slice(0, -1) }))}>上一段</Button>
@@ -366,7 +366,7 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
         if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} disclosures={disclosures} />;
         if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} disclosures={disclosures} />;
         const message = item.message;
-        return <article data-message-id={message.id} className={`message message-${message.role}${message.transient ? ' pi-live-message' : ''}${message.transient && live?.active && ((message.kind === 'thinking' && live.phase === 'thinking') || (message.kind !== 'thinking' && live.phase === 'text')) ? ' pi-model-streaming' : ''}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
+        return <article data-message-id={message.id} className={`message message-${message.role}${message.kind === 'scheduled-trigger' ? ' message-scheduled' : ''}${message.transient ? ' pi-live-message' : ''}${message.transient && live?.active && ((message.kind === 'thinking' && live.phase === 'thinking') || (message.kind !== 'thinking' && live.phase === 'text')) ? ' pi-model-streaming' : ''}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
           // The visually hidden native button makes the bubble keyboard accessible without adding a separate action label.
           const target = event.target as HTMLElement;
@@ -379,7 +379,8 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>}
-          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <ThinkingMessage message={message} history={history} compact={compact} live={live} /> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
+          {message.kind === 'scheduled-trigger' && <div className="scheduled-message-origin" aria-label="定时触发"><RiTimeLine size={12} aria-hidden="true" /><span>由已安排任务发送</span></div>}
+          <div className="message-body">{message.kind === 'context-summary' && <div className="message-origin-label">上下文摘要</div>}{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <ThinkingMessage message={message} history={history} compact={compact} live={live} /> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
         </article>;
       })}
       {live?.active && !(live.phase === 'thinking' && messages.some(message => message.transient && message.kind === 'thinking')) && <LivePhase live={live} />}

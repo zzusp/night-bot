@@ -565,3 +565,45 @@ test('proof expires while final response guard awaits without publishing live co
   assert.equal(light.historyChanged,true);assert.deepEqual(light.live.items,[])
  } finally {Date.now=realNow}
 })
+
+test('Router 定时输入按真实来源右侧展示提醒，批量独立，普通文本不冒充定时消息', async () => {
+  const router = {id: 'room', activeSessionId: 'router', generation: 1, phase: 'active'}
+  const occurrence = {id: 'schedule-a', occurrenceAt: '2026-11-14T01:00:00Z'}
+  const single = '[SCHEDULE REMINDER]\nInternal framing\nschedule_id_json: "schedule-a"\noccurrence_at: 2026-11-14T01:00:00Z\nreminder_prompt_json: "汇报今天工作；apiKey=secret-value"'
+  const packet = (text, occurrences = [occurrence]) => ({role: 'custom', customType: 'night.business-input',
+    details: {source: {kind: 'schedule', occurrences}}, content: [{type: 'text', text}]})
+  const value = {header: {id: 'router', runtimeOwner: 'conversation-router', conversationId: 'room', generation: 1},
+    entries: [{id: 'commit'}], context: {projection: {entries: [
+      project('scheduled', packet(single)),
+      project('batch', packet('[SCHEDULE REMINDER BATCH]\nInternal framing\nreminders_json: ' + JSON.stringify([
+        {schedule_id: 'schedule-a', occurrence_at: occurrence.occurrenceAt, reminder_prompt: '检查发布'},
+        {schedule_id: 'schedule-b', occurrence_at: occurrence.occurrenceAt, reminder_prompt: '汇报进度'},
+      ]), [occurrence, {...occurrence, id: 'schedule-b'}])),
+      project('human', {role: 'user', content: single}),
+      project('unknown', packet('新版定时输入格式：核对服务')),
+    ]}}}
+  const page = await routerSessionView({conversationId: 'room', readRouter: async () => router, persistence: {readNative: async () => value}})
+  assert.deepEqual(page.items.map(item => item.kind), ['scheduled-trigger', 'scheduled-trigger', 'scheduled-trigger', 'source', 'scheduled-trigger'])
+  assert.ok(page.items.every(item => item.role === 'user'))
+  assert.match(page.items[0].text, /汇报今天工作/)
+  assert.doesNotMatch(page.items[0].text, /Internal framing|schedule-a|secret-value/)
+  assert.equal(page.items[1].text, '检查发布'); assert.equal(page.items[2].text, '汇报进度')
+  assert.match(page.items[3].text, /SCHEDULE REMINDER/)
+  assert.equal(page.items[4].text, '新版定时输入格式：核对服务')
+})
+
+test('旧 Router 交接 JSON 可读化但不误标为定时输入，保留意图、疑问、关联与假设', async () => {
+  const router = {id: 'room', activeSessionId: 'router', generation: 1, phase: 'active'}
+  const summary = {currentIntent: '明早汇报工作', unresolvedQuestions: ['是否包含阻塞？'], referents: ['今天指北京时间11月13日'], assumptions: ['沿用原渠道'],
+    evidenceRefs: [{sourceId: 'internal-id'}], cutoff: 1}
+  const value = {header: {id: 'router', runtimeOwner: 'conversation-router', conversationId: 'room', generation: 1},
+    entries: [{id: 'commit'}], context: {projection: {entries: [
+      project('summary', {role: 'assistant', content: JSON.stringify(summary)}),
+      project('ordinary-json', {role: 'assistant', content: JSON.stringify({...summary, extra: '其他业务字段'})}),
+    ]}}}
+  const page = await routerSessionView({conversationId: 'room', readRouter: async () => router, persistence: {readNative: async () => value}})
+  assert.equal(page.items[0].kind, 'context-summary'); assert.equal(page.items[0].role, 'assistant')
+  for (const text of ['明早汇报工作', '是否包含阻塞', '北京时间11月13日', '沿用原渠道']) assert.ok(page.items[0].text.includes(text))
+  assert.doesNotMatch(page.items[0].text, /internal-id|cutoff|evidenceRefs/)
+  assert.equal(page.items[1].kind, 'message'); assert.match(page.items[1].text, /其他业务字段/)
+})
