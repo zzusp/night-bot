@@ -13,7 +13,7 @@ const group = computed(() => {
 <template>
   <nav class="nb-doc-context" aria-label="文档位置">
     <a :href="withBase('/guide/getting-started.html')">文档</a>
-    <span aria-hidden="true">/</span>
+    <span class="nb-context-separator" aria-hidden="true"></span>
     <span>{{ group }}</span>
   </nav>
 </template>

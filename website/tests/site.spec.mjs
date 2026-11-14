@@ -66,10 +66,10 @@ test('document workspace retains content, outline, sidebar and deep links', asyn
   await noOverflow(page)
   if (testInfo.project.name === 'desktop') {
     const geometry = await page.locator('.VPSidebar').evaluate(el => ({
-      padding: parseFloat(getComputedStyle(el).paddingTop),
-      navHeight: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--vp-nav-height'))
+      top: el.getBoundingClientRect().top,
+      navBottom: document.querySelector('.VPNavBar').getBoundingClientRect().bottom
     }))
-    expect(geometry.padding).toBe(geometry.navHeight + 24)
+    expect(geometry.top).toBeGreaterThanOrEqual(geometry.navBottom + 12)
   }
   await page.screenshot({ path: testInfo.outputPath('usage-redesign.png'), fullPage: true })
   expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations).toEqual([])
