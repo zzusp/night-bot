@@ -6,7 +6,7 @@ test('停止结论在记录底部消息框展示，恢复运行及撤权时隐�
  await page.route('**/api/tasks/task-research', async route => {
   if (mode === 'denied') return route.fulfill({status:403,json:{error:'RESOURCE_FORBIDDEN'}});
   const data = await (await route.fetch()).json();
-  return route.fulfill({json:{...data,state:mode,session:{...data.session,status:mode==='running'?'running':'idle'},result:mode==='empty'?null:{summary:'资料核对已完成。\n\n当前等待发布时间，尚未部署。',limitations:['外部投递仍待核验']}}});
+  return route.fulfill({json:{...data,state:mode,durations:{execution:{milliseconds:8301000,activeSince:null}},session:{...data.session,status:mode==='running'?'running':'idle'},result:mode==='empty'?null:{summary:'资料核对已完成。\n\n当前等待发布时间，尚未部署。',limitations:['外部投递仍待核验']}}});
  });
  await page.goto('/#/tasks/task-research');
  await page.getByLabel('访问令牌', {exact:true}).fill(FIXTURE_TOKEN);
@@ -14,6 +14,7 @@ test('停止结论在记录底部消息框展示，恢复运行及撤权时隐�
  const bubble=page.getByRole('article',{name:'最后结论'});
  await expect(bubble).toBeVisible();
  await expect(bubble).toContainText('尚未部署');
+ await expect(bubble).toContainText('用时 2h 18m 21s');
  await expect(bubble).toContainText('外部投递仍待核验');
  expect(await bubble.evaluate(el=>el.parentElement?.lastElementChild===el)).toBe(true);
  for(const width of [1440,390]) for(const theme of ['light','dark']) {

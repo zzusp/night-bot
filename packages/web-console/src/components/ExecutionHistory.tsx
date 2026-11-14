@@ -8,7 +8,7 @@ import { Button, EmptyState } from './BoardPrimitives';
 import { Loading, Markdown, MessageList, Notice, Status } from './Shared';
 
 // 聊天与任务共用连续执行流、提交等待和版本冲突处理。
-export function ExecutionHistory({ endpoint, router = false, status, taskTitle, taskState, controlsTarget, conclusion }: { conclusion?: string | null; taskTitle?: string; taskState?: string; endpoint: string; router?: boolean; status?: string; controlsTarget?: HTMLElement | null }) {
+export function ExecutionHistory({ endpoint, router = false, status, taskTitle, taskState, controlsTarget, conclusion, conclusionDuration }: { conclusionDuration?: string | null; conclusion?: string | null; taskTitle?: string; taskState?: string; endpoint: string; router?: boolean; status?: string; controlsTarget?: HTMLElement | null }) {
   const query = useExecutionStream(endpoint);
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
@@ -48,7 +48,7 @@ export function ExecutionHistory({ endpoint, router = false, status, taskTitle, 
       : query.data?.status === 'unavailable' ? <EmptyState title="执行记录暂不可读" action={<Button variant="secondary" onClick={latest}>重新获取</Button>} />
       : <MessageList key={`${endpoint}:${query.epoch}:${readerEpoch}`} messages={[...(query.data?.items || []), ...(!query.error && query.data?.status === 'ready' ? query.data.live?.items || [] : [])]} live={!query.error && query.data?.status === 'ready' ? query.data.live : undefined} userLabel="用户" presentation="execution" older={{ hasMore: !!query.data?.before, loading: query.loadingOlder, error: query.olderError, disabled: !!query.error, onLoad: query.loadOlder }} history={query.data?.revision ? { endpoint, revision: query.data.revision, onRecover: recoverBody } : undefined}
         footerVersion={!query.error && !query.data?.live?.active ? conclusion : null}
-        footer={!query.error && query.data?.status === 'ready' && !query.data.live?.active && conclusion && !duplicateConclusion && <article className="message message-assistant task-final-conclusion" aria-label="最后结论"><div className="task-conclusion-label">最后结论</div><div className="message-body"><Markdown text={conclusion} /></div></article>}
+        footer={!query.error && query.data?.status === 'ready' && !query.data.live?.active && conclusion && !duplicateConclusion && <article className="message message-assistant task-final-conclusion" aria-label="最后结论">{conclusionDuration && <div className="task-conclusion-label">{conclusionDuration}</div>}<div className="message-body"><Markdown text={conclusion} /></div></article>}
         empty={conclusion ? <></> : <EmptyState title="暂无可展示的执行记录" />} />}
   </div>;
 }

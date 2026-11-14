@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 const input = readFileSync(new URL('../src/task-conclusion.ts', import.meta.url), 'utf8');
 const js = ts.transpileModule(input, {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}}).outputText;
-const {taskConclusion} = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+const {taskConclusion, taskConclusionDuration} = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 const task = {state: 'waiting', session: {status: 'idle'}, result: {summary: '已完成核对，等待发布窗口。', question: '是否继续？', evidence: ['测试已通过'], limitations: ['尚未部署']}};
 test('only explicit stopped Host result is rendered, retaining limitations and question', () => {
  assert.equal(taskConclusion(task), '已完成核对，等待发布窗口。\n\n是否继续？\n\n**依据**\n\n- 测试已通过\n\n**限制**\n\n- 尚未部署');
@@ -19,4 +19,15 @@ test('running, unknown, missing, or reasoning/tool content cannot become conclus
 test('plain legacy result and duplicate question retain truthful content', () => {
  assert.equal(taskConclusion({...task, result:'   已完成   '}), '已完成');
  assert.equal(taskConclusion({...task, result:{summary:'等待', question:'等待'}}), '等待');
+});
+
+test('duration uses closed execution receipts, never wall clock or placeholder', () => {
+ const withMs = milliseconds => ({...task, durations:{execution:{milliseconds,activeSince:null}}});
+ assert.equal(taskConclusionDuration(withMs(8301000)), '用时 2h 18m 21s');
+ assert.equal(taskConclusionDuration(withMs(61000)), '用时 1m 1s');
+ assert.equal(taskConclusionDuration(withMs(0)), '用时 0s');
+ for(const ms of [null, undefined, -1, NaN, Infinity]) assert.equal(taskConclusionDuration(withMs(ms)), null);
+ assert.equal(taskConclusionDuration(task), null);
+ assert.equal(taskConclusionDuration({...withMs(8301000),state:'running'}), null);
+ assert.equal(taskConclusionDuration({...task,durations:{execution:{milliseconds:8301000,activeSince:'2026-01-01'}}}),null);
 });

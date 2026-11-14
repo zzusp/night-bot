@@ -20,3 +20,14 @@ export function taskConclusion(task: Task): string | null {
   }
   return sections.join('\n\n');
 }
+
+// Same receipt-based cumulative execution time as the task list, excluding waits.
+export function taskConclusionDuration(task: Task): string | null {
+  const duration = task.durations?.execution;
+  if (!taskConclusion(task) || !duration || duration.activeSince != null
+      || typeof duration.milliseconds !== 'number' || !Number.isFinite(duration.milliseconds)
+      || duration.milliseconds < 0) return null;
+  const seconds = Math.floor(duration.milliseconds / 1000);
+  const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
+  return `用时 ${h ? `${h}h ` : ''}${h || m ? `${m}m ` : ''}${s}s`;
+}
