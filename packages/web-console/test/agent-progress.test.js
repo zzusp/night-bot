@@ -11,6 +11,7 @@ const iconModule = `data:text/javascript;base64,${Buffer.from(iconCompiled).toSt
 const source = await readFile(new URL('../src/components/AgentProgress.tsx', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, {compilerOptions: {jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext}}).outputText
   .replaceAll('"react/jsx-runtime"', JSON.stringify(import.meta.resolve('react/jsx-runtime')))
+  .replaceAll("'react'", JSON.stringify(import.meta.resolve('react')))
   .replaceAll("'./PiIcon'", JSON.stringify(iconModule))
   .replaceAll("'@mdi/js'", JSON.stringify(import.meta.resolve('@mdi/js')))
   .replaceAll("'@remixicon/react'", JSON.stringify(import.meta.resolve('@remixicon/react')));
