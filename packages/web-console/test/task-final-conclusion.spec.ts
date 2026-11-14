@@ -15,12 +15,21 @@ test('停止结论在记录底部消息框展示，恢复运行及撤权时隐�
  await expect(bubble).toBeVisible();
  await expect(bubble).toContainText('尚未部署');
  await expect(bubble).toContainText('用时 2h 18m 21s');
+ const geometry = async () => {
+  const gap = await bubble.evaluate(el => el.getBoundingClientRect().top - el.previousElementSibling!.getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(7.5); expect(gap).toBeLessThanOrEqual(8.5);
+  const label = await page.locator('.task-conclusion-label').boundingBox();
+  const thinking = await page.locator('.thinking-message > summary').first().boundingBox();
+  expect(Math.abs(label!.x + 17 - thinking!.x)).toBeLessThanOrEqual(1);
+ };
+ await geometry();
  await expect(bubble).toContainText('外部投递仍待核验');
  expect(await bubble.evaluate(el=>el.parentElement?.lastElementChild===el)).toBe(true);
  for(const width of [1440,390]) for(const theme of ['light','dark']) {
   await page.setViewportSize({width,height:960});
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
   await bubble.scrollIntoViewIfNeeded();
+  await geometry();
   await expect(bubble).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:test.info().outputPath(`conclusion-${width}-${theme}.png`)});
