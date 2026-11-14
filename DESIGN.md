@@ -537,3 +537,7 @@ Thinking display correction: use original neutral board-text/board-muted colors,
 任务消息内容宽度与对话页复用同一 `--board-content-width`（消息列上限800px，两侧内边距默认16px、1600px以上28px）和滚动条占位；居中，不再采用任务专属全宽消息列。用户/助手正文气泡沿用对话的90%上限、窄屏96%及自然短文宽度。工具与思考仍使用执行记录展示，不改变其内容。悬浮TODO随该阅读区域右边界定位。
 
 - Right-hand message bubbles keep symmetric vertical body padding. Markdown first/last block margins are trimmed only at the bubble boundaries; disclosure controls never use negative bottom margins. Interior paragraph spacing remains intact.
+
+### 任务待办响应式停靠（2026-11-14）
+
+任务待办仍悬浮于执行画布右侧，距边缘16px。执行画布实际宽度达到1120px时，为300px卡片与间隙保留332px右侧通道，默认展开，不覆盖消息；不足时不挤压消息列，默认收起，可手动展开并覆盖部分消息。跨越宽窄布局重新应用默认状态，同一布局中的轮询保留用户展开选择。展开清单最高500px并可滚动，不再压缩到78px；同时受视口高度约束。任务详情复用聊天页右上角侧栏图标按钮，可隐藏/显示任务、执行、复盘、学习面板，不重建执行流。以上取代此前120px浮层和固定折叠规则。
