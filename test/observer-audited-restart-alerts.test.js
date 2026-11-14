@@ -74,3 +74,36 @@ test('a read-only wait report keeps unresolved native effects visible after tran
  task.lastDecision={action:'wait',summary:'Original effect was reconciled',limitations:[]};task.updatedAt='2026-11-12T00:01:00Z'
  assert.deepEqual(pages.all(),[])
 })
+
+test('普通等待和业务阻断保留为任务待处理，不进入运行告警分页',async()=>{
+ const make=(id,action,question)=>({taskId:id,status:'active',drained:true,updatedAt:'2026-11-14T00:00:00Z',lastDecision:{action,question,summary:'等待外部条件',limitations:[]}})
+ const tasks=new Map([['wait',make('wait','wait','请提供受管身份')],['blocked',make('blocked','blocked',null)],['quiet',make('quiet','wait',null)]])
+ const before=structuredClone(tasks),pages=createObserverAlertPages({tasks,failures:new Map(),operations:new Map(),notifications:new Map()})
+ assert.deepEqual(pages.all().map(row=>row.type),['task','task'])
+ assert.equal((await pages.page({type:'task'})).total,2)
+ assert.equal((await pages.page({type:'runtime'})).total,0)
+ assert.equal((await pages.page()).total,2)
+ assert.deepEqual(tasks,before)
+})
+
+test('未知效果、排空或技术失败及未知发送仍属于运行告警',async()=>{
+ const tasks=new Map()
+ for(const [id,extra]of Object.entries({effect:{limitations:['TASK_EFFECT_UNCERTAIN_NO_REPLAY']},job:{limitations:['TASK_JOB_UNCERTAIN_NO_REPLAY']},drain:{sessionFailure:{code:'TASK_SESSION_DRAIN_FAILED'}},technical:{technicalFailure:{code:'TASK_PI_PROVIDER_ERROR'}},submission:{limitations:['TASK_SESSION_NO_SUBMISSION']},provider:{providerRecovery:{hostRetryDisabled:true}}})){
+  const {limitations=[],...state}=extra
+  tasks.set(id,{taskId:id,status:'active',...state,lastDecision:{action:'wait',question:['effect','job'].includes(id)?'请核验':null,summary:'等待核实',limitations}})
+ }
+ const pages=createObserverAlertPages({tasks,failures:new Map([['host',{id:'host',code:'TASK_RECOVERY_FAILED'}]]),operations:new Map([['op',{id:'op',state:'unknown'}]]),notifications:new Map([['notice',{id:'notice',state:'unknown'}]])})
+ assert.equal(pages.all().length,9);assert.ok(pages.all().every(row=>row.type==='runtime'))
+ assert.equal((await pages.page({type:'runtime'})).total,9)
+ assert.equal((await pages.page({type:'task'})).total,0)
+})
+
+test('分类变化即使时间戳相同也使旧分页失效',async()=>{
+ const task={taskId:'same',status:'active',updatedAt:'2026-11-14T00:00:00Z',lastDecision:{action:'wait',question:'请核验',summary:'待处理',limitations:[]}}
+ const pages=createObserverAlertPages({tasks:new Map([[task.taskId,task]]),failures:new Map(),operations:new Map(),notifications:new Map()})
+ const first=await pages.page({type:'task'});assert.equal(first.total,1)
+ task.lastDecision.limitations=['TASK_JOB_UNCERTAIN_NO_REPLAY']
+ assert.equal((await pages.page({type:'runtime'})).total,1)
+ assert.equal((await pages.page({type:'task'})).total,0)
+ await assert.rejects(pages.page({revision:first.revision}),{code:'OBSERVER_PAGE_STALE'})
+})

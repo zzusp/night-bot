@@ -167,3 +167,35 @@ test('Host factory and real Job drain errors still attempt process join and reta
 test('Host startup failure uses the same ownership retention gate and preserves startup and cleanup errors',async t=>{
  await runShutdownFailure(t,'startup')
 })
+
+for(const uncertain of [false,true])test(`默认应用 HTTP 将任务待处理与恢复故障分开（未知作业=${uncertain}）`,async t=>{
+ const {createServer}=await import('node:http'),application=await import('../src/application.js')
+ const {openDynamicTaskStore}=await import('../packages/dingtalk-core/dynamic-task-store.js')
+ const {initializeMemoryTaskWorkspace}=await import('./fixtures/memory-host.js')
+ const f=await memoryHost(t,undefined,{hostConfig:{reflection:{enabled:false}}}),paths=f.host.ctx.runtimePaths
+ const taskConfig={instanceId:'alert-health-fixture',ownerActorId:'fixture-owner',webActorId:'fixture-owner',ingressEpoch:'2026-01-01T00:00:00Z'}
+ const options={...taskConfig,dbPath:join(paths.state,'tasks.sqlite')},store=await openDynamicTaskStore({...options,initialize:true})
+ let sequence=0
+ const command=(kind,args)=>store.command({id:'alert-fixture:'+(++sequence),kind,args})
+ try{
+  for(const id of ['waiting-input','waiting-environment']){
+   await command('task.create',{taskId:id,ownerActorId:'fixture-owner',request:'仅隔离验证等待，不执行任何业务效果'})
+   await initializeMemoryTaskWorkspace(store,paths.workspaces,id)
+   const {binding,wakeIds}=(await command('task.claim',{taskId:id})).result
+   await command('task.wait',{binding,action:'wait',summary:'等待外部条件',question:'请提供明确条件',humanRequest:{requestId:id+':question',audience:'operator'},limitations:uncertain&&id==='waiting-environment'?['TASK_JOB_UNCERTAIN_NO_REPLAY']:[]})
+   await command('wake.ack',{binding,wakeIds});await command('task.drained',{binding})
+  }
+ }finally{await store.close()}
+ const reserve=createServer();await new Promise(resolve=>reserve.listen(0,'127.0.0.1',resolve));const port=reserve.address().port;await new Promise(resolve=>reserve.close(resolve))
+ await f.host.ctx.plugin(application,{...f.config,resident:{host:'127.0.0.1',port,taskSessions:{...taskConfig,initialize:false}}})
+ const app=f.host.ctx.get('application'),base='http://127.0.0.1:'+port
+ const before=await app.tasks.store.query({kind:'task.list'})
+ const get=async path=>{const response=await fetch(base+path);assert.equal(response.status,200,path);return response.json()}
+ const health=await get('/health'),diagnostics=JSON.stringify({health,issues:app.runtime.listRecoveryIssues()});assert.equal(health.status,uncertain?'degraded':'ok',diagnostics);assert.equal(health.recoveryIssueCount,uncertain?1:0,diagnostics);assert.equal(health.taskAttentionCount,uncertain?1:2)
+ const issues=await get('/state/recovery-issues');assert.equal(issues.length,uncertain?1:0);assert.ok(issues.every(row=>row.type==='runtime'))
+ const all=await get('/state/supervisor/alerts');assert.equal(all.length,2)
+ const waiting=await get('/state/supervisor/alerts?limit=10&type=task');assert.equal(waiting.total,uncertain?1:2);assert.ok(waiting.items.every(row=>row.type==='task'))
+ const runtime=await get('/state/supervisor/alerts?limit=10&type=runtime');assert.equal(runtime.total,uncertain?1:0)
+ assert.deepEqual(await app.tasks.store.query({kind:'task.list'}),before,'读取分类不能改变任务决定、排空或旧效果')
+ assert.equal(f.requests.length,0,'健康读取和冷启动不触发模型或任务重试')
+})

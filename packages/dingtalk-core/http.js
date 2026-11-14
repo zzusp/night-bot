@@ -283,6 +283,7 @@ export async function handleRequest(request, response, store, { testApiEnabled =
       status: recoveryIssues.length === 0 && (!executionStore || executionStore.healthy) && (!inboundConfigured || inboundProcessing) ? 'ok' : 'degraded', transport,
       inboundConfigured, inboundProcessing, outboundAuthorized, modelMode,
       recoveryIssueCount: recoveryIssues.length,
+      taskAttentionCount: (store.listAlerts?.() ?? []).filter(alert => alert.type === 'task').length,
       ...(executionStore ? { executionStore } : {}),
       ...(activityAudit ? { activityAudit: { total: activityAudit.total, pending: activityAudit.pending, audited: activityAudit.audited, unavailableCount: activityAudit.unavailable.length } } : {}),
       ...(dwsBridge !== undefined ? { dwsBridge } : {}),
@@ -568,7 +569,7 @@ export async function handleRequest(request, response, store, { testApiEnabled =
   if (request.method === 'GET' && url.pathname === '/state/supervisor/alerts') {
     try{if(!url.searchParams.has('limit'))return send(response,200,store.listAlerts())
       const view=url.searchParams.get('view')||'active',type=url.searchParams.get('type')||'all'
-      if(!['active','resolved'].includes(view)||!['all','runtime','message-channel','leaf-session','goal'].includes(type))throw new Error('OBSERVER_PAGE_INVALID')
+      if(!['active','resolved'].includes(view)||!['all','runtime','task','message-channel','leaf-session','goal'].includes(type))throw new Error('OBSERVER_PAGE_INVALID')
       if(!store.listAlertPage)return send(response,503,{error:'observer_unavailable'})
       return send(response,200,await store.listAlertPage({view,type,offset:pageNumber(url,'offset',0),limit:pageNumber(url,'limit',10,100),revision:url.searchParams.get('pageRevision')||undefined}))
     }catch(error){return send(response,error.code==='OBSERVER_PAGE_STALE'?409:400,{error:error.message})}

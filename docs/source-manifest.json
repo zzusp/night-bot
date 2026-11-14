@@ -501,8 +501,8 @@
       "source": "http.js",
       "sourceSha256": "c1202c9a9f65e76d200ae75ae934893fd2911582e865a059a2dba40837534d6d",
       "status": "adapted",
-      "sha256": "5d8620d4c88a7339276d2306c2d621bcb6b8f84d0564d80b55f72dc11e042fe5",
-      "adaptation": "Retained routes with strict local effect reconciliation endpoints protected by private operator capability; no caller-supplied identity. 活动Topic写入口和旧字段返回410；历史GET只读标注；恢复入口使用直接来源及triage/router阶段。"
+      "sha256": "cf16f7af410673ab229927b8301da7aec514b19fcd047f81d9ca85e58c8029be",
+      "adaptation": "Retained routes with strict local effect reconciliation endpoints protected by private operator capability; no caller-supplied identity. 活动Topic写入口和旧字段返回410；历史GET只读标注；恢复入口使用直接来源及triage/router阶段。 健康接口区分运行恢复异常与任务待处理，并公开分类过滤及独立计数；未知效果、持久技术故障和排空失败不降级为普通等待。"
     },
     {
       "source": "independent-coordination-planner.js",
@@ -628,8 +628,8 @@
       "source": "observer-alert-pages.js",
       "sourceSha256": "75c7b72b63b4912ad366c6fa5cdc15fcb31643e1b05bf52ddfe771e63ed1106a",
       "status": "adapted",
-      "sha256": "ea52c6a87db3b6304b220022700a27c1fa9e5b1983c1825e9365c2d4c9e5fff6",
-      "adaptation": "Keep unresolved native task effects visible after a read-only wait report clears transient run failures; no effect result or reconciliation is inferred."
+      "sha256": "260433b1e23c2af8b495ceeb4ceab249e29154fc15f37fd2db1430857f078d55",
+      "adaptation": "Keep unresolved native task effects visible after a read-only wait report clears transient run failures; no effect result or reconciliation is inferred. 健康接口区分运行恢复异常与任务待处理，并公开分类过滤及独立计数；未知效果、持久技术故障和排空失败不降级为普通等待。"
     },
     {
       "source": "observer-artifact-bindings.js",
