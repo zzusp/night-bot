@@ -47,7 +47,7 @@ pnpm start data/config/config.json
 curl http://127.0.0.1:18998/health
 ```
 
-健康接口可达只表示服务可响应，不证明模型、任务或渠道已经验证通过。无界面集成可使用[本机 HTTP 接口](docs/HTTP-ROUTES.md)；需要聊天界面时，按下一节启用 Web。
+健康接口的 `recoveryIssueCount` 统计运行恢复异常，`taskAttentionCount` 单列等待输入、授权或外部条件的任务待处理项；普通等待不使核心健康降级，未知效果和真实执行故障仍保留告警。健康接口可达只表示服务可响应，不证明模型、任务或渠道已经验证通过。无界面集成可使用[本机 HTTP 接口](docs/HTTP-ROUTES.md)；需要聊天界面时，按下一节启用 Web。
 
 ### 启用 Web 控制台
 

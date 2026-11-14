@@ -105,8 +105,17 @@ node bin/night-bot-run.js data/config/config.json
 受管入口将服务日志追加到 `data/logs/service.log`，并把子进程临时目录和缓存指向安装内 `data/temp`、`data/cache`。在另一终端检查：
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:19198/health | Select-Object status,transport,modelMode,recoveryIssueCount,inboundConfigured,outboundAuthorized
+Invoke-RestMethod http://127.0.0.1:19198/health | Select-Object status,transport,modelMode,recoveryIssueCount,taskAttentionCount,inboundConfigured,outboundAuthorized
 ```
+
+`recoveryIssueCount` 是运行恢复异常数，`taskAttentionCount` 是任务待处理项数；后者可与 `status:ok` 同时出现。分别核对原始问题，不能通过清空账本或重试业务任务让健康变绿：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:19198/state/recovery-issues
+Invoke-RestMethod 'http://127.0.0.1:19198/state/supervisor/alerts?limit=10&type=task'
+```
+
+完整分类和分页合同见 [HTTP 路由](../HTTP-ROUTES.md#健康与任务待处理)。
 
 标准入口的 `transport` 为 `channels`。当前兼容 `/health` 的 `inboundConfigured` 只识别旧 `dws` 模式，`outboundAuthorized` 只反映是否注册了 transport，不能据此判断插件监听状态或 `dingtalk_writes_authorized`。`status:ok` 也不证明 DWS 已登录、指定群已订阅或消息已送达。
 
