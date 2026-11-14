@@ -27,8 +27,10 @@ export function createDrafts() {
 export type Drafts = ReturnType<typeof createDrafts>;
 interface Receipt { conversationId: string; status: string; accepted?: boolean }
 
-export default function ChatPage(props: { id?: string; drafts: Drafts; onAccepted: () => void }) {
+export default function ChatPage(props: { id?: string; drafts: Drafts; onAccepted: () => void; onResolved?: (id: string) => void }) {
   const current = useResource<{conversationId: string}>('/chat-current');
+  const resolvedId = props.id || current.data?.conversationId;
+  useEffect(() => { if (resolvedId) props.onResolved?.(resolvedId); }, [resolvedId, props.onResolved]);
   if (!props.id && !current.data) return current.error ? <Notice error={current.error} onRetry={current.refresh} /> : <Loading>正在读取 Web 对话…</Loading>;
   return <ChatContent {...props} id={props.id || current.data?.conversationId} />;
 }

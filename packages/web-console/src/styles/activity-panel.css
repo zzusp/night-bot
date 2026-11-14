@@ -1,0 +1,56 @@
+/* BoardUI notification-center grouping and quiet metric rows, using Night Bot tokens. */
+.activity-rail { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow: auto; scrollbar-gutter: stable; background: var(--board-panel); border-radius: var(--board-radius-panel); padding: 20px 14px 16px 18px; }
+.rail-heading, .rail-section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rail-heading h2 { font-size: 14px; font-weight: 600; line-height: 24px; }
+.rail-heading > a, .rail-section-title > a { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; color: var(--board-muted); font-size: 11px; min-height: 28px; border-radius: 6px; }
+.rail-heading > a:hover, .rail-section-title > a:hover { color: var(--board-info); }
+.activity-counts { display: grid; grid-template-columns: 1fr 1fr; background: var(--board-surface); border: 1px solid var(--board-border); border-radius: var(--board-radius-card); padding: 14px 0; }
+.activity-counts a { display: flex; flex-direction: column; gap: 10px; color: var(--board-text); padding: 2px 18px; border-radius: 6px; }
+.activity-counts a + a { border-left: 1px solid var(--board-border); }
+.activity-counts a:hover { background: var(--board-hover); }
+.activity-counts a > span { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--board-muted); }
+.activity-counts strong { font-size: 28px; font-weight: 500; line-height: 32px; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.count-dot { display: inline-block; width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; }
+.count-dot.info { background: var(--board-info); }.count-dot.warning { background: var(--board-warning); }
+.rail-section { background: var(--board-surface); border: 1px solid var(--board-border); border-radius: var(--board-radius-card); overflow: hidden; flex-shrink: 0; }
+.rail-section-title { padding: 12px 14px 10px; }
+.rail-section-title h3 { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; line-height: 20px; }
+.rail-section-title h3 svg { color: var(--board-muted); }
+.rail-task-list { padding: 0 6px 6px; }
+.rail-task { display: flex; align-items: center; gap: 8px; color: var(--board-text); padding: 12px 8px; border-radius: 10px; }
+.rail-task + .rail-task { border-top: 1px solid var(--board-border); border-top-left-radius: 0; border-top-right-radius: 0; }
+.rail-task:hover { background: var(--board-hover); border-radius: 10px; }
+.rail-task-copy { flex: 1; min-width: 0; }
+.rail-task strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 13px; font-weight: 500; line-height: 21px; }
+.rail-task-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.rail-task-meta time { font-size: 10px; color: var(--board-subtle); font-variant-numeric: tabular-nums; }
+.rail-task-meta .board-badge { font-size: 10px; }
+.rail-task-arrow { color: var(--board-subtle); }
+.rail-empty { margin: 0; padding: 12px 14px 18px; color: var(--board-muted); font-size: 12px; line-height: 20px; }
+.rail-warning { padding: 0; }
+.activity-rail a:focus-visible { outline: 2px solid var(--board-focus); outline-offset: -2px; }
+@media (min-width: 1600px) { .activity-rail { width: 320px; padding: 20px 16px; } }
+@media (forced-colors: active) { .activity-rail, .rail-section, .activity-counts { border: 1px solid CanvasText; } }
+
+.stage-timing-card .rail-section-title { padding-bottom: 8px; }
+.stage-scope { font-size: 10px; color: var(--board-muted); white-space: nowrap; }
+.stage-plot { padding: 6px 14px 12px; --stage-color: var(--board-info); }
+.stage-plot-router { --stage-color: var(--board-success);  }
+.stage-plot-heading, .stage-plot-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.stage-plot-heading > span { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--board-muted); }
+.stage-plot-heading i { width: 6px; height: 6px; background: var(--stage-color); border-radius: 50%; }
+.stage-plot-heading strong { font-size: 16px; line-height: 24px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.stage-plot-graph { width: 100%; height: auto; display: block; overflow: visible; }
+.stage-grid { stroke: var(--board-border); stroke-dasharray: 3 4; stroke-width: .75; }
+.stage-line { stroke: var(--stage-color); stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.stage-axis-label, .stage-axis-zero, .stage-missing { fill: var(--board-muted); font-size: 9px; }
+.stage-axis-zero { font-size: 7px; }
+.stage-plot-graph g:focus { outline: none; }
+.stage-plot-graph g:focus rect { stroke: var(--board-focus); stroke-width: 1; }
+.stage-plot-foot { font-size: 9px; line-height: 16px; color: var(--board-muted); min-height: 16px; }
+
+.stage-timing-charts { display: flex; flex-direction: column; gap: 16px; flex-shrink: 0; }
+.stage-timing-card { --stage-color: var(--board-info); }
+.stage-timing-card-router { --stage-color: var(--board-success); }
+.stage-title-dot { height: 6px; width: 6px; border-radius: 50%; background: var(--stage-color); }
+.stage-plot-heading strong { font-size: 22px; line-height: 28px; }
