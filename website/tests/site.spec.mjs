@@ -64,6 +64,13 @@ test('document workspace retains content, outline, sidebar and deep links', asyn
   await expect(page.getByRole('heading', { level: 1, name: '日常使用' })).toBeVisible()
   await expect(page.getByText('“已接纳”只表示消息已收到。', { exact: true })).toBeVisible()
   await noOverflow(page)
+  if (testInfo.project.name === 'desktop') {
+    const geometry = await page.locator('.VPSidebar').evaluate(el => ({
+      padding: parseFloat(getComputedStyle(el).paddingTop),
+      navHeight: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--vp-nav-height'))
+    }))
+    expect(geometry.padding).toBe(geometry.navHeight + 24)
+  }
   await page.screenshot({ path: testInfo.outputPath('usage-redesign.png'), fullPage: true })
   expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations).toEqual([])
   if (testInfo.project.name === 'mobile') {

@@ -184,7 +184,8 @@ html { scrollbar-gutter: stable; }
 .VPDocFooter .pager-link:hover { border-color: var(--board-info); background: var(--board-primary-soft); }
 .VPDocFooter .pager-link .title { color: var(--board-text); font-size: 15px; }
 @media (min-width: 960px) {
-  .VPSidebar { padding-top: calc(var(--vp-nav-height) + 24px); }
+  /* Match the default theme's scoped selector without !important. */
+  .Layout aside.VPSidebar { padding-top: calc(var(--vp-nav-height) + 24px); }
   .VPDoc { padding: 40px 40px 64px !important; }
   .VPDoc .content { padding: 0 32px !important; }
 }
