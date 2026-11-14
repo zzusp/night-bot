@@ -49,6 +49,6 @@ export function ExecutionHistory({ endpoint, router = false, status, taskTitle, 
       : <MessageList key={`${endpoint}:${query.epoch}:${readerEpoch}`} messages={[...(query.data?.items || []), ...(!query.error && query.data?.status === 'ready' ? query.data.live?.items || [] : [])]} live={!query.error && query.data?.status === 'ready' ? query.data.live : undefined} userLabel="用户" presentation="execution" older={{ hasMore: !!query.data?.before, loading: query.loadingOlder, error: query.olderError, disabled: !!query.error, onLoad: query.loadOlder }} history={query.data?.revision ? { endpoint, revision: query.data.revision, onRecover: recoverBody } : undefined}
         footerVersion={!query.error && !query.data?.live?.active ? conclusion : null}
         footer={!query.error && query.data?.status === 'ready' && !query.data.live?.active && conclusion && !duplicateConclusion && <article className="message message-assistant task-final-conclusion" aria-label="最后结论"><div className="task-conclusion-label">最后结论</div><div className="message-body"><Markdown text={conclusion} /></div></article>}
-        empty={conclusion ? null : <EmptyState title="暂无可展示的执行记录" />} />}
+        empty={conclusion ? <></> : <EmptyState title="暂无可展示的执行记录" />} />}
   </div>;
 }

@@ -360,7 +360,7 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
     captureAnchor();
     if (el.scrollTop < 160) loadOlder();
   }} role="region" aria-label="消息记录" tabIndex={0}>
-    <div className={`message-column${messages.length || live?.active ? '' : ' is-empty'}`}>
+    <div className={`message-column${messages.length || live?.active || footer ? '' : ' is-empty'}`}>
       {older && messages.length > 0 && <div className="execution-history-start" role="status">{older.error ? <Notice error={older.error} onRetry={older.onLoad} /> : older.loading ? '正在载入更早记录…' : older.hasMore ? '向上滚动载入更早记录' : '已到当前上下文的开始'}</div>}
       {!messages.length ? (live?.active ? null : empty ?? <EmptyState title="暂无消息" />) : keyedItems.map(({item, key}) => {
         if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} disclosures={disclosures} />;
