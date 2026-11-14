@@ -206,6 +206,39 @@ function crossBlockSensitive(blocks, secrets) {
   return visibleText(joined, secrets, {maxLength: Infinity, preservePaths: true}).text !== joined
 }
 
+// Presentation only: retained Pi envelopes stay untouched.
+function routerSummary(text) {
+  let value
+  try { value = JSON.parse(text) } catch { return null }
+  const keys = ['currentIntent', 'unresolvedQuestions', 'referents', 'assumptions', 'evidenceRefs', 'cutoff']
+  if (!value || Object.keys(value).some(key => !keys.includes(key))
+    || typeof value.currentIntent !== 'string' || !Number.isSafeInteger(value.cutoff)
+    || !['unresolvedQuestions', 'referents', 'assumptions'].every(key => Array.isArray(value[key]) && value[key].every(row => typeof row === 'string'))
+    || !Array.isArray(value.evidenceRefs)) return null
+  return [value.currentIntent, ...[['待确认', value.unresolvedQuestions], ['关联信息', value.referents], ['假设', value.assumptions]]
+    .filter(([, rows]) => rows.length).map(([title, rows]) => '### ' + title + '\n' + rows.map(row => '- ' + row).join('\n'))].filter(Boolean).join('\n\n')
+}
+
+function scheduledPrompts(content, source) {
+  const occurrences = source.occurrences
+  if (!Array.isArray(occurrences) || !occurrences.length) return null
+  const matches = row => occurrences.some(item => item.id === row.schedule_id && item.occurrenceAt === row.occurrence_at)
+  try {
+    if (content.startsWith('[SCHEDULE REMINDER]\n')) {
+      const field = name => content.split('\n').find(line => line.startsWith(name + ': '))?.slice(name.length + 2)
+      const row = {schedule_id: JSON.parse(field('schedule_id_json')), occurrence_at: field('occurrence_at'), reminder_prompt: JSON.parse(field('reminder_prompt_json'))}
+      return occurrences.length === 1 && matches(row) && typeof row.reminder_prompt === 'string' ? [row.reminder_prompt] : null
+    }
+    if (content.startsWith('[SCHEDULE REMINDER BATCH]\n')) {
+      const line = content.split('\n').find(line => line.startsWith('reminders_json: '))
+      const rows = JSON.parse(line?.slice('reminders_json: '.length))
+      return Array.isArray(rows) && rows.length === occurrences.length && rows.every(row => matches(row) && typeof row.reminder_prompt === 'string')
+        && new Set(rows.map(row => row.schedule_id)).size === rows.length ? rows.map(row => row.reminder_prompt) : null
+    }
+  } catch { /* Keep unknown/older formats readable instead of discarding input. */ }
+  return null
+}
+
 async function projectEntries(snapshot, identity, secrets, calls = new Map()) {
   const {taskId, sessionId, conversationId, generation, triage} = identity
   const items = [], sources = new Set()
@@ -236,7 +269,8 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map()) {
         for (const [blockIndex, block] of (Array.isArray(blocks) ? blocks : []).entries()) {
           if (suppressBodies && (block.type === 'text' || block.type === 'thinking')) continue
           if (block.type === 'text' && typeof block.text === 'string') {
-            add(entry, 'assistant-' + index + '-' + blockIndex, 'assistant', block.text, {kind: 'message', ...(['stop', 'length', 'toolUse', 'error', 'aborted'].includes(message.stopReason) ? {status: message.stopReason} : {})}, message)
+            const summary = !taskId && !triage ? routerSummary(block.text) : null
+            add(entry, 'assistant-' + index + '-' + blockIndex, 'assistant', summary ?? block.text, {kind: summary !== null ? 'context-summary' : 'message', ...(['stop', 'length', 'toolUse', 'error', 'aborted'].includes(message.stopReason) ? {status: message.stopReason} : {})}, message)
           } else if (block.type === 'thinking' && typeof block.thinking === 'string' && block.redacted !== true) {
             add(entry, 'thinking-' + index + '-' + blockIndex, 'assistant', block.thinking, {kind: 'thinking'}, message)
           }
@@ -271,6 +305,10 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map()) {
             const originals = Array.isArray(input?.sources) ? input.sources.filter(row => typeof row?.text === 'string') : []
             originals.forEach((row, n) => sourceText(entry, 'source-' + index + '-' + n, {...row, text: '原始消息：\n' + row.text}))
           }
+        } else if (!triage && source?.kind === 'schedule') {
+          const content = texts(message.content)
+          const prompts = scheduledPrompts(content, source)
+          ;(prompts ?? [content]).forEach((prompt, n) => add(entry, 'scheduled-' + index + '-' + n, 'user', prompt, {kind: 'scheduled-trigger'}, message))
         } else if (triage && source?.kind === 'channel-triage') {
           if (source.conversationId !== conversationId) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
           const content = texts(message.content), prefix = '一级分诊请求：'

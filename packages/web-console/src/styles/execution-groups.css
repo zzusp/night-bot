@@ -175,3 +175,10 @@
 .pi-model-streaming .markdown > :last-child::after { content: ''; display: inline-block; width: 2px; height: 1em; margin-left: 3px; vertical-align: -.12em; background: currentColor; animation: pi-tool-opacity 1.2s ease-in-out infinite; }
 .pi-model-streaming:has(.thinking-message) .markdown { color: var(--board-text); }
 @media(prefers-reduced-motion:reduce) { .pi-model-streaming .markdown > :last-child::after { animation: none; } }
+
+/* Source labels distinguish system-admitted inputs from human messages. */
+.message-origin-label { color: var(--board-message-muted); font-size: 11px; font-weight: 500; line-height: 1.5; margin-bottom: 6px; }
+
+.scheduled-message-origin { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin: 0 2px 6px 0; color: var(--board-muted); font-size: 11px; line-height: 1.5; }
+.message.message-scheduled > .message-body { background: color-mix(in srgb, var(--board-message-user-bg) 48%, var(--board-panel)); }
+.message-scheduled .message-disclosure { margin-left: 0; margin-right: auto; padding-left: 0; color: var(--board-message-muted); }

@@ -165,6 +165,7 @@ export function observerPage(db, q, instance) {
   from = taskArchive?'observer_task_index i LEFT JOIN dynamic_tasks d ON d.id=i.id LEFT JOIN dynamic_archived_tasks a ON a.id=i.id':'observer_task_index i JOIN dynamic_tasks d ON d.id=i.id'; order = 'i.sort_key DESC,i.id'; body = `json_remove(${taskBody},'$.dialogue')`
   if (q.summary) body = `json_object('taskId',i.id,'title',json_extract(${taskBody},'$.title'),'state',i.state,'archivedAt',json_extract(${taskBody},'$.archivedAt'),'updatedAt',i.sort_key)`
   if(q.archived!=='all'){conditions.push('i.archived=?');args.push(q.archived?1:0)}
+  if(q.taskId){conditions.push('i.id=?');args.push(q.taskId)}
   if (q.state) { conditions.push(q.state === 'completed' ? "i.state IN ('completed','cancelled')" : 'i.state=?'); if(q.state !== 'completed') args.push(q.state) }
   if(q.topicId){conditions.push('EXISTS(SELECT 1 FROM observer_task_topics ref WHERE ref.task_id=i.id AND ref.topic_id=?'+(q.groupId?' AND ref.group_id=?':'')+')');args.push(q.topicId);if(q.groupId)args.push(q.groupId)}else if(q.groupId) { conditions.push('i.group_id=?'); args.push(q.groupId) }
  } else if (q.collection === 'executions') {

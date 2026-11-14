@@ -484,3 +484,12 @@ test('drain failure agrees with board state and upgrades existing active/archive
  assert.equal(observerPage(readOnly,{collection:'tasks',state:'waiting'},'test').total,1)
  assert.equal(queries.some(sql=>/CREATE|ALTER|DROP/.test(sql)),false)
 })
+
+test('exact task timing page never includes another task or excludes archived identity', t => {
+ const {put,page}=fixture(t,{archives:true});
+ put('tasks','new',{taskId:'new',status:'active',control:'active',drained:true,updatedAt:'2026-01-02T00:00:00Z'});
+ put('tasks','old',{taskId:'old',status:'completed',control:'active',drained:true,updatedAt:'2026-01-01T00:00:00Z',archivedAt:'2026-01-03T00:00:00Z'});
+ const result=page({collection:'tasks',taskId:'old',archived:'all',limit:1});
+ assert.equal(result.total,1);assert.deepEqual(result.items.map(row=>row.taskId),['old']);
+ assert.equal(page({collection:'tasks',taskId:'absent',archived:'all',limit:1}).total,0);
+});

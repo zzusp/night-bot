@@ -32,7 +32,7 @@ for (const source of [
       }
       const rect = (await frame.boundingBox())!
       expect(rect.x + rect.width).toBeLessThanOrEqual(width)
-      if (width > 1250) await expect(page.getByRole('complementary', {name: '任务与渠道概览'})).toBeVisible()
+      if (width > 1250) await expect(page.getByRole('complementary', {name: '任务动态'})).toBeVisible()
       await openMessageProcess(page)
       const popover = page.getByRole('dialog', {name: '消息处理过程', exact: true})
       await expect(popover.getByText('本会话的任务与安排', {exact: true})).toHaveCount(0)

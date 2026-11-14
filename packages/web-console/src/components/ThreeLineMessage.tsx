@@ -3,7 +3,7 @@ import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 // Measure rendered line boxes, not character counts: CJK, inline emphasis and
 // viewport changes must share the same three-line rule. Never rewrite the body.
-export function ThreeLineMessage({ children, text }: { children: ReactNode; text: string }) {
+export function ThreeLineMessage({ children, text, collapsedLabel = '展开' }: { children: ReactNode; text: string; collapsedLabel?: string }) {
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -48,6 +48,6 @@ export function ThreeLineMessage({ children, text }: { children: ReactNode; text
   }, [collapsed, text]);
   return <div className="three-line-message" data-collapsed={collapsed || undefined}>
     <div ref={ref} id={id} className="three-line-content" style={collapsed ? { maxHeight: cutoff!, overflow: 'hidden' } : undefined}>{children}</div>
-    {cutoff !== null && <button className="message-disclosure" type="button" aria-controls={id} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? '收起' : '展开'}{expanded ? <RiArrowUpSLine size={14} aria-hidden="true" /> : <RiArrowDownSLine size={14} aria-hidden="true" />}</button>}
+    {cutoff !== null && <button className="message-disclosure" type="button" aria-controls={id} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? '收起' : collapsedLabel}{expanded ? <RiArrowUpSLine size={14} aria-hidden="true" /> : <RiArrowDownSLine size={14} aria-hidden="true" />}</button>}
   </div>;
 }

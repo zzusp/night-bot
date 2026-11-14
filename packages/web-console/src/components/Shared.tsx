@@ -2,7 +2,7 @@ import {useAssistantBrand, brandGlyph} from './AssistantBrand';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiArrowRightSLine, RiLightbulbLine, RiFileTextLine, RiTerminalBoxLine, RiPencilLine, RiToolsLine } from '@remixicon/react';
+import { RiTimeLine, RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiArrowRightSLine, RiLightbulbLine, RiFileTextLine, RiTerminalBoxLine, RiPencilLine, RiToolsLine } from '@remixicon/react';
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
 import { ApiError, errorText, type ExecutionLive, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
 import { dateTime, useResource } from '../hooks';
@@ -95,7 +95,7 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
   const body = <>
     {query.error && <Notice error={query.error} stale={!!page} onRetry={reset} />}
     {offset && !page ? query.loading ? <Loading>正在读取正文…</Loading> : <p className="message-scope">这一段正文暂不可读，可回到首段重新获取。</p>
-      : plain && formatText ? formatText(text || '', offset) : plain ? <pre className="tool-content" tabIndex={0}><code>{text || '此记录没有可展示的文字。'}</code></pre> : message.role === 'user' ? <ThreeLineMessage key={offset} text={text || ''}><Markdown text={text || ''} /></ThreeLineMessage> : <Markdown text={text || ''} />}
+      : plain && formatText ? formatText(text || '', offset) : plain ? <pre className="tool-content" tabIndex={0}><code>{text || '此记录没有可展示的文字。'}</code></pre> : message.role === 'user' ? <ThreeLineMessage key={offset} text={text || ''} collapsedLabel={message.kind === 'scheduled-trigger' ? '显示更多' : undefined}><Markdown text={text || ''} /></ThreeLineMessage> : <Markdown text={text || ''} />}
     {((nextOffset != null && history) || offset > 0) && <nav className="body-pagination" aria-label="正文分页">
       <span>{text !== undefined ? `正文 ${text.length ? offset + 1 : offset}–${offset + text.length}${total !== undefined ? ` / ${total}` : ''}` : '正文读取中'}</span><div>
         <Button variant="ghost" disabled={!offset} onClick={() => setCursor(previous => ({ ...previous, offsets: previous.offsets.slice(0, -1) }))}>上一段</Button>
@@ -272,7 +272,7 @@ function ThinkingMessage({message, history, compact, live}: {message: Message; h
   return <details className="thinking-message" open={open} onToggle={event => {if(event.target === event.currentTarget)setOpen(event.currentTarget.open);}}><summary><span>{isThinking ? '思考中' : '模型思考'}</span>{isThinking && <LiveElapsed startedAt={live?.phaseStartedAt} />}<PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /></summary><MessageBody message={message} history={history} showSource={!compact} /></details>;
 }
 
-export function MessageList({ messages, pending, empty, footer, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat', older, live }: { live?: ExecutionLive; presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void; older?: OlderHistory }) {
+export function MessageList({ messages, pending, empty, footer, footerVersion, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat', older, live }: { live?: ExecutionLive; presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; footerVersion?: string | null; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void; older?: OlderHistory }) {
   const disclosures = useRef(new Map<string, boolean>()).current;
   const brand = useAssistantBrand();
   const compact = presentation === 'execution';
@@ -295,9 +295,16 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
     return keyed;
   }, [items]);
   const anchor = useRef<{id?: string; top: number; height: number; scroll: number} | null>(null);
+  // Keep the pre-insert anchor immutable until child layout measurements settle.
+  // Programmatic scroll events must not replace it with a displaced row.
+  const restoring = useRef<typeof anchor.current>(null);
+  const restoreFrame = useRef(0);
+  const previousFirst = useRef<string | undefined>(undefined);
+  useEffect(() => () => cancelAnimationFrame(restoreFrame.current), []);
+  const cancelRestore = () => { restoring.current = null; cancelAnimationFrame(restoreFrame.current); };
   const captureAnchor = () => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || restoring.current) return;
     const top = el.getBoundingClientRect().top;
     const row = [...el.querySelectorAll<HTMLElement>('[data-message-id]')].find(node => {
       const bounds = node.matches('details[open]') ? node.querySelector('summary')?.getBoundingClientRect() : node.getBoundingClientRect();
@@ -310,6 +317,25 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
+    const prepended = previousFirst.current !== undefined && messages.findIndex(message => message.id === previousFirst.current) > 0;
+    previousFirst.current = messages[0]?.id;
+    if (prepended && !following.current && anchor.current) {
+      cancelRestore();
+      restoring.current = {...anchor.current};
+      let frames = 0, stable = 0, lastHeight = -1;
+      const settle = () => {
+        const saved = restoring.current;
+        if (!saved || !ref.current) return;
+        const el = ref.current;
+        const row = [...el.querySelectorAll<HTMLElement>('[data-message-id]')].find(node => node.dataset.messageId === saved.id);
+        if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - saved.top;
+        stable = lastHeight === el.scrollHeight ? stable + 1 : 0;
+        lastHeight = el.scrollHeight;
+        if (++frames < 30 && stable < 3) restoreFrame.current = requestAnimationFrame(settle);
+        else {restoring.current = null; captureAnchor();}
+      };
+      restoreFrame.current = requestAnimationFrame(settle);
+    }
     if (following.current) element.scrollTo({ top: element.scrollHeight, behavior: 'instant' });
     else if (older && anchor.current) {
       const saved = anchor.current;
@@ -318,7 +344,7 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
       else element.scrollTop = saved.scroll + element.scrollHeight - saved.height;
     }
     captureAnchor();
-  }, [signature, pending]);
+  }, [signature, pending, footerVersion]);
   useEffect(() => {
     const element = ref.current;
     // Collapsed tool runs can turn 200 records into only a few lines. Fill the
@@ -328,10 +354,10 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
   useEffect(() => {
     const element = ref.current;
     if (!compact || !element) return;
-    let width = element.clientWidth, height = element.clientHeight;
+    let width = element.clientWidth, height = element.clientHeight, contentHeight = element.scrollHeight;
     const observer = new ResizeObserver(() => {
-      if (width === element.clientWidth && height === element.clientHeight) return;
-      width = element.clientWidth; height = element.clientHeight;
+      if (width === element.clientWidth && height === element.clientHeight && contentHeight === element.scrollHeight) return;
+      width = element.clientWidth; height = element.clientHeight; contentHeight = element.scrollHeight;
       if (following.current) element.scrollTop = element.scrollHeight;
       else if (anchor.current) {
         const saved = anchor.current;
@@ -341,8 +367,13 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
       captureAnchor();
     });
     observer.observe(element);
+    // Prepended bubbles measure their three-line cutoff after mounting. Their
+    // second layout (and later font/image changes) must retain the same row,
+    // not only the viewport resize handled above.
+    const column = element.querySelector('.message-column');
+    if (column) observer.observe(column);
     return () => observer.disconnect();
-  }, [compact]);
+  }, [compact, !!older]);
   useEffect(() => {
     const element = ref.current;
     if (!compact || !element) return;
@@ -354,19 +385,20 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
     element.addEventListener('toggle', changed, true);
     return () => element.removeEventListener('toggle', changed, true);
   }, [compact, older?.loading, older?.hasMore, older?.error, older?.disabled]);
-  const latest = () => { following.current = true; setShowLatest(false); ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: 'instant' }); };
-  return <div className={`transcript-wrap${compact ? ' execution-transcript' : ''}`}><div className="transcript" ref={ref} onScroll={() => {
+  const latest = () => { cancelRestore(); following.current = true; setShowLatest(false); ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: 'instant' }); };
+  return <div className={`transcript-wrap${compact ? ' execution-transcript' : ''}`}><div className="transcript" ref={ref} onWheel={cancelRestore} onTouchStart={cancelRestore} onPointerDown={cancelRestore} onKeyDown={cancelRestore} onScroll={() => {
+    if (restoring.current) return;
     const el = ref.current!; following.current = el.scrollHeight - el.scrollTop - el.clientHeight < (compact ? 60 : 90); setShowLatest(!following.current);
     captureAnchor();
     if (el.scrollTop < 160) loadOlder();
   }} role="region" aria-label="消息记录" tabIndex={0}>
-    <div className={`message-column${messages.length || live?.active ? '' : ' is-empty'}`}>
+    <div className={`message-column${messages.length || live?.active || footer ? '' : ' is-empty'}`}>
       {older && messages.length > 0 && <div className="execution-history-start" role="status">{older.error ? <Notice error={older.error} onRetry={older.onLoad} /> : older.loading ? '正在载入更早记录…' : older.hasMore ? '向上滚动载入更早记录' : '已到当前上下文的开始'}</div>}
       {!messages.length ? (live?.active ? null : empty ?? <EmptyState title="暂无消息" />) : keyedItems.map(({item, key}) => {
         if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} disclosures={disclosures} />;
         if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} disclosures={disclosures} />;
         const message = item.message;
-        return <article data-message-id={message.id} className={`message message-${message.role}${message.transient ? ' pi-live-message' : ''}${message.transient && live?.active && ((message.kind === 'thinking' && live.phase === 'thinking') || (message.kind !== 'thinking' && live.phase === 'text')) ? ' pi-model-streaming' : ''}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
+        return <article data-message-id={message.id} className={`message message-${message.role}${message.kind === 'scheduled-trigger' ? ' message-scheduled' : ''}${message.transient ? ' pi-live-message' : ''}${message.transient && live?.active && ((message.kind === 'thinking' && live.phase === 'thinking') || (message.kind !== 'thinking' && live.phase === 'text')) ? ' pi-model-streaming' : ''}${onInspect ? ' message-inspectable' : ''}`} key={message.id} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
           // The visually hidden native button makes the bubble keyboard accessible without adding a separate action label.
           const target = event.target as HTMLElement;
@@ -379,7 +411,8 @@ export function MessageList({ messages, pending, empty, footer, userLabel = '你
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>}
-          <div className="message-body">{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <ThinkingMessage message={message} history={history} compact={compact} live={live} /> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
+          {message.kind === 'scheduled-trigger' && <div className="scheduled-message-origin" aria-label="定时触发"><RiTimeLine size={12} aria-hidden="true" /><span>由已安排任务发送</span></div>}
+          <div className="message-body">{message.kind === 'context-summary' && <div className="message-origin-label">上下文摘要</div>}{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <ThinkingMessage message={message} history={history} compact={compact} live={live} /> : <MessageBody message={message} history={history} showSource={!compact} />}</div>
         </article>;
       })}
       {live?.active && !(live.phase === 'thinking' && messages.some(message => message.transient && message.kind === 'thinking')) && <LivePhase live={live} />}

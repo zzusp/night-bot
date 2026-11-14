@@ -566,7 +566,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (!task) return null
     const wakes = await query('wake.list', { taskId })
     const lifecycle = await readTaskLifecycle(task, wakes, id => query('receipt.get', { id }))
-    return { ...await taskDTO(task), executions: (await taskExecutions(taskId)).executions,
+    const timing = await query('observer.page', {collection: 'tasks', taskId, archived: 'all', limit: 1})
+    return { ...await taskDTO(task), durations: timing.items[0]?.durations, executions: (await taskExecutions(taskId)).executions,
       timeline: projectTaskTimeline(task, await query('execution.list', { taskId }), wakes, lifecycle),
       blockers: await query('task.blockers', { taskId }), notifications: await query('notification.list', { taskId }),
       }
