@@ -68,6 +68,19 @@ test('automatic review preserves an existing semantic name and its provenance, a
  const report=(await f.ctx.reflection.state(f.scope)).reviews[hash(f.event.id)]
  assert.equal(report.status,'done');assert.equal(report.lessons[0].memoryKey,'inspect-first-2');assert.equal(report.destinations[0].memory.key,'inspect-first-2')
  assert.equal(rows[1].source.messageId,report.eventId)
+ const projection=await f.ctx.reflection.inspectTask(await f.store.query({kind:'task.get',taskId:'task-one'}),{actorId:'owner'},{store:f.store})
+ assert.deepEqual(projection.changesComplete,{memory:true,skill:true})
+ assert.ok(projection.changes.find(row=>row.kind==='memory').entryId)
+ const again=await f.ctx.reflection.inspectTask(await f.store.query({kind:'task.get',taskId:'task-one'}),{actorId:'owner'},{store:f.store})
+ assert.equal(again.changes[0].entryId,projection.changes[0].entryId)
+ const task=await f.store.query({kind:'task.get',taskId:'task-one'}),change=projection.changes.find(row=>row.kind==='memory')
+ const body=await f.ctx.reflection.inspectTask(task,{actorId:'owner'},{store:f.store,changeId:change.id,version:change.version})
+ assert.equal(body.text,rows[1].text,'UI removal does not alter the complete stored body or paragraph boundaries')
+ await assert.rejects(f.ctx.reflection.inspectTask(task,{actorId:'owner'},{store:f.store,changeId:change.id,version:'0'.repeat(64)}),{code:'LEARNING_VERSION_STALE'})
+ // Authenticated actors share the Bot namespace; do not invent actor-private scopes.
+ const shared=await f.ctx.reflection.inspectTask(task,{actorId:'another-authenticated-reader'},{store:f.store,changeId:change.id,version:change.version})
+ assert.equal(shared.text,body.text)
+
 })
 
 test('interrupted commits retry their reserved names without new inference, overwrite or duplication',async t=>{

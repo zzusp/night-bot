@@ -3,12 +3,13 @@ import { createPortal } from 'react-dom';
 import { ApiError } from '../api';
 import { dateTime } from '../hooks';
 import { useExecutionStream } from '../useExecutionStream';
+import { TaskTokenUsage } from './TaskTokenUsage';
 import { AgentProgress } from './AgentProgress';
 import { Button, EmptyState } from './BoardPrimitives';
 import { Loading, Markdown, MessageList, Notice, Status } from './Shared';
 
 // 聊天与任务共用连续执行流、提交等待和版本冲突处理。
-export function ExecutionHistory({ endpoint, router = false, sessionKind, status, taskTitle, taskState, controlsTarget, conclusion, conclusionDuration }: { conclusionDuration?: string | null; conclusion?: string | null; taskTitle?: string; taskState?: string; endpoint: string; router?: boolean; sessionKind?: 'triage' | 'router'; status?: string; controlsTarget?: HTMLElement | null }) {
+export function ExecutionHistory({ endpoint, router = false, sessionKind, status, taskTitle, taskState, controlsTarget, conclusion, conclusionDuration, tokenTarget, taskError, taskRetry }: { tokenTarget?: HTMLElement | null; taskError?: Error | null; taskRetry?: () => void; conclusionDuration?: string | null; conclusion?: string | null; taskTitle?: string; taskState?: string; endpoint: string; router?: boolean; sessionKind?: 'triage' | 'router'; status?: string; controlsTarget?: HTMLElement | null }) {
   const query = useExecutionStream(endpoint);
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
@@ -40,6 +41,7 @@ export function ExecutionHistory({ endpoint, router = false, sessionKind, status
   const duplicateConclusion = lastMessage?.role === 'assistant' && lastMessage.kind !== 'thinking'
     && !lastMessage.truncated && lastMessage.text.trim() === conclusion?.trim();
   return <div className={`execution-history${router && (!query.data?.items.length || blocked) ? ' execution-history-empty' : ''}${sessionEmpty ? ' session-records-empty' : ''}`}>
+    {tokenTarget && createPortal(<TaskTokenUsage usage={!blocked && query.data?.status === 'ready' ? query.data.tokenUsage : undefined} error={query.error || taskError} stale={!blocked && !!query.data?.tokenUsage} onRetry={query.error ? latest : taskRetry ?? latest} />, tokenTarget)}
     {controlsTarget === undefined ? controls : controlsTarget ? createPortal(controls, controlsTarget) : null}
     {query.error && <Notice error={query.error} stale={!!query.data && !blocked} onRetry={latest} />}
     {!router && !blocked && query.data?.status === 'ready' && query.data.todos && <AgentProgress key={endpoint} items={query.data.todos.items} title={taskTitle} status={taskState} />}

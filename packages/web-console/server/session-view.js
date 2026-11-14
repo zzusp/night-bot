@@ -1,3 +1,4 @@
+import {nativeTokenUsage} from './token-usage.js'
 import {randomUUID} from 'node:crypto'
 import {triageSessionId} from '../../../src/channels/triage.js'
 import {setImmediate as yieldToIO} from 'node:timers/promises'
@@ -433,7 +434,7 @@ async function projectLive(snapshot, identity, secrets, raw, calls) {
 const liveProofs = new WeakMap()
 const liveValidity = Symbol('live-proof-validity')
 const proofTTL = 10000, proofLimit = 64
-async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = [], liveProof, proofScope, guard}) {
+async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = [], liveProof, proofScope, guard, includeTaskUsage = false}) {
   const {sessionId} = identity
   if (!sessionId || !persistence?.readNative) return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
   const identityKey = JSON.stringify(identity), secretKey = digest(JSON.stringify(secrets))
@@ -471,7 +472,7 @@ async function projection({base, identity, persistence, validIdentity, notStarte
     nextProof = randomUUID()
     proofs.set(nextProof, {scope:proofScope, identity:identityKey, secret:secretKey, digest:snapshot.journalDigest, calls:new Map(calls), expires:Date.now()+proofTTL})
   }
-  return {...base, status: 'ready', revision: currentRevision, ...taskTodos(snapshot, identity, secrets), items, ...(live ? {live} : {}), ...(nextProof ? {liveProof:nextProof} : {})}
+  return {...base, status: 'ready', revision: currentRevision, ...(includeTaskUsage ? {tokenUsage:nativeTokenUsage(snapshot.entries)} : {}), ...taskTodos(snapshot, identity, secrets), items, ...(live ? {live} : {}), ...(nextProof ? {liveProof:nextProof} : {})}
 }
 function sessionPage(value, options) {
   const {offset, limit} = pageOptions(options)
@@ -527,7 +528,7 @@ function messagePage(value, {messageId, offset = 0, limit = 16000, revision}) {
 async function taskProjection({task, ...options}) {
   const taskId = task.taskId, sessionId = task.session?.sessionId ?? task.sessionId
   const base = {taskId, sessionId: sessionId ?? null, scope: 'current-session-context', items: [], total: 0, nextOffset: null}
-  return projection({...options, base, identity: {taskId, sessionId}, notStarted: task.session?.sessionBound === false,
+  return projection({...options, includeTaskUsage:true, base, identity: {taskId, sessionId}, notStarted: (task.session?.sessionBound ?? task.sessionBound) === false,
     validIdentity: snapshot => {
       const identities = snapshot.audit?.filter(row => row.domain === 'task' && row.kind === 'identity') ?? []
       return identities.length === 1 && identities[0].version === 1 && identities[0].payload?.taskId === taskId && identities[0].payload?.sessionId === sessionId

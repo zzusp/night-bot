@@ -72,15 +72,16 @@ export interface TaskTodos {
   updatedAt: string | null; source: MessageSource;
 }
 export interface ExecutionLive {items: Message[]; active: boolean; revision?: string; phase?: 'waiting' | 'thinking' | 'text' | 'tool'; phaseStartedAt?: string}
-export interface ExecutionPage extends Page<Message> { liveProof?: string; historyChanged?: boolean; live?: ExecutionLive; status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number; checkpoint?: string | null; before?: string | null; hasNewer?: boolean; todos?: TaskTodos | null }
+export interface TokenUsage {input: number | null; output: number | null; cacheWrite: number | null; cacheRead: number | null; total: number | null; basis: 'committed-native-entries'}
+export interface ExecutionPage extends Page<Message> { tokenUsage?: TokenUsage; liveProof?: string; historyChanged?: boolean; live?: ExecutionLive; status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number; checkpoint?: string | null; before?: string | null; hasNewer?: boolean; todos?: TaskTodos | null }
 export interface LearningSource { taskId: string; eventId: string; reviewId: string }
 export interface TaskReview { reviewId: string; taskId: string; status: 'done' | 'skipped' | 'failed'; summary: string; at: string; eventId: string }
 export interface LearningChange {
-  id: string; reviewId: string; taskId: string; kind: 'memory' | 'skill'; action: 'upsert' | 'current-version';
+  id: string; entryId?: string; reviewId: string; taskId: string; kind: 'memory' | 'skill'; action: 'upsert' | 'current-version';
   status: 'applied' | 'candidate' | 'not-applied'; scope: 'bot'|'personal' | 'group' | 'project'; name: string;
   version: string | number; canRead: boolean; source: LearningSource;
 }
-export interface TaskLearning { status: 'ready' | 'unavailable'; reason?: string; revision?: string; reviews: TaskReview[] | null; changes: LearningChange[] | null }
+export interface TaskLearning { changesComplete?: {memory: boolean; skill: boolean}; status: 'ready' | 'unavailable'; reason?: string; revision?: string; reviews: TaskReview[] | null; changes: LearningChange[] | null }
 export interface LearningBody { id: string; kind: 'memory' | 'skill'; text: string; version: string | number; source: LearningSource; redacted: boolean; truncated?: boolean }
 export interface Overview { tasks: Page<Task> | null; running: Page<Task> | null; waiting: Page<Task> | null; channels: Channel[] | null; conversations: Conversation[] | null; timestamp?: string; sectionErrors?: Record<string, string> }
 

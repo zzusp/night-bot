@@ -23,20 +23,15 @@ test('refresh actions remain in their relevant list and configuration controls',
 
 test('navigation and detail identity remain; first content sections follow the page h1', () => {
   assert.match(source('App.tsx'), /<h1 ref=\{titleRef\} tabIndex=\{-1\}>\{title\}<\/h1>/)
-  assert.match(source('TasksPage.tsx'), /<h2(?:\s[^>]*)?>\{task.title \|\| '未命名任务'\}<\/h2>/)
+  assert.match(source('components/TaskOverview.tsx'), /<h2(?:\s[^>]*)?>\{task.title \|\| '未命名任务'\}<\/h2>/)
   assert.match(source('EvolutionPage.tsx'), /<nav className="filter-tabs" aria-label="自进化记录类型"/)
   assert.match(source('SettingsPage.tsx'), /<h2>助手外观<\/h2>/)
   assert.match(source('components/SecretEditor.tsx'), /新的\{label\}/)
 })
 
 
-test('task transcript omits duplicate top and bottom blocks while compact execution facts remain in the rail', () => {
-  assert.doesNotMatch(source('TasksPage.tsx'), /task-title-dock|task-records-heading/)
-  assert.doesNotMatch(source('TasksPage.tsx'), /全部任务|task-back-link/)
-  assert.doesNotMatch(source('styles/task-workspace.css'), /task-back-link/)
-  assert.match(source('TasksPage.tsx'), /<aside[^>]*className="task-info-rail"[^>]*>\s*<nav className="filter-tabs task-info-nav"/)
-  assert.match(source('App.tsx'), /path: 'tasks', label: '任务'/)
-  assert.match(source('TasksPage.tsx'), /className="task-info-title"/)
-  assert.match(source('TasksPage.tsx'), /controlsTarget=\{recordControls\}/)
-  assert.match(source('TasksPage.tsx'), /className="task-execution-overview"[^\n]+hidden=\{tab !== 'execution'\}/)
+test('task rail has no classification tabs and preserves primary transcript, preserving primary transcript', () => {
+  assert.doesNotMatch(source('TasksPage.tsx'), /task-title-dock|task-records-heading|全部任务|task-info-nav|TaskExecutionDetails|LearningChanges|useRoute|recordControls/)
+  assert.match(source('TasksPage.tsx'), /<TaskOverview task=\{task\} \/><div ref=\{setTokenTarget\} \/><TaskLearningSummary key=\{id\} taskId=\{id\} \/>/)
+  assert.match(source('TasksPage.tsx'), /controlsTarget=\{null\}/)
 })

@@ -10,11 +10,17 @@ test('TODO lane follows canvas width, retains choice during polling and exposes 
       items:[{id:'request',role:'user',text:'请核对当前方案，逐项检查任务中的全部验收要求。'.repeat(4)}, {id:'answer',role:'assistant',text:'正在核对配置与执行结果，随后整理验证记录。'}, ...Array.from({length:40}, (_,i)=>({id:`history-${i}`,role:'assistant',text:`已完成第 ${i+1} 项资料核对，正在整理来源和执行结果。`}))],
       todos:{items:Array.from({length:15},(_,i)=>({text:`${i+1}. 核对配置与执行记录，整理这一项的结果及后续安排。`,status:i<3?'completed':i===3?'in_progress':'pending'}))}}});
   });
-  await page.setViewportSize({width:1920,height:960});
+  await page.setViewportSize({width:2560,height:960});
   await page.goto('/#/tasks/task-research');
   await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
   await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
   const card=page.locator('.agent-progress');
+  const expectCentered = async () => {
+    const canvas = (await page.locator('.task-dialogue .execution-history').boundingBox())!;
+    const column = (await page.locator('.message-column').boundingBox())!;
+    expect(Math.abs(column.x + column.width / 2 - canvas.x - canvas.width / 2)).toBeLessThanOrEqual(1);
+  };
+  await expectCentered();
   await expect(card).toHaveAttribute('open','');
   const bounds=await page.locator('.message-column').boundingBox();
   const box=(await card.boundingBox())!;
@@ -39,13 +45,27 @@ test('TODO lane follows canvas width, retains choice during polling and exposes 
   const rail=page.getByRole('complementary',{name:'任务详情'});
   await page.getByRole('button',{name:'隐藏任务面板',exact:true}).click();
   await expect(rail).toBeHidden();
+  await expectCentered();
   await expect(page.getByRole('button',{name:'显示任务面板',exact:true})).toHaveAttribute('aria-expanded','false');
   await page.getByRole('button',{name:'显示任务面板',exact:true}).click();
   await expect(rail).toBeVisible();
-  for (const width of [1440, 1024, 390]) {
+  for (const width of [1920, 1440, 1024, 390]) {
     await page.setViewportSize({width,height:960});
     await expect(card).not.toHaveAttribute('open','');
+    await expectCentered();
+    await scroller.evaluate(el => { el.scrollTop = 0; });
+    const firstMessage = page.locator('.message-user').first();
+    const firstBox = (await firstMessage.boundingBox())!;
+    const closedBox = (await card.boundingBox())!;
+    expect(firstBox.y).toBeGreaterThanOrEqual(closedBox.y + closedBox.height);
+    const disclosure = firstMessage.locator('.message-disclosure');
+    if (await disclosure.count()) {
+      await disclosure.click();
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+      await disclosure.click();
+    }
     await card.locator('summary').click();
+    await expectCentered();
     await expect(card).toHaveAttribute('open','');
     const b=(await card.boundingBox())!;
     expect(b.x).toBeGreaterThanOrEqual(0);
@@ -53,9 +73,17 @@ test('TODO lane follows canvas width, retains choice during polling and exposes 
     expect(b.height).toBeGreaterThan(350);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await page.screenshot({path:test.info().outputPath(`task-${width}-expanded.png`)});
-    await card.locator('summary').click();
+    // Overlay is user-requested; Escape restores access to covered message controls.
+    await page.keyboard.press('Escape');
+    await expect(card).not.toHaveAttribute('open','');
+    await expect(card.locator('summary')).toBeFocused();
+    if (await disclosure.count()) {
+      await disclosure.click();
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+      await disclosure.click();
+    }
   }
-  await page.setViewportSize({width:1920,height:960});
+  await page.setViewportSize({width:2560,height:960});
   await expect(card).toHaveAttribute('open','');
   await page.emulateMedia({reducedMotion:'reduce'});
   await page.evaluate(()=>document.documentElement.dataset.theme='dark');

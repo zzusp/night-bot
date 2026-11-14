@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { mdiConsoleLine } from '@mdi/js';
 import { PiIcon } from './PiIcon';
 import { RiArrowRightLine, RiCheckLine, RiArrowDownSLine } from '@remixicon/react';
@@ -14,7 +14,7 @@ export function AgentProgress({ items, title, status }: { items: ProgressItem[];
   useLayoutEffect(() => {
     const canvas = container.current?.parentElement;
     if (!canvas) return;
-    const measure = () => setWide(canvas.clientWidth >= 1120);
+    const measure = () => setWide(canvas.clientWidth >= 1496);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(canvas);
@@ -22,6 +22,23 @@ export function AgentProgress({ items, title, status }: { items: ProgressItem[];
   }, []);
   useLayoutEffect(() => setExpanded(null), [wide]);
   const open = expanded ?? wide;
+  useEffect(() => {
+    if (wide || !open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setExpanded(false);
+      container.current?.querySelector('summary')?.focus();
+    };
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !container.current?.contains(event.target)) setExpanded(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    document.addEventListener('pointerdown', closeOutside);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      document.removeEventListener('pointerdown', closeOutside);
+    };
+  }, [open, wide]);
   const completed = items.filter(item => item.status === 'completed').length;
   const remaining = items.length - completed;
   const active = items.find(item => item.status === 'in_progress');

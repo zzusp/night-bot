@@ -40,7 +40,7 @@ test('任务待办清单与模型思考展示真实记录，更新和撤权不�
  for(const [index,status] of ['已完成','进行中','待处理'].entries()) await expect(cards.nth(index)).toContainText(status)
  await expect(cards.nth(1)).toContainText('核对来源与结论')
  const thought=page.locator('.thinking-message'); await expect(thought).not.toHaveAttribute('open')
- await thought.locator(':scope > summary').click(); await expect(thought).toContainText('先比较任务材料中的来源，再检查结论是否有证据支持。')
+ await thought.locator(':scope > summary').click(); await expect(todos.locator('.agent-progress')).not.toHaveAttribute('open',''); await expect(thought).toContainText('先比较任务材料中的来源，再检查结论是否有证据支持。')
  const tool=page.locator('.message-tool'); await tool.locator('.pi-tool-step > summary').click()
  await expect(tool).toContainText('/fixture/materials/research.md'); await expect(tool).toContainText('已读取 3 份资料')
  const snapshot=await (await page.request.get('/api/tasks/task-research/session')).json()
@@ -48,10 +48,13 @@ test('任务待办清单与模型思考展示真实记录，更新和撤权不�
  expect(JSON.stringify(snapshot)).not.toMatch(/SECRET_ARGUMENT_FIXTURE|SECRET_SIGNATURE_FIXTURE/)
  for(const [width,theme] of [[1440,'light'],[390,'light'],[1440,'dark'],[390,'dark']] as const){
   await page.setViewportSize({width,height:960}); await page.evaluate(value=>document.documentElement.dataset.theme=value,theme)
+  if(!await todos.locator('.agent-progress').evaluate(el=>el.hasAttribute('open')))await todos.locator('summary').click()
+  await expect(todos.locator('.agent-progress')).toHaveAttribute('open','')
   const geometry=await todos.locator('.agent-progress').evaluate(el=>({width:el.getBoundingClientRect().width,border:getComputedStyle(el).borderRadius,background:getComputedStyle(el).backgroundColor}))
   await expect(page.locator('.task-dialogue .conversation-topbar')).toHaveCount(0)
-  await expect(page.locator('.task-workspace .conversation-topbar').getByRole('heading', {level:1})).toBeVisible()
-  await expect(page.locator('.main-frame > .topbar').getByRole('button', {name:'刷新概览'})).toBeVisible()
+  await expect(page.locator('.main-frame > .workspace-topbar').getByRole('heading', {level:1})).toBeVisible()
+  await expect(page.locator('.main-frame > .workspace-topbar').getByRole('heading', {level:1})).toHaveText('任务详情')
+  await expect(page.locator('.main-frame > .workspace-topbar').getByRole('button', {name:'刷新概览'})).toBeVisible()
   expect(geometry.width).toBeLessThanOrEqual(340)
   await expect(page.locator('.task-dialogue .execution-todos')).toHaveCount(1)
   await expect(page.locator('.task-info-rail .execution-todos')).toHaveCount(0)
@@ -73,7 +76,7 @@ test('任务待办清单与模型思考展示真实记录，更新和撤权不�
   await page.screenshot({path:test.info().outputPath(`execution-records-${width}-${theme}.png`),fullPage:true})
  }
  await todos.locator('summary').click()
- await page.getByRole('link', {name:'复盘', exact:true}).click()
+ await page.getByRole('button', {name:'隐藏任务面板', exact:true}).click()
  await expect(cards.first()).not.toBeVisible()
  await expect(page.getByRole('region',{name:'任务待办'})).toHaveCount(1)
  let denied=false
