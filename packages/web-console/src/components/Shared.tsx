@@ -295,9 +295,16 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
     return keyed;
   }, [items]);
   const anchor = useRef<{id?: string; top: number; height: number; scroll: number} | null>(null);
+  // Keep the pre-insert anchor immutable until child layout measurements settle.
+  // Programmatic scroll events must not replace it with a displaced row.
+  const restoring = useRef<typeof anchor.current>(null);
+  const restoreFrame = useRef(0);
+  const previousFirst = useRef<string | undefined>(undefined);
+  useEffect(() => () => cancelAnimationFrame(restoreFrame.current), []);
+  const cancelRestore = () => { restoring.current = null; cancelAnimationFrame(restoreFrame.current); };
   const captureAnchor = () => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || restoring.current) return;
     const top = el.getBoundingClientRect().top;
     const row = [...el.querySelectorAll<HTMLElement>('[data-message-id]')].find(node => {
       const bounds = node.matches('details[open]') ? node.querySelector('summary')?.getBoundingClientRect() : node.getBoundingClientRect();
@@ -310,6 +317,25 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
+    const prepended = previousFirst.current !== undefined && messages.findIndex(message => message.id === previousFirst.current) > 0;
+    previousFirst.current = messages[0]?.id;
+    if (prepended && !following.current && anchor.current) {
+      cancelRestore();
+      restoring.current = {...anchor.current};
+      let frames = 0, stable = 0, lastHeight = -1;
+      const settle = () => {
+        const saved = restoring.current;
+        if (!saved || !ref.current) return;
+        const el = ref.current;
+        const row = [...el.querySelectorAll<HTMLElement>('[data-message-id]')].find(node => node.dataset.messageId === saved.id);
+        if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - saved.top;
+        stable = lastHeight === el.scrollHeight ? stable + 1 : 0;
+        lastHeight = el.scrollHeight;
+        if (++frames < 30 && stable < 3) restoreFrame.current = requestAnimationFrame(settle);
+        else {restoring.current = null; captureAnchor();}
+      };
+      restoreFrame.current = requestAnimationFrame(settle);
+    }
     if (following.current) element.scrollTo({ top: element.scrollHeight, behavior: 'instant' });
     else if (older && anchor.current) {
       const saved = anchor.current;
@@ -327,7 +353,7 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
   }, [signature, older?.loading, older?.hasMore, older?.disabled]);
   useEffect(() => {
     const element = ref.current;
-    if ((!compact && !older) || !element) return;
+    if (!compact || !element) return;
     let width = element.clientWidth, height = element.clientHeight, contentHeight = element.scrollHeight;
     const observer = new ResizeObserver(() => {
       if (width === element.clientWidth && height === element.clientHeight && contentHeight === element.scrollHeight) return;
@@ -359,8 +385,9 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
     element.addEventListener('toggle', changed, true);
     return () => element.removeEventListener('toggle', changed, true);
   }, [compact, older?.loading, older?.hasMore, older?.error, older?.disabled]);
-  const latest = () => { following.current = true; setShowLatest(false); ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: 'instant' }); };
-  return <div className={`transcript-wrap${compact ? ' execution-transcript' : ''}`}><div className="transcript" ref={ref} onScroll={() => {
+  const latest = () => { cancelRestore(); following.current = true; setShowLatest(false); ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: 'instant' }); };
+  return <div className={`transcript-wrap${compact ? ' execution-transcript' : ''}`}><div className="transcript" ref={ref} onWheel={cancelRestore} onTouchStart={cancelRestore} onPointerDown={cancelRestore} onKeyDown={cancelRestore} onScroll={() => {
+    if (restoring.current) return;
     const el = ref.current!; following.current = el.scrollHeight - el.scrollTop - el.clientHeight < (compact ? 60 : 90); setShowLatest(!following.current);
     captureAnchor();
     if (el.scrollTop < 160) loadOlder();
