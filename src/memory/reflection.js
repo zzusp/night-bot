@@ -1,6 +1,8 @@
 import {learningCoverage} from './learning-coverage.js'
 import {contentSnapshot} from './previous.js'
 import {learnedSkillSupported} from './evolution.js'
+import {generateLearnedSkill,loadBundledCreator} from './skill-generation.js'
+import {isDeepStrictEqual} from 'node:util'
 import {officialReflectionText} from './reflection-inference.js'
 import {reflectionInput} from './reflection-input.js'
 import {assignReflectionMemoryKeys,reflectionMemoryKey,reviewMemoryKeys,reviewLessonMemoryKey,reflectionRetrySupported} from './reflection-keys.js'
@@ -64,7 +66,7 @@ export default class Reflection extends Service {
       if(previous?.retryAt>Date.now())return false
       const attempts=(previous?.attempts??0)+1
       let inputRecord=previous?.input,input,snapshot,lessons=previous?.lessons,preparationError
-      const timeout=AbortSignal.timeout(30000),signal=AbortSignal.any([this.abort.signal,timeout])
+      const signal=this.abort.signal,inferenceSignal=AbortSignal.any([signal,AbortSignal.timeout(30000)])
       try{
         const executions=await source.store.query({kind:'execution.list',taskId:task.taskId}),operations=await source.store.query({kind:'operation.list',taskId:task.taskId})
         input=reflectionInput(task,event,executions,operations);const known=new Set(input.facts.map(f=>f.id))
@@ -73,8 +75,8 @@ export default class Reflection extends Service {
         if(!lessons){
           const official=this.host.get('nativePiProvider')?.official
           if(typeof official?.resolve!=='function')throw failure('REFLECTION_OFFICIAL_MODEL_REQUIRED')
-          const resolved=await official.resolve({...source.model,signal},source.credentials===undefined?undefined:{credentials:source.credentials})
-          const raw=await officialReflectionText(resolved,input,{signal,groupResponsibility:source.responsibilityFor?.(task.groupId)??''})
+          const resolved=await official.resolve({...source.model,signal:inferenceSignal},source.credentials===undefined?undefined:{credentials:source.credentials})
+          const raw=await officialReflectionText(resolved,input,{signal:inferenceSignal,groupResponsibility:source.responsibilityFor?.(task.groupId)??''})
           const output=JSON.parse(raw);if(!Array.isArray(output.lessons)||output.lessons.length>3)throw failure('REFLECTION_INVALID')
           const keys=new Set()
           lessons=output.lessons.map(lesson=>{
@@ -83,6 +85,13 @@ export default class Reflection extends Service {
             const value={key:lesson.key,summary:checkedText(lesson.summary),why:checkedText(lesson.why),howToApply:checkedText(lesson.howToApply),evidenceIds:lesson.evidenceIds}
             if(lesson.skill){if(!Array.isArray(lesson.skill.steps)||!lesson.skill.steps.length||lesson.skill.steps.length>8)throw failure('REFLECTION_SKILL_INVALID');value.skill={steps:lesson.skill.steps.map(brief),reason:brief(lesson.skill.reason),applicability:brief(lesson.skill.applicability??'Not established'),evidenceBacked:lesson.skill.evidenceBacked===true}}return value
           })
+        }
+        for(const lesson of lessons){
+          if(!lesson.skill||lesson.applied||lesson.generated)continue
+          const prior=initial.skills[lesson.key]
+          // 候选与原始证据交给实际 creator；慢生成不占用共享发布锁。
+          lesson.generated=await this.generateSkill({key:lesson.key,candidate:lesson.skill,evidence:input,source:{eventId:event.id,taskId:task.taskId},previous:prior?{body:prior.body,steps:prior.steps,applicability:prior.applicability,revision:prior.revision}:null},{model:source.model,credentials:source.credentials,signal:this.abort.signal})
+          lesson.generated.expectedRevision=prior?.revision??initial.skillRevisions?.[lesson.key]??0
         }
       }catch(error){preparationError=error}
       const report=await withLock(join(directory,'.lock'),async()=>{
@@ -96,11 +105,11 @@ export default class Reflection extends Service {
           await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(revoked,null,2)+'\n')
           await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');return revoked
         }
+        if(lessons)lessons=assignReflectionMemoryKeys(lessons,snapshot?.entries??[],state.reviews)
         try{
         if(preparationError)throw preparationError
         signal.throwIfAborted()
         let scopeRevision=snapshot.revision
-        lessons=assignReflectionMemoryKeys(lessons,snapshot.entries,state.reviews)
         // Commit key reservations before any memory/skill effects so retries use
         // the same receipt identity even after a crash or an intervening forget.
         state.reviews[id]={memoryKeyVersion:1,input:inputRecord,status:'failed',code:'REFLECTION_INCOMPLETE',attempts,eventId:event.id,taskId:task.taskId,lessons}
@@ -108,6 +117,7 @@ export default class Reflection extends Service {
         for(const lesson of lessons){
           signal.throwIfAborted()
           if(lesson.applied){if(lesson.skill)await this.publishSkill(scope,lesson.key,state);continue}
+          if(lesson.skill&&(state.skills[lesson.key]?.revision??state.skillRevisions?.[lesson.key]??0)!==lesson.generated.expectedRevision){delete lesson.generated;throw failure('REFLECTION_REVISION_CONFLICT')}
           const memoryKey=reflectionMemoryKey(lesson)
           const previousWrite=lesson.memoryWrite
           lesson.memoryWrite='uncertain'
@@ -127,7 +137,7 @@ export default class Reflection extends Service {
             // Repeated completions/versions of the same task do not count twice.
             const active=lesson.skill.evidenceBacked&&lesson.skill.applicability!=='Not established'&&(prior?.active||Object.values(state.skills).filter(s=>s.active).length<20)
             const supports=[...(prior?.supports??[]).filter(row=>row.memoryKey!==memoryKey),{taskId:task.taskId,memoryKey}].slice(-40)
-            const skill={signature,supports,taskIds:observations.slice(-20),memoryKeys:[...new Set([...(prior?.memoryKeys??[]),memoryKey])],active,steps:lesson.skill.steps,reason:lesson.skill.reason,applicability:lesson.skill.applicability,revision:Math.max(prior?.revision??0,state.skillRevisions?.[lesson.key]??0)+1,updatedAt:new Date().toISOString()}
+            const skill={signature,supports,taskIds:observations.slice(-20),memoryKeys:[...new Set([...(prior?.memoryKeys??[]),memoryKey])],active,steps:lesson.skill.steps,reason:lesson.skill.reason,applicability:lesson.generated.description,body:lesson.generated.body,generation:lesson.generated.generation,revision:Math.max(prior?.revision??0,state.skillRevisions?.[lesson.key]??0)+1,updatedAt:new Date().toISOString()}
             if(prior)skill.previous=contentSnapshot(this.renderSkill(scope,lesson.key,prior,scopeRevision).replace(/^NIGHT_LEARNED_SCOPE=[^\n]*\n?/gm,''),prior.revision,prior.updatedAt)
             state.skills[lesson.key]=skill;state.skillRevisions??={};state.skillRevisions[lesson.key]=skill.revision
           }
@@ -139,7 +149,7 @@ export default class Reflection extends Service {
         }
         state.reviews[id]={memoryKeyVersion:1,input:inputRecord,status:lessons.length?'done':'skipped',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons}
         this.host.skills.invalidateCache()
-      }catch(error){state.reviews[id]={...state.reviews[id],memoryKeyVersion:1,input:inputRecord,status:'failed',attempts,eventId:event.id,taskId:task.taskId,code:error.code??'REFLECTION_MODEL_FAILED',retryAt:Date.now()+30000};this.lastError=state.reviews[id].code;this.host.logger.warn('reflection: '+this.lastError)}
+      }catch(error){state.reviews[id]={...state.reviews[id],...lessons?{lessons}:{},memoryKeyVersion:1,input:inputRecord,status:'failed',attempts,eventId:event.id,taskId:task.taskId,code:error.code??'REFLECTION_MODEL_FAILED',retryAt:Date.now()+30000};this.lastError=state.reviews[id].code;this.host.logger.warn('reflection: '+this.lastError)}
       const report={...state.reviews[id],destinations:(state.reviews[id].lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:reflectionMemoryKey(lesson)},...state.skills[lesson.key]?.active?{skill:{scope,key:lesson.key,revision:state.skills[lesson.key].revision}}:{}}))};state.reviews[id]=report;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(report,null,2)+'\n');await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');return report
       })
       if(!report)return false
@@ -164,12 +174,12 @@ export default class Reflection extends Service {
     return ['---','name: learned-'+key,'description: '+JSON.stringify(value.applicability),'---',
       'NIGHT_LEARNED_SCOPE='+scope.kind+'/'+scope.id+';revision='+revision,'',
       ...value.origin==='router'?['Source message: '+value.source.messageId]:[],'',
-      ...value.steps.map((step,i)=>(i+1)+'. '+step),''].join('\n')
+      ...value.body!==undefined?[value.body]:value.steps.map((step,i)=>(i+1)+'. '+step),''].join('\n')
   }
   async readSkills(scope,{key}={}){
     if(key!==undefined&&!validKey(key))throw failure('REFLECTION_SKILL_INVALID')
     const state=await this.state(scope),entries=await this.supportEntries(scope,state)
-    return {...key!==undefined?{revision:state.skills[key]?.revision??state.skillRevisions?.[key]??0}:{},entries:Object.entries(state.skills).filter(([name])=>key===undefined||name===key).map(([name,value])=>({key:name,name:'learned-'+name,revision:value.revision,active:value.active&&learnedSkillSupported(value,entries),origin:value.origin??'task-reflection',source:value.source??null,applicability:value.applicability,...key!==undefined?{steps:value.steps,reason:value.reason}:{}}))}
+    return {...key!==undefined?{revision:state.skills[key]?.revision??state.skillRevisions?.[key]??0}:{},entries:Object.entries(state.skills).filter(([name])=>key===undefined||name===key).map(([name,value])=>({key:name,name:'learned-'+name,revision:value.revision,active:value.active&&learnedSkillSupported(value,entries),origin:value.origin??'task-reflection',source:value.source??null,applicability:value.applicability,...key!==undefined?{steps:value.steps,reason:value.reason,...value.body!==undefined?{body:value.body}:{},...value.generation?{generation:value.generation}:{}}:{}}))}
   }
   async publishSkill(scope,key,state){
     const directory=this.directory(scope),value=state.skills[key],generation=(await this.host.memory.store.index(scope)).revision
@@ -179,40 +189,65 @@ export default class Reflection extends Service {
     else await rm(join(directory,'skills',key),{recursive:true,force:true})
     if(await readRegular(path)!==(value?.active?this.renderSkill(scope,key,value,generation):undefined))throw failure('REFLECTION_WRITE_UNCONFIRMED')
   }
+  creator(){return loadBundledCreator()}
+  async generateSkill(input,{model,credentials,signal}={}){
+    const official=this.host.get('nativePiProvider')?.official
+    if(typeof official?.resolve!=='function')throw failure('REFLECTION_OFFICIAL_MODEL_REQUIRED')
+    signal=AbortSignal.any([signal,this.abort?.signal].filter(Boolean))
+    const resolved=await official.resolve({...model??this.host.get('agentDefaultModel')?.currentSelection(),signal},credentials===undefined?undefined:{credentials})
+    return generateLearnedSkill(resolved,input,{signal,loadCreator:()=>this.creator()})
+  }
   async mutateSkill(scope,args){
     const {action,key,source,operationId}=args
     if(!['upsert','delete'].includes(action)||!validKey(key)||typeof operationId!=='string'||!operationId.trim())throw failure('REFLECTION_SKILL_INVALID')
     const content=action==='upsert'?{steps:Array.isArray(args.steps)&&args.steps.length?args.steps.map(checkedText):null,reason:checkedText(args.reason),applicability:checkedText(args.applicability)}:null
     if(action==='upsert'&&!content.steps)throw failure('REFLECTION_SKILL_INVALID')
     const operation=hash(operationId),inputHash=hash(JSON.stringify({action,key,content,expectedRevision:args.expectedRevision,source:{sessionId:source.sessionId,messageId:source.messageId,actor:source.actor,quoteSha256:source.quoteSha256}})),directory=this.directory(scope)
-    return withLock(join(directory,'.lock'),async()=>{
-      await args.validate?.()
-      const state=await this.state(scope),prior=state.skills[key],receipt=state.mutations?.[operation],currentRevision=prior?.revision??state.skillRevisions?.[key]??0
-      if(receipt&&receipt.inputHash!==inputHash)throw failure('REFLECTION_OPERATION_CONFLICT')
-      if(!receipt&&args.expectedRevision!==undefined&&currentRevision!==args.expectedRevision)throw failure('REFLECTION_REVISION_CONFLICT')
-      let committed=!!receipt
-      try{
-        if(!receipt){
-          const now=new Date().toISOString(),revision=currentRevision+1
-          // 提交新版本前撤销旧加载内容；删除保留版本，防止同名重建的 ABA 冲突。
-          const generation=await this.host.memory.store.transaction(scope,async state=>{await args.validate?.();state.mark();return ()=>state.meta.revision})
-          await args.validate?.()
-          if(action==='upsert'){
-            const value={...content,signature:hash(JSON.stringify(content.steps)),supports:[],taskIds:[],memoryKeys:[],active:true,origin:'router',source,provenance:args.provenance,revision,updatedAt:now}
-            if(prior)value.previous=contentSnapshot(this.renderSkill(scope,key,prior,generation).replace(/^NIGHT_LEARNED_SCOPE=[^\n]*\n?/gm,''),prior.revision,prior.updatedAt)
-            state.skills[key]=value
-          }else delete state.skills[key]
-          state.skillRevisions??={};state.skillRevisions[key]=revision
-          state.mutations??={};state.mutations[operation]={inputHash,action,key,revision,source,at:now}
-          await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');committed=true
-        }
-        this.host.skills.invalidateCache()
-        // 重试只修复当前状态的派生文件，绝不重放旧回执覆盖后来的修改或删除。
-        await this.publishSkill(scope,key,state)
-        const saved=await this.state(scope)
-        if(saved.mutations?.[operation]?.inputHash!==inputHash)throw failure('REFLECTION_WRITE_UNCONFIRMED')
-      }catch(cause){if(committed||cause.committed)throw Object.assign(failure('REFLECTION_WRITE_UNCONFIRMED'),{committed:true,cause});throw cause}
-      return {ok:true,persisted:true,...receipt?{duplicate:true}:{},action,key,revision:state.mutations[operation].revision,currentRevision:state.skills[key]?.revision??state.skillRevisions?.[key]??0,active:!!state.skills[key]?.active}
+    return withLock(join(directory,'mutation-locks',operation),async()=>{
+      const before=await withLock(join(directory,'.lock'),async()=>{
+        await args.validate?.()
+        const state=await this.state(scope),receipt=state.mutations?.[operation],prior=state.skills[key],revision=prior?.revision??state.skillRevisions?.[key]??0
+        const known=receipt??state.generationFailures?.[operation]
+        if(known&&known.inputHash!==inputHash)throw failure('REFLECTION_OPERATION_CONFLICT')
+        if(!receipt&&args.expectedRevision!==undefined&&revision!==args.expectedRevision)throw failure('REFLECTION_REVISION_CONFLICT')
+        return {receipt,prior,revision,forgetGeneration:state.forgetGeneration??0}
+      })
+      let generated
+      if(action==='upsert'&&!before.receipt){
+        try{generated=await this.generateSkill({key,candidate:content,source,previous:before.prior?{body:before.prior.body,steps:before.prior.steps,applicability:before.prior.applicability,revision:before.revision}:null},{model:args.model,signal:args.signal??this.abort?.signal})}
+        catch(error){await withLock(join(directory,'.lock'),async()=>{const state=await this.state(scope);state.generationFailures??={};state.generationFailures[operation]={inputHash,key,source,code:error.code??'SKILL_GENERATION_FAILED',at:new Date().toISOString()};await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+String.fromCharCode(10))});throw error}
+      }
+      return withLock(join(directory,'.lock'),async()=>{
+        await args.validate?.()
+        const state=await this.state(scope),prior=state.skills[key],receipt=state.mutations?.[operation],currentRevision=prior?.revision??state.skillRevisions?.[key]??0
+        if(receipt&&receipt.inputHash!==inputHash)throw failure('REFLECTION_OPERATION_CONFLICT')
+        if(!receipt&&args.expectedRevision!==undefined&&currentRevision!==args.expectedRevision)throw failure('REFLECTION_REVISION_CONFLICT')
+        if(!receipt&&(currentRevision!==before.revision||(state.forgetGeneration??0)!==before.forgetGeneration||!isDeepStrictEqual(prior,before.prior)))throw failure('REFLECTION_REVISION_CONFLICT')
+        let committed=!!receipt
+        try{
+          if(!receipt){
+            const now=new Date().toISOString(),revision=currentRevision+1
+            // 提交新版本前撤销旧加载内容；删除保留版本，防止同名重建的 ABA 冲突。
+            const generation=await this.host.memory.store.transaction(scope,async state=>{await args.validate?.();state.mark();return ()=>state.meta.revision})
+            await args.validate?.()
+            if(action==='upsert'){
+              const value={...content,applicability:generated.description,body:generated.body,generation:generated.generation,signature:hash(JSON.stringify(content.steps)),supports:[],taskIds:[],memoryKeys:[],active:true,origin:'router',source,provenance:args.provenance,revision,updatedAt:now}
+              if(prior)value.previous=contentSnapshot(this.renderSkill(scope,key,prior,generation).replace(/^NIGHT_LEARNED_SCOPE=[^\n]*\n?/gm,''),prior.revision,prior.updatedAt)
+              state.skills[key]=value
+            }else delete state.skills[key]
+            state.skillRevisions??={};state.skillRevisions[key]=revision
+            state.mutations??={};state.mutations[operation]={inputHash,action,key,revision,source,...generated?{generation:generated.generation}:{},at:now}
+            if(state.generationFailures)delete state.generationFailures[operation]
+            await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');committed=true
+          }
+          this.host.skills.invalidateCache()
+          // 重试只修复当前状态的派生文件，绝不重放旧回执覆盖后来的修改或删除。
+          await this.publishSkill(scope,key,state)
+          const saved=await this.state(scope)
+          if(saved.mutations?.[operation]?.inputHash!==inputHash)throw failure('REFLECTION_WRITE_UNCONFIRMED')
+        }catch(cause){if(committed||cause.committed)throw Object.assign(failure('REFLECTION_WRITE_UNCONFIRMED'),{committed:true,cause});throw cause}
+        return {ok:true,persisted:true,...receipt?{duplicate:true}:{},action,key,revision:state.mutations[operation].revision,currentRevision:state.skills[key]?.revision??state.skillRevisions?.[key]??0,active:!!state.skills[key]?.active,...state.mutations[operation].generation?{generation:state.mutations[operation].generation}:{}}
+      })
     })
   }
   async forget(scope,key){

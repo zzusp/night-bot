@@ -192,7 +192,7 @@ export default class NativeMemory extends Service {
   async mutateChannelSkill(agent,original,args,validate){
     const context=this.channelSourceContext(original)
     const {scope,source}=await this.writeContext(agent,args,context)
-    return this.host.get('reflection').mutateSkill(scope,{...args,source:{...source,actor:scope.actor},provenance:context.provenance,validate:async()=>{await validate();this.channelSourceContext(original);await this.writeContext(agent,args,context)}})
+    return this.host.get('reflection').mutateSkill(scope,{...args,model:agent.options,signal:agent.lifecycle.signal,source:{...source,actor:scope.actor},provenance:context.provenance,validate:async()=>{await validate();this.channelSourceContext(original);await this.writeContext(agent,args,context)}})
   }
   async writeContext(agent,args,sourceContext){
     if(!await this.binding(agent))throw failure('MEMORY_SESSION_UNBOUND')

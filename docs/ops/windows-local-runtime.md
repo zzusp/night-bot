@@ -96,6 +96,10 @@ API Key profile 使用声明的 `apiKeyEnv` 引用。可通过既有环境或 `n
 
 `TASK_SESSION_DRAIN_FAILED` 由 Host 按原会话和租约写入任务账本，列表/详情显示等待中，执行会话显示失败。重启保留事实；仅实际排空事务清除本轮故障，不通过新输入、改 SQL 或伪造终态解除。升级在安装期开启原 observer 派生触发器更新和索引刷新，读取 API 不做 DDL。核实恢复告警、原作业与效果的真实证据后，使用现有对账流程；本状态修复不自动结清历史未知作业。 缺失原生 shell 终态时，先按[原生作业核验流程](../EFFECT-RECONCILIATION.md#丢失终态的原生-shell-作业)核对进程和保留输出，再停机运行离线操作者入口的 `--check` 与实际结清。升级到支持 `job/reconciled` 的已合并代码后重启，由 Host 原会话恢复；任务级 effects close 不能替代该作业核验。
 
+## 学习技能生成故障
+
+新技能和正文更新必须通过本发行内置 `skill-creator` 生成，复盘自身仍无工具。`SKILL_CREATOR_UNAVAILABLE`、`SKILL_CREATOR_NOT_USED`、`SKILL_GENERATION_INCOMPLETE` 或 `SKILL_GENERATION_INVALID` 表示生成未完成，不是业务任务回滚。核对复盘报告或受管 `generationFailures` 的来源与错误，再检查发行内置资源和实际模型配置；不能手写 SKILL.md、补造 creator 收据或回退直接拼装求成功。已存在技能仅按已提交状态重建，不自动批量重生成；历史没有 creator 证据的版本继续按历史显示。参见 [自进化](../SELF-EVOLUTION.md#内置-creator-生成阶段)。
+
 ## 启动与停止
 
 ```powershell
