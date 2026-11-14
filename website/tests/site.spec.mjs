@@ -57,3 +57,35 @@ test('dark documents retain readable navigation and have a recovery page', async
   await page.getByRole('link', { name: '返回首页' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toContainText('把事情交给 Bot')
 })
+
+test('document workspace retains content, outline, sidebar and deep links', async ({ page }, testInfo) => {
+  await page.goto('./guide/usage.html')
+  await expect(page.getByRole('navigation', { name: '文档位置' })).toContainText('与 Bot 协作')
+  await expect(page.getByRole('heading', { level: 1, name: '日常使用' })).toBeVisible()
+  await expect(page.getByText('“已接纳”只表示消息已收到。', { exact: true })).toBeVisible()
+  await noOverflow(page)
+  if (testInfo.project.name === 'desktop') {
+    const geometry = await page.locator('.VPSidebar').evaluate(el => ({
+      top: el.getBoundingClientRect().top,
+      navBottom: document.querySelector('.VPNavBar').getBoundingClientRect().bottom
+    }))
+    expect(geometry.top).toBeGreaterThanOrEqual(geometry.navBottom + 12)
+  }
+  await page.screenshot({ path: testInfo.outputPath('usage-redesign.png'), fullPage: true })
+  expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations).toEqual([])
+  if (testInfo.project.name === 'mobile') {
+    await page.getByRole('button', { name: '文档目录' }).click()
+  }
+  await page.locator('.VPSidebar').getByRole('link', { name: '模型与配置', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: '模型与配置' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '文档位置' })).toContainText('开始使用')
+  await noOverflow(page)
+  const code = page.locator('.vp-doc div.language-sh').first()
+  await expect(code).toBeVisible()
+  const rects = await code.evaluate(el => ({ width: el.getBoundingClientRect().width, viewport: document.documentElement.clientWidth }))
+  expect(rects.width).toBeLessThan(rects.viewport)
+  await page.goto('./guide/usage.html#常见问题')
+  await expect(page.locator('h2#常见问题')).toBeInViewport()
+  await page.reload()
+  await expect(page.locator('h2#常见问题')).toBeInViewport()
+})

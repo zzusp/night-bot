@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted } from 'vue'
 import DefaultTheme from 'vitepress/theme-without-fonts'
 import Home from './Home.vue'
+import DocContext from './DocContext.vue'
 
 // VitePress 1.x focuses its async search input before the focus trap captures
 // the opener. Restore the stable trigger only after an explicit dismissal,
@@ -32,5 +33,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <DefaultTheme.Layout><template #home-hero-before><Home /></template></DefaultTheme.Layout>
+  <DefaultTheme.Layout>
+    <template #home-hero-before><Home /></template>
+    <template #doc-before><DocContext /></template>
+    <template #sidebar-nav-before><div class="nb-sidebar-label"><span>使用手册</span></div></template>
+  </DefaultTheme.Layout>
 </template>
