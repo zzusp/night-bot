@@ -134,6 +134,10 @@ html { scrollbar-gutter: stable; }
 .Layout:has(.VPDoc) { background: var(--board-panel); }
 .VPNavBar { border-bottom: 1px solid var(--board-border); }
 .VPNavBar.has-sidebar .divider { display: none; }
+/* VitePress otherwise paints only the right content-body when scrolling. */
+.Layout:has(.VPDoc) .VPNavBar,
+.Layout:has(.VPDoc) .VPNavBar .title,
+.Layout:has(.VPDoc) .VPNavBar .content-body { background-color: var(--board-canvas) !important; }
 .VPNavBar .VPNavBarSearch .DocSearch-Button { border: 1px solid var(--board-border-strong); border-radius: 10px; background: var(--board-panel); }
 .Layout aside.VPSidebar {
   background: var(--nb-rail-bg); color: var(--nb-rail-text); border: 1px solid var(--board-border);
