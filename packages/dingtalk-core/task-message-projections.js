@@ -52,6 +52,7 @@ export function taskBoardState(task, executions = [], pendingWake = false) {
   if (task.control === 'cancelled') return 'cancelled'
   if (task.control === 'paused') return 'waiting'
   if (task.humanRequests?.some(request => request.status === 'waiting-reply')) return 'waiting'
+  if (task.sessionFailure?.code === 'TASK_SESSION_DRAIN_FAILED') return 'waiting'
   if (!task.drained) return 'running'
   if (pendingWake && !task.lastDecision) return 'running'
   if (task.lastDecision?.action === 'blocked' || task.lastDecision?.question?.trim()) return 'waiting'

@@ -79,3 +79,31 @@ Windows 现场的效果及任务恢复仍须单独核验。
 每轮仍有未知效果的核验执行在模型、工具、已注册进程及作业真实排空后，为自身绑定提交新的 `owner-drained`。inspect 和离线回执校验同时要求：目标调用原执行者的有效原始证明仍在当前分支；最新核验执行者的绑定来自实际耐久接纳的输入；两者作用域一致；最新切点后只有物理 commit 标记。没有原始证明、新增未知作业、分支变化及切点后的新增业务内容仍失败关闭。
 
 旧任务返回 `TASK_EFFECT_DRAIN_CUT_CHANGED` 时，若原证明尚在且当前服务已包含此修复，可通过既有任务对话安排一次只读核对，等待回复与实际排空后重新 inspect。不要手工追加排空记录或把未完成的对话当作排空。新代码不追认旧 write 成功或未开始，仍只允许操作者经上述证据流程将其结清为可能部分效果的失败尝试。
+
+## 丢失终态的原生 shell 作业
+
+任务效果与原生作业分别对账。`effects close` 不会把一个仅有 registered 的后台作业变成已退出。无资源所有权收据的冷丢失 `pwsh`/`bash` 作业，可由可信本机操作者离线核验结清；有资源保留、损坏/非法收据或不完整日志仍拒绝，不适用于自动批量消警。
+
+```powershell
+node bin/night-bot-jobs.js CONFIG inspect TASK_ID JOB_ID
+node bin/night-bot-jobs.js CONFIG close PROPOSAL.json NOTE.json --check
+node bin/night-bot-jobs.js CONFIG close PROPOSAL.json NOTE.json
+```
+
+将 inspect 输出的 `proposal` 保存为提案。NOTE 使用以下结构；文件位于任务自己的 `work/` 下，摘要必须是实际只读核验后的 SHA-256：
+
+```json
+{
+  "operatorText": "说明原调用、进程身份/核验范围、保留输出与未知部分；不得把进程不存在等同于成功",
+  "producerAbsent": true,
+  "partialEffectsPossible": true,
+  "noReplay": true,
+  "evidenceFiles": [{"path": "work/checks/readback.json", "sha256": "实际文件的64位sha256"}]
+}
+```
+
+先核对原始调用、当前 OS 进程/父子身份、保留输出及可能的外部效果，确认原生产者已不在执行。退出码不可证明时保持未知，不能填写 producerReported、成功或无效果。`producerAbsent` 是操作者的带证据声明，不是原进程退出收据或 Host 排空证明；Host 不会只凭 PID 消失自动结清。
+
+inspect 不运行模型或启动 Host；close 与自检要求停机，自检零写。close 实际持有安装 `.host.lock` 与原 Pi session writer，校验安装、任务/会话、任务版本、完整日志字节、原 registered 身份、当前分支及证据摘要，按哈希冻结操作者报告并追加 `job/reconciled`，保留原日志前缀与登记。重复完全相同请求幂等，不生成 settled、不填写 producerReported、不改 SQLite、drained 或输入 ACK。
+
+收据结论固定为 `closed-with-possible-partial-effects`、`exitStatus:unknown`、`noReplay:true`。正常重启后仍由 Host 冷恢复原任务/原会话；新的输入向模型说明旧作业已人工核验、退出状态未知且禁止重放。后续独立调用按现有权限和业务目标处理，不新增全局授权门。升级须同步支持该 typed receipt 的代码；不能让旧发行读取新收据后继续执行，也不能删除收据回退。实际恢复以原会话的新推理/工具及业务终态为准，不以 CLI committed 或 running 标签当完成。

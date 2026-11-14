@@ -106,6 +106,8 @@ node bin/night-bot-settings.js data/config/config.json model-list --live
 
 Router 对所属会话的执行 session 拥有完整调度权，创建、启动、停止、解除等待及取消/完成后的重新唤起不要求原消息作者或安装操作者补调度许可；来源保留真实追溯，停止仍实际排空原 owner。已结清的旧未知效果只永久禁止原具体调用重放，不再要求后续独立调用或完成结果匹配专门的新目标授权。尚未结清时也能唤起原会话核验，但不能重放旧效果或宣称成功。工具本身继续遵循当前权限模式、秘密和业务效果边界。[原 new-action 入口](docs/EFFECT-ACTION-AUTHORIZATION.md)保留为可选人工运维方式，不是续办前置。
 
+执行会话排空失败会持久保留故障，Web 任务显示等待中、会话失败，并提示核实未决作业或副作用；`drained=false` 不再单独冒充仍在推进。此展示不改变排空证明、待处理输入或原调用禁止重放保护。
+
 Pi 文件工具的匹配错误及底层原子锁内的观察/版本拒绝，在受信执行已结束且可证明尚未开始发布时保留原错误，允许读取后独立纠正；写后结果丢失仍保持未知。旧未知调用不会被新代码追认为无效果；对账同时校验原执行者排空与后续核验执行者的最新切点，见[未知效果对账](docs/EFFECT-RECONCILIATION.md)。
 
 | 模式 | 行为与当前范围 |
@@ -196,3 +198,5 @@ Web 报错反馈在操作者明确同意后启动只读 Pi 调查；标题与描
 Night Bot 使用 Pi SDK，早期移植来源为 `HiQ-AI/dingtalk-dsh-assistant@93e431a`，Web 设计参考 [BoardUI](https://github.com/BoardUI/boardui)。具体来源、版本、保留实现及许可见 [THIRD_PARTY.md](THIRD_PARTY.md) 和 [`licenses/`](licenses)。
 
 仓库保留原 [MIT LICENSE](LICENSE)，但移植模块并未因此自动改授 MIT。当前根包标记为 `private: true`、`UNLICENSED`，不作为 npm 发布包；请按来源清单核对使用与再分发条件。
+
+丢失终态的原生 shell 作业须先核对真实进程与效果，再用离线操作者 `night-bot-jobs` 的 `inspect` / `close --check` / `close` 精确结清。它只记录可能存在部分效果和原调用禁止重放，不伪造成功或任务排空；边界及用法见 [效果对账](docs/EFFECT-RECONCILIATION.md#丢失终态的原生-shell-作业)。

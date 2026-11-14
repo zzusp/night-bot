@@ -556,7 +556,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     const routerResult = routerLedger.command(kind,a,commandId)
     if(routerResult !== undefined)return routerResult
     const heldTaskId=a.taskId??a.binding?.taskId
-    if(heldTaskId&&kind.startsWith('task.')&&!kind.startsWith('task.effect-reconciliation.')&&kind!=='task.drained'
+    if(heldTaskId&&kind.startsWith('task.')&&!kind.startsWith('task.effect-reconciliation.')&&kind!=='task.drained'&&kind!=='task.sessionFailed'
       &&get('dynamic_tasks',heldTaskId,true)?.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
     if (kind.startsWith('topic.fact.')) {
       const result = topicFacts.reduce(kind, a)
@@ -881,10 +881,16 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       return { result: { task, binding: bindingOf(task), wakeIds: pending.map(item => item.id), wakes: pending,
         ...(humanReview ? { humanReview } : {}) }, dispatchEligible: true }
     }
+    if (kind === 'task.sessionFailed') {
+      // 排空失败只记录 Host 故障，不代写业务决定或伪造 owner 已排空。
+      const task = currentTask(a.binding, { active: false, current: false, allowHumanReview: true })
+      task.sessionFailure = { code: 'TASK_SESSION_DRAIN_FAILED', leaseEpoch: task.leaseEpoch, at: stamp }
+      saveTask(task); return changed({ task })
+    }
     if (kind === 'task.sessionBound' || kind === 'task.drained') {
       const task = currentTask(a.binding, { active: false, current: false, allowHumanReview: true })
       if (kind === 'task.sessionBound') task.sessionBound = true
-      else { task.drained = true; task.recovering = false }
+      else { task.drained = true; task.recovering = false; task.sessionFailure = null }
       saveTask(task); return changed({ task })
     }
     if (kind === 'task.wake' || kind === 'wake.enqueue') {

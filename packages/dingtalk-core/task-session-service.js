@@ -558,7 +558,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const executions = await query('execution.list', { taskId: task.taskId })
     const pendingWake = !task.lastDecision && (await query('wake.list', { taskId: task.taskId })).some(wake => wake.state !== 'acked')
     const state = taskBoardState(task, executions, pendingWake)
-    return {...publicTask,state,topicRefs:taskTopicRefs(task),executionCount:1,controlState:task.control,inputVersion:task.requirementRevision,result:task.completion?.result??task.lastDecision??null,session:{role:'execution',sessionId:task.sessionId,sessionBound:task.sessionBound,status:task.drained?'idle':'running',workspaceDir:taskWorkspaceReady(task)?await taskWorkspace(root,task.taskId,task):null,logPath:ctx.sessionPersistence.path(task.sessionId)}}
+    return {...publicTask,state,topicRefs:taskTopicRefs(task),executionCount:1,controlState:task.control,inputVersion:task.requirementRevision,result:task.completion?.result??task.lastDecision??null,session:{role:'execution',sessionId:task.sessionId,sessionBound:task.sessionBound,status:task.sessionFailure?.code==='TASK_SESSION_DRAIN_FAILED'?'failed':task.drained?'idle':'running',workspaceDir:taskWorkspaceReady(task)?await taskWorkspace(root,task.taskId,task):null,logPath:ctx.sessionPersistence.path(task.sessionId)}}
 
   }
   async function taskDetail(taskId) {
@@ -1178,6 +1178,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         if (submitted) await command('wake.ack', { binding, wakeIds }, `wake-ack:${taskId}:${binding.leaseEpoch}`)
       } catch (error) {
         drained = error.taskSessionDrained !== false
+        if (!drained) {
+          await command('task.sessionFailed', { binding }, `task-session-failed:${taskId}:${binding.leaseEpoch}`)
+        }
         if(drained&&['TASK_PI_PROVIDER_ERROR','TASK_SESSION_NO_SUBMISSION','TASK_SESSION_PROVIDER_TRANSIENT','TASK_DIALOGUE_NO_REPLY'].includes(error.code)){
           if(!await currentTask(binding))return
           const failure={code:error.code,...typeof error.phase==='string'?{phase:error.phase}:{},...typeof error.nativeAssistantStopReason==='string'?{stopReason:error.nativeAssistantStopReason}:{}}
@@ -1851,9 +1854,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if (options.summary) return page
       const titles = new Map()
       return { ...page, items: page.items.map(task => ({ ...task, topicRefs: taskTopicRefs(task, titles), inputVersion: task.requirementRevision,
-        controlState: task.control, waitingReason: task.state === 'waiting' ? task.lastDecision?.summary ?? '' : '',
+        controlState: task.control, waitingReason: task.sessionFailure?.code === 'TASK_SESSION_DRAIN_FAILED' ? '执行会话排空失败，等待核实未决作业或副作用。' : task.state === 'waiting' ? task.lastDecision?.summary ?? '' : '',
         result: task.completion?.result ?? task.lastDecision ?? null, legacyReadonly: false,
-        ...(task.archivedAt ? {} : { session: { sessionId: task.sessionId, sessionBound: task.sessionBound, status: task.drained ? 'idle' : 'running',
+        ...(task.archivedAt ? {} : { session: { sessionId: task.sessionId, sessionBound: task.sessionBound, status: task.sessionFailure?.code === 'TASK_SESSION_DRAIN_FAILED' ? 'failed' : task.drained ? 'idle' : 'running',
           workspaceDir: taskWorkspaceReady(task)?dirname(taskFilePath(root,task.taskId,'work')):null, logPath: ctx.sessionPersistence.path(task.sessionId) } }) })) }
     },
     async taskDecisions(taskId, options = {}) { await requireTask(taskId); return query('task.decisions', { ...options, taskId }) },

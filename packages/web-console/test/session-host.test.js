@@ -193,3 +193,15 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
     assert.equal(f.requests.length, requestCount + 1, 'HTTP reads never schedule retrospective or task inference')
   } finally {await web?.close(); detach?.(); await store.close()}
 })
+
+test('real Host drain failure reaches HTTP waiting state without replay, ACK or forged drain', {timeout:nativeTestTimeout(30000)}, async t=>{
+ const {fork}=await import('node:child_process'),{once}=await import('node:events'),{rm}=await import('node:fs/promises')
+ const child=fork(new URL('../../../test/fixtures/task-drain-failure-host.js',import.meta.url),[],{stdio:['ignore','pipe','pipe','ipc']})
+ let root,proof,output=''
+ child.stdout.on('data',chunk=>{output+=chunk});child.stderr.on('data',chunk=>{output+=chunk})
+ child.on('message',message=>{if(message.root)root=message.root;if(message.passed)proof=message})
+ t.after(async()=>{if(child.exitCode===null&&child.signalCode===null){child.kill();await once(child,'exit')}if(root)await rm(root,{recursive:true,force:true})})
+ const [code]=await once(child,'exit')
+ assert.equal(code,0,output);assert.equal(proof?.passed,true,output)
+ assert.equal(proof.state,'waiting');assert.equal(proof.session,'failed');assert.equal(proof.drained,false);assert.equal(proof.noReplay,true);assert.equal(proof.unacked,true)
+})

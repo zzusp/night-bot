@@ -92,6 +92,10 @@ API Key profile 使用声明的 `apiKeyEnv` 引用。可通过既有环境或 `n
 
 旧 `new-action` CLI/HTTP 授权入口已退役。未知效果使用 inspect/close 核验结清，随后普通用户消息由 Router 决定恢复原执行会话。不要修改 SQLite、Pi 日志或旧收据以绕过核验。
 
+### 排空故障状态
+
+`TASK_SESSION_DRAIN_FAILED` 由 Host 按原会话和租约写入任务账本，列表/详情显示等待中，执行会话显示失败。重启保留事实；仅实际排空事务清除本轮故障，不通过新输入、改 SQL 或伪造终态解除。升级在安装期开启原 observer 派生触发器更新和索引刷新，读取 API 不做 DDL。核实恢复告警、原作业与效果的真实证据后，使用现有对账流程；本状态修复不自动结清历史未知作业。 缺失原生 shell 终态时，先按[原生作业核验流程](../EFFECT-RECONCILIATION.md#丢失终态的原生-shell-作业)核对进程和保留输出，再停机运行离线操作者入口的 `--check` 与实际结清。升级到支持 `job/reconciled` 的已合并代码后重启，由 Host 原会话恢复；任务级 effects close 不能替代该作业核验。
+
 ## 启动与停止
 
 ```powershell
