@@ -76,6 +76,13 @@ test('旧401不能撤销已经完成的新登录，原文缩进及换行不被�
   await login(page)
   const held = deferred(), ready = deferred(), completed = deferred()
   let originalText = ''
+  // This case controls a late POST 401 across a new login. Background reads
+  // must not discover cookie removal before that POST has been queued.
+  const readsHeld = deferred(); let holdReads = true
+  await page.route('**/api/**', async route => {
+    if (holdReads && route.request().method() === 'GET') await readsHeld.promise
+    await route.continue()
+  })
   await page.context().clearCookies()
   await page.route('**/api/chat', async route => {
     if (route.request().method() !== 'POST') return route.continue()
@@ -87,6 +94,7 @@ test('旧401不能撤销已经完成的新登录，原文缩进及换行不被�
   await page.getByLabel('消息内容', {exact: true}).fill(source)
   await page.getByRole('button', {name: '发送消息', exact: true}).click(); await ready.promise
   await page.getByRole('button', {name: '刷新概览', exact: true}).click()
+  holdReads = false; readsHeld.resolve()
   await expect(page.getByLabel('访问令牌', {exact: true})).toBeVisible()
   await login(page, false)
   held.resolve(); await completed.promise

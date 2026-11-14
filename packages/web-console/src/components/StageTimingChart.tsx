@@ -42,14 +42,13 @@ function StagePlot({items, stage, title}: {items: Sample[]; stage: 'triage'|'rou
 }
 
 export function StageTimingChart({kind, id}: {kind: 'chat'|'conversations'; id?: string}) {
-  const current = useResource<{conversationId: string}>(kind === 'chat' && !id ? '/chat-current' : null);
-  const resolvedId = id || current.data?.conversationId;
+  const resolvedId = id;
   const query = useResource<StagePage>(resolvedId ? `/${kind}/${encodeURIComponent(resolvedId)}/stage-times?limit=8` : null, 10000, {pauseWhenHidden:true});
   // Do not show a previous conversation or stale timings as current measurements.
-  const failure = query.error || current.error;
+  const failure = query.error;
   const items = !failure && query.data?.status === 'ready' ? [...query.data.items].reverse() : [];
   return <section className="rail-section stage-timing-card" aria-label="最近处理耗时">
     <div className="rail-section-title"><h3>最近处理耗时</h3><span className="stage-scope">本会话 · {items.length ? `${items.length} 条消息` : '最近消息'}</span></div>
-    {items.length ? <><StagePlot key={`${resolvedId}:triage`} items={items} stage="triage" title="分诊"/><StagePlot key={`${resolvedId}:router`} items={items} stage="router" title="路由"/></> : <p className="rail-empty">{failure ? '耗时暂不可读' : query.data && query.data.status !== 'ready' ? '来源暂不可读' : query.loading || current.loading ? '读取中…' : '暂无耗时记录'}</p>}
+    {items.length ? <><StagePlot key={`${resolvedId}:triage`} items={items} stage="triage" title="分诊"/><StagePlot key={`${resolvedId}:router`} items={items} stage="router" title="路由"/></> : <p className="rail-empty">{failure ? '耗时暂不可读' : query.data && query.data.status !== 'ready' ? '来源暂不可读' : query.loading || !resolvedId ? '读取中…' : '暂无耗时记录'}</p>}
   </section>;
 }
