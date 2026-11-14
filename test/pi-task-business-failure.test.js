@@ -4,8 +4,16 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
+import {initializeTaskDirectories} from '../packages/dingtalk-core/session-workspaces.js'
 import {openDynamicTaskStore,pendingTaskHumanReview} from '../packages/dingtalk-core/dynamic-task-store.js'
 async function fixture(t,{legacy=false}={}){const root=await mkdtemp(join(tmpdir(),'night-task-business-failure-'));let db=await openDynamicTaskStore({dbPath:join(root,'tasks.sqlite'),instanceId:'business-failure',webActorId:'operator',initialize:true}),n=0;t.after(async()=>{await db.close();await rm(root,{recursive:true,force:true})});const f={command:(kind,args,id=kind+':'+(++n))=>db.command({kind,args,id}),query:(kind,args={})=>db.query({kind,...args}),async cold(){await db.close();db=await openDynamicTaskStore({dbPath:join(root,'tasks.sqlite'),instanceId:'business-failure',webActorId:'operator'})}};await f.command('task.create',{taskId:'task',groupId:'group',ownerActorId:'operator',request:'Original authorized objective'});
+ const created=await f.query('task.get',{taskId:'task'})
+ if(created.workspaceInitialization){
+ const {creationCommandId,sessionId}=created.workspaceInitialization,binding={taskId:'task',creationCommandId,sessionId}
+ const begin=await f.command('task.workspace.begin',binding,creationCommandId+':workspace-begin')
+ const observation=await initializeTaskDirectories(join(root,'workspaces'),begin.result.task)
+ await f.command('task.workspace.finish',{...binding,state:'ready',observation},creationCommandId+':workspace-finish')
+ }
  // Model a persisted pre-Router task, not a new task with a falsy conversation ID.
  if(legacy){await db.close();const historical=new DatabaseSync(join(root,'tasks.sqlite'));try{historical.prepare("UPDATE dynamic_tasks SET body=json_remove(body,'$.conversationId') WHERE id=?").run('task')}finally{historical.close()}db=await openDynamicTaskStore({dbPath:join(root,'tasks.sqlite'),instanceId:'business-failure',webActorId:'operator'});assert.equal((await f.query('task.get',{taskId:'task'})).conversationId,undefined)}
  return f}
@@ -77,4 +85,24 @@ test('conversation supplements preserve candidate evidence but require Router re
  await assert.rejects(claim(f,{humanReview:true}),{code:'DYNAMIC_HUMAN_REVIEW_NOT_PENDING'})
  await assert.rejects(claim(f),{code:'DYNAMIC_HUMAN_RESPONSE_REQUIRED'})
  assert.deepEqual(await f.query('task.get',{taskId:'task'}),task);assert.deepEqual(await f.query('wake.list',{taskId:'task'}),wakes)
+})
+
+test('drain failure is durable without fabricating drain, decision or wake ACK; only actual drain clears it',async t=>{
+ const f=await fixture(t),{binding,wakeIds}=await claim(f)
+ const original=await f.query('task.get',{taskId:'task'})
+ await f.command('task.sessionFailed',{binding})
+ let task=await f.query('task.get',{taskId:'task'})
+ assert.equal(task.drained,false);assert.deepEqual(task.lastDecision,original.lastDecision)
+ assert.equal(task.sessionFailure.code,'TASK_SESSION_DRAIN_FAILED');assert.equal(task.sessionFailure.leaseEpoch,binding.leaseEpoch)
+ assert.deepEqual((await f.query('wake.list',{taskId:'task'})).filter(w=>w.state==='claimed').map(w=>w.id),wakeIds)
+ await f.cold();task=await f.query('task.get',{taskId:'task'})
+ assert.equal(task.sessionFailure.code,'TASK_SESSION_DRAIN_FAILED');assert.equal(task.drained,false)
+ await assert.rejects(claim(f,{force:true}),{code:'DYNAMIC_TASK_BUSY'})
+ await assert.rejects(f.command('task.sessionFailed',{binding:{...binding,sessionId:'foreign'}}),{code:'DYNAMIC_TASK_LEASE_STALE'})
+ await drain(f,binding)
+ assert.equal((await f.query('task.get',{taskId:'task'})).sessionFailure,null)
+ const next=await claim(f,{force:true})
+ await assert.rejects(f.command('task.sessionFailed',{binding}),{code:'DYNAMIC_TASK_LEASE_STALE'})
+ assert.equal((await f.query('task.get',{taskId:'task'})).sessionFailure,null)
+ await drain(f,next.binding)
 })

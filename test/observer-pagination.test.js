@@ -1,8 +1,7 @@
 import {responseTiming} from '../packages/web-console/server/response-times.js'
 import {readFile} from 'node:fs/promises'
 import {runInNewContext} from 'node:vm'
-import {executionSessionTitle} from '../packages/dingtalk-core/session-workspaces.js'
-import {latestExecutionRoundTiming} from '../packages/dingtalk-core/task-execution-timeline.js'
+import {taskWorkspaceReady} from '../packages/dingtalk-core/session-workspaces.js'
 import {observerWorkMetadata} from '../packages/dingtalk-core/observer-work-index.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -52,11 +51,11 @@ test('task page joins only selected topic names once per group/id without readin
  const {put,page}=fixture(t)
  const refs=[{topicId:'shared',revision:2},{groupId:'other',topicId:'shared',revision:4},{topicId:'missing',revision:1}]
  for(let i=0;i<3;i++)put('tasks',`t${i}`,{taskId:`t${i}`,groupId:'web:g',sourceGroupId:'g',status:'active',control:'active',drained:true,updatedAt:'same',topicRefs:i<2?refs:[{topicId:'off-page',revision:1}]})
- const source=await readFile(new URL('../packages/dingtalk-dsh-assistant/task-session-service.js',import.meta.url),'utf8')
+ const source=await readFile(new URL('../packages/dingtalk-core/task-session-service.js',import.meta.url),'utf8')
  const projection=source.slice(source.indexOf('  const taskTopicRefs ='),source.indexOf('  const taskDTO ='))
  const method=source.slice(source.indexOf('    async boardTasks(options)'),source.indexOf('    async taskDecisions('))
  const lookups=[],queries=[]
- const board=runInNewContext(`(()=>{${projection};return ({${method}}).boardTasks})()`,{Map,dirname,root:'/fixture',taskFilePath:(...args)=>join(...args),taskSessionLogRoot:()=>'/log',
+ const board=runInNewContext(`(()=>{${projection};return ({${method}}).boardTasks})()`,{Map,dirname,taskWorkspaceReady,ctx:{sessionPersistence:{path:id=>'/log/'+id}},root:'/fixture',taskFilePath:(...args)=>join(...args),taskSessionLogRoot:()=>'/log',
   residentStore:{getTopic(groupId,topicId){lookups.push([groupId,topicId]);return topicId==='missing'?undefined:{title:groupId==='g'?'事项甲':'事项乙',get messages(){throw new Error('topic history must not be projected')}}}},
   query:async(kind,args)=>{queries.push(kind);assert.equal(kind,'observer.page');return page(args)}})
  const result=await board({offset:0,limit:2,state:'waiting'})
@@ -76,7 +75,7 @@ test('history task pages skip execution counts and session navigation while deta
  let executionReads=0
  db.setAuthorizer((action,table)=>{if(action===constants.SQLITE_READ&&['observer_execution_index','dynamic_executions','dynamic_archived_executions'].includes(table)){executionReads++;return constants.SQLITE_DENY}return constants.SQLITE_OK})
  try {
-  const source=await readFile(new URL('../packages/dingtalk-dsh-assistant/task-session-service.js',import.meta.url),'utf8')
+  const source=await readFile(new URL('../packages/dingtalk-core/task-session-service.js',import.meta.url),'utf8')
   const projection=source.slice(source.indexOf('  const taskTopicRefs ='),source.indexOf('  const taskDTO ='))
   const method=source.slice(source.indexOf('    async boardTasks(options)'),source.indexOf('    async taskDecisions('))
   const board=runInNewContext(`(()=>{${projection};return ({${method}}).boardTasks})()`,{Map,query:async(kind,args)=>{assert.equal(kind,'observer.page');return page(args)},
@@ -199,7 +198,7 @@ test('topic task summaries select only the visible SQL fields without execution 
 })
 
 test('topic task service passes the summary page through without detail DTO or additional queries',async()=>{
- const source=await readFile(new URL('../packages/dingtalk-dsh-assistant/task-session-service.js',import.meta.url),'utf8')
+ const source=await readFile(new URL('../packages/dingtalk-core/task-session-service.js',import.meta.url),'utf8')
  const method=source.slice(source.indexOf('    async boardTasks(options)'),source.indexOf('    async taskDecisions('))
  const page={items:[{taskId:'task',title:'任务',state:'running',archivedAt:null,updatedAt:'now'}],total:1,offset:0,limit:10,nextOffset:null}
  const queries=[]
@@ -377,15 +376,16 @@ test('execution card page selects only its task/page and omits unrelated definit
 })
 
 
-test('execution card service returns timing and identity without constructing detail paths or querying other data',async()=>{
- const source=await readFile(new URL('../packages/dingtalk-dsh-assistant/task-session-service.js',import.meta.url),'utf8')
+test('single-session execution pages reject retired split records and keep the empty page bounded',async()=>{
+ const source=await readFile(new URL('../packages/dingtalk-core/task-session-service.js',import.meta.url),'utf8')
  const fragment=source.slice(source.indexOf('  async function taskExecutions('),source.indexOf('  async function materializeSource('))
- const calls=[];const entry={executionId:'e',sessionId:'s',title:'中文标题',status:'running',drained:false,leaseEpoch:2,definition:{executionBackend:'claude-code'},timeline:{segments:[{leaseEpoch:2,state:'running',startedAt:'2026-01-02T00:00:00Z'}]}}
- const method=runInNewContext(`${fragment};taskExecutions`,{query:async(kind,args)=>{calls.push({kind,args});return {items:[entry],total:1,nextOffset:null}},executionSessionTitle,latestExecutionRoundTiming,executionBackend:e=>e.definition?.executionBackend??'dsh',taskFilePath(){throw new Error('summary must not construct detail paths')},taskSessionLogRoot(){throw new Error('summary must not read logs')}})
+ const calls=[];let items=[]
+ const method=runInNewContext(`${fragment};taskExecutions`,{query:async(kind,args)=>{calls.push({kind,args});return {items,total:items.length,nextOffset:null}},fail(code){throw Object.assign(new Error(code),{code})}})
  const page=await method('only-this-task',{summary:true,offset:0,limit:10})
  assert.equal(calls.length,1);assert.equal(calls[0].kind,'observer.page');assert.equal(calls[0].args.taskId,'only-this-task');assert.equal(calls[0].args.limit,10)
- const row=page.executions[0];assert.equal(row.title,'中文标题');assert.equal(row.executionBackend,'claude-code');assert.equal(row.latestRoundTiming.startedAt,'2026-01-02T00:00:00Z');assert.equal(row.latestRoundTiming.active,true)
- for(const key of ['timeline','definition','result','document','logPath','workspaceDir','workingDirectory'])assert.equal(row[key],undefined)
+ assert.equal(page.executions.length,0);assert.equal(page.items,undefined)
+ items=[{executionId:'retired-member'}]
+ await assert.rejects(method('only-this-task',{summary:true}),{code:'TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED'})
 })
 
 test('首答共同任务关联使用回复前提交的精确版本快照，附件单页及归档均可只读核验',t=>{
@@ -452,4 +452,35 @@ test('selected notification resolves direct and historical shared sources exactl
  assert.deepEqual(observerGroupQuery(db,q).sources.map(s=>s.sourceId),['a'])
  for(let i=0;i<101;i++)put('source_links','extra-'+i,{taskId:'task',conversationId:'g',sourceId:'extra-'+i,messageVersion:1})
  assert.deepEqual(observerGroupQuery(db,q).sources,[])
+})
+
+test('drain failure agrees with board state and upgrades existing active/archive triggers without GET DDL',async t=>{
+ const {taskBoardState}=await import('../packages/dingtalk-core/task-message-projections.js')
+ const {db,put,page}=fixture(t,{archives:true})
+ installObserverArchivePagination(db)
+ const failed={taskId:'failed',groupId:'g',status:'active',control:'active',drained:false,updatedAt:'now',sessionFailure:{code:'TASK_SESSION_DRAIN_FAILED'}}
+ put('tasks','failed',failed);put('tasks','live',{...failed,taskId:'live',sessionFailure:null})
+ put('wakes','failed-wake',{taskId:'failed',state:'claimed'})
+ assert.equal(taskBoardState(failed), 'waiting');assert.equal(taskBoardState({...failed,sessionFailure:null}),'running')
+ assert.deepEqual(page({collection:'tasks',state:'waiting',summary:true}).items.map(t=>t.taskId),['failed'])
+ assert.deepEqual(page({collection:'tasks',state:'running',summary:true}).items.map(t=>t.taskId),['live'])
+ for(const [overrides,expected] of [[{status:'completed'},'completed'],[{control:'cancelled'},'cancelled']]){
+  const value={...failed,...overrides};put('tasks','failed',value);assert.equal(taskBoardState(value),expected);assert.equal(page({collection:'tasks'}).items.find(t=>t.taskId==='failed').state,expected)
+ }
+ put('tasks','failed',failed)
+ db.prepare('INSERT INTO dynamic_archived_tasks VALUES(?,?,?)').run('archived',1,JSON.stringify({...failed,taskId:'archived',archivedAt:'now'}))
+ // Recreate the actual pre-fix trigger definitions, leaving the derived index stale.
+ const clause=" WHEN json_extract(t.body,'$.sessionFailure.code')='TASK_SESSION_DRAIN_FAILED' THEN 'waiting'\n"
+ for(const {name,sql} of db.prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger'").all())if(sql.includes(clause)){db.exec('DROP TRIGGER '+name);db.exec(sql.replaceAll(clause,''))}
+ db.exec("UPDATE observer_task_index SET state='running'")
+ assert.equal(installObserverArchivePagination(db),true)
+ assert.equal(page({collection:'tasks',state:'waiting'}).total,1)
+ assert.equal(page({collection:'tasks',state:'waiting',archived:true}).total,1)
+ put('wakes','failed-wake',{taskId:'failed',state:'pending'})
+ assert.equal(page({collection:'tasks',state:'waiting'}).total,1)
+ db.exec("DELETE FROM dynamic_wakes WHERE id='failed-wake'")
+ assert.equal(page({collection:'tasks',state:'waiting'}).total,1)
+ const queries=[],readOnly=new Proxy(db,{get(target,key){if(key==='exec')return()=>{throw Error('GET must not execute DDL')};if(key==='prepare')return sql=>{queries.push(sql);return target.prepare(sql)};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value}})
+ assert.equal(observerPage(readOnly,{collection:'tasks',state:'waiting'},'test').total,1)
+ assert.equal(queries.some(sql=>/CREATE|ALTER|DROP/.test(sql)),false)
 })

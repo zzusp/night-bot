@@ -57,7 +57,7 @@ function blockerViews(value) {
 // List rows do not include execution-derived board state. Preserve their recorded
 // status rather than infer that an active task is currently running.
 export function taskSummaryView(task, secrets = []) {
-  const state = task.state ?? (task.status === 'completed' ? 'completed' : task.control === 'cancelled' ? 'cancelled' : task.control === 'paused' ? 'waiting' : task.status)
+  const state = task.state ?? (task.status === 'completed' ? 'completed' : task.control === 'cancelled' ? 'cancelled' : task.control === 'paused' || task.sessionFailure?.code === 'TASK_SESSION_DRAIN_FAILED' ? 'waiting' : task.status)
   return Object.fromEntries(['taskId', 'title', 'state', 'updatedAt'].flatMap(key => {
     const value = key === 'state' ? state : task[key]
     return typeof value === 'string' ? [[key, displayText(value, secrets)]] : []
@@ -71,7 +71,11 @@ export function taskView(task, secrets = []) {
     ...(task.result ? {result: resultView(task.result, secrets)} : {}),
     ...(task.session ? {session: pick(task.session, ['role', 'sessionId', 'sessionBound', 'status'])} : {}),
     ...(task.timeline ? {timeline: timelineView(task.timeline, secrets)} : {}),
-    ...(task.blockers !== undefined ? {blockers: blockerViews(task.blockers)} : {}),
+    ...(task.blockers !== undefined ? {blockers: [
+      ...(task.sessionFailure?.code === 'TASK_SESSION_DRAIN_FAILED' ? [{kind: 'session', id: 'session-drain-failed', status: 'failed',
+        title: '执行会话排空失败，自动推进受阻。请查看恢复告警并核实未决作业或副作用；原调用不会自动重放。'}] : []),
+      ...blockerViews(task.blockers),
+    ]} : {}),
     ...(task.notifications ? {notifications: task.notifications.map(value => ({...pick(value, ['id', 'state', 'kind', 'updatedAt', 'createdAt']), text: displayText(value.payload?.text, secrets)}))} : {}),
   }
 }
