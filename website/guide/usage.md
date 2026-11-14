@@ -9,6 +9,7 @@
 可从小而明确的任务开始：
 
 <div class="nb-prompt-examples">
+<div class="nb-example-heading"><span>与 Bot 对话</span><span>输入示例</span></div>
 
 - “把这份材料整理成要点，标出你无法核实的内容。”
 - “先给我文件整理方案，未经我确认不要移动或删除文件。”
