@@ -36,6 +36,6 @@ onUnmounted(() => {
   <DefaultTheme.Layout>
     <template #home-hero-before><Home /></template>
     <template #doc-before><DocContext /></template>
-    <template #sidebar-nav-before><div class="nb-sidebar-label"><span class="nb-sidebar-mark" aria-hidden="true">✦</span><span>使用手册</span></div></template>
+    <template #sidebar-nav-before><div class="nb-sidebar-label"><span>使用手册</span></div></template>
   </DefaultTheme.Layout>
 </template>

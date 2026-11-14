@@ -142,13 +142,12 @@ html { scrollbar-gutter: stable; }
 }
 .Layout .VPSidebar .curtain { display: none; }
 .nb-sidebar-label { display: flex; align-items: center; gap: 12px; margin: 4px 0 24px; padding: 0 10px; color: var(--nb-rail-text); font-size: 18px; font-weight: 600; letter-spacing: -.03em; }
-.nb-sidebar-mark { font-size: 27px; line-height: 1; color: var(--board-info); }
 .Layout .VPSidebar .group { border-top: 0; padding-top: 0; margin-bottom: 18px; }
 .Layout .VPSidebarItem.level-0 > .item { padding: 0 12px 9px; }
 .Layout .VPSidebarItem.level-0 > .item .text { font-size: 11px; color: var(--nb-rail-muted); font-weight: 500; letter-spacing: .04em; }
 .Layout .VPSidebarItem.level-1 > .item { border-radius: 9px; padding: 3px 12px; margin: 3px 0; }
 .Layout .VPSidebarItem.level-1 > .item:hover { background: var(--board-hover); }
-.Layout .VPSidebarItem.level-1.is-active > .item { background: var(--board-primary-soft); box-shadow: inset 2px 0 0 var(--board-info); }
+.Layout .VPSidebarItem.level-1.is-active > .item { background: var(--board-primary-soft); box-shadow: none; }
 .Layout .VPSidebarItem.level-1.is-active > .item .text { color: var(--board-info); font-weight: 600; }
 .Layout .VPSidebarItem.level-1 .text { font-size: 13px; line-height: 24px; color: var(--nb-rail-text); }
 .nb-doc-context { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; position: relative; font-size: 12px; line-height: 20px; color: var(--board-info); font-weight: 600; }
