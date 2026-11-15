@@ -157,7 +157,7 @@ Pi 文件工具的匹配错误及底层原子锁内的观察/版本拒绝，在�
 | 集成接口 | [HTTP API](docs/HTTP-ROUTES.md) · [渠道协议](docs/CHANNELS.md) · [渠道插件](docs/CHANNEL-PLUGINS.md) |
 | 验收与迁移 | [验证说明](docs/VALIDATION.md) · [当前验收范围](docs/acceptance/resident-conversation-routing/goal.md) · [功能映射](docs/MIGRATION.md) |
 
-Docker 镜像包含固定版本的 DWS，以及 Git、GitHub CLI 和 Chromium headless shell，默认仍不启用钉钉。镜像构建、容器隔离、真实任务、生产部署和厂商接入分别验收，不能从镜像定义推断全部可用。
+Docker 镜像包含固定版本的 DWS，以及 Git、GitHub CLI 和 Chromium headless shell，默认仍不启用钉钉。容器默认时区为 `Asia/Shanghai`（UTC+08:00），可通过运行时 `TZ` 覆盖。镜像构建、容器隔离、真实任务、生产部署和厂商接入分别验收，不能从镜像定义推断全部可用。
 
 ## 开发
 

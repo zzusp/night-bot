@@ -125,6 +125,7 @@ OPENAI_API_KEY=REPLACE_LOCALLY
 
 | 变量 | 是否需要 | 用途与生效 |
 | --- | --- | --- |
+| `TZ` | 可选，默认 `Asia/Shanghai` | 覆盖容器进程的本地时区，例如 `Etc/UTC`；不改写应用配置 |
 | `NIGHT_BOT_ACTOR_ID` | 新卷首次启动必填 | 本安装操作者的稳定标识；已有卷不据此改 actor 或 instanceId |
 | `NIGHT_BOT_PERMISSION_MODE` | 可选，建议明确填写 | `full` / `ask` / `auto`；新实例缺省 `full`，已有实例未传时保留配置；受限档可用性单独验证 |
 | `NIGHT_BOT_MODEL_PROVIDER`、`NIGHT_BOT_MODEL` | 按自己的模型服务填写 | 首次选型或显式更新已保存模型，不应直接沿用示例模型 |
@@ -141,7 +142,7 @@ OPENAI_API_KEY=REPLACE_LOCALLY
 | `GITHUB_TOKEN` | 需要 GitHub 业务时 | 按下节运行时注入，不打印值 |
 | `DINGTALK_*` | 仅启用可选钉钉渠道时 | 单渠道或多渠道二选一，详见下节；没有钉钉需求就全部省略 |
 
-镜像已固定 `NODE_ENV`、`HOME`、`DWS_CONFIG_DIR`、`DWS_KEYCHAIN_DIR`、`XDG_CACHE_HOME`、`TMPDIR`、`TMP`、`TEMP` 和 `PLAYWRIGHT_BROWSERS_PATH`，不需要操作者再配置；不覆盖这些路径。容器时区默认取基础镜像，工作日报时区通过已有 `workLog.timezone` / 设置 CLI 配置；它不是新增的 Docker 环境变量合同。
+镜像已固定 `NODE_ENV`、`HOME`、`DWS_CONFIG_DIR`、`DWS_KEYCHAIN_DIR`、`XDG_CACHE_HOME`、`TMPDIR`、`TMP`、`TEMP` 和 `PLAYWRIGHT_BROWSERS_PATH`，不需要操作者再配置；不覆盖这些路径。镜像安装 `tzdata`，默认 `TZ=Asia/Shanghai`，并将 `/etc/localtime` 与 `/etc/timezone` 配为上海时区（UTC+08:00）；Node、Python 和系统命令的本地时间使用该默认值。需要其他时区时，在 `docker.env` 或容器运行参数中显式设置 `TZ`，无需写入只读根。ISO/UTC 持久化时间戳格式保持不变，工作日报仍通过已有 `workLog.timezone` / 设置 CLI 单独配置，容器 `TZ` 不会覆盖它。
 
 首次启动会保存 actor、模型和可选 Web/钉钉配置。已有卷每次启动仍会重新导入显式填写的这些参数，因此长期保留的 env 值可能覆盖后来通过 Web/CLI 保存的配置。首次配置完成后，应移除不再需要强制覆盖的参数，并保留所引用的密钥变量；角色 ENV 则始终是运行期覆盖。编辑 env 文件后必须正常停机并重建容器，`docker restart` 不会重新读取宿主 env 文件。
 
