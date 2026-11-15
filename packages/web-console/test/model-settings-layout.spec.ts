@@ -25,7 +25,7 @@ test('模型配置紧凑布局：路由同行、空反馈无占位、响应式�
    expect(route).not.toBeNull();expect(addRoute).not.toBeNull();
    expect(Math.abs(route!.y+route!.height/2-addRoute!.y-addRoute!.height/2)).toBeLessThan(2);
    const apiBox=await api.boundingBox(),secretBox=await secret.boundingBox();
-   if(width>760){expect(Math.abs(apiBox!.y-secretBox!.y)).toBeLessThan(2);expect(secretBox!.x).toBeGreaterThan(apiBox!.x+apiBox!.width)}
+   if(width>1100){expect(Math.abs(apiBox!.y-secretBox!.y)).toBeLessThan(2);expect(secretBox!.x).toBeGreaterThan(apiBox!.x+apiBox!.width)}
    else{expect(secretBox!.y).toBeGreaterThan(apiBox!.y+apiBox!.height);expect(Math.abs(secretBox!.x-apiBox!.x)).toBeLessThan(2)}
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
    const overflowing=await card.locator('input,select,button').evaluateAll(nodes=>nodes.filter(node=>{const box=node.getBoundingClientRect();return box.left<0||box.right>innerWidth}).length);

@@ -8,6 +8,17 @@ import {WorkLogEditor} from './components/WorkLogEditor';
 import {RoleModelEditor} from './components/RoleModelEditor';
 import {ModelCatalogEditor} from './components/ModelCatalogEditor';
 import {SecretEditor} from './components/SecretEditor';
+import {RiCpuLine, RiGitBranchLine, RiRobot2Line, RiCalendarCheckLine, RiKey2Line} from '@remixicon/react';
+import './styles/settings-workspace.css';
+
+const sections = [
+ {id:'models',label:'模型与 API',icon:RiCpuLine},
+ {id:'roles',label:'模型分工',icon:RiGitBranchLine},
+ {id:'appearance',label:'助手外观',icon:RiRobot2Line},
+ {id:'worklog',label:'工作日志',icon:RiCalendarCheckLine},
+ {id:'credentials',label:'访问凭据',icon:RiKey2Line},
+] as const;
+type Section = typeof sections[number]['id'];
 
 const preventCompositionSubmit=(event:KeyboardEvent<HTMLFormElement>)=>{if(event.key==='Enter'&&(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229))event.preventDefault()};
 
@@ -16,13 +27,13 @@ function Configuration({data,refresh,onReload,reloading}: {data:OperatorSettings
  useEffect(()=>{setName(data.appearance.name);setIcon(data.appearance.icon)},[data.version]);
  const save=async()=>{if(busy)return;setBusy(true);setError('');setFeedback('');try{await api('/settings/appearance',{method:'PUT',body:{expectedVersion:data.version,name,icon}});setFeedback('外观已保存。');refresh();window.dispatchEvent(new Event('night-settings-updated'))}catch(error){setError(errorText(error))}finally{setBusy(false)}};
  return <>
-  <section className="settings-card"><div className="settings-card-heading"><h2>助手外观</h2><Button variant="secondary" onClick={onReload} disabled={reloading} busy={reloading}>重新读取设置</Button></div><form noValidate onKeyDown={preventCompositionSubmit} onSubmit={event=>{event.preventDefault();if(!name.trim()){setError('请输入助手名称。');document.getElementById('assistant-name')?.focus();return}void save()}}><label htmlFor="assistant-name">显示名称</label><input id="assistant-name" maxLength={64} value={name} disabled={busy} onChange={event=>setName(event.target.value)}/><label htmlFor="assistant-icon">助手图标</label><select id="assistant-icon" value={icon} disabled={busy} onChange={event=>setIcon(event.target.value as typeof icon)}><option value="moon">月亮</option><option value="star">星光</option><option value="robot">机器人</option><option value="leaf">叶片</option></select><Button type="submit" disabled={busy} busy={busy}>保存外观</Button></form></section>
-  <p role="alert" hidden={!error}>{error}</p><p role="status" hidden={!feedback}>{feedback}</p>
+  <section className="settings-card"><div className="settings-card-heading"><h2>助手外观</h2><Button variant="secondary" onClick={onReload} disabled={reloading} busy={reloading}>重新读取设置</Button></div><form noValidate onKeyDown={preventCompositionSubmit} onSubmit={event=>{event.preventDefault();if(!name.trim()){setError('请输入助手名称。');document.getElementById('assistant-name')?.focus();return}void save()}}><label htmlFor="assistant-name">显示名称</label><input id="assistant-name" maxLength={64} value={name} disabled={busy} onChange={event=>setName(event.target.value)}/><label htmlFor="assistant-icon">助手图标</label><select id="assistant-icon" value={icon} disabled={busy} onChange={event=>setIcon(event.target.value as typeof icon)}><option value="moon">月亮</option><option value="star">星光</option><option value="robot">机器人</option><option value="leaf">叶片</option></select><Button type="submit" variant="primary" disabled={busy} busy={busy}>保存外观</Button><p role="alert" hidden={!error}>{error}</p><p role="status" hidden={!feedback}>{feedback}</p></form></section>
  </>;
 }
 
 export default function SettingsPage(){
  const query=useResource<OperatorSettings>('/settings');
+ const [section,setSection]=useState<Section>('models');
  const [roleStates,setRoleStates]=useState<Record<string,{dirty:boolean;busy:boolean}>>({}),[leave,setLeave]=useState<string|null>(null),[navigationNotice,setNavigationNotice]=useState('');
  const onRoleState=useCallback((role:string,dirty:boolean,busy:boolean)=>setRoleStates(states=>({...states,[role]:{dirty,busy}})),[]);
  const dirtyRoles=Object.values(roleStates).some(state=>state.dirty),busyRoles=Object.values(roleStates).some(state=>state.busy);
@@ -41,6 +52,41 @@ export default function SettingsPage(){
  useEffect(()=>{const refresh=()=>query.refresh();window.addEventListener('night-settings-updated',refresh);return()=>window.removeEventListener('night-settings-updated',refresh)},[query.refresh]);
  const [refreshKey,setRefreshKey]=useState(0);const reload=()=>{if(busyRoles)return;setRefreshKey(value=>value+1);query.refresh()};
 
- return <div className="page-content settings-page">{query.error&&<Notice error={query.error} onRetry={busyRoles?undefined:reload}/>}{query.loading&&!query.data?<Loading/>:query.data?<><Configuration key={refreshKey} data={query.data} refresh={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/>{query.data.workLog&&<WorkLogEditor key={`work-log-${refreshKey}`} state={query.data.workLog} version={query.data.version} onSaved={query.refresh} onReload={reload} reloading={query.loading||busyRoles} onStateChange={onRoleState}/>}<ModelCatalogEditor key={`catalog-${refreshKey}`} settingsVersion={query.data.version} defaultProvider={query.data.model.provider} onSaved={query.refresh} onStateChange={onRoleState}/><div className="settings-grid">{query.data.roleModels?.roles.map(role=><RoleModelEditor key={`${role.role}-${refreshKey}`} state={role} onStateChange={onRoleState} catalog={query.data!.roleModels.catalog} version={query.data!.version} onSaved={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/>)}</div><div className="settings-grid"><SecretEditor key={`github-${refreshKey}`} kind="github" state={query.data.secrets.github} version={query.data.version} onSaved={query.refresh} onStateChange={onRoleState}/></div></>:null}<p role="status" hidden={!navigationNotice}>{navigationNotice}</p>{leave&&<Confirm title="离开设置" actionLabel="放弃草稿并离开" onClose={()=>setLeave(null)} onConfirm={()=>{location.hash=leave}}><p>设置还有未保存的修改，离开会丢弃这些草稿。</p></Confirm>}</div>;
-
+ return <div className="page-content settings-page settings-workspace">
+  {query.error&&<Notice error={query.error} onRetry={busyRoles?undefined:reload}/>}
+  {query.loading&&!query.data?<Loading/>:query.data?<>
+   <div className="settings-workspace-layout">
+    <div className="settings-navigation" role="tablist" aria-label="设置分类" aria-orientation="vertical">
+     {sections.filter(item=>item.id!=='worklog'||query.data?.workLog).map(item=>{
+      const Icon=item.icon;
+      return <button type="button" key={item.id} id={`settings-tab-${item.id}`} role="tab" aria-selected={section===item.id} aria-controls={`settings-panel-${item.id}`} tabIndex={section===item.id?0:-1} onClick={()=>setSection(item.id)} onKeyDown={event=>{
+       const available=sections.filter(item=>item.id!=='worklog'||query.data?.workLog);
+       const index=available.findIndex(tab=>tab.id===item.id);
+       const next=event.key==='Home'?0:event.key==='End'?available.length-1:['ArrowDown','ArrowRight'].includes(event.key)?(index+1)%available.length:['ArrowUp','ArrowLeft'].includes(event.key)?(index+available.length-1)%available.length:-1;
+       if(next<0)return;event.preventDefault();setSection(available[next].id);document.getElementById(`settings-tab-${available[next].id}`)?.focus();
+      }}><Icon size={18} aria-hidden="true"/><span>{item.label}</span></button>
+     })}
+    </div>
+    <div className="settings-panels">
+     <div role="tabpanel" id="settings-panel-models" aria-labelledby="settings-tab-models" hidden={section!=='models'} tabIndex={0}>
+      <ModelCatalogEditor key={`catalog-${refreshKey}`} settingsVersion={query.data.version} defaultProvider={query.data.model.provider} onSaved={query.refresh} onStateChange={onRoleState}/>
+     </div>
+     <div role="tabpanel" id="settings-panel-roles" aria-labelledby="settings-tab-roles" hidden={section!=='roles'} tabIndex={0}>
+      <div className="settings-role-stack">{query.data.roleModels?.roles.map(role=><RoleModelEditor key={`${role.role}-${refreshKey}`} state={role} onStateChange={onRoleState} catalog={query.data!.roleModels.catalog} version={query.data!.version} onSaved={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/>)}</div>
+     </div>
+     <div role="tabpanel" id="settings-panel-appearance" aria-labelledby="settings-tab-appearance" hidden={section!=='appearance'} tabIndex={0}>
+      <Configuration key={refreshKey} data={query.data} refresh={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/>
+     </div>
+     {query.data.workLog&&<div role="tabpanel" id="settings-panel-worklog" aria-labelledby="settings-tab-worklog" hidden={section!=='worklog'} tabIndex={0}>
+      <WorkLogEditor key={`work-log-${refreshKey}`} state={query.data.workLog} version={query.data.version} onSaved={query.refresh} onReload={reload} reloading={query.loading||busyRoles} onStateChange={onRoleState}/>
+     </div>}
+     <div role="tabpanel" id="settings-panel-credentials" aria-labelledby="settings-tab-credentials" hidden={section!=='credentials'} tabIndex={0}>
+      <SecretEditor key={`github-${refreshKey}`} kind="github" state={query.data.secrets.github} version={query.data.version} onSaved={query.refresh} onStateChange={onRoleState}/>
+     </div>
+    </div>
+   </div>
+  </>:null}
+  <p role="status" hidden={!navigationNotice}>{navigationNotice}</p>
+  {leave&&<Confirm title="离开设置" actionLabel="放弃草稿并离开" onClose={()=>setLeave(null)} onConfirm={()=>{location.hash=leave}}><p>设置还有未保存的修改，离开会丢弃这些草稿。</p></Confirm>}
+ </div>;
 }
