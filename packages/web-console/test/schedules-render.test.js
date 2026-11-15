@@ -47,10 +47,10 @@ test('scheduled task page renders compact native-state rows and only read contro
   assert.match(html, /state=active" aria-current="page">启用/);
   assert.match(html, /state=inactive">停用/);
   assert.doesNotMatch(html, /已暂停|运行中|已结束|删除|编辑|恢复/);
-  assert.match(html, /<li class="schedule-row">/);
+  assert.match(html, /<tr class="schedule-row">/);
   assert.match(html, /schedule-title">核对定时任务/);
   assert.match(html, /每10分钟/);
-  const row = html.match(/<li class="schedule-row">([\s\S]*?)<\/li>/)[1];
+  const row = html.match(/<tr class="schedule-row">([\s\S]*?)<\/tr>/)[1];
   assert.doesNotMatch(row, /<a|<button/);
   assert.equal(requestedPath, '/schedules?state=active&offset=0&limit=20');
 });
@@ -92,11 +92,11 @@ test('one-time schedules retain full year and local timezone with valid semantic
 
 test('every schedule result state stays inside the shared task-list surface', () => {
   const cases = [
-    [snapshot([record]), {}, 'schedule-list'],
+    [snapshot([record]), {}, 'schedule-table'],
     [snapshot([]), {}, '暂无启用的定时任务'],
     [null, {loading: true}, '正在读取定时任务'],
     [null, {error: new ApiError(503, 'SCHEDULES_UNAVAILABLE')}, '定时任务暂不可读'],
-    [snapshot([record]), {error: new ApiError(503, 'SCHEDULES_READ_FAILED')}, 'schedule-list'],
+    [snapshot([record]), {error: new ApiError(503, 'SCHEDULES_READ_FAILED')}, 'schedule-table'],
     [snapshot([record]), {error: new ApiError(403, 'RESOURCE_FORBIDDEN')}, '定时任务暂不可读'],
   ];
   for (const [data, overrides, content] of cases) {
@@ -107,9 +107,14 @@ test('every schedule result state stays inside the shared task-list surface', ()
   }
 });
 
-test('schedule rows retain readable spacing and separators in the shipped stylesheet', () => {
+test('schedule table follows task-list structure and retains responsive labels', () => {
+  const html = render(snapshot([record]));
+  assert.match(html, /task-table schedule-table/);
+  for (const title of ['任务', '状态', '执行计划', '下次触发']) assert.ok(html.includes(title));
+  const inactive = render(snapshot([{...record, state: 'inactive'}]), {}, '?state=inactive');
+  assert.match(inactive, /原定触发/);
+  assert.doesNotMatch(inactive, /下次触发|已完成/);
   const css = readFileSync(new URL('../src/styles/schedules.css', import.meta.url), 'utf8');
-  assert.match(css, /\.schedule-row\s*\{[^}]*gap:\s*6px;[^}]*padding:\s*16px 18px;/);
-  assert.match(css, /\.schedule-row \+ \.schedule-row\s*\{[^}]*border-top:\s*1px solid var\(--board-border\)/);
-  assert.match(css, /@media\s*\(max-width:\s*520px\)[\s\S]*padding-inline:\s*14px/);
+  assert.match(css, /@media.*760px/);
+  assert.match(css, /content: attr\(data-label\)/);
 });

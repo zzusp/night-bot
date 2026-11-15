@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RiRefreshLine } from '@remixicon/react';
+import { RiCalendarScheduleLine, RiRefreshLine } from '@remixicon/react';
 import { ApiError, type Page, type ScheduledTask, type ScheduleState } from './api';
 import { dateTime, navigate, useResource } from './hooks';
 import { Button, EmptyState } from './components/BoardPrimitives';
@@ -38,10 +38,16 @@ export default function SchedulesPage({ route }: { route: URL }) {
     <section className="task-table-wrap schedule-results" aria-label={`${selected.label}的定时任务`} aria-busy={query.loading}>
       {!data ? query.loading ? <Loading>正在读取定时任务…</Loading> : <EmptyState title="定时任务暂不可读" /> : !data.items.length ?
         <EmptyState title={selected.empty} /> :
-        <ul className="schedule-list">{data.items.map(task => <li className="schedule-row" key={task.id}>
-          <span className="schedule-title">{task.title || '未命名定时任务'}</span>
-          <span className="schedule-meta">{states.find(item => item.value === task.state)?.label || '状态未记录'}<span aria-hidden="true"> · </span><span className="sr-only">，</span>{task.scheduleSummary}{task.kind === 'at' && <> · <time dateTime={task.scheduledAt}>{dateTime(task.scheduledAt, false, true)}</time></>}</span>
-        </li>)}</ul>}
+        <table className="task-table schedule-table">
+          <caption className="sr-only">定时任务与执行计划</caption>
+          <thead><tr><th scope="col">任务</th><th scope="col">状态</th><th scope="col">执行计划</th><th scope="col">{selected.value === 'active' ? '下次触发' : '原定触发'}</th></tr></thead>
+          <tbody>{data.items.map(task => <tr className="schedule-row" key={task.id}>
+            <td className="schedule-name"><div className="task-name"><span className="task-glyph" aria-hidden="true"><RiCalendarScheduleLine size={19} /></span><span className="schedule-title">{task.title || '未命名定时任务'}</span></div></td>
+            <td className="schedule-state"><span className={`schedule-badge ${task.state}`}>{states.find(item => item.value === task.state)?.label || '状态未记录'}</span></td>
+            <td className="schedule-plan" data-label="执行计划">{task.scheduleSummary}</td>
+            <td className="schedule-time" data-label={selected.value === 'active' ? '下次触发' : '原定触发'}><time dateTime={task.scheduledAt}>{dateTime(task.scheduledAt, false, true)}</time></td>
+          </tr>)}</tbody>
+        </table>}
     </section>
     {data && <Pagination offset={data.offset} total={data.total} nextOffset={data.nextOffset} onPage={changePage} loading={query.loading} />}
   </div>;
