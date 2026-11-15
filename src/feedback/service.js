@@ -30,8 +30,7 @@ export function createFeedbackService({model,modelConsent=()=>({revision:'defaul
   },
   collect(owner,input,{secrets:additionalSecrets=[]}={}){
    if(closed)fail('FEEDBACK_CLOSED',503)
-   if(input?.consent!==true)fail('FEEDBACK_CONSENT_REQUIRED',403)
-   if(!validText(input.title,160)||!validText(input.description,6000))fail('FEEDBACK_INPUT_INVALID')
+   if(!validText(input?.title,160)||!validText(input?.description,6000))fail('FEEDBACK_INPUT_INVALID')
    const selection=structuredClone(model());if(input.revision!==modelConsent().revision||input.model!==selection.provider+'/'+selection.model)fail('FEEDBACK_MODEL_CHANGED',409)
    clean();if([...reports.values()].some(r=>r.state==='collecting'))fail('FEEDBACK_BUSY',409)
    if(reports.size>=16)fail('FEEDBACK_LIMIT',429)

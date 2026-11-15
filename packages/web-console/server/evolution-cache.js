@@ -11,6 +11,15 @@ const PREFIX_BYTES = 9
 const sha = value => createHash('sha256').update(value).digest('hex')
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const failure = (code, status = 503) => Object.assign(new Error(code), {code, status})
+export function evolutionSortValues(item) {
+  const values = item.kind === 'skill' ? [item.modelUseCount, item.userUseCount, item.fileReadCount] : [item.memoryUse?.readCount, item.memoryUse?.searchCount]
+  const known = values.filter(value => Number.isSafeInteger(value) && value >= 0)
+  const sum = known.reduce((total, value) => total + value, 0)
+  const time = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? Date.parse(value) : null
+  return {id: item.id, usage: known.length && Number.isSafeInteger(sum) ? sum : null,
+    lastUsed: time(item.kind === 'skill' ? item.lastUsedAt : item.memoryUse?.lastAccess?.at), updated: time(item.updatedAt)}
+}
+const sortFields = ['usage', 'lastUsed', 'updated']
 const count = value => Number.isSafeInteger(value) && value >= 0
 const optional = (value, check) => value == null || check(value)
 const string = value => typeof value === 'string'
@@ -89,12 +98,13 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
     return buffer
   }
   function headerValid(value, size) {
-    if (value?.version !== 2 || value.identity !== fingerprint || !count(value.updatedAt)
+    if (value?.version !== 3 || value.identity !== fingerprint || !count(value.updatedAt)
       || value.updatedAt > now() || !object(value.summary) || 'items' in value.summary
       || !snapshotValid({...value.summary, items: []}) || !Array.isArray(value.rows)) return false
     let end = 0
     for (const row of value.rows) {
       if (!object(row) || !['memory', 'skill'].includes(row.kind) || row.offset !== end
+        || !object(row.sort) || !string(row.sort.id) || !sortFields.every(key => row.sort[key] === null || Number.isSafeInteger(row.sort[key]))
         || !count(row.length) || row.length === 0 || !/^[a-f0-9]{64}$/.test(row.hash)) return false
       end += row.length
       if (!Number.isSafeInteger(end) || end > MAX_BYTES) return false
@@ -151,11 +161,11 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
     let offset = 0
     for (const item of items) {
       const buffer = Buffer.from(JSON.stringify(item) + '\n')
-      rows.push({kind: item.kind, offset, length: buffer.length, hash: sha(buffer)})
+      rows.push({kind: item.kind, offset, length: buffer.length, hash: sha(buffer), sort: evolutionSortValues(item)})
       buffers.push(buffer); offset += buffer.length
       if (offset > MAX_BYTES) throw failure('EVOLUTION_CACHE_TOO_LARGE')
     }
-    const header = {version: 2, identity: fingerprint, updatedAt: stamp, summary, rows}
+    const header = {version: 3, identity: fingerprint, updatedAt: stamp, summary, rows}
     const encoded = Buffer.from(JSON.stringify(header)), start = PREFIX_BYTES + encoded.length
     if (encoded.length > MAX_HEADER_BYTES || start + offset > MAX_BYTES) throw failure('EVOLUTION_CACHE_TOO_LARGE')
     const prefix = Buffer.from(encoded.length.toString(16).padStart(8, '0') + '\n')
@@ -189,7 +199,7 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
       await unlink(temporary).catch(error => {if (error.code !== 'ENOENT') throw error})
     }
   }
-  async function page(value, {kind, offset, limit}) {
+  async function page(value, {kind, offset, limit, sort, direction}) {
     value.readers++
     try {
       await checkRoot()
@@ -197,13 +207,20 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
       // An atomic replacement may unlink this generation during an in-flight GET.
       if (!stat.isFile() || stat.nlink > 1 || !privateStat(stat) || stat.size !== value.stat.size
         || stat.mtimeMs !== value.stat.mtimeMs) throw failure('EVOLUTION_CACHE_PATH_UNSAFE')
-      const index = value.byKind[kind], items = []
+      const index = sort ? [...value.byKind[kind]].sort((a, b) => {
+        const av = a.sort[sort], bv = b.sort[sort]
+        if (av === null && bv !== null) return 1
+        if (bv === null && av !== null) return -1
+        const difference = av === null ? 0 : av - bv
+        if (difference) return direction === 'asc' ? difference : -difference
+        return a.kind.localeCompare(b.kind) || a.sort.id.localeCompare(b.sort.id) || a.offset - b.offset
+      }) : value.byKind[kind], items = []
       for (let i = offset; i < Math.min(offset + limit, index.length); i++) {
         const row = index[i], bytes = await readBytes(value.handle, row.length, value.start + row.offset)
         if (sha(bytes) !== row.hash) throw failure('EVOLUTION_CACHE_INVALID')
         let item
         try {item = JSON.parse(bytes.toString('utf8'))} catch {throw failure('EVOLUTION_CACHE_INVALID')}
-        if (!itemValid(item) || item.kind !== row.kind || !metadataOnly(item)) throw failure('EVOLUTION_CACHE_INVALID')
+        if (!itemValid(item) || item.kind !== row.kind || !metadataOnly(item) || JSON.stringify(evolutionSortValues(item)) !== JSON.stringify(row.sort)) throw failure('EVOLUTION_CACHE_INVALID')
         items.push(item)
       }
       return {...structuredClone(value.summary), items, kind, offset, limit, total: index.length,
@@ -261,7 +278,8 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
   const expired = () => updatedAt === null || now() - updatedAt >= EVOLUTION_REFRESH_MS || now() < updatedAt
   const retryDue = () => now() - lastAttempt >= EVOLUTION_REFRESH_MS || now() < lastAttempt
   return {
-    async read({force = false, kind = 'all', offset = 0, limit = 10} = {}) {
+    async read({force = false, kind = 'all', offset = 0, limit = 10, sort, direction = 'desc'} = {}) {
+      if (sort !== undefined && !sortFields.includes(sort) || !['asc', 'desc'].includes(direction)) throw failure('PAGE_INVALID', 400)
       if (!['all', 'memory', 'skill'].includes(kind) || !count(offset) || !count(limit) || limit < 1 || limit > 50) throw failure('PAGE_INVALID', 400)
       if (closed) throw failure('EVOLUTION_CACHE_CLOSED')
       if (revoked && !force) throw failure(revoked.code, revoked.status)
@@ -277,7 +295,7 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
       if (!snapshot) throw failure(lastFailure ?? 'EVOLUTION_CACHE_REFRESH_FAILED')
       const current = snapshot, cache = {updatedAt: new Date(updatedAt).toISOString(),
         stale: expired() || Boolean(errorCode), refreshing: Boolean(inFlight), ...(errorCode ? {error: errorCode} : {})}
-      const result = await page(current, {kind, offset, limit})
+      const result = await page(current, {kind, offset, limit, sort, direction})
       if (revoked) throw failure(revoked.code, revoked.status)
       return {snapshot: result, cache}
     },

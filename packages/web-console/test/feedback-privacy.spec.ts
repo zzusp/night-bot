@@ -1,7 +1,7 @@
 import {test, expect} from '@playwright/test'
 import {FIXTURE_TOKEN} from './preview.mjs'
 
-test('inline privacy disclosure keeps explicit collection and publication separate', async ({page}) => {
+test('explicit diagnostic action and publication stay separate without collection confirmation', async ({page}) => {
   const writes: string[] = []
   await page.route('**/api/feedback**', route => {
     const request = route.request()
@@ -15,7 +15,7 @@ test('inline privacy disclosure keeps explicit collection and publication separa
   await page.getByRole('button', {name:'连接工作空间',exact:true}).click()
   await expect(page.getByRole('radio', {name:'不收集',exact:true})).toBeChecked()
   await expect(page.locator('.feedback-disclosure')).toHaveCount(0)
-  await expect(page.locator('#feedback-privacy-summary')).toBeVisible()
+  await expect(page.locator('#feedback-privacy-summary')).toHaveCount(0)
   await expect(page.getByText('了解详情', {exact:true})).toHaveCount(0)
   for (const width of [1440, 390]) {
     await page.setViewportSize({width,height:960})
@@ -23,29 +23,19 @@ test('inline privacy disclosure keeps explicit collection and publication separa
     await page.screenshot({path:test.info().outputPath(`feedback-inline-${width}.png`)})
   }
   await page.getByRole('radio', {name:'由 AI 收集诊断',exact:true}).check()
-  const consent = page.getByRole('checkbox')
-  await expect(consent).not.toBeChecked()
-  await expect(consent).toHaveAccessibleName(/fixture\/model.*https:\/\/models.example/)
-  await expect(page.getByRole('button', {name:'开始诊断',exact:true})).toBeDisabled()
+  await expect(page.getByRole('checkbox')).toHaveCount(0)
+  await expect(page.getByRole('button', {name:'开始诊断',exact:true})).toBeEnabled()
   for (const width of [1440, 390]) {
     await page.setViewportSize({width,height:960})
-    const noticeBox = await page.locator('.feedback-privacy').boundingBox()
-    const consentBox = await consent.locator('..').boundingBox()
-    expect(noticeBox).not.toBeNull()
-    expect(consentBox).not.toBeNull()
-    const gap = consentBox!.y - (noticeBox!.y + noticeBox!.height)
-    expect(gap).toBeGreaterThanOrEqual(8)
-    expect(gap).toBeLessThanOrEqual(12)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({path:test.info().outputPath(`feedback-ai-inline-${width}.png`)})
   }
   expect(writes).toEqual([])
   await page.getByLabel('标题',{exact:true}).fill('测试问题')
   await page.getByLabel('问题详情',{exact:true}).fill('仅使用合成测试数据')
-  await consent.check()
   await page.getByRole('button', {name:'开始诊断',exact:true}).click()
   await expect(page.getByRole('button', {name:'确认提交 Issue',exact:true})).toBeDisabled()
   await expect(page.getByLabel('提交正文',{exact:true})).toBeEditable()
-  await expect(page.locator('#feedback-privacy-summary')).toBeVisible()
+  await expect(page.locator('#feedback-privacy-summary')).toHaveCount(0)
   expect(writes).toEqual(['/api/feedback/collect'])
 })

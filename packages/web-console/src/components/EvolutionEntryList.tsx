@@ -1,4 +1,4 @@
-import {RiArrowRightSLine, RiBookOpenLine, RiBrainLine} from '@remixicon/react';
+import {RiArrowRightSLine, RiArrowUpLine, RiArrowDownLine, RiExpandUpDownLine, RiBookOpenLine, RiBrainLine} from '@remixicon/react';
 import type {EvolutionItem, MemoryProvenance} from '../api';
 import {dateTime} from '../hooks';
 import {Button} from './BoardPrimitives';
@@ -65,12 +65,16 @@ export function EvolutionEntryMetadata({item}: {item: EvolutionItem}) {
   </div></details>;
 }
 
+export type EvolutionSort = 'usage' | 'lastUsed' | 'updated';
+export type EvolutionDirection = 'asc' | 'desc';
+const columns = [['usage', '使用次数'], ['lastUsed', '最近使用'], ['updated', '最近更新']] as const;
+
 /** Metadata only. The name is the explicit, version-bound content read action. */
-export default function EvolutionEntryList({items, onView}: {items: EvolutionItem[]; onView: (item: EvolutionItem, button: HTMLButtonElement) => void}) {
+export default function EvolutionEntryList({items, onView, sort, direction = 'desc', onSort}: {sort?: EvolutionSort; direction?: EvolutionDirection; onSort?: (sort: EvolutionSort) => void; items: EvolutionItem[]; onView: (item: EvolutionItem, button: HTMLButtonElement) => void}) {
   return <div className="evolution-table-wrap"><table className="evolution-table">
     <caption className="sr-only">Bot 公共记忆与技能，使用次数仅统计已核查会话中的有效记录。</caption>
     <colgroup><col className="evolution-col-entry"/><col className="evolution-col-usage"/><col className="evolution-col-last-used"/><col className="evolution-col-updated"/><col className="evolution-col-action"/></colgroup>
-    <thead><tr><th scope="col">名称</th><th scope="col">使用次数</th><th scope="col">最近使用</th><th scope="col">最近更新</th><th scope="col"><span className="sr-only">查看内容</span></th></tr></thead>
+    <thead><tr><th scope="col">名称</th>{columns.map(([key, label]) => <th key={key} scope="col" aria-sort={sort === key ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}><button type="button" className="evolution-sort" onClick={() => onSort?.(key)} aria-label={`${label}，${sort === key && direction === 'desc' ? '升序' : '降序'}排列`}><span>{label}</span>{sort === key ? direction === 'asc' ? <RiArrowUpLine size={14} aria-hidden="true"/> : <RiArrowDownLine size={14} aria-hidden="true"/> : <RiExpandUpDownLine size={14} aria-hidden="true"/>}</button></th>)}<th scope="col"><span className="sr-only">查看内容</span></th></tr></thead>
     <tbody>{items.map(item => <tr key={`${item.kind}:${item.id}`}>
       <td className="evolution-entry-cell"><Button variant="ghost" className="evolution-entry-open" aria-label={`查看内容：${item.name || '未命名记录'}${item.status !== 'applied' && statuses[item.status] ? `，${statuses[item.status]}` : ''}${item.updatedSinceUse ? '，载入版本与当前不同' : ''}`} onClick={event => onView(item, event.currentTarget)}>
         <span className="evolution-item-icon" aria-hidden="true">{item.kind === 'memory' ? <RiBrainLine size={18}/> : <RiBookOpenLine size={18}/>}</span>

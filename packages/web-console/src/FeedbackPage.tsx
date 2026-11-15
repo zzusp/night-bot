@@ -7,7 +7,6 @@ import './styles/feedback.css';
 
 type Feedback = { id: string; state: 'collecting' | 'editing' | 'ready' | 'failed' | 'submitting' | 'submitted' | 'unknown'; title: string; body: string; target: string; error?: string; url?: string };
 type Destination = { target: string; model: string | null; revision?: string; endpoint?: string };
-export const feedbackPrivacyNotice = '默认不收集。经您同意后采集本地诊断信息，脱敏后发送所选模型服务分析；自动脱敏可能遗漏。内容可审核修改，确认后才提交 GitHub。';
 
 export const feedbackImageNotice = '图片在 GitHub 页面中手动粘贴或拖入，不会由 Night Bot 读取、上传或发送给 Pi。图片可能包含隐私，无法保证自动脱敏，请先遮盖敏感信息。发布前请在 GitHub 核对正文和图片，最终提交后可能公开可见。';
 
@@ -19,24 +18,23 @@ export default function FeedbackPage() {
   const [copyStatus, setCopyStatus] = useState('');
   const [nativeOpened, setNativeOpened] = useState(false);
   const [editDraft, setEditDraft] = useState<{title: string; body: string} | null>(null);
-  const [consent, setConsent] = useState(false), [confirm, setConfirm] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const [record, setRecord] = useState<Feedback | null>(null), [busy, setBusy] = useState(false);
   const [error, setError] = useState(''), [url, setUrl] = useState(''), [submitAttempted, setSubmitAttempted] = useState(false);
   const editLock = useRef(false), requestLock = useRef(false), submitLock = useRef(false), revokeLock = useRef(false), mounted = useRef(true), titleInput = useRef<HTMLInputElement>(null);
   const polling = useResource<Feedback>(record?.state === 'collecting' ? `/feedback/${encodeURIComponent(record.id)}` : null, 2000);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => { if (polling.data && polling.data.id === record?.id) { setRecord(polling.data); setConfirm(false); } }, [polling.data, record?.id]);
-  useEffect(() => { setConsent(false); }, [destination.data?.model, destination.data?.endpoint, destination.data?.revision]);
   const collecting = record?.state === 'collecting';
   const collect = async () => {
-    if (requestLock.current || !destination.data || record || (collectEvidence && (!consent || !destination.data.model || !destination.data.revision))) return;
+    if (requestLock.current || !destination.data || record || (collectEvidence && (!destination.data.model || !destination.data.revision))) return;
     if (!title.trim() || !description.trim()) { setError('请填写标题与问题详情。'); titleInput.current?.focus(); return; }
     requestLock.current = true; setBusy(true); setError('');
     try {
-      const result = await api<Feedback>(collectEvidence ? '/feedback/collect' : '/feedback/draft', { method: 'POST', body: collectEvidence ? { title: title.trim(), description: description.trim(), consent: true, model: destination.data.model, revision: destination.data.revision } : { title: title.trim(), description: description.trim() } });
+      const result = await api<Feedback>(collectEvidence ? '/feedback/collect' : '/feedback/draft', { method: 'POST', body: collectEvidence ? { title: title.trim(), description: description.trim(), model: destination.data.model, revision: destination.data.revision } : { title: title.trim(), description: description.trim() } });
       if (mounted.current) { setRecord(result); setConfirm(false); }
     } catch (cause) { if (mounted.current) {
-      if (cause instanceof ApiError && ['FEEDBACK_MODEL_CHANGED','FEEDBACK_INPUT_INVALID','FEEDBACK_CONSENT_REQUIRED','FEEDBACK_BUSY','FEEDBACK_LIMIT','FEEDBACK_CLOSED','FEEDBACK_UNAVAILABLE'].includes(cause.code)) { requestLock.current = false; setConsent(false); destination.refresh(); setError(collectEvidence ? '诊断尚未启动。请核对模型与输入，稍后重新同意采集。' : '预览尚未创建。请核对输入后重试。'); }
+      if (cause instanceof ApiError && ['FEEDBACK_MODEL_CHANGED','FEEDBACK_INPUT_INVALID','FEEDBACK_BUSY','FEEDBACK_LIMIT','FEEDBACK_CLOSED','FEEDBACK_UNAVAILABLE'].includes(cause.code)) { requestLock.current = false; destination.refresh(); setError(collectEvidence ? '诊断尚未启动。请核对模型与输入，稍后重试。' : '预览尚未创建。请核对输入后重试。'); }
       else setError('请求未能确认，请勿重复提交；当前问题内容已保留。');
     } }
     finally { if (mounted.current) setBusy(false); /* An uncertain POST is never automatically replayed. */ }
@@ -47,7 +45,7 @@ export default function FeedbackPage() {
     setBusy(true); setError('');
     try {
       await api(`/feedback/${encodeURIComponent(record.id)}`, { method: 'DELETE' });
-      if (mounted.current) { setRecord(null); setEditDraft(null); setNativeOpened(false); setCopyStatus(''); setConsent(false); setConfirm(false); requestLock.current = false; }
+      if (mounted.current) { setRecord(null); setEditDraft(null); setNativeOpened(false); setCopyStatus(''); setConfirm(false); requestLock.current = false; }
     } catch { if (mounted.current) setError('未能确认撤销，请重新核对；未提交 GitHub。'); }
     finally { revokeLock.current = false; if (mounted.current) setBusy(false); }
   };
@@ -109,14 +107,11 @@ export default function FeedbackPage() {
     <section className="settings-card"><form noValidate onSubmit={event => { event.preventDefault(); void collect(); }}>
       <label htmlFor="feedback-title">标题</label><input ref={titleInput} id="feedback-title" maxLength={160} value={title} disabled={busy || !!record || requestLock.current} onChange={event => setTitle(event.target.value)} aria-describedby={error ? 'feedback-error' : undefined} />
       <label htmlFor="feedback-description">问题详情</label><textarea className="resize-none" id="feedback-description" rows={7} maxLength={6000} value={description} disabled={busy || !!record || requestLock.current} onChange={event => setDescription(event.target.value)} placeholder="发生了什么、操作步骤、期望结果" />
-      {!record && <fieldset disabled={busy || requestLock.current} className="feedback-mode" aria-describedby="feedback-privacy-summary"><legend>本地现场信息</legend>
-        <label className="feedback-consent"><input type="radio" name="feedback-mode" value="none" checked={!collectEvidence} onChange={() => { setCollectEvidence(false); setConsent(false); }} />不收集</label>
-        <label className="feedback-consent"><input type="radio" name="feedback-mode" value="collect" checked={collectEvidence} onChange={() => { setCollectEvidence(true); setConsent(false); }} />由 AI 收集诊断</label>
+      {!record && <fieldset disabled={busy || requestLock.current} className="feedback-mode"><legend>本地现场信息</legend>
+        <label className="feedback-consent"><input type="radio" name="feedback-mode" value="none" checked={!collectEvidence} onChange={() => { setCollectEvidence(false); }} />不收集</label>
+        <label className="feedback-consent"><input type="radio" name="feedback-mode" value="collect" checked={collectEvidence} onChange={() => { setCollectEvidence(true); }} />由 AI 收集诊断</label>
       </fieldset>}
-      <div className="feedback-privacy" aria-label="数据收集与提交提示">
-        <p id="feedback-privacy-summary" className="feedback-privacy-summary">{feedbackPrivacyNotice}</p>
-      </div>
-      {!record && <>{collectEvidence && <label className="feedback-consent"><input type="checkbox" checked={consent} disabled={busy || requestLock.current || !destination.data?.model} onChange={event => setConsent(event.target.checked)} />我同意采集消息链路、路由、任务及模型/工具计时、错误摘要，脱敏后连同问题发送至 {destination.data?.model ?? '未配置模型'}（{destination.data?.endpoint ?? '配置的模型服务'}）用于分析；本次不提交 GitHub。</label>}<div><Button variant="primary" type="submit" busy={busy} disabled={!destination.data || requestLock.current || (collectEvidence && (!consent || !destination.data.model || !destination.data.revision))}>{collectEvidence ? '开始诊断' : '生成预览'}</Button></div></>}
+      {!record && <><div><Button variant="primary" type="submit" busy={busy} disabled={!destination.data || requestLock.current || (collectEvidence && (!destination.data.model || !destination.data.revision))}>{collectEvidence ? '开始诊断' : '生成预览'}</Button></div></>}
     </form></section>
     {record && !submitAttempted && <Button disabled={busy} onClick={() => void revoke()}>清除暂存</Button>}
     {collecting && <Loading>Pi 正在诊断</Loading>}

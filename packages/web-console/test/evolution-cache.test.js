@@ -4,15 +4,15 @@ import {mkdtemp, rm, readFile, writeFile, readdir, chmod, symlink, link, stat, o
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {createHash} from 'node:crypto'
-import {openEvolutionCache, EVOLUTION_REFRESH_MS} from '../server/evolution-cache.js'
+import {openEvolutionCache, EVOLUTION_REFRESH_MS, evolutionSortValues} from '../server/evolution-cache.js'
 
 const dto = name => ({status:'ready', memory:{acceptedCount:1,candidateCount:0}, skills:{activeCount:0,candidateCount:0}, usageCoverage:{status:'ready'}, items:[{id:'a', kind:'memory', name, status:'applied'}]})
 const hash = value => createHash('sha256').update(value).digest('hex')
 const encode = (summary, items = [], overrides = {}) => {
   let offset = 0
   const blocks = items.map(item => Buffer.from(JSON.stringify(item) + '\n'))
-  const rows = blocks.map((block, i) => {const row = {kind: items[i].kind, offset, length: block.length, hash: hash(block)}; offset += block.length; return row})
-  const header = Buffer.from(JSON.stringify({version: 2, identity: hash('reader'), updatedAt: 1000, summary, rows, ...overrides}))
+  const rows = blocks.map((block, i) => {const row = {kind: items[i].kind, offset, length: block.length, hash: hash(block), sort: evolutionSortValues(items[i])}; offset += block.length; return row})
+  const header = Buffer.from(JSON.stringify({version: 3, identity: hash('reader'), updatedAt: 1000, summary, rows, ...overrides}))
   return Buffer.concat([Buffer.from(header.length.toString(16).padStart(8, '0') + '\n'), header, ...blocks])
 }
 const encodeDto = value => {const {items, ...summary} = value; return encode(summary, items)}
@@ -400,4 +400,49 @@ test('Windows replacement failure restores old pages and recovers after the exte
   const recovered = await f.cache.read({force:true})
   assert.equal(recovered.cache.stale,false); assert.equal(recovered.cache.error,undefined)
   assert.equal(recovered.snapshot.items[0].name,'3')
+})
+
+test('three columns sort globally before pagination for both kinds, unknowns last and ties stable', async t => {
+  const items = ['memory', 'skill'].flatMap(kind => Array.from({length: 23}, (_, i) => ({
+    id: `${kind}-${String(i).padStart(2, '0')}`, name: `${kind} ${i}`, kind, status: 'applied',
+    updatedAt: i === 22 ? null : new Date(1000 + Math.floor(i / 2) * 1000).toISOString(),
+    ...(kind === 'skill' ? {modelUseCount: i === 22 ? null : i, fileReadCount: 0, lastUsedAt: i === 22 ? null : new Date(30000 - i * 1000).toISOString()}
+      : {memoryUse: {readCount: i === 22 ? null : i, searchCount: i === 22 ? null : 0, lastAccess: i === 22 ? null : {counter:'readCount', at:new Date(30000 - i * 1000).toISOString()}}}),
+  })))
+  // Make every usage component missing for the unknown skill row.
+  items.at(-1).fileReadCount = null
+  const f = await setup(t, {collect: () => ({...dto('sort'), items})})
+  for (const kind of ['memory', 'skill']) for (const sort of ['usage', 'lastUsed', 'updated']) for (const direction of ['asc', 'desc']) {
+    const first = (await f.cache.read({kind, sort, direction, limit:10})).snapshot
+    const second = (await f.cache.read({kind, sort, direction, offset:10, limit:10})).snapshot
+    const last = (await f.cache.read({kind, sort, direction, offset:20, limit:10})).snapshot
+    assert.equal(first.total,23); assert.equal(first.items.length,10); assert.equal(second.items.length,10); assert.equal(last.items.length,3)
+    const rows = [...first.items,...second.items,...last.items]
+    assert.equal(rows.at(-1).id,`${kind}-22`)
+    assert.equal(new Set(rows.map(row=>row.id)).size,23)
+    for (let i=1;i<22;i++) {
+      const a=evolutionSortValues(rows[i-1]), b=evolutionSortValues(rows[i])
+      assert.ok(direction==='asc' ? a[sort]<=b[sort] : a[sort]>=b[sort])
+      if(a[sort]===b[sort]) assert.ok(a.id<b.id)
+    }
+  }
+  assert.equal(f.calls(),0)
+  await assert.rejects(f.cache.read({sort:'name'}),{code:'PAGE_INVALID'})
+  await assert.rejects(f.cache.read({sort:'usage',direction:'sideways'}),{code:'PAGE_INVALID'})
+})
+
+test('sorted pages survive restart without collecting or decoding off-page DTOs', async t => {
+  const f=await setup(t,{collect:()=>({...dto('sort'),items:Array.from({length:21},(_,i)=>({id:String(i).padStart(2,'0'),kind:'memory',name:`entry ${i}`,status:'applied',memoryUse:{readCount:i,searchCount:0}}))})})
+  await f.cache.read(); await f.cache.close()
+  const path=join(f.directory,filename('reader')), bytes=await readFile(path)
+  const start=9+parseInt(bytes.subarray(0,8).toString(),16)
+  const header=JSON.parse(bytes.subarray(9,start).toString())
+  // Corrupt the lowest-count DTO: descending page one must not decode it.
+  bytes[start+header.rows[0].offset]=33
+  await writeFile(path,bytes,{mode:0o600})
+  const cache=await openEvolutionCache({directory:f.directory,identity:'reader',now:()=>1001,collect:()=>{throw Error('must not collect')}})
+  t.after(()=>cache.close())
+  const result=(await cache.read({kind:'memory',sort:'usage',direction:'desc',limit:10})).snapshot
+  assert.deepEqual(result.items.map(row=>row.id),['20','19','18','17','16','15','14','13','12','11'])
+  await assert.rejects(cache.read({kind:'memory',sort:'usage',direction:'asc',limit:10}),{code:'EVOLUTION_CACHE_INVALID'})
 })
