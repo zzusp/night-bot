@@ -30,7 +30,7 @@ test('ready feedback displays editable exact server preview and unsaved edits bl
  globalThis.__feedbackRecord={id:'report',state:'ready',target:'zzusp/night-bot',title:'已脱敏标题',body:'## 已脱敏正文\n<script>not executable</script>'};
  try {
   let html=render();assert.match(html,/id="feedback-issue-title"[^>]*value="已脱敏标题"/);assert.match(html,/id="feedback-issue-body"/);assert.match(html,/&lt;script&gt;not executable&lt;\/script&gt;/);assert.doesNotMatch(html,/<script>/);assert.doesNotMatch(html,/更新预览/);
-  globalThis.__feedbackDraft={title:'修改标题',body:'修改正文'};html=render();assert.match(html,/value="修改标题"/);assert.match(html,/>修改正文<\/textarea>/);assert.match(html,/更新预览/);assert.doesNotMatch(html,/type="checkbox"/);assert.match(html,/<button[^>]*disabled=""[^>]*><span[^>]*>确认提交 Issue/);
+  globalThis.__feedbackDraft={title:'修改标题',body:'修改正文'};html=render();assert.match(html,/value="修改标题"/);assert.match(html,/>修改正文<\/textarea>/);assert.match(html,/更新预览/);assert.match(html,/type="checkbox" disabled=""/);assert.match(html,/我已检查以上完整内容，同意向/);assert.match(html,/<button[^>]*disabled=""[^>]*><span[^>]*>确认提交 Issue/);
  } finally {delete globalThis.__feedbackRecord;delete globalThis.__feedbackDraft;}
 });
 test('editing clears approval and uses PATCH before permitting exact server-payload publication',()=>{
@@ -58,7 +58,7 @@ test('native image handoff keeps explicit privacy disclosure and never carries d
   assert.match(html,/复制完整正文/);assert.match(html,/打开 GitHub 编辑页/);
   assert.match(html,/图片在 GitHub 页面中手动粘贴或拖入/);assert.match(html,/无法保证自动脱敏/);
   assert.doesNotMatch(html,/确认提交 Issue/);assert.doesNotMatch(html,/type="file"/);
-  assert.match(html,/在 GitHub 提交/);assert.match(html,/不收集/);
+  assert.match(html,/在 GitHub 提交/);assert.match(html,/我已核对以上内容，将在 GitHub 粘贴正文、添加图片并最终确认提交/);assert.match(html,/<button[^>]*disabled=""[^>]*><span[^>]*>打开 GitHub 编辑页/);assert.doesNotMatch(html,/feedback-privacy-summary/);
  } finally {delete globalThis.__feedbackRecord;delete globalThis.__feedbackImages;}
  const source=readFileSync(new URL('../src/FeedbackPage.tsx',import.meta.url),'utf8');
  assert.match(source,/if \(nativeImages \|\| nativeOpened\) return;/);
