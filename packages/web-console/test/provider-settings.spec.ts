@@ -66,5 +66,17 @@ test('其它设置的恢复按钮不能在 API 保存途中重挂表单并丢失
  await login(page);
  await page.route('**/api/settings/role-model',route=>route.fulfill({status:409,json:{error:'SETTINGS_VERSION_CONFLICT'}}));await page.getByRole('tab',{name:'模型分工',exact:true}).click();await page.getByRole('button',{name:'保存Router配置',exact:true}).click();await confirm(page);const reload=page.getByRole('button',{name:'重新读取设置并替换草稿',exact:true});await expect(reload).toBeEnabled();await page.unroute('**/api/settings/role-model');
  let release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve});let writes=0;await page.route('**/api/settings/provider',async route=>{writes++;await pending;await route.abort()});
- await page.getByRole('tab',{name:'模型与 API',exact:true}).click();await page.getByLabel('API 地址',{exact:true}).fill('https://pending.example.invalid/v1');await page.getByRole('button',{name:'保存 API 配置',exact:true}).click();await confirm(page);await expect(reload).toBeDisabled();await expect(page.getByRole('button',{name:'重新读取设置',exact:true})).toBeDisabled();await expect(manager(page).getByRole('button',{name:'重新读取路由配置并替换草稿',exact:true})).toBeDisabled();release();await expect(manager(page)).toContainText('无法确认最新保存结果');expect(writes).toBe(1);await expect(page.getByRole('button',{name:'保存 API 配置',exact:true})).toBeDisabled();
+ await page.getByRole('tab',{name:'模型与 API',exact:true}).click();await page.getByLabel('API 地址',{exact:true}).fill('https://pending.example.invalid/v1');await page.getByRole('button',{name:'保存 API 配置',exact:true}).click();await confirm(page);
+ // Visit each real panel while the write remains pending: navigation must not
+ // remount the API form or unlock any recovery action.
+ await page.getByRole('tab',{name:'模型分工',exact:true}).click();
+ await expect(reload).toBeVisible();await expect(reload).toBeDisabled();
+ await page.getByRole('tab',{name:'助手外观',exact:true}).click();
+ const appearanceReload=page.getByRole('button',{name:'重新读取设置',exact:true});
+ await expect(appearanceReload).toBeVisible();await expect(appearanceReload).toBeDisabled();
+ await page.getByRole('tab',{name:'模型与 API',exact:true}).click();
+ await expect(page.getByLabel('API 地址',{exact:true})).toHaveValue('https://pending.example.invalid/v1');
+ await expect(manager(page).getByRole('button',{name:'重新读取路由配置并替换草稿',exact:true})).toBeDisabled();
+ expect(writes).toBe(1);
+ release();await expect(manager(page)).toContainText('无法确认最新保存结果');expect(writes).toBe(1);await expect(page.getByRole('button',{name:'保存 API 配置',exact:true})).toBeDisabled();
 });
