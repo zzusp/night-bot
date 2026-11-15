@@ -6,16 +6,15 @@ import {join} from 'node:path'
 import {createFeedbackService} from '../src/feedback/service.js'
 import {redactFeedback} from '../src/feedback/redaction.js'
 import {feedbackErrorCodes} from '../src/feedback/evidence.js'
-const input={title:'页面异常',description:'重现步骤',consent:true,model:'test/model',revision:'default'}
+const input={title:'页面异常',description:'重现步骤',model:'test/model',revision:'default'}
 function fixture(overrides={}){
  let collected=0,sent=0,body
  const service=createFeedbackService({model:()=>({provider:'test',model:'model'}),resolveModel:async()=>({}),getToken:async()=>'secret',getSecrets:async()=>['PRIVATE_SECRET'],diagnose:async()=>{collected++;return '分析 PRIVATE_SECRET'},fetchImpl:async(_url,options)=>{sent++;body=JSON.parse(options.body);return {ok:true,json:async()=>({html_url:'https://github.com/zzusp/night-bot/issues/123'})}},...overrides})
  return {service,get collected(){return collected},get sent(){return sent},get body(){return body}}
 }
 async function ready(f){const r=f.service.collect('owner',input);for(let i=0;i<50;i++){const view=f.service.read('owner',r.id);if(view.state!=='collecting')return view;await new Promise(r=>setTimeout(r,2))}assert.fail('not ready')}
-test('no consent means no model, evidence, or issue; metadata is inert',async()=>{
+test('metadata is inert; explicit collection needs no extra consent and publication stays separate',async()=>{
  const f=fixture();assert.equal(f.service.metadata().target,'zzusp/night-bot')
- assert.throws(()=>f.service.collect('owner',{...input,consent:false}),{code:'FEEDBACK_CONSENT_REQUIRED'})
  assert.throws(()=>f.service.collect('owner',{...input,model:'changed'}),{code:'FEEDBACK_MODEL_CHANGED'})
  assert.equal(f.collected,0);assert.equal(f.sent,0)
  const r=await ready(f);assert.equal(r.state,'ready');assert.ok(!r.body.includes('PRIVATE_SECRET'))
@@ -72,7 +71,7 @@ test('edited preview is sanitized and old confirmation payload cannot publish',a
  await f.service.submit('owner',r.id,{confirm:true,title:next.title,body:next.body})
  assert.deepEqual(f.body,{title:next.title,body:next.body})
 })
-test('endpoint generation changes invalidate consent before and during resolve',async()=>{
+test('endpoint generation changes invalidate the selected configuration before and during resolve',async()=>{
  let revision='one';const f=fixture({modelConsent:()=>({revision,endpoint:'https://model.example'}),resolveModel:async()=>{revision='two';return{}}})
  assert.throws(()=>f.service.collect('owner',input),{code:'FEEDBACK_MODEL_CHANGED'})
  const r=f.service.collect('owner',{...input,revision:'one'});await new Promise(r=>setTimeout(r,5))
@@ -120,12 +119,11 @@ test('registered feedback secrets are redacted before the output length limit cu
  assert.ok(!text.includes(secret.slice(0,7)))
  assert.ok(text.includes('[已脱敏]'))
 })
-test('scoped evidence factory starts only after consent and isolates report capabilities',async()=>{
+test('scoped evidence factory starts only after explicit collection and isolates report capabilities',async()=>{
  let factories=0,diagnoses=0
  const f=fixture({createEvidence:({title,description,secrets})=>{assert.equal(title,input.title);factories++;assert.equal(description,input.description);assert.ok(secrets.includes('PRIVATE_SECRET'));const local=factories;return async()=>({local})},diagnose:async({evidence})=>{diagnoses++;return JSON.stringify(await evidence('discover'))}})
  f.service.metadata();f.service.draft('owner',{title:'manual',description:'manual'})
  assert.equal(factories,0)
- assert.throws(()=>f.service.collect('owner',{...input,consent:false}),{code:'FEEDBACK_CONSENT_REQUIRED'})
  assert.equal(factories,0)
  const first=await ready(f),second=await ready(f)
  assert.match(first.body,/"local":1/);assert.match(second.body,/"local":2/)
