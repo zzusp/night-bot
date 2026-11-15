@@ -430,3 +430,19 @@ test('three columns sort globally before pagination for both kinds, unknowns las
   await assert.rejects(f.cache.read({sort:'name'}),{code:'PAGE_INVALID'})
   await assert.rejects(f.cache.read({sort:'usage',direction:'sideways'}),{code:'PAGE_INVALID'})
 })
+
+test('sorted pages survive restart without collecting or decoding off-page DTOs', async t => {
+  const f=await setup(t,{collect:()=>({...dto('sort'),items:Array.from({length:21},(_,i)=>({id:String(i).padStart(2,'0'),kind:'memory',name:`entry ${i}`,status:'applied',memoryUse:{readCount:i,searchCount:0}}))})})
+  await f.cache.read(); await f.cache.close()
+  const path=join(f.directory,filename('reader')), bytes=await readFile(path)
+  const start=9+parseInt(bytes.subarray(0,8).toString(),16)
+  const header=JSON.parse(bytes.subarray(9,start).toString())
+  // Corrupt the lowest-count DTO: descending page one must not decode it.
+  bytes[start+header.rows[0].offset]=33
+  await writeFile(path,bytes,{mode:0o600})
+  const cache=await openEvolutionCache({directory:f.directory,identity:'reader',now:()=>1001,collect:()=>{throw Error('must not collect')}})
+  t.after(()=>cache.close())
+  const result=(await cache.read({kind:'memory',sort:'usage',direction:'desc',limit:10})).snapshot
+  assert.deepEqual(result.items.map(row=>row.id),['20','19','18','17','16','15','14','13','12','11'])
+  await assert.rejects(cache.read({kind:'memory',sort:'usage',direction:'asc',limit:10}),{code:'EVOLUTION_CACHE_INVALID'})
+})
