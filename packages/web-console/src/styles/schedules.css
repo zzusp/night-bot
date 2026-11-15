@@ -1,10 +1,28 @@
 .schedule-results.task-table-wrap { min-height: 168px; }
-.schedule-list { list-style: none; margin: 0; padding: 0; }
-.schedule-row { display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; min-height: 74px; }
-.schedule-row + .schedule-row { border-top: 1px solid var(--board-border); }
-.schedule-title { color: var(--board-text); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
-.schedule-meta { color: var(--board-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.schedule-table { table-layout: fixed; }
+.schedule-table th:first-child { width: 42%; }
+.schedule-table th:nth-child(2) { width: 12%; }
+.schedule-table th:nth-child(3) { width: 23%; }
+.schedule-table td:last-child { width: auto; padding-left: 18px; }
+.schedule-table td:nth-child(3) { white-space: normal; }
+.schedule-title { color: var(--board-text); font-size: 13px; font-weight: 500; line-height: 1.7; overflow-wrap: anywhere; align-self: center; }
+.schedule-plan { color: var(--board-muted); line-height: 1.7; overflow-wrap: anywhere; }
+.schedule-time time { line-height: 1.7; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.schedule-badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: var(--board-radius-pill); font-size: 11px; color: var(--board-muted); background: var(--board-panel); }
+.schedule-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.schedule-badge.active { color: var(--board-info); background: var(--board-primary-soft); }
+@media (max-width: 760px) {
+  .schedule-table, .schedule-table tbody { display: block; }
+  .schedule-table thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+  .schedule-table .schedule-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding: 18px; }
+  .schedule-table .schedule-row + .schedule-row { border-top: 1px solid var(--board-border); }
+  .schedules-page .schedule-table .schedule-row td { display: block; padding: 0; border: 0; width: auto; min-width: 0; }
+  .schedule-table .schedule-state { align-self: start; padding-top: 4px; }
+  .schedule-table .schedule-plan, .schedule-table .schedule-time { grid-column: 1 / -1; padding-left: 46px; }
+  .schedule-table [data-label]::before { content: attr(data-label); display: inline-block; color: var(--board-muted); font-size: 11px; width: 64px; }
+}
 @media (max-width: 520px) {
   .schedules-page .list-toolbar { gap: 10px; }
-  .schedule-row { padding-inline: 14px; }
+  .schedule-table .schedule-row { padding-inline: 14px; }
+  .schedules-page .schedule-table .schedule-row .schedule-plan, .schedules-page .schedule-table .schedule-row .schedule-time { padding-left: 0; }
 }

@@ -11,7 +11,7 @@ async function open(page: Page, path = '/schedules') {
   await page.getByRole('button', {name: '连接工作空间', exact: true}).click();
 }
 
-test('定时任务导航与两行真实列表，只显示启用和停用分类，不提供写操作', async ({page}) => {
+test('定时任务导航与真实计划表格，只显示启用和停用分类，不提供写操作', async ({page}) => {
   const writes: string[] = [];
   page.on('request', request => {if (request.url().includes('/api/schedules') && request.method() !== 'GET') writes.push(request.method());});
   await page.route('**/api/schedules?*', route => {
@@ -25,8 +25,8 @@ test('定时任务导航与两行真实列表，只显示启用和停用分类�
   const tabs = page.getByRole('navigation', {name: '定时任务状态'});
   await expect(tabs.getByRole('link')).toHaveText(['启用', '停用']);
   await expect(page.locator('.schedule-title')).toHaveText(active.title);
-  await expect(page.locator('.schedule-meta')).toContainText('启用 ·');
-  await expect(page.locator('.schedule-meta')).toContainText('每 10 分钟');
+  await expect(page.locator('.schedule-badge')).toContainText('启用');
+  await expect(page.locator('.schedule-plan')).toContainText('每 10 分钟');
   await expect(page.locator('.schedule-row :is(button, a)')).toHaveCount(0);
   await expect(page.getByRole('button', {name: /暂停|恢复|删除|编辑|创建/})).toHaveCount(0);
   const tab = tabs.getByRole('link', {name: '停用', exact: true});
@@ -34,7 +34,7 @@ test('定时任务导航与两行真实列表，只显示启用和停用分类�
   await expect(tab).toBeFocused();
   await expect(tab).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('.schedule-title')).toHaveText(inactive.title);
-  await expect(page.locator('.schedule-meta')).toContainText('停用 ·');
+  await expect(page.locator('.schedule-badge')).toContainText('停用');
   await page.goBack(); await expect(page.locator('.schedule-title')).toHaveText(active.title);
   await page.goForward(); await expect(page.locator('.schedule-title')).toHaveText(inactive.title);
   await page.reload(); await expect(page.locator('.schedule-title')).toHaveText(inactive.title);
@@ -123,12 +123,18 @@ test('长标题与规则在桌面和390px浅深色可读，无横向溢出且通
   ])}));
   await open(page);
   await expect(page.locator('.schedule-row')).toHaveCount(4);
-  await expect(page.locator('.schedule-meta time')).toContainText('2032');
-  await expect(page.locator('.schedule-meta time')).toContainText('GMT+8');
+  await expect(page.locator('.schedule-time time').nth(2)).toContainText('2032');
+  await expect(page.locator('.schedule-time time').nth(2)).toContainText('GMT+8');
   for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({width, height: 900});
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     await page.emulateMedia({reducedMotion: 'reduce'});
+    for (const row of await page.locator('.schedule-row').all()) {
+      await expect(row.locator('.schedule-plan')).toBeVisible();
+      await expect(row.locator('.schedule-time')).toBeVisible();
+      expect((await row.locator('.schedule-plan').boundingBox())!.height).toBeGreaterThan(0);
+      expect((await row.locator('.schedule-time').boundingBox())!.height).toBeGreaterThan(0);
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await page.locator('.schedule-title').nth(1).evaluate(el => el.scrollHeight === el.clientHeight)).toBe(true);
     expect((await new AxeBuilder({page}).include('.schedules-page').analyze()).violations).toEqual([]);
@@ -182,7 +188,13 @@ for (const state of ['populated', 'empty', 'loading', 'unavailable'] as const) {
         expect(box).not.toBeNull();
         expect(box!.x).toBeGreaterThanOrEqual(0);
         expect(box!.x + box!.width).toBeLessThanOrEqual(width);
-        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        for (const row of await page.locator('.schedule-row').all()) {
+      await expect(row.locator('.schedule-plan')).toBeVisible();
+      await expect(row.locator('.schedule-time')).toBeVisible();
+      expect((await row.locator('.schedule-plan').boundingBox())!.height).toBeGreaterThan(0);
+      expect((await row.locator('.schedule-time').boundingBox())!.height).toBeGreaterThan(0);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         await expect(frame.locator('.list-toolbar, .pagination')).toHaveCount(0);
         await page.screenshot({path: test.info().outputPath(`schedule-frame-${state}-${theme}-${width}.png`), fullPage: true});
       }
@@ -202,11 +214,21 @@ test('停用记录保留清晰行间分隔与内边距，不堆叠为裸文字',
   for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({width, height: 900});
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
-    await expect(rows.first()).toHaveCSS('padding-top', '16px');
-    await expect(rows.first()).toHaveCSS('row-gap', '6px');
-    await expect(rows.nth(1)).toHaveCSS('border-top-width', '1px');
-    await expect(rows.nth(1)).toHaveCSS('border-top-style', 'solid');
-    await expect(rows.first()).toHaveCSS('padding-left', width === 390 ? '14px' : '18px');
+    const cell = rows.first().locator('.schedule-name');
+    if (width === 390) {
+      await expect(rows.first()).toHaveCSS('padding-top', '18px');
+      await expect(rows.first()).toHaveCSS('padding-left', '14px');
+      await expect(rows.nth(1)).toHaveCSS('border-top-width', '1px');
+    } else {
+      await expect(cell).toHaveCSS('padding-top', '19px');
+      await expect(cell).toHaveCSS('border-bottom-width', '1px');
+    }
+    for (const row of await page.locator('.schedule-row').all()) {
+      await expect(row.locator('.schedule-plan')).toBeVisible();
+      await expect(row.locator('.schedule-time')).toBeVisible();
+      expect((await row.locator('.schedule-plan').boundingBox())!.height).toBeGreaterThan(0);
+      expect((await row.locator('.schedule-time').boundingBox())!.height).toBeGreaterThan(0);
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({path: test.info().outputPath(`schedule-rows-${theme}-${width}.png`), fullPage: true});
   }
