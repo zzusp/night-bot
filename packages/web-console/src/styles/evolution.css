@@ -130,3 +130,14 @@
   .evolution-reader-footer { padding: 16px 18px; }
   .evolution-diff-line { grid-template-columns: 22px 22px 18px minmax(0, 1fr); padding: 3px 2px; }
 }
+
+.evolution-sort { display: inline-flex; align-items: center; gap: 4px; border: 0; border-radius: 4px; padding: 7px 0; color: inherit; background: transparent; font: inherit; cursor: pointer; white-space: nowrap; }
+.evolution-sort:hover, th[aria-sort="ascending"] .evolution-sort, th[aria-sort="descending"] .evolution-sort { color: var(--board-text); }
+.evolution-sort:focus-visible { outline: 2px solid var(--board-primary); outline-offset: 3px; }
+@media (max-width: 760px) {
+  .evolution-table thead { position: static; display: block; width: auto; height: auto; margin: 0; overflow: visible; clip-path: none; white-space: normal; }
+  .evolution-table thead tr { display: flex; gap: 16px; padding: 0 12px; border-bottom: 1px solid var(--board-border); }
+  .evolution-table thead th { display: block; height: auto; padding: 0; border: 0; }
+  .evolution-table thead th:first-child, .evolution-table thead th:last-child { display: none; }
+  .evolution-sort { min-height: 44px; }
+}

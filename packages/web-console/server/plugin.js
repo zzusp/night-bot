@@ -345,10 +345,12 @@ export async function createWebConsole({channels, paths, config, getApplication,
       return send(response, 200, {status: 'connected', timestamp: new Date().toISOString(), ...values, sectionErrors})
     }
     if (request.method === 'GET' && path === '/api/evolution') {
-      if ([...url.searchParams.keys()].some(key => !['kind', 'offset', 'limit', 'refresh'].includes(key))) fail('PAGE_INVALID')
+      if ([...url.searchParams.keys()].some(key => !['kind', 'offset', 'limit', 'refresh', 'sort', 'direction'].includes(key))) fail('PAGE_INVALID')
       const kind = url.searchParams.get('kind') ?? 'all'
       if (!['all', 'memory', 'skill'].includes(kind) || url.searchParams.has('refresh') && url.searchParams.get('refresh') !== '1') fail('PAGE_INVALID')
-      const options = {kind, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 10, 50)}
+      const sort = url.searchParams.get('sort') ?? undefined, direction = url.searchParams.get('direction') ?? 'desc'
+      if (sort !== undefined && !['usage', 'lastUsed', 'updated'].includes(sort) || !['asc', 'desc'].includes(direction)) fail('PAGE_INVALID')
+      const options = {kind, sort, direction, offset: pageNumber(url.searchParams, 'offset', 0), limit: pageNumber(url.searchParams, 'limit', 10, 50)}
       application()
       authorizedEvolutionReader()
       if (!getMemory()?.store?.root) return send(response, 200, {status: 'unavailable', reason: 'EVOLUTION_UNAVAILABLE'})

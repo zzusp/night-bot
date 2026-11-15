@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import EvolutionContent from './EvolutionContent';
-import EvolutionEntryList, { formatEvolutionCount as number, isEvolutionCount } from './components/EvolutionEntryList';
+import EvolutionEntryList, { formatEvolutionCount as number, isEvolutionCount, type EvolutionSort, type EvolutionDirection } from './components/EvolutionEntryList';
 import { RiBookOpenLine, RiBrainLine, RiRefreshLine } from '@remixicon/react';
 import { ApiError, EVOLUTION_SNAPSHOT_TIMEOUT_MS, type Evolution, type EvolutionItem, type EvolutionReady } from './api';
 import { dateTime, navigate, useResource } from './hooks';
@@ -44,7 +44,11 @@ export default function EvolutionPage({ route }: { route: URL }) {
   const kind = route.searchParams.get('kind') === 'skill' ? 'skill' : 'memory';
   const requestedOffset = Number(route.searchParams.get('offset'));
   const offset = Number.isSafeInteger(requestedOffset) && requestedOffset >= 0 ? requestedOffset : 0;
-  const path = `/evolution?kind=${kind}&offset=${offset}&limit=10`;
+  const rawSort = route.searchParams.get('sort');
+  const sort = (['usage', 'lastUsed', 'updated'].includes(rawSort || '') ? rawSort : 'updated') as EvolutionSort;
+  const direction: EvolutionDirection = route.searchParams.get('direction') === 'asc' ? 'asc' : 'desc';
+  const sortQuery = `&sort=${sort}&direction=${direction}`;
+  const path = `/evolution?kind=${kind}&offset=${offset}&limit=10${sortQuery}`;
   const query = useResource<Evolution>(path, 300000, {pauseWhenHidden: true, refreshPath: path + '&refresh=1', timeoutMs: EVOLUTION_SNAPSHOT_TIMEOUT_MS});
   const forbidden = query.error instanceof ApiError && [401, 403].includes(query.error.status);
   const busy = query.error instanceof ApiError && query.error.code === 'EVOLUTION_BUSY';
@@ -64,12 +68,12 @@ export default function EvolutionPage({ route }: { route: URL }) {
   // Summaries are Bot-wide, so category/page reads must not remove their cards.
   // Permission loss and explicit unavailability still hide the cached values.
   const summary = forbidden || revoked || query.data?.status === 'unavailable' ? null : ready ?? lastSummary;
-  const changePage = (next: number) => navigate(`/evolution?kind=${kind}&offset=${next}`);
+  const changePage = (next: number) => navigate(`/evolution?kind=${kind}&offset=${next}${sortQuery}`);
   useEffect(() => {
     if (ready && !query.loading && !query.error && offset > 0 && offset >= ready.total) {
-      navigate(`/evolution?kind=${kind}&offset=${Math.max(0, Math.floor((ready.total - 1) / 10) * 10)}`);
+      navigate(`/evolution?kind=${kind}&offset=${Math.max(0, Math.floor((ready.total - 1) / 10) * 10)}${sortQuery}`);
     }
-  }, [ready, query.loading, query.error, offset, kind]);
+  }, [ready, query.loading, query.error, offset, kind, sortQuery]);
   const selected = selection?.route === route.search && ready?.items.find(item => item.id === selection.item.id && item.kind === selection.item.kind);
   const refreshList = () => { closeContent(); query.refresh(); };
   const body = useRef<HTMLDivElement>(null);
@@ -82,7 +86,7 @@ export default function EvolutionPage({ route }: { route: URL }) {
     <div hidden={!!selected}>{summary && <UsageSummary data={summary} />}</div>
     <section className="evolution-library" aria-label="记忆与技能条目" hidden={!!selected}>
       <div className="evolution-list-toolbar">
-        <nav className="filter-tabs" aria-label="自进化记录类型">{[['memory', '记忆'], ['skill', 'Skills']].map(([value, label]) => <a key={value} href={`#/evolution?kind=${value}`} aria-current={kind === value ? 'page' : undefined} aria-controls="evolution-list-body">{label}</a>)}</nav>
+        <nav className="filter-tabs" aria-label="自进化记录类型">{[['memory', '记忆'], ['skill', 'Skills']].map(([value, label]) => <a key={value} href={`#/evolution?kind=${value}${sortQuery}`} aria-current={kind === value ? 'page' : undefined} aria-controls="evolution-list-body">{label}</a>)}</nav>
         <EvolutionListActions cache={summary?.cache} sessionsRead={summary?.usageCoverage?.sessionsRead} loading={query.loading} onRefresh={refreshList} />
       </div>
       <div ref={body} id="evolution-list-body" className="evolution-list-body" aria-busy={query.loading} style={!ready && query.loading ? {minHeight: bodyHeight.current} : undefined}>
@@ -92,7 +96,7 @@ export default function EvolutionPage({ route }: { route: URL }) {
           : <>
             {kind === 'skill' && ready.skills.inventoryComplete === false && <p className="evolution-list-notice" role="status">技能盘点不完整：{ready.skills.inventoryIssues?.join('；') || '部分资源不可读'}</p>}
             {!ready.items.length ? <EmptyState title={offset ? '这一页已没有记录' : '暂无自进化记录'} action={offset ? <Button variant="secondary" onClick={() => changePage(0)}>返回第一页</Button> : undefined} />
-              : <EvolutionEntryList items={ready.items} onView={(item, button) => { opener.current = button; setSelection({item, route: route.search}); }} />}
+              : <EvolutionEntryList sort={sort} direction={direction} onSort={next => navigate(`/evolution?kind=${kind}&sort=${next}&direction=${next === sort && direction === 'desc' ? 'asc' : 'desc'}`)} items={ready.items} onView={(item, button) => { opener.current = button; setSelection({item, route: route.search}); }} />}
             <Pagination pageSize={10} offset={offset} total={ready.total} nextOffset={ready.nextOffset} onPage={changePage} loading={query.loading} />
           </>}
       </div>
