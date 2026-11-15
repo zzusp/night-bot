@@ -57,13 +57,16 @@ RUN pnpm --dir packages/web-console build
 FROM node:24.13.0-bookworm-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f AS runtime
 ARG DEBIAN_ARCHIVE_URL
 ARG DEBIAN_SECURITY_URL
+ENV TZ=Asia/Shanghai
 # 固定 slim 镜像无系统 CA；先用同版 Node 的内置公共根引导受验证的 HTTPS。
 RUN node --input-type=module -e "import {rootCertificates} from 'node:tls'; import {writeFileSync} from 'node:fs'; writeFileSync('/tmp/night-debian-roots.pem',rootCertificates.join('\n')+'\n',{mode:0o644})" \
     && node --input-type=module -e "import {readFileSync,writeFileSync} from 'node:fs'; const p='/etc/apt/sources.list.d/debian.sources'; let s=readFileSync(p,'utf8'); for(const [key,path] of [['DEBIAN_ARCHIVE_URL','debian'],['DEBIAN_SECURITY_URL','debian-security']]){const u=new URL(process.env[key]); if(u.protocol!=='https:'||u.username||u.password||/[?#]/.test(process.env[key]))throw Error('Invalid Debian HTTPS mirror'); const from='URIs: http://deb.debian.org/'+path; if(!s.split('\n').includes(from))throw Error('Unexpected Debian source'); s=s.replace(from+'\n','URIs: '+u.href.replace(/\/$/,'')+'\n');} writeFileSync(p,s);" \
     && apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true update \
-    && apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true install -y --no-install-recommends bash bubblewrap ca-certificates findutils gh git grep procps python3 python3-yaml tini util-linux \
+    && DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::https::CAInfo=/tmp/night-debian-roots.pem -o Acquire::https::Verify-Peer=true install -y --no-install-recommends bash bubblewrap ca-certificates findutils gh git grep procps python3 python3-yaml tini tzdata util-linux \
     && rm -f /tmp/night-debian-roots.pem \
     && rm -rf /var/lib/apt/lists/* \
+    && ln -snf "/usr/share/zoneinfo/$TZ" /etc/localtime \
+    && printf '%s\n' "$TZ" > /etc/timezone \
     && chmod u-s /usr/bin/bwrap
 COPY --from=build /usr/local/bin/dws /usr/local/bin/dws
 COPY --from=build /usr/local/share/licenses/dws /usr/local/share/licenses/dws
