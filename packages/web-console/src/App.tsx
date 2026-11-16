@@ -11,7 +11,7 @@ import { TaskDetail, TaskList } from './TasksPage';
 import ChannelsPage from './ChannelsPage';
 import PermissionsPanel from './components/PermissionsPanel';
 import EvolutionPage from './EvolutionPage';
-import SettingsPage from './SettingsPage';
+import {SettingsModal} from './components/SettingsModal';
 import SchedulesPage from './SchedulesPage';
 import FeedbackPage from './FeedbackPage';
 import {AssistantBrandContext, defaultBrand, useAssistantBrand} from './components/AssistantBrand';
@@ -50,7 +50,11 @@ class PageBoundary extends Component<{ children: ReactNode; resetKey: string }, 
 function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: () => Promise<void>; drafts: Drafts }) {
   const route = useRoute();
   const segments = route.pathname.split('/').filter(Boolean);
-  const section = segments[0] || 'chat';
+  const legacySettings = segments[0] === 'settings';
+  const section = legacySettings ? 'chat' : segments[0] || 'chat';
+  const [settingsOpen,setSettingsOpen]=useState(legacySettings);
+  useEffect(()=>{if(legacySettings)setSettingsOpen(true)},[legacySettings]);
+  const closeSettings=useCallback(()=>{setSettingsOpen(false);if(legacySettings)navigate('/chat')},[legacySettings]);
   let id: string | undefined;
   try { id = segments[1] ? decodeURIComponent(segments[1]) : undefined; } catch { id = undefined; }
   const isTaskDetail = section === 'tasks' && !!id;
@@ -91,7 +95,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     finally { setLogoutBusy(false); }
   };
   const refresh = () => { overview.refresh(); chats.refresh(); recent.refresh(); conversations.refresh(); olderChats.refresh(); };
-  const navItems = [{ path: 'chat', label: '与 Bot 对话', icon: RiChat3Line }, { path: 'tasks', label: '任务', icon: RiCheckboxCircleLine }, { path: 'schedules', label: '定时任务', icon: RiCalendarScheduleLine }, { path: 'channels', label: '渠道', icon: RiGlobalLine }, { path: 'evolution', label: '自进化', icon: RiSeedlingLine }, {path:'settings',label:'设置',icon:RiSettings3Line}, {path:'feedback',label:'报错反馈',icon:RiBugLine}];
+  const navItems = [{ path: 'chat', label: '与 Bot 对话', icon: RiChat3Line }, { path: 'tasks', label: '任务', icon: RiCheckboxCircleLine }, { path: 'schedules', label: '定时任务', icon: RiCalendarScheduleLine }, { path: 'channels', label: '渠道', icon: RiGlobalLine }, { path: 'evolution', label: '自进化', icon: RiSeedlingLine }, {path:'feedback',label:'报错反馈',icon:RiBugLine}];
   const sidebar = (mobile = false) => <>
     <div className="sidebar-brand"><Logo />{mobile && <IconButton label="关闭导航" onClick={() => drawer.current?.close()}><RiCloseLine size={19} /></IconButton>}</div>
     <nav className="primary-nav" aria-label="主导航">{navItems.map(item => <a key={item.path} href={`#/${item.path}`} aria-current={section === item.path ? 'page' : undefined} onClick={() => drawer.current?.close()}><item.icon size={19} /><span>{item.label}</span>{item.path === 'tasks' && overview.data?.running?.total ? <span className="nav-count">{overview.data.running.total}</span> : null}</a>)}</nav>
@@ -100,7 +104,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
       {!currentChats.data && currentChats.loading ? <Loading /> : currentChats.data?.items.length ? <nav aria-label="最近对话">{currentChats.data.items.map(chat => <a href={`#/${chat.kind === 'channel' ? 'channels' : 'chat'}/${encodeURIComponent(chat.id)}`} key={chat.kind + ':' + chat.id} aria-current={section === (chat.kind === 'channel' ? 'channels' : 'chat') && id === chat.id ? 'page' : undefined} onClick={() => drawer.current?.close()}>{chat.kind === 'channel' ? <RiGlobalLine size={16} /> : <RiChat3Line size={16} />}<span>{chat.title || '未命名对话'}</span></a>)}</nav> : <p className="sidebar-empty">{currentChats.error && !currentChats.data ? '—' : '暂无对话'}</p>}
       {(historyOffset > 0 || currentChats.data?.nextOffset != null) && <div className="history-pagination">{historyOffset > 0 && <button onClick={() => setHistoryOffset(Math.max(0, historyOffset - 20))}>上一页</button>}{currentChats.data?.nextOffset != null && <button onClick={() => setHistoryOffset(currentChats.data!.nextOffset!)}>更早对话</button>}</div>}
     </div>
-    <div className="sidebar-bottom">
+    <div className="sidebar-bottom"><button type="button" className="sidebar-settings" aria-haspopup="dialog" onClick={event=>{drawer.current?.close();if(mobile)document.querySelector<HTMLButtonElement>('.mobile-menu')?.focus({preventScroll:true});else event.currentTarget.focus({preventScroll:true});setSettingsOpen(true)}}><RiSettings3Line size={19}/><span>设置</span></button>
       <div className="operator"><span className="operator-avatar">{session.operator.name.slice(0, 1) || 'N'}</span><div><strong>{session.operator.name || '操作者'}</strong><span>本机工作空间</span></div><IconButton label="退出登录" disabled={logoutBusy} onClick={() => void logout()}><RiLogoutBoxRLine size={18} /></IconButton></div>
     </div></>;
   const locationHeader = <><IconButton label="打开导航" className="mobile-menu" onClick={() => drawer.current?.showModal()}><RiMenuLine size={20} /></IconButton><div className="header-location"><span>工作空间</span><span className="breadcrumb-slash">/</span><h1 ref={titleRef} tabIndex={-1}>{title}</h1></div></>;
@@ -108,16 +112,17 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
         <PermissionsPanel key={permissionIdentity.epoch} /><IconButton label="刷新概览" onClick={refresh}><RiRefreshLine size={18} /></IconButton><IconButton label={theme === 'light' ? '切换深色外观' : '切换浅色外观'} onClick={toggleTheme}>{theme === 'light' ? <RiMoonLine size={18} /> : <RiSunLine size={18} />}</IconButton></div>;
   const workspaceHeader = <header className="topbar workspace-topbar">{locationHeader}{globalTools}</header>;
   const conversationHeader = <div className="conversation-tools"><div className="topbar-actions"><IconButton label={rail ? '隐藏活动面板' : '显示活动面板'} className="rail-toggle" aria-expanded={rail} aria-controls={rail ? "activity-panel" : undefined} onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>;
-  return <AssistantBrandContext.Provider value={brand}><div className="app-shell"><a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>跳转到主内容</a><aside className="sidebar desktop-sidebar">{sidebar()}</aside>
-    <dialog ref={drawer} className="nav-dialog" aria-label="导航"><div className="sidebar">{sidebar(true)}</div></dialog>
-    <div className="main-frame">{workspaceHeader}
+  return <AssistantBrandContext.Provider value={brand}><div className="app-shell"><a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>跳转到主内容</a><aside className="sidebar desktop-sidebar" inert={settingsOpen} aria-hidden={settingsOpen||undefined}>{sidebar()}</aside>
+    <dialog ref={drawer} className="nav-dialog" aria-label="导航" aria-hidden={settingsOpen||undefined}><div className="sidebar">{sidebar(true)}</div></dialog>
+    <div className="main-frame" inert={settingsOpen} aria-hidden={settingsOpen||undefined}>{workspaceHeader}
       {!!logoutError && <Notice error={logoutError} />}
       <ReadErrorScope key={`${route.pathname}:${permissionIdentity.epoch}`}><div className={`workspace-body${isConversation ? ' conversation-workspace' : ''}`}>{currentChats.error && <Notice read error={currentChats.error} source="/recent-conversations" onRetry={currentChats.refresh}/>}<main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : ''}`}><ReadErrorOutlet/>{isConversation && conversationHeader}<div className={isConversation ? 'conversation-content' : 'page-content-slot'}><PageBoundary resetKey={route.pathname}>
-        {section === 'chat' ? <ChatPage id={id} onResolved={onChatResolved} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} /> : <TaskList route={route} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'settings' && !id ? <SettingsPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
+        {section === 'chat' ? <ChatPage id={id} onResolved={onChatResolved} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} /> : <TaskList route={route} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></div></main>
       {isConversation && rail && <ActivityPanel conversation={{kind: section === 'chat' ? 'chat' : 'conversations', id: id || (resolvedWebChat?.route === route.pathname ? resolvedWebChat.id : undefined)}} data={overview.data ?? undefined} loading={overview.loading} error={overview.error} onRetry={overview.refresh}/>}
       </div></ReadErrorScope>
     </div>
+    {settingsOpen&&<SettingsModal key={permissionIdentity.epoch} onClose={closeSettings}/>}
   </div></AssistantBrandContext.Provider>;
 }
 

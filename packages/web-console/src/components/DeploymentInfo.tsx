@@ -1,0 +1,11 @@
+import {useState} from 'react';
+import {useResource} from '../hooks';
+import {Button} from './BoardPrimitives';
+import {Loading,Notice} from './Shared';
+export type Deployment = {version:string|null;runtime:string;mode:string|null;pathScope:'instance';directories:{id:string;label:string;path:string|null}[];skillDirectories:{kind:'bundled'|'custom';path:string}[]|null};
+export function DeploymentInfo({active}:{active:boolean}){
+ const query=useResource<Deployment>(active?'/settings/deployment':null),[copied,setCopied]=useState(''),[copyError,setCopyError]=useState('');
+ const copy=async(path:string)=>{setCopyError('');try{await navigator.clipboard.writeText(path);setCopied(path)}catch{setCopyError('复制未完成，请选择路径手动复制。')}};
+ const row=(key:string,label:string,path:string|null)=><div className="deployment-path" key={key}><dt>{label}</dt><dd>{path?<><code>{path}</code><Button variant="secondary" onClick={()=>void copy(path)} aria-label={`复制${label}路径`}>{copied===path?'已复制':'复制'}</Button></>:<span>未提供</span>}</dd></div>;
+ return <section className="settings-card deployment-info"><div className="settings-card-heading"><h2>部署信息</h2><Button variant="secondary" onClick={query.refresh} disabled={query.loading}>刷新</Button></div><p className="deployment-hint">当前实例的只读信息。容器部署时，以下均为容器内路径，不代表宿主机路径。</p>{query.error&&<Notice read error={query.error} onRetry={query.refresh}/>}{query.loading&&!query.data?<Loading/>:query.data?<><dl className="deployment-runtime"><div><dt>实例版本</dt><dd>{query.data.version??'未提供'}</dd></div><div><dt>运行环境</dt><dd>{query.data.runtime}</dd></div><div><dt>目录布局</dt><dd>{query.data.mode==='portable'?'标准数据目录':query.data.mode==='legacy'?'显式目录配置':'未提供'}</dd></div></dl><h3>实例目录</h3><dl className="deployment-directories">{query.data.directories.map(item=>row(item.id,item.label,item.path))}</dl><h3>Skills 加载目录</h3><p className="deployment-hint">来自已注册的全局文件系统加载器；不包含任务临时作用域或技能正文。</p><dl>{query.data.skillDirectories===null?row('skills-unknown','加载目录',null):query.data.skillDirectories.length?query.data.skillDirectories.map((item,index)=>row('skill-'+index,item.kind==='bundled'?'内置 Skills':'自定义 Skills',item.path)):<div className="deployment-hint">未注册全局文件系统加载目录</div>}</dl></>:null}<p role="status" className="deployment-copy-status">{copyError|| (copied?'路径已复制。':'')}</p></section>
+}

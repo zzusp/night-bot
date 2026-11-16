@@ -18,7 +18,7 @@ import { mkdir,realpath } from 'node:fs/promises'
 import { resolve, join,dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {portablePaths} from './runtime/portable.js'
-import {runtimePaths,prepareRuntimePaths,environmentPaths,inside,bundledSkillDir} from './runtime/paths.js'
+import {runtimePaths,prepareRuntimePaths,environmentPaths,pathInventory,inside,bundledSkillDir} from './runtime/paths.js'
 import {acquireLock,readRegular,failure} from './runtime/files.js'
 import {createPrivacy,installProcessPrivacy} from './memory/privacy.js'
 
@@ -222,6 +222,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       })
     }
     ctx.provide('runtimePaths',paths)
+    ctx.provide('deploymentInventory',{read:async()=>({paths:pathInventory(config),skillDirectories:await ctx.get('skills')?.directoryInventory?.()??null})})
     ctx.provide('portablePaths',portablePaths(paths))
     const taskRoutes=await taskSessionRoutes(paths);ctx.provide('taskSessionRoutes',taskRoutes)
     const privacy=await createPrivacy(paths);ctx.provide('memoryPrivacy',privacy)

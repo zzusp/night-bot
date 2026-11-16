@@ -9,12 +9,12 @@ const sourceLabels:Record<string,string> = {process:'进程环境', 'project-env
 const describe = (selection:RoleModelSelection) => `${selection.provider} / ${selection.model} · ${effortLabels[selection.reasoningEffort??'model-default']??selection.reasoningEffort}`;
 const same = (a:RoleModelSelection,b:RoleModelSelection) => a.provider===b.provider&&a.model===b.model&&a.reasoningEffort===b.reasoningEffort;
 
-export function RoleModelEditor({state,catalog,version,onSaved,onReload,reloading,onStateChange}:{state:RoleModelState;catalog:RoleModelCatalog[];version:string;onSaved:()=>void;onReload:()=>void;reloading:boolean;onStateChange:(role:string,dirty:boolean,busy:boolean)=>void}) {
+export function RoleModelEditor({state,catalog,version,onSaved,onReload,reloading,onStateChange}:{state:RoleModelState;catalog:RoleModelCatalog[];version:string;onSaved:()=>void;onReload:()=>void;reloading:boolean;onStateChange:(role:string,dirty:boolean,busy:boolean,locked?:boolean)=>void}) {
  const [draft,setDraft]=useState(state.saved),[draftVersion,setDraftVersion]=useState(version),[dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[locked,setLocked]=useState(false),[confirm,setConfirm]=useState(false),[error,setError]=useState(''),[feedback,setFeedback]=useState(''),[pendingVersion,setPendingVersion]=useState<string|null>(null);
  const mounted=useRef(true),inFlight=useRef(false),pendingBaseVersion=useRef(version);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
  useEffect(()=>{if(pendingVersion&&version===pendingBaseVersion.current&&version!==pendingVersion)return;if(pendingVersion){if(version!==pendingVersion)setFeedback('设置已再次变化，当前显示最新保存值。');setPendingVersion(null)}if(!dirty&&!busy&&!locked){setDraft(state.saved);setDraftVersion(version)}},[state.saved,version,dirty,busy,locked,pendingVersion]);
- useEffect(()=>{onStateChange(state.role,dirty,busy);return()=>onStateChange(state.role,false,false)},[state.role,dirty,busy,onStateChange]);
+ useEffect(()=>{onStateChange(state.role,dirty,busy,locked);return()=>onStateChange(state.role,false,false)},[state.role,dirty,busy,locked,onStateChange]);
  const label=labels[state.role],prefix=`role-${state.role}`,stale=dirty&&draftVersion!==version;
  const provider=catalog.find(row=>row.provider===draft.provider),model=provider?.models.find(row=>row.id===draft.model),effort=draft.reasoningEffort??'model-default';
  const invalid=!model||effort!=='model-default'&&!model.reasoningEfforts.includes(effort),disabled=busy||locked||stale||!!pendingVersion;

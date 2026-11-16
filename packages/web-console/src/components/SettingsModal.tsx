@@ -1,0 +1,9 @@
+import {useCallback,useEffect,useRef} from 'react';
+import SettingsPage from '../SettingsPage';
+import {ReadErrorScope,ReadErrorOutlet} from './ReadErrors';
+export function SettingsModal({onClose}:{onClose:()=>void}){
+ const dialog=useRef<HTMLDialogElement>(null),request=useRef<()=>void>(()=>{});
+ const register=useCallback((handler:()=>void)=>{request.current=handler},[]);
+ useEffect(()=>{const element=dialog.current!,previous=document.activeElement;const y=window.scrollY;const overflow=document.body.style.overflow;document.body.style.overflow='hidden';element.showModal();return()=>{element.close();document.body.style.overflow=overflow;if(previous instanceof HTMLElement&&previous.isConnected)previous.focus({preventScroll:true});if(window.scrollY!==y)window.scrollTo({top:y})}},[]);
+ return <dialog ref={dialog} className="settings-modal" aria-modal="true" aria-label="设置" onKeyDown={event=>{if(event.key!=='Tab'||(event.target as Element).closest('dialog')!==dialog.current)return;const items=[...dialog.current!.querySelectorAll<HTMLElement>('button,input,select,textarea,a[href],[tabindex]')].filter(el=>el.tabIndex>=0&&!el.matches(':disabled')&&el.getClientRects().length);const first=items[0],last=items.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus()}}} onCancel={event=>{event.preventDefault();request.current()}} onClick={event=>{if(event.target===dialog.current){const r=dialog.current.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)request.current()}}}><ReadErrorScope><SettingsPage onClose={onClose} registerClose={register}/><ReadErrorOutlet/></ReadErrorScope></dialog>
+}

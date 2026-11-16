@@ -1,3 +1,4 @@
+import {deploymentView} from './deployment.js'
 import {launchEnvironmentOf} from '../../../src/native-environment.js'
 import {schedulePage} from './schedule-view.js'
 import {openEvolutionCache} from './evolution-cache.js'
@@ -70,7 +71,7 @@ async function staticResponse(pathname, request, response, dist) {
 }
 
 // 仅作为可选适配器：不导入核心实现，不扩展领域 schema，也不引入模型调用或任务调度。
-export async function createWebConsole({channels, paths, config, getApplication, getRedactionSecrets = () => [], getFeedback = () => undefined, getSchedule = () => undefined, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, dist = defaultDist, listen = true}) {
+export async function createWebConsole({channels, paths, config, getApplication, getRedactionSecrets = () => [], getFeedback = () => undefined, getSchedule = () => undefined, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, getDeploymentInventory = () => undefined, dist = defaultDist, listen = true}) {
   const channelId = identifier(config.channelId ?? 'web-console')
   const senderId = identifier(config.senderId)
   const operatorName = (typeof config.operatorName === 'string' ? config.operatorName.trim().slice(0, 256).trim() : '') || '本机操作者'
@@ -197,6 +198,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       }
       fail('NOT_FOUND',404)
     }
+    if(request.method==='GET'&&path==='/api/settings/deployment')return send(response,200,await deploymentView(paths,getDeploymentInventory))
     if (path === '/api/settings' || path.startsWith('/api/settings/')) {
       const settings=getOperatorSettings()
       if(!settings) fail('SETTINGS_UNAVAILABLE',503)
@@ -632,7 +634,7 @@ export async function apply(ctx, config) {
       if (typeof credentials?.redactionValues !== 'function') throw new Error('Credentials unavailable')
       return [...await credentials.redactionValues(), ...launchEnvironmentOf(ctx).redactionValues()]
     },
-    getSchedule: () => ctx.get('schedule'), getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), getFeedback: () => ctx.get('errorFeedback'), listen: false})
+    getSchedule: () => ctx.get('schedule'), getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), getFeedback: () => ctx.get('errorFeedback'), getDeploymentInventory:()=>ctx.get('deploymentInventory')?.read(), listen: false})
   const stop = () => stopping ??= prepared.then(web => web.close(), () => undefined)
   ctx.effect(() => stop, 'optional Web console shutdown')
   ctx.on('night/stopping', stop)
