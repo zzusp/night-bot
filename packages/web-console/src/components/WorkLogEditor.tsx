@@ -5,12 +5,12 @@ import {Badge, Button} from './BoardPrimitives';
 const same=(a:WorkLogSelection,b:WorkLogSelection)=>a.enabled===b.enabled&&a.time===b.time&&a.timezone===b.timezone;
 const describe=(value:WorkLogSelection)=>`${value.enabled?'已开启':'已关闭'} · 每天 ${value.time} · ${value.timezone==='local'?'服务器本地时区':value.timezone}`;
 const validTimezone=(value:string)=>{if(value==='local')return true;if(!value||value!==value.trim())return false;try{new Intl.DateTimeFormat('en',{timeZone:value});return true}catch{return false}};
-export function WorkLogEditor({state,version,onSaved,onReload,reloading,onStateChange}:{state:WorkLogState;version:string;onSaved:()=>void;onReload:()=>void;reloading:boolean;onStateChange:(key:string,dirty:boolean,busy:boolean)=>void}){
+export function WorkLogEditor({state,version,onSaved,onReload,reloading,onStateChange}:{state:WorkLogState;version:string;onSaved:()=>void;onReload:()=>void;reloading:boolean;onStateChange:(key:string,dirty:boolean,busy:boolean,locked?:boolean)=>void}){
  const [draft,setDraft]=useState(state.saved),[draftVersion,setDraftVersion]=useState(version),[dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState(''),[feedback,setFeedback]=useState(''),[pendingVersion,setPendingVersion]=useState<string|null>(null);
  const inFlight=useRef(false),mounted=useRef(true),pendingBase=useRef(version);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
  useEffect(()=>{if(pendingVersion&&version===pendingBase.current&&version!==pendingVersion)return;if(pendingVersion)setPendingVersion(null);if(!dirty&&!busy&&!locked){setDraft(state.saved);setDraftVersion(version)}},[version,state.saved,dirty,busy,locked,pendingVersion]);
- useEffect(()=>{onStateChange('work-log',dirty,busy);return()=>onStateChange('work-log',false,false)},[dirty,busy,onStateChange]);
+ useEffect(()=>{onStateChange('work-log',dirty,busy,locked);return()=>onStateChange('work-log',false,false)},[dirty,busy,locked,onStateChange]);
  const stale=dirty&&draftVersion!==version,disabled=busy||locked||stale||!!pendingVersion;
  const change=(patch:Partial<WorkLogSelection>)=>{if(!dirty)setDraftVersion(version);setDraft({...draft,...patch});setDirty(true);setError('');setFeedback('')};
  const invalidTime=!/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time),invalidZone=!validTimezone(draft.timezone);

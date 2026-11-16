@@ -25,8 +25,7 @@ test('模型配置紧凑布局：路由同行、空反馈无占位、响应式�
    expect(route).not.toBeNull();expect(addRoute).not.toBeNull();
    expect(Math.abs(route!.y+route!.height/2-addRoute!.y-addRoute!.height/2)).toBeLessThan(2);
    const apiBox=await api.boundingBox(),secretBox=await secret.boundingBox();
-   if(width>1100){expect(Math.abs(apiBox!.y-secretBox!.y)).toBeLessThan(2);expect(secretBox!.x).toBeGreaterThan(apiBox!.x+apiBox!.width)}
-   else{expect(secretBox!.y).toBeGreaterThan(apiBox!.y+apiBox!.height);expect(Math.abs(secretBox!.x-apiBox!.x)).toBeLessThan(2)}
+   expect(secretBox!.y).toBeGreaterThan(apiBox!.y+apiBox!.height);expect(Math.abs(secretBox!.x-apiBox!.x)).toBeLessThan(2)
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
    const overflowing=await card.locator('input,select,button').evaluateAll(nodes=>nodes.filter(node=>{const box=node.getBoundingClientRect();return box.left<0||box.right>innerWidth}).length);
    expect(overflowing).toBe(0);
@@ -76,8 +75,8 @@ test('编辑与新增弹窗保留标签、验证和安全确认且无空说明�
  const model=page.getByLabel('模型 ID',{exact:true});
  await expect(model).toBeFocused();await expect(model).toHaveAttribute('aria-invalid','true');
  await model.fill('layout-test-not-saved');await card.getByRole('button',{name:'保存模型',exact:true}).click();
- await expect(page.getByRole('dialog')).toContainText('正常重启后生效');
- await expect(page.getByRole('dialog').getByRole('button',{name:'取消',exact:true})).toBeFocused();
+ await expect(page.locator('dialog.settings-confirm')).toContainText('正常重启后生效');
+ await expect(page.locator('dialog.settings-confirm').getByRole('button',{name:'取消',exact:true})).toBeFocused();
  await page.keyboard.press('Escape');await expect(card.getByRole('button',{name:'保存模型',exact:true})).toBeFocused();
  await card.getByRole('button',{name:'取消编辑',exact:true}).click();
  await card.getByRole('button',{name:'添加路由',exact:true}).click();

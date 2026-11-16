@@ -25,7 +25,7 @@ test('设置分类保留草稿、原生选择器与凭据保护',async({page})=>
  const first=page.getByRole('tab',{name:'模型与 API',exact:true});
  await first.focus();await page.keyboard.press('ArrowDown');
  await expect(page.getByRole('tab',{name:'模型分工',exact:true})).toBeFocused();
- await page.keyboard.press('End');await expect(page.getByRole('tab',{name:'访问凭据',exact:true})).toBeFocused();
+ await page.keyboard.press('End');await expect(page.getByRole('tab',{name:'部署信息',exact:true})).toBeFocused();
  await page.keyboard.press('Home');await expect(first).toBeFocused();
 });
 test('设置工作台浅深色、窄屏和各分类实拍',async({page})=>{
@@ -37,7 +37,7 @@ test('设置工作台浅深色、窄屏和各分类实拍',async({page})=>{
    await page.setViewportSize({width,height:1000});
    for(const name of ['模型与 API','模型分工','助手外观','工作日志','访问凭据']){
     await page.getByRole('tab',{name,exact:true}).click();
-    const panel=page.getByRole('tabpanel');
+    const panel=page.getByRole('dialog',{name:'设置',exact:true}).getByRole('tabpanel');
     await expect(panel).toHaveCount(1);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     const box=await panel.boundingBox();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);
