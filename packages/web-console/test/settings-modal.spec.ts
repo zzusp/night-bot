@@ -58,3 +58,13 @@ test('保存中与未知回执阻止关闭，不重复写入',async({page})=>{
   release();await expect(page.getByText('无法确认最新保存结果。 草稿已保留，不会自动重试。请重新读取路由配置并核对。',{exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(page.locator('.settings-modal')).toBeVisible();await expect(page.locator('dialog.settings-confirm')).toHaveCount(0);expect(writes).toBe(1);
  }finally{release()}
 });
+
+test('设置首次加载与读取失败始终有稳定弹窗名称',async({page})=>{
+ await login(page);let release!:()=>void;const gate=new Promise<void>(resolve=>release=resolve);
+ await page.route('**/api/settings',async route=>{await gate;await route.fulfill({status:503,json:{error:{code:'SETTINGS_UNAVAILABLE'}}})});
+ try{
+  await open(page);const dialog=page.getByRole('dialog',{name:'设置',exact:true});await expect(dialog).toHaveAccessibleName('设置');await expect(dialog.locator('.settings-sidebar')).toHaveCount(0);
+  release();await expect(dialog.getByRole('alert')).toBeVisible();await expect(dialog).toHaveAccessibleName('设置');await expect(dialog.getByRole('alert')).toHaveCount(1);
+  await dialog.getByRole('button',{name:'关闭设置',exact:true}).click();await expect(dialog).toHaveCount(0);
+ }finally{release()}
+});

@@ -76,7 +76,7 @@ test('设置失败可恢复，字段错误不退出，未知保存不自动重�
  const secret=page.getByLabel('新的GitHub Token',{exact:true});await secret.fill('TEST_UNKNOWN_SECRET');await page.getByRole('button',{name:'替换GitHub Token',exact:true}).click();await confirm(page);await expect(secret).toHaveValue('');await expect(page.getByText(/密钥输入已清空，请先重新读取状态/)).toBeVisible();expect(secretWrites).toBe(1)
 })
 
-test('角色模型卡片移除描述摘要，字段紧接标题且浅深色窄屏可用',async({page})=>{
+test('角色模型分组行移除描述摘要，首行紧接标题且浅深色窄屏可用',async({page})=>{
  await page.route('**/api/settings',async route=>{
   const response=await route.fetch(),data=await response.json()
   for(const row of data.roleModels.roles){row.saved={provider:'fixture-model',model:'fixture'};row.running={...row.saved,reasoningEffort:'off'};row.savedExplicit=false;row.nextStart=row.running;row.restartRequired=false;row.environmentOverrides=[]}
@@ -95,8 +95,10 @@ test('角色模型卡片移除描述摘要，字段紧接标题且浅深色窄�
     await expect(card.getByLabel(label+'模型',{exact:true})).toBeEnabled()
     await expect(card.getByLabel(label+'推理深度',{exact:true})).toBeEnabled()
     await expect(card.getByRole('button',{name:'保存'+label+'配置',exact:true})).toBeEnabled()
-    const heading=await card.getByRole('heading').boundingBox(),field=await card.locator('label').first().boundingBox()
-    expect(field!.y-heading!.y-heading!.height).toBeLessThanOrEqual(24)
+    const heading=await card.getByRole('heading').boundingBox(),row=await card.locator('.settings-field').first().boundingBox(),field=await card.locator('label').first().boundingBox(),control=await card.locator('select').first().boundingBox()
+    expect(row!.y-heading!.y-heading!.height).toBeGreaterThanOrEqual(0)
+    expect(row!.y-heading!.y-heading!.height).toBeLessThanOrEqual(24)
+    expect(Math.abs(field!.y+field!.height/2-control!.y-control!.height/2)).toBeLessThanOrEqual(1)
    }
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
   }
