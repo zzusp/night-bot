@@ -1,8 +1,11 @@
+import {ApiError} from '../api';
+import {Notice} from './Shared';
 import { useId, useState } from 'react';
 import { dateTime, useResource } from '../hooks';
 import { smoothStagePath, type ChartPoint } from '../stage-chart-path';
 import { messageProcessDuration } from '../message-process-duration';
 
+const unavailableTimings=new ApiError(503,'STAGE_TIMES_UNAVAILABLE');
 type Stage = { status: 'recorded' | 'running' | 'missing' | 'invalid'; durationMs: number | null; shared: boolean };
 type Sample = { receivedAt: string | null; triage: Stage; router: Stage };
 type StagePage = { status: string; items: Sample[] };
@@ -48,13 +51,13 @@ export function StageTimingChart({kind, id}: {kind: 'chat'|'conversations'; id?:
   const resolvedId = id;
   const query = useResource<StagePage>(resolvedId ? `/${kind}/${encodeURIComponent(resolvedId)}/stage-times?limit=8` : null, 10000, {pauseWhenHidden:true});
   // Do not show a previous conversation or stale timings as current measurements.
-  const failure = query.error;
+  const failure = query.error ?? (query.data && query.data.status !== 'ready' ? unavailableTimings : null);
   const items = !failure && query.data?.status === 'ready' ? [...query.data.items].reverse() : [];
-  return <div className="stage-timing-charts" role="group" aria-label="最近处理耗时">{(['triage','router'] as const).map(stage => {
+  return <div className="stage-timing-charts" role="group" aria-label="最近处理耗时">{failure && <Notice read source={!query.error ? `/${kind}/${encodeURIComponent(resolvedId || '')}/stage-times?limit=8` : undefined} error={failure} onRetry={query.refresh}/>} {(['triage','router'] as const).map(stage => {
     const title = stage === 'triage' ? '分诊' : '路由';
     return <section key={stage} className={`rail-section stage-timing-card stage-timing-card-${stage}`} aria-label={`${title}耗时`}>
       <div className="rail-section-title"><h3><i className="stage-title-dot"/>{title}耗时</h3><span className="stage-scope">本会话 · {items.length ? `${items.length} 条消息` : '最近消息'}</span></div>
-      {items.length ? <StagePlot key={`${resolvedId}:${stage}`} items={items} stage={stage} title={title}/> : <p className="rail-empty">{failure ? '耗时暂不可读' : query.data && query.data.status !== 'ready' ? '来源暂不可读' : query.loading || !resolvedId ? '读取中…' : '暂无耗时记录'}</p>}
+      {items.length ? <StagePlot key={`${resolvedId}:${stage}`} items={items} stage={stage} title={title}/> : <p className="rail-empty">{failure ? '—' : query.data && query.data.status !== 'ready' ? '来源暂不可读' : query.loading || !resolvedId ? '读取中…' : '暂无耗时记录'}</p>}
     </section>;
   })}</div>;
 }

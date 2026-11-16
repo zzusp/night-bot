@@ -1,5 +1,5 @@
 import {useEffect, useId, useRef, useState, type FormEvent} from 'react';
-import {api, ApiError, errorText, type ChannelSettings} from '../api';
+import {api, ApiError, operationErrorText, type ChannelSettings} from '../api';
 import {Button} from './BoardPrimitives';
 import {Confirm} from './ConfirmDialog';
 import {channelApplicationText} from '../channel-response';
@@ -57,7 +57,7 @@ export function CustomChannelForm({plugin, snapshot, initial, onSaved, onBusyCha
       window.dispatchEvent(new Event('night-settings-updated'));
     } catch (cause) {
       if (!live.current) return;
-      setError(errorText(cause));
+      setError(operationErrorText(cause));
       if (cause instanceof ApiError && cause.status >= 400 && cause.status < 500) {
         if (cause.code === 'SETTINGS_VERSION_CONFLICT') setStale(true);
       } else { setUnknown(true); setFeedback('保存结果未知，原字段已锁定。请只读核对保存状态，不要重复提交。'); }
@@ -81,7 +81,7 @@ export function CustomChannelForm({plugin, snapshot, initial, onSaved, onBusyCha
         if (reset) { setChannelId(''); setEnabled(false); setValues(defaults(plugin)); setSaved(false); setErrors({}); setFeedback(''); }
         else setFeedback('已重新读取版本，原草稿保留。请核对字段后保存。');
       }
-    } catch (cause) { if (live.current) setError(errorText(cause)); } finally { setWorking(false); }
+    } catch (cause) { if (live.current) setError(operationErrorText(cause)); } finally { setWorking(false); }
   };
   return <div className="custom-channel-form">
 

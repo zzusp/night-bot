@@ -1,6 +1,7 @@
+import {ReadErrorScope, ReadErrorOutlet, ReadErrorVisibility} from './ReadErrors';
 import { useEffect, useId, useRef, useState } from 'react';
 import { RiCloseLine, RiRefreshLine, RiShieldKeyholeLine } from '@remixicon/react';
-import { api, ApiError, errorText, type PermissionMode, type PermissionRequest, type PermissionsView } from '../api';
+import { api, ApiError, operationErrorText, type PermissionMode, type PermissionRequest, type PermissionsView } from '../api';
 import { dateTime, useResource } from '../hooks';
 import { Badge, Button, EmptyState, IconButton } from './BoardPrimitives';
 import { Loading, Notice } from './Shared';
@@ -26,7 +27,7 @@ function PermissionContent({ enabled, busy, conflicts, onWrite }: {
   return <>
     {query.error && <Notice error={query.error} stale={!!query.data && !unreadable} onRetry={query.refresh} />}
     {!query.data || unreadable ? query.loading && !query.error ? <Loading>正在读取 Host 权限与审批…</Loading>
-      : <EmptyState title="权限状态暂不可读" /> : <>
+      : query.error ? null : <EmptyState title="权限状态暂不可读" /> : <>
       <section className="permission-section" aria-labelledby={`${name}-mode`}>
         <div className="permission-section-heading"><h3 id={`${name}-mode`}>当前权限</h3><Badge tone={query.data.mode === 'full' ? 'danger' : 'info'}>{query.data.options.find(option => option.value === query.data!.mode)?.label || '模式未报告'}</Badge></div>
 
@@ -105,7 +106,7 @@ export default function PermissionsPanel() {
       if (cause instanceof ApiError && cause.status === 409 && action.kind === 'request') {
         setConflicts(values => [...new Set([...values, action.id])]);
         setError('请求已过期、已经结束或授权已消费，本次决定不会重试。正在重新获取当前状态。');
-      } else setError(`${errorText(cause)} 操作不会自动重发，请核对重新读取的当前状态。`);
+      } else setError(`${operationErrorText(cause)} 操作不会自动重发，请核对重新读取的当前状态。`);
     } finally {
       writing.current = false;
       if (live.current) {
@@ -118,13 +119,13 @@ export default function PermissionsPanel() {
   return <>
     <IconButton label="权限与审批" aria-haspopup="dialog" onClick={() => setOpen(true)}><RiShieldKeyholeLine size={18} /></IconButton>
     <dialog ref={dialog} className="permission-dialog" aria-labelledby={title} onClose={() => setOpen(false)}>
-      <header className="permission-dialog-heading"><div><h2 id={title}>权限与审批</h2></div><IconButton label="关闭权限与审批" onClick={() => setOpen(false)}><RiCloseLine size={19} /></IconButton></header>
-      <div className="permission-dialog-body">
+      <ReadErrorScope><ReadErrorVisibility active={open}><header className="permission-dialog-heading"><div><h2 id={title}>权限与审批</h2></div><IconButton label="关闭权限与审批" onClick={() => setOpen(false)}><RiCloseLine size={19} /></IconButton></header>
+      <div className="permission-dialog-body"><ReadErrorOutlet/>
         {error && <div className="notice" role="alert">{error}</div>}
         {feedback && <p className="permission-feedback" role="status">{feedback}</p>}
         {busy && <p className="permission-help" role="status">正在提交，关闭面板不会取消本次操作。</p>}
         <PermissionContent key={generation} enabled={open} busy={busy} conflicts={conflicts} onWrite={write} />
       </div>
-    </dialog>
+      </ReadErrorVisibility></ReadErrorScope></dialog>
   </>;
 }

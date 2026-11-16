@@ -119,11 +119,11 @@ test('加载、无上次、无变化、失败重试、撤权及版本冲突隐�
   await expect(page.locator('.evolution-plain-text')).toHaveCount(0);
   await expect(page.getByRole('alert')).toBeVisible();
   status = 503; response = {error: 'EVOLUTION_UNAVAILABLE'};
-  await page.getByRole('button', {name: '重新获取', exact: true}).click();
+  await page.getByRole('button', {name: '重试', exact: true}).click();
   await expect(page.locator('.evolution-plain-text')).toHaveCount(0);
   await expect(page.getByRole('alert')).toContainText('内容暂不可读');
   status = 200; response = {...body, previous: null, comparison: {...body.comparison, status: 'no_previous', reason: 'not_recorded'}};
-  await page.getByRole('button', {name: '重新获取', exact: true}).click();
+  await page.getByRole('button', {name: '重试', exact: true}).click();
   await page.getByRole('button', {name: '最近差异'}).click();
   await expect(page.getByText('暂无可比较的上次内容', {exact: true})).toBeVisible();
   response = {...body, comparison: {...body.comparison, added: 0, removed: 0, lines: []}};
@@ -132,7 +132,7 @@ test('加载、无上次、无变化、失败重试、撤权及版本冲突隐�
   status = 409; response = {error: 'EVOLUTION_VERSION_STALE'};
   await page.getByRole('button', {name: '刷新内容'}).click();
   await expect(page.getByText('条目已经更新，请重新获取列表后查看最新内容。')).toBeVisible();
-  await page.getByRole('button', {name: '重新获取', exact: true}).click();
+  await page.getByRole('button', {name: '重试', exact: true}).click();
   await expect(page.locator('.evolution-content')).toHaveCount(0);
 });
 

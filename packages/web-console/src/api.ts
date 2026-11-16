@@ -1,3 +1,7 @@
+// Read request identity stays in memory; it never enters persisted DTOs.
+const readErrorSources = new WeakMap<object, string>();
+function identifyReadError(error: unknown, source: string) { if (error && typeof error === 'object') readErrorSources.set(error, source); }
+export function readErrorSource(error: unknown) { return error && typeof error === 'object' ? readErrorSources.get(error) : undefined; }
 export interface Session {
   authenticated: true;
   csrfToken: string;
@@ -131,6 +135,10 @@ let sessionVersion = 0;
 export function setSession(session: Session | null) { csrfToken = session?.csrfToken ?? ''; sessionVersion += 1; }
 
 export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<T> {
+  try { return await request<T>(path, options); }
+  catch (error) { if (!options.method || options.method === 'GET') identifyReadError(error, path); throw error; }
+}
+async function request<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<T> {
   const requestVersion = sessionVersion;
   const signal = AbortSignal.any([AbortSignal.timeout(options.timeoutMs ?? 20000), ...(options.signal ? [options.signal] : [])]);
   const response = await fetch('/api' + path, {
@@ -215,8 +223,15 @@ export function errorText(error: unknown) {
     if (error.status === 400) return '输入未被接纳，请检查内容后重试。';
     if (error.status === 413) return '内容过大，请缩短消息后重试。';
   }
-  if (error instanceof DOMException && error.name === 'TimeoutError') return '连接超时，已保留当前内容。请检查连接后刷新。';
-  return '暂时无法连接 Bot，已保留当前内容。请检查服务后刷新。';
+  if (error instanceof DOMException && error.name === 'TimeoutError') return '请求超时，请重试。';
+  return '暂时无法获取数据，请重试。';
+}
+
+/** A failed mutation is not a failed read or proof that nothing happened. */
+export function operationErrorText(error: unknown) {
+  const text=errorText(error);
+  return ['请求超时，请重试。','暂时无法获取数据，请重试。'].includes(text)
+    ? '无法确认操作结果，请先核对当前状态；不会自动重试。' : text;
 }
 
 export type ModelRole = 'triage'|'router'|'task';

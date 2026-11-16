@@ -7,7 +7,7 @@ import ts from 'typescript'
 const source = ts.transpileModule(readFileSync(new URL('../src/api.ts', import.meta.url), 'utf8'), {
   compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022},
 }).outputText
-const {api, ApiError, errorText, EVOLUTION_SNAPSHOT_TIMEOUT_MS} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
+const {api, ApiError, errorText, operationErrorText, readErrorSource, EVOLUTION_SNAPSHOT_TIMEOUT_MS} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
 
 function clock(t) {
   t.mock.timers.enable({apis: ['setTimeout']})
@@ -68,7 +68,7 @@ test('snapshot wait is finite at 120 seconds and exposes an actionable timeout',
   const response = api('/evolution?kind=memory', {timeoutMs: EVOLUTION_SNAPSHOT_TIMEOUT_MS})
   const rejected = assert.rejects(response, error => {
     assert.equal(error.name, 'TimeoutError')
-    assert.match(errorText(error), /连接超时/)
+    assert.match(errorText(error), /请求超时/)
     return true
   })
   t.mock.timers.tick(119999)
@@ -102,4 +102,32 @@ test('malformed JSON without a cancellation still reports INVALID_RESPONSE', asy
   clock(t)
   t.mock.method(globalThis, 'fetch', async () => ({ok: true, json: async () => {throw new SyntaxError('invalid')}}))
   await assert.rejects(api('/tasks'), error => error instanceof ApiError && error.code === 'INVALID_RESPONSE')
+})
+
+test('generic read failures never claim unsaved content was preserved or the Bot is offline', () => {
+  for (const error of [new TypeError('Failed to fetch'), new ApiError(503, 'SESSION_UNAVAILABLE'), new DOMException('deadline', 'TimeoutError')]) {
+    assert.doesNotMatch(errorText(error), /已保留|无法连接 Bot/)
+    assert.match(errorText(error), /重试/)
+  }
+  assert.match(errorText(new ApiError(403, 'ACCESS_DENIED')), /没有访问权限/)
+  assert.match(errorText(new ApiError(404, 'NOT_FOUND')), /不存在/)
+})
+
+test('read identity is in-memory metadata; mutations are never registered or replayed', async t => {
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {calls.push(options.method);return {ok:false,status:503,json:async()=>({error:'UNAVAILABLE'})}})
+  let read, write
+  try {await api('/tasks/example')} catch(error) {read=error}
+  try {await api('/settings/appearance',{method:'PUT',body:{name:'isolated'}})} catch(error) {write=error}
+  assert.equal(readErrorSource(read),'/tasks/example')
+  assert.equal(readErrorSource(write),undefined)
+  assert.deepEqual(calls,['GET','PUT'])
+  assert.ok(!JSON.stringify(read).includes('/tasks/example'))
+})
+
+test('local mutation failures keep uncertain-outcome wording, separate from read recovery', () => {
+  assert.match(operationErrorText(new TypeError('private transport detail')), /无法确认操作结果/)
+  assert.match(operationErrorText(new DOMException('deadline','TimeoutError')), /不会自动重试/)
+  assert.doesNotMatch(operationErrorText(new Error('private')), /获取数据|private/)
+  assert.equal(operationErrorText(new ApiError(403,'ACCESS_DENIED')), errorText(new ApiError(403,'ACCESS_DENIED')))
 })

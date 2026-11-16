@@ -71,7 +71,7 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
  };
  return <section className="settings-card model-catalog" aria-labelledby="provider-settings-title">
   <div className="settings-card-heading"><h2 id="provider-settings-title">模型与 API</h2><Button onClick={reset} disabled={busy||connectionBusy} busy={query.loading}>{draft||locked||connectionDirty?'重新读取路由配置并替换草稿':'重新读取路由配置'}</Button></div>
-  {query.error&&<Notice error={query.error} onRetry={busy?undefined:query.refresh}/>}
+  {query.error&&<Notice read error={query.error} onRetry={busy?undefined:query.refresh}/>}
   {query.loading&&!query.data?<Loading/>:!unavailable&&query.data?<>
    {!creating&&query.data.providers.length?<>
     <div className="provider-selector"><div className="provider-selector-label"><label htmlFor="catalog-provider">模型路由</label>{providerId===defaultProvider&&<Badge>默认路由</Badge>}</div><div className="provider-selector-controls"><select id="catalog-provider" value={providerId} disabled={disabled||!!draft} onChange={event=>{setConnectionKey(value=>value+1);setConnectionStates({});setProviderId(event.target.value);setFilter('');setPage(0);setError('');setFeedback('')}}>{query.data.providers.map(row=><option key={row.provider} value={row.provider}>{row.name===row.provider?row.provider:`${row.name} (${row.provider})`}</option>)}</select><Button disabled={disabled||!!draft} onClick={()=>{setCreating(true);setConnectionKey(value=>value+1);setConnectionStates({})}}>添加路由</Button></div></div>

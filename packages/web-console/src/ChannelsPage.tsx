@@ -1,3 +1,4 @@
+import {ReadErrorScope, ReadErrorOutlet, ReadErrorVisibility} from './components/ReadErrors';
 import { useEffect, useLayoutEffect, useId, useRef, useState, type FormEvent, type Ref } from 'react';
 import { RiChat3Line, RiGroupLine, RiArrowRightLine, RiGlobalLine, RiAddLine, RiCloseLine, RiCheckboxCircleFill, RiErrorWarningLine, RiQuestionLine } from '@remixicon/react';
 import { api, ApiError, type Channel, type ChannelSettings, type Conversation, type DingtalkChannelCreated, type DingtalkChannelDetail, type DingtalkChannelEdit, type DingtalkChannelInput, type DingtalkChannelUpdated, type Message } from './api';
@@ -203,9 +204,9 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, onIngress, ingress
         if (dialog.current?.open) return;
         setOpen(false); restoreTriggerFocus();
       }} onCancel={event => { if (writing.current || customBusy) event.preventDefault(); }}>
-      <header className="channel-create-heading"><div><h2 id={`${prefix}-title`}>{title}</h2></div>
+      <ReadErrorScope><ReadErrorVisibility active={open}><header className="channel-create-heading"><div><h2 id={`${prefix}-title`}>{title}</h2></div>
         <IconButton label={`关闭${title}`} disabled={!!busy || customBusy} onClick={() => setOpen(false)}><RiCloseLine size={19} /></IconButton></header>
-      <div className="channel-create-body">
+      <div className="channel-create-body"><ReadErrorOutlet/>
         {!editing && <div className="channel-create-field">
           <label htmlFor={`${prefix}-type`}>渠道类型</label>
           <select ref={typeSelect} id={`${prefix}-type`} value={type} disabled={!!busy || customBusy} onChange={event => setType(event.target.value)}>
@@ -267,6 +268,7 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, onIngress, ingress
         </div>)}
         {!editing && selectedPlugin && !selectedPlugin.configurable && <p className="field-help">此插件不支持网页配置</p>}
       </div>
+      </ReadErrorVisibility></ReadErrorScope>
     </dialog>
   </>;
 }
@@ -339,7 +341,7 @@ export default function ChannelsPage({ id }: { id?: string }) {
   const items = (conversations.data?.items || []).filter(item => (!channel || channel === item.channelId) && `${item.name} ${item.channelId}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   if (id) return <ConversationFrame endpoint={endpoint || undefined} channel label={`${selected?.name || '渠道会话'} · ${conversationType(selected?.type)}`}>
     {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data} />}
-    {query.loading && !query.data ? <Loading /> : !query.data && query.error ? <EmptyState title="消息记录暂不可读" /> : <ConversationMessages endpoint={endpoint} accessError={query.error} accessUpdatedAt={query.updatedAt} onRefresh={query.refresh} key={id} older={query.older} messages={query.data?.items || []} userLabel="渠道成员" empty={<EmptyState title="暂无消息" />} />}
+    {query.loading && !query.data ? <Loading /> : !query.data && query.error ? null : <ConversationMessages endpoint={endpoint} accessError={query.error} accessUpdatedAt={query.updatedAt} onRefresh={query.refresh} key={id} older={query.older} messages={query.data?.items || []} userLabel="渠道成员" empty={<EmptyState title="暂无消息" />} />}
   </ConversationFrame>;
   return <div className="page-content channels-page">
     {channelFeedback && <p className="channel-create-feedback" role="status">{channelFeedback}</p>}
@@ -347,7 +349,7 @@ export default function ChannelsPage({ id }: { id?: string }) {
     <ChannelIngressDialog focusFallback={() => addChannelTrigger.current?.focus({ preventScroll: true })} request={ingressRequest} onDismiss={() => setIngressRequest(null)} onChanged={message => { setChannelFeedback(message); channels.refresh(); }}
       onPending={(channelId, pending) => setPendingIngress(previous => { const next = new Set(previous); if (pending) next.add(channelId); else next.delete(channelId); return next; })} />
     {channels.error && <Notice error={channels.error} onRetry={channels.refresh} stale={!!channels.data} />}
-    {!channels.data && channels.loading ? <Loading /> : !channels.data && channels.error ? <EmptyState title="渠道配置暂不可读" /> : null}
+    {!channels.data && channels.loading ? <Loading /> : !channels.data && channels.error ? null : null}
     <div className="channel-cards">{channels.data?.items.map(item => <div className={`channel-card${channel === item.channelId ? ' selected' : ''}`} key={item.channelId}>
       <button type="button" className="channel-card-select" aria-pressed={channel === item.channelId} onClick={() => setChannel(channel === item.channelId ? '' : item.channelId)}>
         <span className="sr-only">查看渠道会话：</span>
@@ -363,9 +365,9 @@ export default function ChannelsPage({ id }: { id?: string }) {
           { label: pendingIngress.has(item.channelId) ? '核对接收状态' : ingressAction(item), disabled: !pendingIngress.has(item.channelId) && !!ingressUnavailable(item), description: pendingIngress.has(item.channelId) ? '上次操作结果未确认，只读核对后才能继续。' : ingressUnavailable(item), onSelect: trigger => setIngressRequest({ item, trigger }) },
           { label: '删除渠道', danger: true, onSelect: trigger => setRemovalRequest({ item, trigger }) }]} />}</div>}
     </div>)}<ChannelConfiguration addTriggerRef={addChannelTrigger} onSaved={channels.refresh} /></div>
-    <div className="section-heading"><div><h2>渠道会话 <span>{items.length}</span></h2>{channel && <Badge>{channel}</Badge>}</div><Search value={search} onChange={setSearch} label="搜索会话" /></div>
+    <div className="section-heading"><div><h2>渠道会话 <span>{!conversations.data ? '—' : items.length}</span></h2>{channel && <Badge>{channel}</Badge>}</div><Search value={search} onChange={setSearch} label="搜索会话" /></div>
     {conversations.error && <Notice error={conversations.error} onRetry={conversations.refresh} stale={!!conversations.data} />}
-    {!conversations.data && conversations.loading ? <Loading /> : !conversations.data && conversations.error ? <EmptyState title="渠道会话暂不可读" /> : !items.length ? <EmptyState title={search || channel ? '没有匹配的会话' : '等待第一条消息'} action={(search || channel) ? <Button variant="secondary" onClick={() => { setSearch(''); setChannel(''); }}>清除筛选</Button> : undefined} /> :
+    {!conversations.data && conversations.loading ? <Loading /> : !conversations.data && conversations.error ? null : !items.length ? <EmptyState title={search || channel ? '没有匹配的会话' : '等待第一条消息'} action={(search || channel) ? <Button variant="secondary" onClick={() => { setSearch(''); setChannel(''); }}>清除筛选</Button> : undefined} /> :
     <div className="conversation-list">{items.map(item => <a href={`#/channels/${encodeURIComponent(item.id)}`} className="conversation-row" key={item.id}><span className="conversation-symbol">{item.type === 'chat-room' ? <RiGroupLine size={21} /> : <RiChat3Line size={21} />}</span><div><strong>{item.name || '未命名会话'}</strong><span>{item.channelId} · {conversationType(item.type)}</span></div><RiArrowRightLine size={18} /></a>)}</div>}
   </div>;
 }

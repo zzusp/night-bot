@@ -102,7 +102,7 @@ export default function FeedbackPage() {
     finally { if (mounted.current) setBusy(false); }
   };
   return <div className="page-content feedback-page">
-    {destination.error && <Notice error={destination.error} onRetry={destination.refresh} />}
+    {destination.error && <Notice read error={destination.error} onRetry={destination.refresh} />}
     {!destination.data && destination.loading && <Loading />}
     <section className="settings-card"><form noValidate onSubmit={event => { event.preventDefault(); void collect(); }}>
       <label htmlFor="feedback-title">标题</label><input ref={titleInput} id="feedback-title" maxLength={160} value={title} disabled={busy || !!record || requestLock.current} onChange={event => setTitle(event.target.value)} aria-describedby={error ? 'feedback-error' : undefined} />
@@ -115,7 +115,7 @@ export default function FeedbackPage() {
     </form></section>
     {record && !submitAttempted && <Button disabled={busy} onClick={() => void revoke()}>清除暂存</Button>}
     {collecting && <Loading>Pi 正在诊断</Loading>}
-    {polling.error && <Notice error={polling.error} onRetry={polling.refresh} />}
+    {polling.error && record?.state !== 'failed' && <Notice read error={polling.error} onRetry={polling.refresh} />}
     {record?.state === 'failed' && <Notice error={new Error()} message="本次诊断失败，未提交 GitHub。问题内容已保留。" />}
     {record && ['ready', 'editing', 'submitting', 'submitted', 'unknown'].includes(record.state) && <section className="settings-card feedback-preview" aria-label="提交内容预览"><h2>提交内容</h2><dl><dt>目标仓库</dt><dd>{record.target}</dd></dl>
       {!url && record.state === 'ready' ? <div className="feedback-preview-fields">

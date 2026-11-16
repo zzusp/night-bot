@@ -102,28 +102,28 @@ for (const toolName of ['read', 'job_output']) {
     for (const status of [403, 404, 401]) {
       mode = `denied-${status}`;
       await page.evaluate(() => window.dispatchEvent(new Event('online')));
-      await expect(row.getByRole('alert')).toBeVisible();
+      await expect(page.getByRole('alert',{name:'读取状态汇总'})).toBeVisible();
       await expect(row.locator('summary, .tool-content, .body-pagination')).toHaveCount(0);
       await expect(row).not.toContainText('分页终点');
       const deniedResponse = page.waitForResponse(response => response.url().includes('/messages/paged-result?') && response.status() === status);
-      await row.getByRole('button', { name: '重新获取', exact: true }).click();
+      await page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button', { name: '重试', exact: true }).click();
       await expect(row).not.toContainText('长输出。');
       await expect(row).not.toContainText('分页终点');
       await deniedResponse;
-      await expect(row.getByRole('alert')).toBeVisible();
+      await expect(page.getByRole('alert',{name:'读取状态汇总'})).toBeVisible();
       mode = 'ready';
-      await row.getByRole('button', { name: '重新获取', exact: true }).click();
+      await page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button', { name: '重试', exact: true }).click();
       await expect(row.locator('.tool-content')).toHaveText(tail);
     }
     mode = 'denied-403';
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
-    await expect(row.getByRole('alert')).toBeVisible();
+    await expect(page.getByRole('alert',{name:'读取状态汇总'})).toBeVisible();
     mode = 'stale';
-    await row.getByRole('button', { name: '重新获取', exact: true }).click();
-    await expect(row.getByRole('button', { name: '获取最新记录', exact: true })).toBeVisible();
+    await page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button', { name: '重试', exact: true }).click();
+    await expect(page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button', { name: '重试', exact: true })).toBeVisible();
     await expect(row.locator('summary, .tool-content')).toHaveCount(0);
     revision = 'restored-revision'; mode = 'ready';
-    await row.getByRole('button', { name: '获取最新记录', exact: true }).click();
+    await page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button', { name: '重试', exact: true }).click();
     await activity.locator('.pi-tool-step > summary').click();
     await expect(row.locator('.tool-content')).toHaveText('重新授权后的最新正文');
     await expect(row).not.toContainText('分页终点');

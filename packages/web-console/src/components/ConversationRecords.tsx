@@ -6,6 +6,7 @@ import { Loading, Notice, Status, Markdown } from './Shared';
 import { ExecutionHistory } from './ExecutionHistory';
 import { useResource, textOf, dateTime } from '../hooks';
 
+const unavailableTasks=new ApiError(503,'TASK_HISTORY_UNAVAILABLE');
 export type TaskHistory = Pick<Chat, 'taskIds' | 'taskHistoryStatus' | 'taskSummaries'>;
 function ChatExecutionGroup({ endpoint, taskId, metadata }: { endpoint: string; taskId?: string; metadata?: Pick<Task, 'taskId' | 'title' | 'state' | 'updatedAt'> }) {
   const [open, setOpen] = useState(false);
@@ -64,8 +65,8 @@ export function ConversationRecords({ endpoint, query }: { endpoint: string; que
         <header className="execution-section-heading"><div><h2>后续任务</h2></div>{query.data?.taskHistoryStatus === 'ready' && !taskHistoryBlocked && <span className="execution-task-count">{query.data.taskIds?.length ?? 0} 项</span>}</header>
         {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data && !taskHistoryBlocked} />}
         {query.loading && !query.data ? <Loading>正在读取关联任务…</Loading>
-          : taskHistoryBlocked || (!query.data && query.error) ? <EmptyState title="关联任务暂不可读" />
-          : query.data?.taskHistoryStatus !== 'ready' || query.data.taskIds === null ? <EmptyState title="关联任务暂不可读" action={<Button variant="secondary" onClick={query.refresh}>重新获取</Button>} />
+          : taskHistoryBlocked || (!query.data && query.error) ? null
+          : query.data?.taskHistoryStatus !== 'ready' || query.data.taskIds === null ? <Notice read error={unavailableTasks} source={endpoint} message="关联任务暂不可读。" onRetry={query.refresh} />
           : query.data.taskIds.length ? query.data.taskIds.map(taskId => <ChatExecutionGroup key={taskId} endpoint={endpoint} taskId={taskId} metadata={query.data?.taskSummaries?.find(task => task.taskId === taskId)} />)
           : <p className="execution-empty">暂无关联任务</p>}
       </section>

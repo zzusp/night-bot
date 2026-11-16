@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { RiCloseLine } from '@remixicon/react';
-import { api, ApiError, errorText, type Channel } from '../api';
+import { api, ApiError, operationErrorText, type Channel } from '../api';
 import { Button, IconButton } from './BoardPrimitives';
 import { Notice } from './Shared';
 import { channelPath } from '../channel-url';
@@ -13,7 +13,7 @@ const definitive = (error: unknown) => error instanceof ApiError && (
   [400, 401, 403, 404, 409, 413, 429].includes(error.status) || error.code === 'CHANNEL_CONFIGURATION_UNAVAILABLE'
 );
 const removalError = (error: unknown) => {
-  if (!(error instanceof ApiError)) return errorText(error);
+  if (!(error instanceof ApiError)) return operationErrorText(error);
   const messages: Record<string, string> = {
     DINGTALK_CHANNEL_VERSION_CONFLICT: '渠道配置已变化，本次没有删除。请取消后刷新列表，重新核对要删除的配置。',
     DINGTALK_CHANNEL_SWITCH_BLOCKED: '仍有未完成任务、输入或发送结果待核实，系统已阻止删除。请先处理这些依赖。',
@@ -25,7 +25,7 @@ const removalError = (error: unknown) => {
     CHANNEL_DELETE_CONFIRMATION_REQUIRED: '删除需要再次确认，未执行本次请求。',
     CHANNEL_DELETE_REQUEST_INVALID: '删除请求未被接纳，请刷新渠道信息后重新确认。',
   };
-  return messages[error.code] ?? errorText(error);
+  return messages[error.code] ?? operationErrorText(error);
 };
 
 export function ChannelRemovalDialog({ request, onDismiss, onChanged, focusAfterRemoval }: {

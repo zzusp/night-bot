@@ -1,10 +1,11 @@
+import {useReadFailure} from './ReadErrors';
 import {useAssistantBrand, brandGlyph} from './AssistantBrand';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { RiTimeLine, RiArrowDownLine, RiRefreshLine, RiSearchLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiArrowRightSLine, RiLightbulbLine, RiFileTextLine, RiTerminalBoxLine, RiPencilLine, RiToolsLine } from '@remixicon/react';
 import { Badge, Button, EmptyState, IconButton, Spinner } from './BoardPrimitives';
-import { ApiError, errorText, type ExecutionLive, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
+import { ApiError, errorText, operationErrorText, type ExecutionLive, type HistoryReader, type Message, type MessageBodyPage, type MessageSource } from '../api';
 import { dateTime, useResource } from '../hooks';
 import { executionItems, toolState, type ToolItem } from '../execution-items';
 import { mdiCheck, mdiAlertCircle, mdiLoading, mdiChevronRight, mdiHeadLightbulb, mdiFileDocumentOutline, mdiConsoleLine, mdiPencil, mdiMagnify, mdiWrenchOutline } from '@mdi/js';
@@ -31,8 +32,10 @@ export function Status({ value }: { value?: string }) {
   const [label, tone] = states[value ?? ''] ?? [value || '未记录', 'neutral'];
   return <Badge tone={tone}>{label}</Badge>;
 }
-export function Notice({ error, onRetry, stale = false, message }: { error: unknown; onRetry?: () => void; stale?: boolean; message?: string }) {
-  return <div className="notice" role="alert"><span>{stale ? '当前显示上次获取的数据。' : ''}{message ?? errorText(error)}</span>
+export function Notice({ error, onRetry, stale = false, message, read, title, source }: { error: unknown; onRetry?: () => void; stale?: boolean; message?: string; read?: boolean; title?: string; source?: string }) {
+  const grouped=useReadFailure({error,retry:onRetry,stale,message,title,source}, read ?? !!onRetry);
+  if ((read ?? !!onRetry) && grouped) return null;
+  return <div className="notice" role="alert"><span>{title && <strong>{title}。 </strong>}{stale ? '当前显示上次获取的数据。' : ''}{message ?? ((read ?? !!onRetry) ? errorText(error) : operationErrorText(error))}</span>
     {onRetry && <Button variant="ghost" onClick={onRetry} icon={<RiRefreshLine size={16} />}>重新获取</Button>}</div>;
 }
 export function Loading({ children = '正在获取…' }: { children?: ReactNode }) {
@@ -88,13 +91,13 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
   useEffect(() => { if (query.updatedAt && !query.error) setDenied(false); }, [query.updatedAt]);
   const needsLatest = denied && query.error instanceof ApiError && query.error.status === 409;
   if (forbidden || denied) return <>
-    {query.error ? <Notice error={query.error} onRetry={needsLatest ? undefined : query.refresh} /> : <p className="message-scope">正文暂不可读。</p>}
-    {needsLatest && (history?.onRecover ? <Button variant="secondary" onClick={history.onRecover}>获取最新记录</Button> : <p className="message-scope">请重新获取执行记录后查看正文。</p>)}
+    {query.error ? <Notice read error={query.error} onRetry={needsLatest ? history?.onRecover : query.refresh} /> : <p className="message-scope">正文暂不可读。</p>}
+    {needsLatest && !history?.onRecover && <p className="message-scope">请重新获取执行记录后查看正文。</p>}
     {query.loading ? <Loading>正在重新核验正文访问权限…</Loading> : !query.error && <Button variant="ghost" onClick={query.refresh}>重新获取</Button>}
   </>;
   const body = <>
-    {query.error && <Notice error={query.error} stale={!!page} onRetry={reset} />}
-    {offset && !page ? query.loading ? <Loading>正在读取正文…</Loading> : <p className="message-scope">这一段正文暂不可读，可回到首段重新获取。</p>
+    {query.error && <Notice read error={query.error} stale={!!page} onRetry={reset} />}
+    {offset && !page ? query.loading ? <Loading>正在读取正文…</Loading> : query.error ? null : <p className="message-scope">这一段正文暂不可读，可回到首段重新获取。</p>
       : plain && formatText ? formatText(text || '', offset) : plain ? <pre className="tool-content" tabIndex={0}><code>{text || '此记录没有可展示的文字。'}</code></pre> : message.role === 'user' ? <ThreeLineMessage key={offset} text={text || ''} collapsedLabel={message.kind === 'scheduled-trigger' ? '显示更多' : undefined}><Markdown text={text || ''} /></ThreeLineMessage> : <Markdown text={text || ''} />}
     {((nextOffset != null && history) || offset > 0) && <nav className="body-pagination" aria-label="正文分页">
       <span>{text !== undefined ? `正文 ${text.length ? offset + 1 : offset}–${offset + text.length}${total !== undefined ? ` / ${total}` : ''}` : '正文读取中'}</span><div>

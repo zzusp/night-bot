@@ -90,9 +90,9 @@ export default function EvolutionPage({ route }: { route: URL }) {
         <EvolutionListActions cache={summary?.cache} sessionsRead={summary?.usageCoverage?.sessionsRead} loading={query.loading} onRefresh={refreshList} />
       </div>
       <div ref={body} id="evolution-list-body" className="evolution-list-body" aria-busy={query.loading} style={!ready && query.loading ? {minHeight: bodyHeight.current} : undefined}>
-        {query.error && <Notice error={query.error} stale={!!ready || !!summary} onRetry={query.refresh} />}
+        {!selected && query.error && <Notice error={query.error} stale={!!ready || !!summary} onRetry={query.refresh} />}
         {!data && query.loading ? <div className="evolution-pending"><Loading>正在读取自进化记录…</Loading></div>
-          : !ready ? <EmptyState title={forbidden || revoked ? '无权查看自进化记录' : busy ? '自进化记录正在更新' : '自进化记录暂不可读'} action={!query.error ? <Button variant="secondary" onClick={query.refresh}>重新获取</Button> : undefined} />
+          : !ready ? query.error ? null : <EmptyState title={forbidden || revoked ? '无权查看自进化记录' : busy ? '自进化记录正在更新' : '自进化记录暂不可读'} action={!query.error ? <Button variant="secondary" onClick={query.refresh}>重新获取</Button> : undefined} />
           : <>
             {kind === 'skill' && ready.skills.inventoryComplete === false && <p className="evolution-list-notice" role="status">技能盘点不完整：{ready.skills.inventoryIssues?.join('；') || '部分资源不可读'}</p>}
             {!ready.items.length ? <EmptyState title={offset ? '这一页已没有记录' : '暂无自进化记录'} action={offset ? <Button variant="secondary" onClick={() => changePage(0)}>返回第一页</Button> : undefined} />
