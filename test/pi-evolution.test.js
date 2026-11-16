@@ -49,7 +49,7 @@ test('usage is concurrent-safe, durable and Bot-wide; dashboard reads do not inc
   await assert.rejects(recordUsage(f.store, f.scope, 'invented'), {code: 'EVOLUTION_USAGE_INVALID'})
 })
 
-test('learned availability uses the same first 50 unexpired experience records as the live catalog', async t => {
+test('learned availability uses the complete unexpired experience index, not the bounded read window', async t => {
   const f = await fixture(t)
   let now = Date.now(); f.store.now = () => now
   await f.remember('expired', {expiresAt: new Date(now + 1000).toISOString()})
@@ -62,8 +62,8 @@ test('learned availability uses the same first 50 unexpired experience records a
   assert.equal(current.entries[0].key, 'record-0')
   const result = await inspectEvolution({store: f.store}, f.reflection, f.binding, {kind: 'skill'})
   assert.equal(result.memory.acceptedCount, 51)
-  assert.equal(result.skills.activeCount, 1)
-  assert.deepEqual(result.items.filter(row=>row.status==='applied').map(item => item.name), ['learned-first']);assert.equal(result.items.length,3)
+  assert.equal(result.skills.activeCount, 2)
+  assert.deepEqual(result.items.filter(row=>row.status==='applied').map(item => item.name).sort(), ['learned-first','learned-last']);assert.equal(result.items.length,3)
 })
 
 test('legacy selectors address one Bot namespace without double-counting the shared snapshot', async t => {

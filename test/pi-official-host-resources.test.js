@@ -197,14 +197,14 @@ test('skill refresh retries a real learned body revision change and publishes on
  const original=reflection.skill.bind(reflection);let reads=0
  reflection.skill=async(...args)=>{
   const value=await original(...args)
-  if(++reads===1)await store.remember(scope,{topic:'experience',key:'parallel-retrospective',text:'another completed task',source:{sessionId:'other-session',messageId:'other-message'}})
+  if(++reads===1)await atomicWrite(join(reflection.directory(scope),'state.json'),JSON.stringify({version:1,reviews:{},skills:{verify:{...skill,revision:2,steps:['Read updated evidence']}}}))
   return value
  }
  const resources=await f.resolve(f.a),published=await resources.context.skills(f.a.actor)
  assert.equal(published.length,1);assert.equal(reads,5)
- const body=await readFile(published[0].filePath,'utf8'),revision=(await store.index(scope)).revision
- assert.match(body,new RegExp('NIGHT_LEARNED_SCOPE=bot/[^;]+;revision='+revision+'\\n'))
- assert.match(body,/Read current evidence/)
+ const body=await readFile(published[0].filePath,'utf8')
+ assert.match(body,/NIGHT_LEARNED_SCOPE=bot\/[^;]+;revision=2;key=verify;fingerprint=[a-f0-9]{64}/)
+ assert.match(body,/Read updated evidence/)
 })
 
 test('skill refresh takes a fresh catalog after metadata and invocation policy change',async t=>{

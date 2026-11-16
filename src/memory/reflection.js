@@ -170,11 +170,23 @@ export default class Reflection extends Service {
     try{await this.publishReviewArchive(source,taskId,report,scope);return true}
     catch(error){this.lastError=error.code??'TASK_REVIEW_ARCHIVE_FAILED';this.host.logger.warn(this.lastError);return false}
   }
-  renderSkill(scope,key,value,revision){
+  renderSkill(scope,key,value){
     return ['---','name: learned-'+key,'description: '+JSON.stringify(value.applicability),'---',
-      'NIGHT_LEARNED_SCOPE='+scope.kind+'/'+scope.id+';revision='+revision,'',
+      this.skillMarker(scope,key,value),'',
       ...value.origin==='router'?['Source message: '+value.source.messageId]:[],'',
       ...value.body!==undefined?[value.body]:value.steps.map((step,i)=>(i+1)+'. '+step),''].join('\n')
+  }
+  skillMarker(scope,key,value){
+    // Shared memory revisions change for unrelated tasks. Bind history to this
+    // skill's own version AND rendered content instead, including its identity.
+    const fingerprint=hash(JSON.stringify([scope.kind,scope.id,key,value.revision,value.applicability,value.origin??null,value.source??null,value.body??null,value.steps??null]))
+    return 'NIGHT_LEARNED_SCOPE='+scope.kind+'/'+scope.id+';revision='+value.revision+';key='+key+';fingerprint='+fingerprint
+  }
+  async authorizesSkillHistory(scope,marker){
+    const match=marker.match(/^NIGHT_LEARNED_SCOPE=[^;]+;revision=\d+;key=([a-z0-9]+(?:-[a-z0-9]+)*);fingerprint=[a-f0-9]+$/)
+    if(!match||!validKey(match[1]))return false
+    const state=await this.state(scope),value=state.skills[match[1]]
+    return !!value?.active&&learnedSkillSupported(value,await this.supportEntries(scope,state))&&this.skillMarker(scope,match[1],value)===marker
   }
   async readSkills(scope,{key}={}){
     if(key!==undefined&&!validKey(key))throw failure('REFLECTION_SKILL_INVALID')
@@ -331,7 +343,7 @@ export default class Reflection extends Service {
   }
   async supportEntries(scope,state){
     if(!Object.values(state.skills).some(skill=>skill.active&&skill.origin!=='router'))return []
-    return (await this.host.memory.store.index(scope,{topic:'experience'})).entries.slice(0,50)
+    return (await this.host.memory.store.index(scope,{topic:'experience'})).entries
   }
   async catalog(requestedAgent){
     const agent=this.host.agents.currentInitiator()??requestedAgent;if(!agent)return []
@@ -345,8 +357,8 @@ export default class Reflection extends Service {
   }
   async skill(candidate,agent,{resourceOnly=false}={}){
     const allowed=(await this.catalog(agent)).find(row=>row.name===candidate.name&&row.locator.scope.id===candidate.locator.scope.id);if(!allowed)return
-    const {scope,key}=allowed.locator,state=await this.state(scope),value=state.skills[key],revision=(await this.host.memory.store.index(scope)).revision
-    const content=this.renderSkill(scope,key,value,revision)
+    const {scope,key}=allowed.locator,state=await this.state(scope),value=state.skills[key]
+    const content=this.renderSkill(scope,key,value)
     if(!resourceOnly)await this.host.memory.recordUsage(scope,'loadCount')
     return {...allowed,content}
   }

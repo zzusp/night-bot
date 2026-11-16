@@ -70,8 +70,15 @@ export default class NativeMemory extends Service {
         const parts=summary?[{type:'text',text:message.summary}]:typeof message.content==='string'?[{type:'text',text:message.content}]:message.content??[]
         const content=[]
         for(const part of parts){let result=indexResult;try{if(!result&&message.role==='toolResult'&&part.type==='text')result=JSON.parse(part.text)}catch{}
-          const learned=part.type==='text'&&part.text.match(/NIGHT_LEARNED_SCOPE=(bot\/[a-f0-9]+|personal\/[a-f0-9]+|group\/[a-f0-9]+|project\/[a-f0-9]+);revision=(\d+)/)
-          if(learned){const allowed=binding&&readableScopes(binding).find(item=>item.scope.kind+'/'+item.scope.id===learned[1]);if(!allowed||(await this.store.index(allowed.scope)).revision!==Number(learned[2])){content.push({type:'text',text:'Historical learned skill revoked. Load current authorized skills when needed.'});changed=true;continue}}
+          const learned=part.type==='text'?[...part.text.matchAll(/NIGHT_LEARNED_SCOPE=(bot\/[a-f0-9]+|personal\/[a-f0-9]+|group\/[a-f0-9]+|project\/[a-f0-9]+);revision=\d+(?:;key=[a-z0-9-]+;fingerprint=[a-f0-9]+)?/g)]:[]
+          let revoked=false
+          for(const marker of learned){
+            const allowed=binding&&readableScopes(binding).find(item=>item.scope.kind+'/'+item.scope.id===marker[1])
+            // Legacy markers have no skill identity: fail closed and require an
+            // explicit fresh load, never replay a historical tool invocation.
+            if(!allowed||!await this.host.get('reflection')?.authorizesSkillHistory(allowed.scope,marker[0])){revoked=true;break}
+          }
+          if(revoked){content.push({type:'text',text:'Historical learned skill revoked. Load current authorized skills when needed.'});changed=true;continue}
           if(result?.kind==='night-memory-result'){
             const allowed=binding&&readableScopes(binding).find(item=>item.scope.kind+'/'+item.scope.id===result.scopeToken)
             let current
