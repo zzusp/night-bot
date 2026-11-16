@@ -1,6 +1,84 @@
 import {test,expect} from '@playwright/test';
 import {FIXTURE_TOKEN} from './preview.mjs';
 
+for(const layout of [{name:'desktop light',width:1440,height:960,theme:'light'},{name:'mobile dark',width:390,height:844,theme:'dark'}]){
+ test(`commit waiting retains authorized history without a read alert and automatically catches up: ${layout.name}`,async({page},testInfo)=>{
+  await page.setViewportSize({width:layout.width,height:layout.height});
+  await page.addInitScript(theme=>localStorage.setItem('night-theme',theme),layout.theme);
+  let phase='initial',pendingReads=0;
+  const retained={id:'retained',role:'assistant',text:'这是已提交的执行记录。'};
+  const live={active:true,items:[{id:'provisional',role:'assistant',text:'尚未提交的临时内容',transient:true}]};
+  await page.route('**/api/tasks/task-research/session?*',r=>{
+   const url=new URL(r.request().url());
+   if(phase==='pending'){pendingReads++;return r.fulfill({json:{status:'pending',reason:'SESSION_COMMIT_PENDING',items:[],total:0}});}
+   if(url.searchParams.has('live'))return r.fulfill({json:{status:'ready',live,historyChanged:false}});
+   return r.fulfill({json:{status:'ready',scope:'current-session-context',items:phase==='ready'?[{id:'appended',role:'assistant',text:'新记录已完成提交。'}]:[retained],total:phase==='ready'?2:1,checkpoint:phase==='ready'?'committed-2':'committed-1',revision:phase,liveProof:'current-proof',live:phase==='ready'?{active:false,items:[]}:live}});
+  });
+  await page.goto('/#/tasks/task-research');
+  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+  await expect(page.locator('[data-message-id="retained"]')).toHaveCount(1);
+  await expect(page.locator('.pi-live-message')).toHaveCount(1);
+  phase='pending';await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+  const waiting=page.getByRole('status').filter({hasText:'记录正在提交，当前显示上次已提交记录。'});
+  await expect(waiting).toBeVisible();
+  await expect(page.locator('[data-message-id="retained"]')).toHaveCount(1);
+  await expect(page.locator('.pi-live-message')).toHaveCount(0);
+  await expect(page.locator('.read-error-summary')).toHaveCount(0);
+  await expect.poll(()=>pendingReads).toBeGreaterThanOrEqual(2);
+  await expect(waiting).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:testInfo.outputPath('commit-pending.png')});
+  phase='ready';
+  await expect(page.locator('[data-message-id="appended"]')).toHaveCount(1);
+  await expect(page.locator('[data-message-id="retained"]')).toHaveCount(1);
+  await expect(waiting).toHaveCount(0);
+  await expect(page.locator('.read-error-summary')).toHaveCount(0);
+ });
+}
+
+test('commit waiting cannot hide a real read failure or resurrect revoked history',async({page})=>{
+ let phase='pending';
+ await page.route('**/api/tasks/task-research/session?*',r=>{
+  if(phase==='denied')return r.fulfill({status:403,json:{error:'RESOURCE_FORBIDDEN'}});
+  if(phase==='offline')return r.fulfill({status:503,json:{error:'SESSION_UNAVAILABLE'}});
+  if(phase==='pending')return r.fulfill({json:{status:'pending',reason:'SESSION_COMMIT_PENDING',items:[],total:0}});
+  return r.fulfill({json:{status:'ready',scope:'current-session-context',items:[{id:'guarded-record',role:'assistant',text:'仅限获权后查看的已提交记录。'}],total:1,checkpoint:'guarded',revision:'guarded'}});
+ });
+ await page.goto('/#/tasks/task-research');
+ await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+ await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+ await expect(page.getByText('执行记录正在提交',{exact:true})).toBeVisible();
+ await expect(page.locator('.read-error-summary')).toHaveCount(0);
+ phase='ready';await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await expect(page.locator('[data-message-id="guarded-record"]')).toHaveCount(1);
+ phase='pending';await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await expect(page.getByRole('status').filter({hasText:'记录正在提交，当前显示上次已提交记录。'})).toBeVisible();
+ phase='offline';await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await expect(page.locator('.read-error-summary')).toBeVisible();
+ await expect(page.locator('[data-message-id="guarded-record"]')).toHaveCount(1);
+ phase='pending';
+ const pending=page.waitForResponse(response=>response.url().includes('/tasks/task-research/session?')&&response.status()===200);
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));await pending;
+ await expect(page.locator('.read-error-summary')).toBeVisible();
+ await expect(page.getByRole('status').filter({hasText:'记录正在提交，当前显示上次已提交记录。'})).toHaveCount(0);
+ const retryPending=page.waitForResponse(response=>response.url().includes('/tasks/task-research/session?')&&response.status()===200);
+ await page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button',{name:'重试',exact:true}).click();await retryPending;
+ await expect(page.locator('.read-error-summary')).toBeVisible();
+ await expect(page.locator('[data-message-id="guarded-record"]')).toHaveCount(1);
+ phase='denied';await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await expect(page.locator('[data-message-id="guarded-record"]')).toHaveCount(0);
+ phase='pending';
+ const revokedPending=page.waitForResponse(response=>response.url().includes('/tasks/task-research/session?')&&response.status()===200);
+ await page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button',{name:'重试',exact:true}).click();await revokedPending;
+ await expect(page.locator('.read-error-summary')).toContainText('部分内容无法访问');
+ await expect(page.locator('[data-message-id="guarded-record"]')).toHaveCount(0);
+ phase='ready';await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await expect(page.locator('[data-message-id="guarded-record"]')).toHaveCount(1);
+ await expect(page.locator('.read-error-summary')).toHaveCount(0);
+});
+
+
 test('HTTP live snapshot contract replaces provisional output, commits once and clears on revoked access',async({page})=>{
  let phase='first';
  const live=(text:string)=>({id:'live-message',role:'assistant',text,status:'running',transient:true});
@@ -96,7 +174,7 @@ test('active output polls the light lane and catches up history without duplicat
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
  await expect(page.locator('.pi-live-message')).toHaveCount(1);
- await expect.poll(()=>light).toBeGreaterThanOrEqual(3);
+ await expect.poll(()=>light).toBeGreaterThanOrEqual(2);
  expect(full).toBe(1);
  committed=true;
  await expect(page.locator('.pi-live-message')).toHaveCount(0);

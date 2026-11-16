@@ -37,7 +37,7 @@ export function ExecutionHistory({ endpoint, router = false, sessionKind, status
   }, [query.updatedAt]);
   // The task workspace hosts these controls in its rail; other readers keep them inline.
   // The history component owns one stream regardless of where its controls render.
-  const controls = controlsTarget !== undefined ? !blocked && query.data?.status === 'ready' && <dl className="task-record-facts"><div><dt>{query.error ? '上次上下文' : '当前上下文'}</dt><dd><span>{query.data.items.length}</span><span className="muted"> / {query.data.total} 条</span></dd></div></dl> : <div className="execution-scope"><span>{router ? query.data?.scope === 'previous-committed-router-context' ? `已提交的安排记录 · 第 ${query.data.generation} 代（当前第 ${query.data.activeGeneration} 代）` : '当前安排记录' : '当前执行上下文'}</span>
+  const controls = controlsTarget !== undefined ? !blocked && query.data?.status === 'ready' && <dl className="task-record-facts"><div><dt>{query.error || query.committing ? '上次上下文' : '当前上下文'}</dt><dd><span>{query.data.items.length}</span><span className="muted"> / {query.data.total} 条</span></dd></div></dl> : <div className="execution-scope"><span>{router ? query.data?.scope === 'previous-committed-router-context' ? `已提交的安排记录 · 第 ${query.data.generation} 代（当前第 ${query.data.activeGeneration} 代）` : '当前安排记录' : '当前执行上下文'}</span>
       <div>{query.data?.status === 'ready' && <span>已载入 {query.data.items.length} / {query.data.total} 条记录</span>}{status && <Status value={status} />}{query.updatedAt && <time dateTime={new Date(query.updatedAt).toISOString()}>获取于 {dateTime(query.updatedAt)}</time>}<Button variant="ghost" disabled={query.loading} onClick={latest}>获取最新记录</Button></div>
     </div>;
   const lastMessage = query.data?.items.at(-1);
@@ -48,6 +48,7 @@ export function ExecutionHistory({ endpoint, router = false, sessionKind, status
     {tokenTarget && createPortal(<TaskTokenUsage usage={!blocked && query.data?.status === 'ready' ? query.data.tokenUsage : undefined} error={query.error || taskError} stale={!blocked && !!query.data?.tokenUsage} onRetry={query.error ? latest : taskRetry ?? latest} />, tokenTarget)}
     {controlsTarget === undefined ? controls : controlsTarget ? createPortal(controls, controlsTarget) : null}
     {query.error && hasRecords && <Notice read stale error={query.error} message="更新失败，当前显示上次记录" onRetry={query.loading ? undefined : latest} />}
+    {!blocked && query.committing && <div className="execution-scope" role="status">记录正在提交，当前显示上次已提交记录。</div>}
     {!router && !blocked && query.data?.status === 'ready' && query.data.todos && <AgentProgress key={endpoint} items={query.data.todos.items} title={taskTitle} status={taskState} />}
 
     {query.loading && !query.data ? <Loading>{router ? '正在读取会话记录…' : '正在读取正式执行记录…'}</Loading>
@@ -55,8 +56,8 @@ export function ExecutionHistory({ endpoint, router = false, sessionKind, status
       : sessionEmpty ? <EmptyState title={emptyTitle} />
       : query.data?.status === 'pending' ? <EmptyState title={query.data.reason === 'SESSION_NOT_STARTED' ? router ? emptyTitle : '执行尚未开始' : '执行记录正在提交'} />
       : <MessageList key={`${endpoint}:${query.epoch}:${readerEpoch}`} messages={[...(query.data?.items || []), ...(!query.error && query.data?.status === 'ready' ? query.data.live?.items || [] : [])]} live={!query.error && query.data?.status === 'ready' ? query.data.live : undefined} userLabel="用户" presentation="execution" older={{ hasMore: !!query.data?.before, loading: query.loadingOlder, error: query.olderError, disabled: !!query.error, onLoad: query.loadOlder }} history={query.data?.revision ? { endpoint, revision: query.data.revision, onRecover: recoverBody } : undefined}
-        footerVersion={!query.error && !query.data?.live?.active ? conclusion : null}
-        footer={!query.error && query.data?.status === 'ready' && !query.data.live?.active && conclusion && !duplicateConclusion && <article className="message message-assistant task-final-conclusion" aria-label="最后结论">{conclusionDuration && <div className="task-conclusion-label">{conclusionDuration}</div>}<div className="message-body"><Markdown text={conclusion} /></div></article>}
+        footerVersion={!query.error && !query.committing && !query.data?.live?.active ? conclusion : null}
+        footer={!query.error && !query.committing && query.data?.status === 'ready' && !query.data.live?.active && conclusion && !duplicateConclusion && <article className="message message-assistant task-final-conclusion" aria-label="最后结论">{conclusionDuration && <div className="task-conclusion-label">{conclusionDuration}</div>}<div className="message-body"><Markdown text={conclusion} /></div></article>}
         empty={conclusion ? <></> : <EmptyState title="暂无可展示的执行记录" />} />}
   </div>;
 }
