@@ -149,12 +149,13 @@ export default class PiSessionPersistence extends Service {
       try {
         const opened=await file.stat()
         if(!same(before,opened)||!opened.isFile()||opened.nlink!==1)throw fail('PI_SESSION_CHANGED')
-        const hash=createHash('sha256'),buffer=Buffer.allocUnsafe(65536)
-        let position=0
-        while(position<opened.size){const {bytesRead}=await file.read(buffer,0,Math.min(buffer.length,opened.size-position),position);if(!bytesRead)throw fail('PI_SESSION_CHANGED');hash.update(buffer.subarray(0,bytesRead));position+=bytesRead}
+        // Read through the same handle without one event-loop round trip per 64KiB.
+        const bytes=await file.readFile()
+        if(bytes.length!==opened.size)throw fail('PI_SESSION_CHANGED')
+        const hash=digest(bytes)
         await this.checkedFile(id)
         if(this.path(id)!==path||!same(opened,await file.stat())||!same(opened,await lstat(path)))throw fail('PI_SESSION_CHANGED')
-        return fileStamp(opened)+':'+hash.digest('hex')
+        return fileStamp(opened)+':'+hash
       } finally {await file.close()}
     })()
     this.digestReads.set(id,reading)

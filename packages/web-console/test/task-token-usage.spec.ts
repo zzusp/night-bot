@@ -67,7 +67,7 @@ test('真实原生提交→授权HTTP→未拦截UI，压缩与分支全量统�
   const fresh=page.waitForResponse(response=>response.url().includes('/api/tasks/task-research/session?stream=')&&response.status()===200);
   await page.evaluate(()=>window.dispatchEvent(new Event('online')));const saved=await(await fresh).json();
   fixtureTask.session.sessionId=badId;
-  await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(card.locator('.task-token-total strong')).toHaveText('未知');await expect(card.getByRole('alert')).toBeVisible();
+  await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(card.locator('.task-token-total strong')).toHaveText('未知');await expect(page.getByRole('alert',{name:'读取状态汇总'})).toBeVisible();
   const badResponse=await page.request.get(preview.origin+'/api/tasks/task-research/session');expect(badResponse.status()).toBe(503);const badBody=await badResponse.json();expect(badBody.error).toBe('SESSION_IDENTITY_INVALID');expect(badBody.tokenUsage).toBeUndefined();
   recoveryGate=new Promise<void>(resolve=>{releaseRecovery=resolve;});const previousLive=liveRequests;
   fixtureTask.session.sessionId=id;
@@ -75,7 +75,7 @@ test('真实原生提交→授权HTTP→未拦截UI，压缩与分支全量统�
   // authorization snapshot and cannot restore the cleared client token value.
   const oldLight=await(await page.request.get(preview.origin+'/api/tasks/task-research/session?live='+saved.liveProof)).json();expect(oldLight.historyChanged).toBe(false);expect(oldLight.tokenUsage).toBeUndefined();
   await expect.poll(()=>gateEntered).toBe(true);await expect(card.locator('.task-token-total strong')).toHaveText('未知');expect(liveRequests).toBe(previousLive);
-  await card.getByRole('button',{name:'重新获取',exact:true}).click();await expect(card.locator('.task-token-total strong')).toHaveText('未知');
+  await page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button',{name:'重试',exact:true}).click();await expect(card.locator('.task-token-total strong')).toHaveText('未知');
   recoveryGate=undefined;releaseRecovery!();await expect(card.locator('.task-token-total strong')).toHaveText('11.1K');
   failRead=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(card.locator('.task-token-total strong')).toHaveText('未知');failRead=false;
   manager.appendMessage({role:'assistant',api:'host',provider:'host',model:'host',content:[],usage:usage(0),_hostUsage:undefined,stopReason:'error',timestamp:Date.now()});await writer.commit();
@@ -104,7 +104,7 @@ test('UI受控DTO区分真实零、部分未知、503旧值及403清除',async({
  mode='partial';await refresh();await expect(total).toHaveText('未知');await expect(card.locator('dd')).toHaveText(['4','0','未知','0']);
  await card.screenshot({path:test.info().outputPath('ring-ui-partial-1440-light.png')});
  mode='zero';await refresh();await expect(total).toHaveText('0');
- mode='failed';await refresh();await expect(card).toContainText('上次获取的数据');await expect(total).toHaveText('0');
+ mode='failed';await refresh();await expect(page.getByRole('alert',{name:'读取状态汇总'})).toContainText('部分内容未更新');await expect(total).toHaveText('0');
  mode='denied';await refresh();await expect(total).toHaveText('未知');await expect(card.locator('dd')).toHaveText(['未知','未知','未知','未知']);
  mode='slow';await refresh();await expect.poll(()=>!!release).toBe(true);await expect(total).toHaveText('未知');release!();await expect(total).toHaveText('0');
 });

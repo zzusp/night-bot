@@ -3,8 +3,8 @@ import {api, ApiError, type ExecutionPage, type Message} from './api';
 
 const batchSize = 200;
 type Read = 'newer' | 'older' | 'reset' | 'live';
-type State = {data: ExecutionPage | null; error: Error | null; olderError: Error | null; loading: boolean; loadingOlder: boolean; updatedAt: number | null; epoch: number};
-const initial = (): State => ({data: null, error: null, olderError: null, loading: true, loadingOlder: false, updatedAt: null, epoch: 0});
+type State = {data: ExecutionPage | null; error: Error | null; olderError: Error | null; committing: boolean; loading: boolean; loadingOlder: boolean; updatedAt: number | null; epoch: number};
+const initial = (): State => ({data: null, error: null, olderError: null, committing: false, loading: true, loadingOlder: false, updatedAt: null, epoch: 0});
 const unique = (rows: Message[]) => [...new Map(rows.map(row => [row.id, row])).values()];
 const revoked = (error: unknown) => error instanceof ApiError && [401, 403, 404].includes(error.status);
 
@@ -64,17 +64,19 @@ export function useExecutionStream(endpoint: string) {
           data = {...page, items: unique(kind === 'older' ? [...page.items, ...previous.items] : [...previous.items, ...page.items]),
             before: kind === 'older' ? page.before : previous.before};
         }
-        // A temporary commit barrier is not an empty history. Keep the verified
-        // snapshot marked as stale, without pretending it is current.
-        if (page.status === 'pending' && previous?.status === 'ready') {
-          publish({error: new ApiError(503, 'SESSION_COMMIT_PENDING')});
+        // A commit barrier keeps the last authorized snapshot, not a read error.
+        // Drop provisional output/proof; only a fresh history read can restore it.
+        if (page.status === 'pending' && page.reason === 'SESSION_COMMIT_PENDING') {
+          const retained = current.data?.status === 'ready' ? current.data : null;
+          publish({data: retained ? {...retained, liveProof:undefined, live:{active:false,items:[]}} : page, committing:!!retained && !current.error});
         } else {
-          publish({data, error: null, olderError: null, updatedAt: Date.now(), epoch: current.epoch + (kind === 'reset' ? 1 : 0)});
+          publish({data, error: null, olderError: null, committing:false, updatedAt: Date.now(), epoch: current.epoch + (kind === 'reset' ? 1 : 0)});
         }
         failures = 0; catchUp = page.status === 'ready' && page.hasNewer === true;
       } catch (error) {
         if (disposed || controller.signal.aborted) return;
         const problem = error instanceof Error ? error : new Error('REQUEST_FAILED');
+        publish({committing:false});
         if (revoked(problem)) publish({data: null, error: problem, olderError: null, epoch: current.epoch + 1});
         else if (problem instanceof ApiError && /^(SESSION_IDENTITY_INVALID|SESSION_SOURCE_IDENTITY_INVALID|SESSION_USAGE_INVALID)$/.test(problem.code)) {
           // A previously valid live proof must never resurrect token metadata
@@ -94,7 +96,7 @@ export function useExecutionStream(endpoint: string) {
           else if (catchUp) void read('newer');
           else if (failures < 3 && !(current.error instanceof ApiError && (current.error.status === 409 || revoked(current.error)))) {
             const light = !!current.data?.liveProof && current.data?.live?.active === true;
-            const interval = light ? 250 : 2500;
+            const interval = light ? 1000 : 2500;
             timer = setTimeout(() => void read(light ? 'live' : 'newer'), interval * Math.max(1, 2 ** failures));
           }
         }
