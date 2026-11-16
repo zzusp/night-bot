@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite'
 import assert from 'node:assert/strict'
 import {readFile,stat} from 'node:fs/promises'
 import {join} from 'node:path'
-import {memoryHost} from './fixtures/memory-host.js'
+import {memoryHost,initializeMemoryTaskWorkspace} from './fixtures/memory-host.js'
 import {createSingleTaskSessions} from '../src/tasks/single-session.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
 import {taskWorkspace} from '../packages/dingtalk-core/session-workspaces.js'
@@ -60,6 +60,7 @@ test('actual Host legacy non-Router human review and dialogue stay read-only, re
   store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'review-tasks.sqlite'),workspaceDir:ctx.runtimePaths.workspaces,instanceId:'review-test',ownerActorId:'owner',webActorId:'owner',initialize:true})
   const original='After business-person confirms the existing UAT2-only conditions, create the original local proof under work/. No other environment or objective is authorized.'
   await command('task.create',{taskId,groupId:'review-group',ownerActorId:'owner',objective:original,request:original})
+  await initializeMemoryTaskWorkspace(store,ctx.runtimePaths.workspaces,taskId)
   // Restore a pre-Router persisted task: these rows had groupId but no conversationId.
   // New conversation tasks must use Router resume, never this execution-side review.
   await store.close()

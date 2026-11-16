@@ -41,12 +41,12 @@ for(const restored of [false,true])test(`SDK budget exhaustion stays technical a
 })
 test('authenticated human answer survives official retry and is read before the original task resumes',async t=>{
  let failed=false,reviewed=false,authenticatedSource
- const h=await providerHost(t,{intercept:request=>{if(taskRequest(request)&&(latestInput(request).humanReview||latestInput(request).task.humanRequests.some(item=>item.status==='answered'))&&!failed){failed=true;return {stopReason:'error',errorMessage:transient}}},decide:request=>{
+ const h=await providerHost(t,{intercept:request=>{if(taskRequest(request)&&(latestInput(request).humanReview||latestInput(request).sources.some(source=>source.text==='Only UAT3; keep all existing limits'))&&!failed){failed=true;return {stopReason:'error',errorMessage:transient}}},decide:request=>{
   const input=latestInput(request)
   if(!sawEffect(request))return [effect]
-  if(!input.task.humanRequests.length)return [{name:'task_result',args:{decision:{action:'blocked',summary:'Original effect is retained; target evidence is required',question:'Which exact environment is authorized?',audience:'requester',evidence:['original effect receipt'],limitations:[]}}}]
+  if(!input.sources.some(source=>source.text==='Only UAT3; keep all existing limits'))return [{name:'task_result',args:{decision:{action:'blocked',summary:'Original effect is retained; target evidence is required',question:'Which exact environment is authorized?',audience:'requester',evidence:['original effect receipt'],limitations:[]}}}]
   if(input.humanReview){const source=input.sources.find(source=>input.humanReview.sourceIds.includes(source.sourceId));assert.ok(source);assert.match(source.text,/Only UAT3; keep all existing limits/);reviewed=true;authenticatedSource=source.sourceId;return [effect,{name:'task_human_resolve',args:{requestId:input.humanReview.requestId,sourceId:source.sourceId,reason:'The actual requester supplied only the bounded UAT3 target',evidence:[source.text]}},result('wait')]}
-  assert.equal(input.task.humanRequests[0].status,'answered');const source=input.sources.find(source=>source.text?.includes('Only UAT3; keep all existing limits'));assert.ok(source);authenticatedSource=source.sourceId;reviewed=true;return [result('complete')]
+  const source=input.sources.find(source=>source.text?.includes('Only UAT3; keep all existing limits'));assert.ok(source);authenticatedSource=source.sourceId;reviewed=true;return [result('complete')]
  }})
  const id=await h.create();await h.service.whenIdle();const waiting=await h.query('task.get',{taskId:id});assert.equal(waiting.humanRequests.length,1)
  await h.service.respondHumanRequest({taskId:id,humanRequestId:waiting.humanRequests[0].requestId,requestId:'actual-target',expectedRequirementRevision:waiting.requirementRevision,expectedControlRevision:waiting.controlRevision,reply:'Only UAT3; keep all existing limits'});await h.service.whenIdle();const after=await h.stored(id)
@@ -150,15 +150,40 @@ for(const mode of ['provider-error','successful-text-without-task-result'])test(
  await cold.service.sendTaskDialogue({taskId:id,requestId:'second-dialogue',text:'SECOND_GENUINE_DIALOGUE'});await cold.service.whenIdle();const after=await cold.stored(id),reply=after.task.dialogue.find(message=>message.id==='second-dialogue');assert.match(reply.reply,/second genuine dialogue source/);assert.equal(reply.replyError??null,null);assert.equal(after.task.dialogue[0].reply,null);assert.equal(after.task.sessionId,before.task.sessionId);assert.equal(cold.effects,0);assert.equal(cold.taskRequests().length,1)
 })
 
-test('provider failure during actual group human review retains the source batch, holds across time and cold restore, then admits a new real answer',async t=>{
+// Current conversation answers are assessed by Router, not execution-side humanReview.
+// Legacy non-Router review remains covered by pi-single-task-review.test.js.
+
+
+test('Router-confirmed group answer survives provider failure and cold restore before a new real answer resumes the same task',async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()})
- let task,failReview=true,reviewed=[]
- const route=request=>topicTaskCalls(request,{task})
- const decide=request=>{const input=latestInput(request);if(!input.task.humanRequests.length)return [{name:'task_result',args:{decision:{action:'blocked',summary:'The business target must be confirmed',question:'请业务负责人确认原事项的只读目标。',audience:'requester',evidence:[],limitations:[]}}}];if(input.humanReview){const source=input.sources.find(source=>input.humanReview.sourceIds.includes(source.sourceId)&&source.text.includes('SECOND_REAL_ANSWER'));assert.ok(source);reviewed.push(source.sourceId);return [{name:'task_human_resolve',args:{requestId:input.humanReview.requestId,sourceId:source.sourceId,reason:'The actual business answer confirms only the bounded read-only target',evidence:[source.text]}},result()]}return [result()]}
- const intercept=request=>taskRequest(request)&&latestInput(request).humanReview&&failReview?{stopReason:'error',errorMessage:transient}:undefined
- const f=await roots(t),h=await f.host({route,decide,intercept});await h.service.ingest({groupId:'native-group',messageId:'review-origin',senderOpenDingTalkId:'native-user',text:'测试助手，等业务负责人确认原事项的UAT3只读目标，不要实施变更。',occurredAt:new Date().toISOString()});await h.service.whenIdle();task=(await h.query('task.list'))[0]
- await h.service.ingest({groupId:'native-group',messageId:'first-review-source',senderOpenDingTalkId:'business-responsible',text:'测试助手，FIRST_REAL_ANSWER：先保留原限制，只核对目标事实。',occurredAt:new Date().toISOString()});await h.service.whenIdle();const before=await h.stored(task.taskId),question=before.task.humanRequests[0],failure=question.reviewFailures.at(-1);assert.equal(question.status,'waiting-reply');assert.equal(failure.code,'TASK_PI_PROVIDER_ERROR');assert.ok(failure.sourceIds.length);const sources=await Promise.all(failure.sourceIds.map(sourceId=>h.query('source.get',{sourceId})));assert.ok(sources.some(source=>source.text.includes('FIRST_REAL_ANSWER')));const count=h.taskRequests().length
- for(let n=0;n<3;n++){t.mock.timers.setTime(Date.now()+3600000);await h.service.recover();await h.service.whenIdle()}assert.equal(h.taskRequests().length,count);await h.close();failReview=false
- const cold=await f.host({initialize:false,route,decide,intercept});await cold.service.recover();await cold.service.whenIdle();assert.equal(cold.taskRequests().length,0);task=await cold.query('task.get',{taskId:task.taskId});for(const source of sources)assert.deepEqual(await cold.query('source.get',{sourceId:source.sourceId}),source)
- await cold.service.ingest({groupId:'native-group',messageId:'second-review-source',senderOpenDingTalkId:'business-responsible',text:'测试助手，SECOND_REAL_ANSWER：仅确认UAT3只读目标，原有禁止实施的限制全部保留。',occurredAt:new Date().toISOString()});await cold.service.whenIdle();const after=await cold.stored(task.taskId);assert.equal(after.task.humanRequests[0].status,'answered');assert.equal(after.task.humanRequests[0].reviewFailures.length,1);assert.equal(reviewed.length,1);assert.equal(cold.effects,0);assert.equal(after.task.sessionId,before.task.sessionId)
+ let task,failExecution=true;const reviewed=[]
+ const route=async(request,host)=>{
+  const calls=topicTaskCalls(request,{task})
+  if(task&&calls?.[0]?.name==='resident_task_action'){
+   const current=await host.query('task.get',{taskId:task.taskId}),pending=current.humanRequests.find(question=>question.status==='waiting-reply')
+   calls[0].args={...calls[0].args,kind:'resume',expectedRequirementRevision:current.requirementRevision,expectedControlRevision:current.controlRevision,...pending?{humanRequestId:pending.requestId,expectedContextRevision:current.contextRevision??0,reason:'The real business source supplies the bounded target'}:{}}
+  }
+  return calls
+ }
+ const decide=request=>{
+  const input=latestInput(request),answer=input.sources.find(source=>source.text.includes('SECOND_REAL_ANSWER'))
+  if(!answer)return [{name:'task_result',args:{decision:{action:'blocked',summary:'The business target must be confirmed',question:'请业务负责人确认原事项的只读目标。',audience:'requester',evidence:[],limitations:[]}}}]
+  assert.match(JSON.stringify(request.messages),/FIRST_REAL_ANSWER/,'the first genuine answer remains in Pi history')
+  reviewed.push(answer.sourceId);return [result('complete')]
+ }
+ const intercept=request=>taskRequest(request)&&latestInput(request).sources.some(source=>source.text.includes('FIRST_REAL_ANSWER'))&&failExecution?{stopReason:'error',errorMessage:transient}:undefined
+ const f=await roots(t),h=await f.host({route,decide,intercept})
+ await h.service.ingest({groupId:'native-group',messageId:'review-origin',senderOpenDingTalkId:'native-user',text:'测试助手，等业务负责人确认原事项的UAT3只读目标，不要实施变更。',occurredAt:new Date().toISOString()});await h.service.whenIdle();task=(await h.query('task.list'))[0]
+ await h.service.ingest({groupId:'native-group',messageId:'first-review-source',senderOpenDingTalkId:'business-responsible',text:'测试助手，FIRST_REAL_ANSWER：先保留原限制，只核对目标事实。',occurredAt:new Date().toISOString()});await h.service.whenIdle()
+ const before=await h.stored(task.taskId),question=before.task.humanRequests[0]
+ assert.equal(question.status,'answered');assert.equal(before.task.technicalFailure.code,'TASK_PI_PROVIDER_ERROR');assert.equal(before.task.completion??null,null)
+ const sources=await Promise.all(before.task.sourceRefs.map(sourceId=>h.query('source.get',{sourceId})));assert.ok(sources.some(source=>source.text.includes('FIRST_REAL_ANSWER')))
+ const count=h.taskRequests().length
+ for(let n=0;n<3;n++){t.mock.timers.setTime(Date.now()+3600000);await h.service.recover();await h.service.whenIdle()}
+ assert.equal(h.taskRequests().length,count);await h.close();failExecution=false
+ const cold=await f.host({initialize:false,route,decide,intercept});await cold.service.recover();await cold.service.whenIdle();assert.equal(cold.taskRequests().length,0)
+ task=await cold.query('task.get',{taskId:task.taskId});for(const source of sources)assert.deepEqual(await cold.query('source.get',{sourceId:source.sourceId}),source)
+ await cold.service.ingest({groupId:'native-group',messageId:'second-review-source',senderOpenDingTalkId:'business-responsible',text:'测试助手，SECOND_REAL_ANSWER：仅确认UAT3只读目标，原有禁止实施的限制全部保留。',occurredAt:new Date().toISOString()});await cold.service.whenIdle()
+ const after=await cold.stored(task.taskId)
+ assert.equal(after.task.status,'completed');assert.equal(after.task.drained,true);assert.equal(after.task.humanRequests[0].status,'answered');assert.equal(reviewed.length,1);assert.equal(cold.effects,0);assert.equal(after.task.sessionId,before.task.sessionId)
 },{timeout:nativeTestTimeout(30000)})

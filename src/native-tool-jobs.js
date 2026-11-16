@@ -1,6 +1,7 @@
+import {renderJobOutput} from './runtime/job-output.js'
 import {validateNativeAudit} from './runtime/pi-journal.js'
 import {enqueueBusinessNotice} from './runtime/pi-business-notices.js'
-import {assertOfficialJobOwner,officialJobEvents,unresolvedNativeJobReceipts} from './runtime/job-ledger.js'
+import {assertOfficialJobOwner,officialJobEvents,unresolvedJobReceipts,unresolvedNativeJobReceipts,JOB_SETTLED} from './runtime/job-ledger.js'
 // MIT source-derived job model controls/notice/retention protocol; see licenses/dsh-tool-jobs-MIT.txt. NativeJobs owns producers and lifetimes.
 import z from "@deepseek-ai/schemastery";
 import { boundContextSummary, createUserMessage } from './native-message-protocol.js';
@@ -50,29 +51,6 @@ function publicJob(job) {
 */
 function statusLine(snapshot) {
 	return snapshot.detail !== void 0 ? `[status: ${snapshot.status}, ${snapshot.detail}]` : `[status: ${snapshot.status}]`;
-}
-/**
-* Render one consuming read for the model: stdout and unlabeled chunks in
-* order, then every stderr chunk in one `[stderr]` section, exactly as the
-* shell tools render a foreground result. `log` chunks are producer
-* narration for observers and never reach the model. Lost bytes — the cursor
-* fell behind the ring's retention, or a model-visible chunk carries a
-* producer-side gap — end the read with the shell tools' dropped-output
-* notice, naming the spill files the job's sources keep.
-* @param chunks - the chunks since the model cursor, in offset order.
-* @param lossy - whether bytes before `chunks` were evicted unread.
-* @param spillPaths - the complete-stream files the job currently advertises (`JobView.output.spillPaths`).
-* @returns the delta text, possibly empty.
-*/
-function renderModelDelta(chunks, lossy, spillPaths) {
-	const visible = chunks.filter((chunk) => chunk.channel !== "log");
-	const out = visible.filter((chunk) => chunk.channel !== "stderr").map((chunk) => chunk.text).join("");
-	const err = visible.filter((chunk) => chunk.channel === "stderr").map((chunk) => chunk.text).join("");
-	const separator = out.length > 0 && !out.endsWith("\n") ? "\n" : "";
-	const body = out + (err.length > 0 ? `${separator}[stderr]\n${err}` : "");
-	if (!lossy && !visible.some((chunk) => chunk.gapBefore === true)) return body;
-	const notice = `[some output was dropped from memory; full output: ${spillPaths.length > 0 ? spillPaths.join(", ") : "(unavailable)"}]`;
-	return `${body}${body.length > 0 && !body.endsWith("\n") ? "\n" : ""}${notice}`;
 }
 //#endregion
 //#region lib/types/index.js
@@ -206,11 +184,21 @@ function presentJobCall(title, kind, rawInput) {
 }
 /** The consuming read as the model sees it: the delta, then the result once, then the status line. */
 function readBody(read) {
-	const delta = renderModelDelta(read.chunks, read.lossy, read.job.output.spillPaths ?? []);
-	return {
-		text: read.result === void 0 ? delta : `${delta}${delta.length > 0 && !delta.endsWith("\n") ? "\n" : ""}${read.result}`,
-		job: publicJob(read.job)
-	};
+ return {text:renderJobOutput(read),job:publicJob(read.job)};
+}
+
+// 释放后的作业只回读当前会话已提交的终态，不恢复或重跑 producer。
+async function historicalJob(ctx,exec,id){
+ if(!exec.agent?.piSession||ctx.jobs.list(exec.agent.id).some(job=>job.id===id))return
+ const actor=assertOfficialJobOwner(ctx,exec.agent,{requireInitiator:true})
+ const receipts=await actor.receipts.read(),events=officialJobEvents(receipts,actor.id)
+ assertOfficialJobOwner(ctx,actor,{requireInitiator:true})
+ if(unresolvedJobReceipts(events,actor.id).some(job=>job.jobId===id))throw noticeFailure('NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY')
+ const settled=events.findLast(event=>event.type===JOB_SETTLED&&event.data.jobId===id)?.data
+ if(!settled)return
+ const {kind,label,status,detail,startedAt,finishedAt}=settled
+ const snapshot=settled.output
+ return {outputLimitBytes:settled.outputLimitBytes,value:{text:snapshot?snapshot.text+(snapshot.truncated?'\n[retained terminal output truncated]':''):'[historical output unavailable: this older terminal receipt has no output snapshot; do not replay the job]',job:{id,kind,label,status,...detail===undefined?{}:{detail},startedAt,finishedAt}}}
 }
 const noticeFailure=code=>Object.assign(new Error(code),{code})
 /** Recover only committed application job facts. Neither Pi tool results nor
@@ -375,6 +363,8 @@ function apply(ctx, config) {
 		async execute(args, exec) {
             if(exec.agent?.piSession)assertOfficialJobOwner(ctx,exec.agent,{requireInitiator:true})
 			const id = validateJobId(args.job_id);
+			const historical = await historicalJob(ctx,exec,id);
+			if(historical){outputLimits.set(exec,historical.outputLimitBytes);return historical.value;}
 			const jobs = ctx.jobs;
 			if (args.wait === true) await jobs.wait(id, Math.min(args.timeout_ms ?? waitDefault, waitCap), exec.agent?.id, exec.signal);
 			return readBody(jobs.read(id, exec.agent?.id));
@@ -438,9 +428,11 @@ function apply(ctx, config) {
 				text: value.outcome === "already-finished" ? `job ${value.job.id} had already finished ${statusLine(value.job)}` : `requested cancellation of job ${value.job.id}`
 			}]
 		},
-		execute(args, exec) {
+		async execute(args, exec) {
             if(exec.agent?.piSession)assertOfficialJobOwner(ctx,exec.agent,{requireInitiator:true})
 			const id = validateJobId(args.job_id);
+			const historical = await historicalJob(ctx,exec,id);
+			if(historical){outputLimits.set(exec,historical.outputLimitBytes);return {outcome:'already-finished',job:historical.value.job};}
 			const jobs = ctx.jobs;
 			const result = jobs.kill(id, exec.agent?.id, args.reason);
 			if (result === "requested") killedByModel.add(id);

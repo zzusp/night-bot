@@ -346,3 +346,68 @@ test('official private resource proof cold query rejects an actual uncommitted P
  const extra='{"uncommitted":';await appendFile(file,extra)
  try{await assert.rejects(record.readScopeProofs(['a'.repeat(48)]),{code:'NIGHT_JOB_JOURNAL_UNCERTAIN'});assert.deepEqual(await readFile(file),Buffer.concat([before,Buffer.from(extra)]))}finally{await truncate(file,before.length);await h.reopenReceipts()}
 })
+
+for(const status of ['completed','failed','killed'])test('released '+status+' job remains readable from reopened committed receipts without rerunning producer',async t=>{
+ const cancelled=Promise.withResolvers()
+ let jobId
+ const h=await fixture(t,({ctx,owner,started})=>{
+  applyJobTools(ctx,{completionDelivery:'inject'})
+  ctx.tools.register(definition('launch',async(_args,exec)=>({id:jobId=await ctx.jobs.startDurable({kind:'fixture',label:'retained terminal',owner:owner.id,outputLimitBytes:128,run(face){
+   started();face.append('original stdout');face.append('original stderr',{channel:'stderr'});face.append('OBSERVER_PRIVATE_LOG',{channel:'log'})
+   const result={status,detail:'actual producer terminal',result:'original result'}
+   return {done:status==='killed'?cancelled.promise:Promise.resolve(result),cancel(){assert.equal(status,'killed');cancelled.resolve(result)}}
+  }},exec)})))
+ })
+ await h.run([{id:'launch-retained',name:'launch'}]);if(status!=='killed')await h.settlement
+ await h.ctx.jobs.drainOwner(h.owner);await h.settlement;assert.throws(()=>h.ctx.jobs.read(jobId,h.owner.id),/unknown job/);assert.deepEqual(h.ctx.jobs.list(h.owner.id),[])
+ await h.reopenReceipts();await h.ctx.jobs.resumeOwner(h.owner)
+ const settled=(await h.store.readAudit()).find(receipt=>receipt.kind==='settled')
+ assert.equal(settled.payload.output.text,'original stdout\n[stderr]\noriginal stderr\noriginal result');assert.equal(settled.payload.output.truncated,false)
+ for(const id of ['historical-one','historical-two']){
+  await h.run([{id,name:'job_output',args:{job_id:jobId,wait:true}}])
+  const result=h.results.find(row=>row.toolCallId===id)
+  assert.equal(result.isError,false);assert.equal(result.result.structuredContent.job.status,status);assert.equal(result.result.structuredContent.text,settled.payload.output.text)
+  assert.ok(!JSON.stringify(result).includes('OBSERVER_PRIVATE_LOG'));assert.equal(result.result.structuredContent.job.owner,undefined)
+ }
+ await h.run([{id:'historical-kill',name:'job_kill',args:{job_id:jobId}}])
+ assert.equal(h.results.find(row=>row.toolCallId==='historical-kill').result.structuredContent.outcome,'already-finished')
+ assert.equal(h.starts,1);assert.equal((await h.store.readAudit()).filter(receipt=>receipt.kind==='settled').length,1)
+})
+
+test('terminal output snapshot bounds UTF-8 and excludes logs before persistence',async t=>{
+ let jobId
+ const h=await fixture(t,({ctx,owner,started})=>{
+  applyJobTools(ctx,{completionDelivery:'inject'})
+  ctx.tools.register(definition('launch',async(_args,exec)=>({id:jobId=await ctx.jobs.startDurable({kind:'fixture',label:'bounded terminal',owner:owner.id,outputLimitBytes:64,run(face){
+   started();face.append('中文'.repeat(100));face.append('OBSERVER_PRIVATE_LOG',{channel:'log'});return{done:Promise.resolve({status:'completed',result:'FINAL RESULT'}),cancel(){}}
+  }},exec)})))
+ })
+ await h.run([{id:'bounded-launch',name:'launch'}]);await h.settlement;await h.ctx.jobs.drainOwner(h.owner);await h.ctx.jobs.resumeOwner(h.owner)
+ const output=(await h.store.readAudit()).find(receipt=>receipt.kind==='settled').payload.output
+ assert.ok(Buffer.byteLength(output.text)<=64);assert.ok(!output.text.includes('�'));assert.equal(output.truncated,true);assert.ok(!output.text.includes('OBSERVER_PRIVATE_LOG'))
+ await h.run([{id:'bounded-read',name:'job_output',args:{job_id:jobId}}])
+ const result=h.results.find(row=>row.toolCallId==='bounded-read').result,value=result.structuredContent
+ assert.ok(Buffer.byteLength(result.content[0].text)<=64,'recovered model rendering preserves the original producer cap');assert.match(result.content[0].text,/completed/)
+ assert.match(value.text,/FINAL RESULT/);assert.match(value.text,/truncated/);assert.equal(value.job.status,'completed');assert.equal(h.starts,1)
+})
+
+test('historical job lookup distinguishes old missing output, uncertain effects and foreign ownership',async t=>{
+ const h=await fixture(t,({ctx})=>applyJobTools(ctx,{completionDelivery:'inject'}))
+ const bound={version:1,owner:h.owner.id,kind:'fixture',label:'old terminal',startedAt:1,toolCall:{callId:'old-launch',rootCallId:'old-launch',toolName:'launch'}}
+ const append=(kind,payload)=>h.store.appendAudit({version:1,domain:'job',kind,payload})
+ for(const [jobId,owner]of [['old-terminal',h.owner.id],['foreign-terminal','foreign-owner'],['uncertain-terminal',h.owner.id]]){
+  const identity={...bound,jobId,owner};append('registered',{...identity,state:'admitted'})
+  if(jobId!=='uncertain-terminal')append('settled',{...identity,status:'completed',producerReported:true,cause:'producer',finishedAt:2,...owner===h.owner.id?{}:{output:{text:'FOREIGN_PRIVATE_OUTPUT',truncated:false}}})
+ }
+ await h.store.commit();h.expectUnknown()
+ await h.run([{id:'old-read',name:'job_output',args:{job_id:'old-terminal'}}])
+ const old=h.results.find(row=>row.toolCallId==='old-read')
+ assert.equal(old.isError,false);assert.equal(old.result.structuredContent.job.status,'completed');assert.match(old.result.structuredContent.text,/historical output unavailable/)
+ for(const jobId of ['foreign-terminal','nonexistent','uncertain-terminal']){
+  await h.run([{id:'read-'+jobId,name:'job_output',args:{job_id:jobId}}])
+  const result=h.results.find(row=>row.toolCallId==='read-'+jobId)
+  assert.equal(result.isError,true);assert.ok(!JSON.stringify(result).includes('FOREIGN_PRIVATE_OUTPUT'))
+  if(jobId==='uncertain-terminal')assert.match(JSON.stringify(result),/NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY/)
+ }
+ assert.equal(h.starts,0)
+})

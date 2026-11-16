@@ -24,7 +24,7 @@ const nonempty=z.string().min(1),time=z.number().int().min(0).max(Number.MAX_SAF
 const base={version:z.literal(1),jobId:nonempty,owner:nonempty,kind:nonempty,label:nonempty,startedAt:time,toolCall:z.strictObject({callId:nonempty,rootCallId:nonempty,toolName:nonempty})}
 const receiptSchemas={
  registered:z.strictObject({...base,state:z.literal('admitted')}),
- settled:z.strictObject({...base,status:z.enum(['completed','failed','killed']),detail:z.string().optional(),cause:nonempty,producerReported:z.boolean(),finishedAt:time,completionNotice:z.enum(['pending','suppressed']).optional(),outputLimitBytes:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional()}).refine(value=>value.finishedAt>=value.startedAt),
+ settled:z.strictObject({...base,status:z.enum(['completed','failed','killed']),detail:z.string().optional(),cause:nonempty,producerReported:z.boolean(),finishedAt:time,completionNotice:z.enum(['pending','suppressed']).optional(),outputLimitBytes:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),output:z.strictObject({text:z.string(),truncated:z.boolean()}).optional()}).refine(value=>value.finishedAt>=value.startedAt),
  reconciled:z.strictObject({...base,taskId:nonempty,registeredEntryId:nonempty,registrationDigest:z.string().regex(/^[a-f0-9]{64}$/),journalRevision:z.string().regex(/^[a-f0-9]{64}$/),requestDigest:z.string().regex(/^[a-f0-9]{64}$/),operatorActorId:nonempty,evidence:z.strictObject({path:z.string().regex(/^materials\/runtime-evidence\/jobs\/[a-f0-9]{64}\.json$/),sha256:z.string().regex(/^[a-f0-9]{64}$/)}),observedAt:z.iso.datetime(),outcome:z.literal('closed-with-possible-partial-effects'),exitStatus:z.literal('unknown'),producerObservation:z.literal('operator-attested-absent'),partialEffectsPossible:z.literal(true),noReplay:z.literal(true)}),
  'not-started':z.strictObject({...base,reason:nonempty}),
  'start-uncertain':z.strictObject({...base,reason:nonempty,externalEffectsPossible:z.literal(true)}),
@@ -87,11 +87,11 @@ async function prepareOfficialJobJournal(ctx,exec,spec,{id,startedAt},identity){
  return {registered:bound,recordResource,get terminalReceiptId(){return terminalReceiptId},get resourceUnresolved(){return !!resource&&resource.status!=='released'||resourceFailure!==undefined},
   async notStarted(reason){if(terminal)return;terminal=true;await resourcesDrained();terminalReceiptId=await write('not-started',{reason})},
   async startUncertain(error){if(terminal)return;terminal=true;await resourcesDrained();terminalReceiptId=await write('start-uncertain',{reason:String(error?.message??error)||'uncertain producer start',externalEffectsPossible:true})},
-  async settle(outcome,cause,{producerReported,finishedAt,completionNotice,outputLimitBytes}){
+  async settle(outcome,cause,{producerReported,finishedAt,completionNotice,outputLimitBytes,output}){
    if(terminal)throw failure('NIGHT_JOB_JOURNAL_TERMINAL_DUPLICATE')
    terminal=true;await resourcesDrained()
    if(resource&&resource.status!=='released'&&outcome.status==='completed')throw failure('NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN')
-   terminalReceiptId=await write('settled',{status:outcome.status,...outcome.detail===undefined?{}:{detail:outcome.detail},cause,producerReported,finishedAt,...completionNotice===undefined?{}:{completionNotice},...outputLimitBytes===undefined?{}:{outputLimitBytes}})
+   terminalReceiptId=await write('settled',{status:outcome.status,...outcome.detail===undefined?{}:{detail:outcome.detail},cause,producerReported,finishedAt,...completionNotice===undefined?{}:{completionNotice},...outputLimitBytes===undefined?{}:{outputLimitBytes},...output===undefined?{}:{output}})
   },
  }
 }

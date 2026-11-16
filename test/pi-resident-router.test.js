@@ -18,6 +18,8 @@ test('default first tier keeps silent and reply-only messages out of Router and 
     if(!requestTools(body).includes('channel_triage_submit'))return {text:'Unexpected business model turn'}
     batches.push(input)
     toolSets.push(requestTools(body))
+    const system=body.messages.filter(message=>message.role==='system').map(message=>message.content).join(String.fromCharCode(10))
+    assert.match(system,/先区分真正受话对象/);assert.match(system,/不承诺代其合并、发布、部署或外部写入/)
     return triageReply(input,message=>({needsHandling:false,...message.text==='你好'?{reply:'你好。'}:{}}))
   })
   const quiet=channelMessage('quiet',{text:'No action and no reply are needed'}),hello=channelMessage('hello',{text:'你好'})
@@ -100,7 +102,11 @@ test('conversation task questions default to operator Web intake and explicit re
     assert.ok(input);packets.push(input)
     const definition=body.tools.find(tool=>tool.function.name==='task_result').function
     assert.deepEqual(definition.parameters.properties.decision.properties.audience.enum,['operator','requester'])
-    if(input.task.humanRequests?.some(request=>request.status==='answered'))return {tool:'task_result',args:{decision:{action:'complete',summary:'The original local work continued after the precise answer',evidence:['authorized answer read'],limitations:[]}}}
+    const answer=input.sources.find(source=>source.channel==='web'&&source.text==='Use the original local-only verification input.')
+    if(answer){
+      assert.equal(answer.actorId,'owner');assert.ok(answer.sourceId)
+      return {tool:'task_result',args:{decision:{action:'complete',summary:'The original local work continued after the precise answer',evidence:['authorized answer read: '+answer.sourceId],limitations:[]}}}
+    }
     const audience=input.task.title.slice('audience-'.length)
     return {tool:'task_result',args:{decision:{action:'blocked',summary:'A precise input is required before continuing',question:'Which exact local verification input should be used?',evidence:['original authenticated objective'],limitations:[],...audience==='default'?{}:{audience}}}}
   })
@@ -119,20 +125,26 @@ test('conversation task questions default to operator Web intake and explicit re
     const notices=await h.query('notification.list',{taskId:task.taskId})
     if(audience!=='requester'){
       assert.equal(h.sent.length,before,'missing operator transport never redirects a technical question to a business conversation');assert.equal(notices.length,0)
-      continue
+    }else{
+      await eventually(()=>h.sent.length===before+1&&h.readbacks.length===before+1,'requester question actually sent and read back by local transport',t.signal)
+      assert.equal(notices.length,1);assert.equal(notices[0].kind,'question');assert.equal(notices[0].payload.audience,'requester')
+      const source=await h.query('source.get',{sourceId:notices[0].payload.sourceId})
+      assert.equal(source.actorId,identity.principal);assert.equal(source.messageId,input.messageId);assert.equal(source.groupId,identity.sessionId);assert.equal(notices[0].payload.sourceVersion,source.version)
+      assert.equal(h.sent.at(-1).conversationId,input.conversationId);assert.equal(h.sent.at(-1).senderId,input.senderId)
     }
-    await eventually(()=>h.sent.length===before+1&&h.readbacks.length===before+1,'requester question actually sent and read back by local transport',t.signal)
-    assert.equal(notices.length,1);assert.equal(notices[0].kind,'question');assert.equal(notices[0].payload.audience,'requester')
-    const source=await h.query('source.get',{sourceId:notices[0].payload.sourceId})
-    assert.equal(source.actorId,identity.principal);assert.equal(source.messageId,input.messageId);assert.equal(source.groupId,identity.sessionId);assert.equal(notices[0].payload.sourceVersion,source.version)
-    assert.equal(h.sent.at(-1).conversationId,input.conversationId);assert.equal(h.sent.at(-1).senderId,input.senderId)
     const args={taskId:task.taskId,humanRequestId:request.requestId,requestId:'precise-local-answer',reply:'Use the original local-only verification input.',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}
     await assert.rejects(h.service.respondHumanRequest({...args,expectedControlRevision:task.controlRevision+1}),{code:'DYNAMIC_HUMAN_REQUEST_STALE'})
     await h.service.respondHumanRequest(args);await h.service.whenIdle()
     const completed=await h.query('task.get',{taskId:task.taskId})
     assert.equal(completed.status,'completed');assert.equal(completed.drained,true);assert.equal(completed.sessionId,task.sessionId);assert.equal(completed.conversationId,task.conversationId);assert.equal(completed.ownerActorId,task.ownerActorId);assert.equal(completed.humanRequests[0].status,'answered')
+    const replySource=await h.query('source.get',{sourceId:completed.humanRequests[0].sourceId})
+    assert.equal(replySource.actorId,'owner');assert.equal(replySource.groupId,task.groupId)
+    const calls=packets.length
+    await h.service.respondHumanRequest(args);await h.service.whenIdle()
+    assert.equal(packets.length,calls,'repeating the same accepted answer does not restart completed work')
   }
-  assert.equal(packets.filter(input=>input.task.title==='audience-default').length,1);assert.equal(h.errors.length,0)
+  for(const audience of ['default','operator','requester'])assert.equal(packets.filter(input=>input.task.title==='audience-'+audience).length,2)
+  assert.equal(h.errors.length,0)
   t.diagnostic(JSON.stringify({case:'operator-requester-routing',defaultOperatorWebOnly:true,explicitOperatorWebOnly:true,requesterSourcePreserved:true,requesterWebCasResumeSameSession:true,realVendorExecuted:false}))
 })
 

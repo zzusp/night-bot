@@ -1,0 +1,13 @@
+case_id,scope,round_1,round_2,evidence
+SG1-01,三种人工答复受众原会话完成及CAS重复防护,PASS,PASS,round-1.md;round-2.md
+SG2-01,完成失败取消后释放及冷重开输出回读,PASS,PASS,round-1.md;round-2.md
+SG2-02,UTF8预算私密日志旧收据外来owner未知效果,PASS,PASS,round-1.md;round-2.md
+SG3-01,完整路由与分诊执行提示挂载,PASS,PASS,round-1.md;round-2.md
+SG4-01,单会话及live supplement关联专项,PASS,PASS,round-1.md;round-2.md
+SG4-02,完整运行时,FAIL,PASS,round-1.md;round-2.md
+SG4-03,未知效果两项超时与只读续办合同,FAIL,PASS,round-1.md;round-2.md
+SG4-04,源码来源hash生产导入和原生守卫,PASS,PASS,round-1.md;round-2.md
+BOUNDARY-01,Linux进程隐私场景在Windows跳过12项,SKIP,SKIP,round-1.md;round-2.md
+BOUNDARY-02,真实模型语义与厂商集成,NOT_RUN,NOT_RUN,round-1.md;round-2.md
+BOUNDARY-03,Windows OS containment与生产部署,NOT_RUN,NOT_RUN,round-1.md;round-2.md
+BOUNDARY-04,真实端到端性能,NOT_RUN,NOT_RUN,round-1.md;round-2.md

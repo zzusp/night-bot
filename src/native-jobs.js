@@ -1,3 +1,5 @@
+import {renderJobOutput} from './runtime/job-output.js'
+import {boundText} from './runtime/output-window.js'
 import {randomUUID} from 'node:crypto'
 import {prepareJobJournal,JobLedgerError,unresolvedJobReceipts,unresolvedNativeJobReceipts,assertOfficialJobOwner} from './runtime/job-ledger.js'
 import {Service} from '@deepseek-ai/cordis'
@@ -105,7 +107,13 @@ export default class NativeJobs extends Service {
   if(!j.journal)return this.complete(j,outcome,cause,producerReported,finishedAt)
   if(j.owner?.piSession)j.completionNotice=!producerReported||j.waiters.size>0||cause==='teardown'||cause==='kill'||j.killReason!==undefined?'suppressed':'pending'
   return j.settlement=(async()=>{
-   try{await j.journal.settle(outcome,cause,{producerReported,finishedAt,...j.completionNotice===undefined?{}:{completionNotice:j.completionNotice,outputLimitBytes:j.outputLimitBytes}});if(j.journal.resourceUnresolved)j.drainUncertain=true;this.complete(j,outcome,cause,producerReported,finishedAt)}
+   try{
+    // 与真实终态同次提交，避免 owner 排空后丢失模型可见输出。
+    const retained={...j,chunks:j.chunks.map(chunk=>({...chunk}))}
+    this.trim(retained,this.config.settledRetainBytes)
+    const read={...this.readFrom(retained,0),job:this.view(retained),result:outcome.result}
+    const {text,truncated}=boundText(renderJobOutput(read),{tailBytes:Math.min(j.outputLimitBytes??this.config.settledRetainBytes,this.config.settledRetainBytes)})
+    await j.journal.settle(outcome,cause,{producerReported,finishedAt,output:{text,truncated},...j.completionNotice===undefined?{}:{completionNotice:j.completionNotice,outputLimitBytes:j.outputLimitBytes}});if(j.journal.resourceUnresolved)j.drainUncertain=true;this.complete(j,outcome,cause,producerReported,finishedAt)}
    catch(error){j.journalError=error;j.status='stopping';j.detail='job outcome journal is uncertain; recovery must not replay';const waiters=[...j.waiters];j.waiters.clear();for(const done of waiters)done(error);j.release();throw error}
   })()
  }

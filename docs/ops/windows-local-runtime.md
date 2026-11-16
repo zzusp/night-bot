@@ -96,6 +96,12 @@ API Key profile 使用声明的 `apiKeyEnv` 引用。可通过既有环境或 `n
 
 `TASK_SESSION_DRAIN_FAILED` 由 Host 按原会话和租约写入任务账本，列表/详情显示等待中，执行会话显示失败。重启保留事实；仅实际排空事务清除本轮故障，不通过新输入、改 SQL 或伪造终态解除。升级在安装期开启原 observer 派生触发器更新和索引刷新，读取 API 不做 DDL。核实恢复告警、原作业与效果的真实证据后，使用现有对账流程；本状态修复不自动结清历史未知作业。 缺失原生 shell 终态时，先按[原生作业核验流程](../EFFECT-RECONCILIATION.md#丢失终态的原生-shell-作业)核对进程和保留输出，再停机运行离线操作者入口的 `--check` 与实际结清。升级到支持 `job/reconciled` 的已合并代码后重启，由 Host 原会话恢复；任务级 effects close 不能替代该作业核验。
 
+### 已结束作业输出与真正未知效果
+
+已提交 `job/settled` 且 `producerReported=true` 的新作业带有界输出快照。即使 owner 已排空或重启，原官方会话的 `job_output(job_id)` 仍回读相同终态与输出；不会重启命令，也不恢复活 producer。`job_kill` 对此返回 `already-finished`；`job_list` 只列当前 registry。快照与终态同次提交，不含 observer log，沿用 `settledRetainBytes`（默认 16 KiB）及作业输出预算；截断或旧记录缺快照会明示，完整文件须事先保存在工作区。它是私有 Pi 日志中的业务输出，不是备份、外部效果成功证明或新授权。
+
+仅有注册、非 producer 终态、资源未排空或已标记不确定的作业，仍拒绝历史成功回读并维持 noReplay，按现有核验/结清流程处理。旧 journal 不补写输出或成功状态；新可选收据字段需要本版解码，不能用旧代码直接回滚读取。供应商 `session_expired` 需按实际提供方重新认证后使用正式续办入口；本改动不自动刷新凭据或重试副作用。
+
 ## 学习技能生成故障
 
 新技能和正文更新必须通过本发行内置 `skill-creator` 生成，复盘自身仍无工具。`SKILL_CREATOR_UNAVAILABLE`、`SKILL_CREATOR_NOT_USED`、`SKILL_GENERATION_INCOMPLETE` 或 `SKILL_GENERATION_INVALID` 表示生成未完成，不是业务任务回滚。核对复盘报告或受管 `generationFailures` 的来源与错误，再检查发行内置资源和实际模型配置；不能手写 SKILL.md、补造 creator 收据或回退直接拼装求成功。已存在技能仅按已提交状态重建，不自动批量重生成；历史没有 creator 证据的版本继续按历史显示。参见 [自进化](../SELF-EVOLUTION.md#内置-creator-生成阶段)。

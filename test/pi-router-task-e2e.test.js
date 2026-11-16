@@ -16,6 +16,8 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
     if(!names.length&&handoff)return {text:JSON.stringify({currentIntent:'Verify A before B; preliminary evidence is not accepted; retain the original authorization',unresolvedQuestions:[],referents:['A is verification; B is the dependent result'],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
     if(names.includes('task_result')){
       const input=taskInput(body),task=input.task;taskTurns.push({taskId:task.taskId,revision:task.requirementRevision})
+      const system=body.messages.filter(message=>message.role==='system').map(message=>message.content).join(String.fromCharCode(10))
+      assert.match(system,/Checks explicitly removed or reassigned/);assert.match(system,/Leave unrelated concurrent changes untouched/);assert.match(system,/configured default timeout/)
       if(task.taskId==='a-e2e')assert.deepEqual(task.dependencies,[],'A outgoing dependencies must not become its input evidence')
       if(task.taskId==='a-e2e')return call('task_result',{decision:{action:'complete',summary:task.requirementRevision===1?'Preliminary investigation only':'Verification evidence accepted',evidence:[task.requirementRevision===1?'proof:preliminary':'proof:verified'],limitations:task.requirementRevision===1?['Verification incomplete']:[]}})
       assert.equal(task.dependencies.length,1,'B receives only its actual incoming dependency')

@@ -166,7 +166,7 @@ test('Router reopens completed work from an ordinary message without execution a
    return[]
   }
   const calls=topicTaskCalls(request);if(calls)return calls
-  if(original){assert.equal(input.task.sessionId,original.sessionId);assert.ok(input.sources.some(source=>source.messageId==='reopen-colleague'))}
+  if(original){assert.equal(input.task.sessionId,original.sessionId);const expected=input.task.requirementRevision===2?'reopen-colleague':'reopen-author';assert.ok(input.sources.some(source=>source.messageId===expected))}
   return[singleResult('complete',original?'Router 调度的续办已完成':'原目标已经完成')]
  })
  await t.beginBusiness();await h.service.ingest(message);await h.service.whenIdle();[original]=await h.query('task.list')
@@ -367,7 +367,7 @@ test('official service requirement changes fence old provider results and resume
  const before=await h.query('task.get',{taskId:created.taskId}),changing=h.service.appendTaskContext({taskId:created.taskId,requestId:'revise-once',progressImpact:'replan',expectedRequirementRevision:1,expectedControlRevision:1,context:'NEW_REQUIREMENT: analyze only; do not treat the old result as completion.'})
  await waitUntil(async()=>(await h.query('task.get',{taskId:created.taskId})).requirementRevision===2,'new revision committed before old provider releases');release.resolve();await changing;await h.service.whenIdle()
  const after=await h.query('task.get',{taskId:created.taskId});assert.equal(after.sessionId,before.sessionId);assert.equal(after.requirementRevision,2);assert.equal(after.status,'active');assert.equal(after.drained,true);assert.equal(after.lastDecision.action,'wait');assert.equal(inputs.length,2)
- assert.ok(inputs[1].sources.some(source=>source.text.includes('NEW_REQUIREMENT: analyze only')));assert.ok(inputs[1].sources.every(source=>source.actorId==='native-user'));assert.equal(inputs[1].sources.length,2)
+ assert.ok(inputs[1].sources.some(source=>source.text.includes('NEW_REQUIREMENT: analyze only')));assert.ok(inputs[1].sources.every(source=>source.actorId==='native-user'));assert.equal(inputs[1].sources.length,1);assert.ok(inputs[0].sources.some(source=>source.text.includes('ORIGINAL_REQUIREMENT')),'the original source is already retained in the original Pi packet')
  const results=h.toolResults.filter(r=>r.name==='task_result');assert.equal(results.filter(r=>!r.result.isError).length,1,'only the new current binding may commit a result');assert.ok(results.filter(r=>r.result.isError).every(r=>JSON.stringify(r.result).includes('TASK_SESSION_STALE')),'a late old official response may be journaled only as a rejected stale result');const events=(await h.query('task.events')).events;assert.equal(events.some(event=>event.kind==='task.completed'),false);for(const kind of ['task.changed','task.waiting'])assert.ok(events.some(event=>event.kind===kind&&event.requirementRevision===2))
  const saved=await h.ctx.sessionPersistence.readNative(after.sessionId,{requireComplete:true});assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='identity').length,1);assert.deepEqual(saved.audit.filter(r=>r.domain==='admission'&&r.kind==='enqueued').map(r=>r.payload.source.taskSession.requirementRevision),[1,2]);assert.deepEqual(await h.query('execution.list'),[])
  const count=h.requests.length;await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,count)
