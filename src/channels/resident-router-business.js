@@ -44,7 +44,13 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
             if(exec.agent!==agent)fail('TRIAGE_WRONG_SESSION')
             const current=active(conversationId)
             if(current.sealed)fail('TRIAGE_ALREADY_SUBMITTING')
-            const decision=validateTriageDecision(current.messages,input)
+            let decision
+            try{decision=validateTriageDecision(current.messages,input)}
+            catch(error){
+              if(error.message!=='TRIAGE_BATCH_INCOMPLETE')throw error
+              // steer 可能尚未全部进入模型上下文，返回完整批次供一次补齐。
+              return {ok:false,code:'TRIAGE_BATCH_INCOMPLETE',messages:current.messages.map(conversationSource)}
+            }
             current.sealed=true
             try{const result=await current.measurePhase('triage-commit',()=>commit(conversationId,decision,current.messages));current.submitted=true;exec.concludeTurn();return result}
             catch(error){current.sealed=false;throw error}
@@ -57,6 +63,7 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
             '结合本批上下文判断是否需要新的反馈。无需处理且无需回复时needsHandling=false且省略reply，保持静默；简单问候可短答，不强制使用暂定前缀。仅在无需回复时省略reply，reason须同时说明是否处理及回复或静默的依据。',
             '不拆分事项，不匹配taskId，不决定任务控制。承接只说明接纳和后续处理意图，不声称已创建任务、已开始执行、已查明或已完成，也不扩大授权。',
             '调用channel_triage_submit完整覆盖本批≤15条来源版本。自然语言不会发送，缺少事实不等于无需处理。',
+            '若提交返回ok=false且code=TRIAGE_BATCH_INCOMPLETE，以工具返回的完整messages为当前批次，保留有效判断并补齐后重新提交；该返回尚未保存任何处置。',
           ].join(String.fromCharCode(10))})
           agentCtx.get('systemPrompt').section({name:'channel-triage-memory',order:152,text:'涉及可复用事实/偏好、纠正遗忘或Skill维护的交办消息应交Router，needsHandling=true；由Router依据语境判断是否增改删记忆或Skill，不在分诊层限制固定授权句首、替Router做学习决策或提前声称保存成功。'})
           agentCtx.get('systemPrompt').section({name:'channel-triage-scope',order:151,interpolate:false,officialText:()=> '当前会话配置职责：'+responsibilityFor(conversationId)+'。仅用于本会话一级分诊，不创造来源授权、任务控制或跨会话读取权限。'})
@@ -91,7 +98,7 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
       if(entry.superseded)return
       const initial=packet()
       try{await measurePhase('input-enqueue',()=>handle.enqueue(initial));await handle.deliver(initial.id);await handle.whenIdle()}
-      catch(error){if(!entry.superseded)throw error}
+      catch(error){if(!entry.superseded&&!(entry.submitted&&(error.code??error.message)==='TRIAGE_INACTIVE'))throw error}
       if(!entry.submitted&&!entry.superseded)fail('TRIAGE_NO_DISPOSITION')
       completed=entry.submitted&&!entry.superseded
     }finally{

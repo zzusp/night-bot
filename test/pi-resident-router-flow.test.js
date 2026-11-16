@@ -324,13 +324,20 @@ test('durable receipt echoes tolerate later DWS flags without replacing existing
 })
 
 test('in-flight first tier steers at most 15 original messages and leaves the sixteenth durably queued',{timeout:nativeTestTimeout(45000)},async t=>{
-  const entered=Promise.withResolvers(),release=Promise.withResolvers(),batches=[],business=[];let paused=false
+  const entered=Promise.withResolvers(),release=Promise.withResolvers(),batches=[],business=[],corrections=[];let paused=false,submitted=false
   t.after(()=>release.resolve())
   const h=await residentRouterHost(t,async body=>{
     const summary=handoff(body);if(summary)return summary
     if(requestTools(body).includes('channel_triage_submit')){
       if(!paused){paused=true;entered.resolve();await release.promise}
-      const input=triage(body);batches.push(input.messages.map(source=>source.sourceId));return submit(input,()=>({needsHandling:true}))
+      let input=triage(body)
+      const tool=body.messages.filter(message=>message.role==='tool').at(-1)
+      if(tool?.content.startsWith('{')){
+        const result=JSON.parse(tool.content)
+        if(result.code==='TRIAGE_BATCH_INCOMPLETE'&&result.messages.some(message=>input.messages.some(current=>current.sourceId===message.sourceId))){corrections.push(result);input=result}
+      }
+      if(!submitted){submitted=true;input={messages:input.messages.slice(0,1)}}
+      batches.push(input.messages.map(source=>source.sourceId));return submit(input,()=>({needsHandling:true}))
     }
     if(requestTools(body).includes('resident_router_settle')){const input=router(body);business.push(input);return settle(body,input)}
     return {text:'No other work'}
@@ -344,6 +351,8 @@ test('in-flight first tier steers at most 15 original messages and leaves the si
   await h.service.whenIdle()
   const committed=(await h.query('source.list')).filter(source=>source.routed)
   assert.equal(committed.length,16)
+  assert.equal(corrections.length,1,'one correction supplies the full batch after a stale submission')
+  assert.equal(corrections[0].messages.length,15)
   for(const source of committed){
     const spans=source.stages.filter(stage=>stage.stage==='triage')
     assert.ok(spans.length&&spans.every(stage=>stage.completedAt),'each accepted source has joined observed triage spans')
