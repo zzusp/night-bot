@@ -71,6 +71,10 @@ test('正式账本冷启动拒绝活owner及marker错配，原starting效果保�
   let sequence = 0
   const command = (kind, args) => store.command({ id: 'startup-' + ++sequence, kind, args })
   await command('task.create', { taskId: 'retained', request: '保留原任务和原效果' })
+  if (process.platform === 'win32') {
+    const {initializeMemoryTaskWorkspace} = await import('./fixtures/memory-host.js')
+    await initializeMemoryTaskWorkspace(store, resolve(directory, 'workspaces'), 'retained')
+  }
   await store.close(); store = null
   const markerPath = config.dbPath + '.initialized', marker = JSON.parse(await readFile(markerPath, 'utf8'))
   const rows = () => {
@@ -107,4 +111,63 @@ test('正式账本冷启动拒绝活owner及marker错配，原starting效果保�
   assert.equal((await store.query({ kind: 'task.get', taskId: 'retained' })).request, '保留原任务和原效果')
   assert.equal((await store.query({ kind: 'execution.list', taskId: 'retained' })).length, 1)
   assert.equal((await store.query({ kind: 'operation.list', taskId: 'retained' })).length, 1)
+})
+
+async function ownerFixture(t) {
+  await mkdir(resolve('docs/tmp'), {recursive: true})
+  const directory = await mkdtemp(resolve('docs/tmp/owner-lock-'))
+  const options = {dbPath: resolve(directory, 'tasks.sqlite'), instanceId: 'owner-lock', initialize: true}
+  const moduleUrl = new URL('../packages/dingtalk-core/dynamic-task-store.js', import.meta.url).href
+  const child = spawn(process.execPath, ['--input-type=module', '-e', `
+    const {openDynamicTaskStore}=await import(${JSON.stringify(moduleUrl)});
+    const store=await openDynamicTaskStore(${JSON.stringify(options)});
+    await store.command({id:'original-task',kind:'task.create',args:{taskId:'retained',request:'retained task'}});
+    process.send('ready');process.on('message',async()=>{await store.close();process.disconnect()});
+  `], {windowsHide: true, stdio: ['ignore', 'ignore', 'pipe', 'ipc']})
+  let stderr = ''
+  child.stderr.on('data', value => { stderr += value })
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) {const exited = new Promise(resolve => child.once('exit', resolve)); child.kill('SIGKILL'); await exited}
+    await rm(directory, {recursive: true, force: true})
+  })
+  await new Promise((resolve, reject) => {child.once('message', resolve); child.once('error', reject); child.once('exit', code => reject(new Error(`Owner exited ${code}: ${stderr}`)))})
+  const changeOwner = update => {
+    const db = new DatabaseSync(options.dbPath)
+    try {const old = db.prepare("SELECT value FROM dynamic_meta WHERE key='owner'").get().value; db.prepare("UPDATE dynamic_meta SET value=? WHERE key='owner'").run(update(old))}
+    finally {db.close()}
+  }
+  return {options: {...options, initialize: false}, child, changeOwner}
+}
+
+test('owner OS锁拒绝活写者，即使账本中PID失效；主库只读观察仍可用', async t => {
+  const f = await ownerFixture(t)
+  f.changeOwner(owner => '999999999:' + owner.split(':')[1])
+  const reader = new DatabaseSync(f.options.dbPath, {readOnly: true})
+  const before = reader.prepare('SELECT * FROM dynamic_tasks').all()
+  try {
+    let unexpected
+    try {await assert.rejects(async () => {unexpected = await openDynamicTaskStore(f.options)}, {code: 'DYNAMIC_STORE_ALREADY_OPEN'})}
+    finally {await unexpected?.close()}
+    assert.deepEqual(reader.prepare('SELECT * FROM dynamic_tasks').all(), before)
+  } finally {reader.close()}
+})
+
+test('owner进程异常退出后，PID复用不阻止恢复，原任务身份保持', async t => {
+  const f = await ownerFixture(t), exited = new Promise(resolve => f.child.once('exit', resolve))
+  f.child.kill('SIGKILL'); await exited
+  f.changeOwner(owner => process.pid + ':' + owner.split(':')[1])
+  const store = await openDynamicTaskStore(f.options)
+  try {const task = await store.query({kind: 'task.get', taskId: 'retained'}); assert.equal(task.request, 'retained task')}
+  finally {await store.close()}
+  const reopened = await openDynamicTaskStore(f.options); await reopened.close()
+})
+
+test('旧PID-only活owner仍拒绝；启动失败释放OS锁，正常冷启动可重试', async t => {
+  const f = await ownerFixture(t), exited = new Promise(resolve => f.child.once('exit', resolve))
+  f.child.kill('SIGKILL'); await exited
+  f.changeOwner(() => process.pid + ':legacy-owner')
+  await assert.rejects(openDynamicTaskStore(f.options), {code: 'DYNAMIC_STORE_ALREADY_OPEN'})
+  f.changeOwner(() => '999999999:legacy-owner')
+  await assert.rejects(openDynamicTaskStore({...f.options, ingressEpoch:'2026-01-01T00:00:00.000Z'}), {code: 'DYNAMIC_INGRESS_EPOCH_UNBOUND'})
+  const store = await openDynamicTaskStore(f.options); await store.close()
 })

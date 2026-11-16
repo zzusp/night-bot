@@ -131,6 +131,8 @@ Pi 文件工具的匹配错误及底层原子锁内的观察/版本拒绝，在�
 
 应用自有数据保存在安装目录的 `data/`，业务工作区与产物默认在 `data/workspaces/`，备份在 `backups/`。这些目录均被 Git 忽略；升级代码必须保留数据，不复制他人的凭据或私有技能。
 
+任务账本在 `data/state/tasks.sqlite.owner.sqlite` 独立连接上持有 SQLite OS 排他锁，进程退出即释放；不删除锁文件、不按超时抢占。新版残留 owner 不再因容器 PID 复用误拦启动，旧版 PID-only owner 仍保守拒绝存活 PID；旧记录的停机恢复边界见 [Kubernetes 运维](docs/ops/kubernetes-deployment.md#数据库占用故障)。事务 owner fencing 与副作用 unknown/no-replay 规则保持。
+
 每个任务的材料、工作文件、冻结产物、Pi 会话和复盘集中在 `data/workspaces/tasks/<taskId>/`。共享 SQLite 仍是运行时权威，不能把任务 JSON 快照当作可重放命令。
 
 普通停机目录不等于已校验的可迁移备份。跨路径迁移须显式离线封存和核验，恢复默认暂停并保留交付防重门禁。详见 [数据布局](docs/DATA-LAYOUT.md)和[任务备份与恢复](docs/TASK-ARCHIVE.md)。本项目不提供原 DSH 插件历史数据导入。
