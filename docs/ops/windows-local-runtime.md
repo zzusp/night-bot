@@ -158,7 +158,7 @@ node bin/night-bot-router.js data/config/config.json resume --proposal data/temp
 
 `--check` 必须先运行：它检查原生失败点、完整 inbox 与 owner，不写 claim/journal，不调模型，不清错误，也不替代执行时来源授权。新输入或检查点变化会令 proposal 失效，须重新 inspect/check，不能手改 hash。无已打开 owner 时先核查正常恢复的失败原因，不为检查创建新 session。私有 capability 位于 `data/secrets/router-operator.credentials.json`，CLI 自行读取；不要打印、传到 URL/环境或手工复制到请求材料。
 
-实际续办可能调用模型、由原 Router 调度原任务和履行原来源授权的效果。CLI 不自动重试；`ROUTER_OPERATOR_RESULT_UNKNOWN` 表示响应丢失或取消，服务端可能仍在执行，先 inspect 并查询 inbox/任务/告警。busy 时等待原轮；已消费的检查点不得再次领取。成功响应的 `settled:true` 表示联合批次已消费，任务最终交付与渠道回读仍要单独核验。完成后删除本次 proposal 临时文件。
+实际续办可能调用模型、由原 Router 调度原任务和履行原来源授权的效果。CLI 不自动重试；`ROUTER_OPERATOR_RESULT_UNKNOWN` 表示响应丢失或取消，服务端可能仍在执行，先 inspect 并查询 inbox/任务/告警。busy 时等待原轮；已消费的检查点不得再次领取。成功响应的 `settled:true` 表示联合批次已消费，任务最终交付与渠道回读仍要单独核验。控制消息会提供准确事件ID和结清工具要求，但不能保证模型一定调用；若仅文字停止或返回 `ROUTER_BATCH_UNSETTLED`，核查当前inbox及原生日志，不把任务completed当作完成事件已消费，不机械重复领取检查点。完成后删除本次 proposal 临时文件。
 
 ## 文件工具纠错与未知效果
 

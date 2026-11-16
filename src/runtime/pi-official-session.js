@@ -103,7 +103,9 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     resumedInput={id:packet.id,messages:structuredClone([packet,...supplements])}
     try{
      actor.lifecycle.signal.throwIfAborted()
-     await session.sendCustomMessage({customType:'night.router-resume-turn',content:'Host 请求继续原已接纳的 Router 批次。沿原历史与当前权限处理未结事件；先统筹后续真实输入中的取消、延期和变更，再决定动作。不执行中断回复中未派发的旧生成调用，不重放已完成动作、不重跑任务；必要动作有持久收据后才结清事件。本控制消息不是用户来源或新授权。',display:false,details:proof},{triggerTurn:true})
+     const eventIds=[...new Set([packet,...supplements].flatMap(input=>input.source.eventIds))]
+     const content='Host 请求继续原已接纳的 Router 批次。沿原历史与当前权限处理未结事件；先统筹后续真实输入中的取消、延期和变更，再决定动作。不执行中断回复中未派发的旧生成调用，不重放已完成动作、不重跑任务。必要动作有持久收据后，本轮结束前必须调用 resident_router_settle 结清下列事件，文字答复不消费事件；工具拒绝时依据真实反馈处理，不伪造成功。学习维护失败如实保留失败，不撤销已完成交付或重开业务任务。本控制消息不是用户来源或新授权。\nRouter 续办检查点：'+JSON.stringify({eventIds})
+     await session.sendCustomMessage({customType:'night.router-resume-turn',content,display:false,details:proof},{triggerTurn:true})
      if(imageBudget?.failure)throw imageBudget.failure
      if(bridge.policyFailure)throw bridge.policyFailure
      if(durability.failure)throw durability.failure

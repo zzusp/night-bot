@@ -192,7 +192,7 @@ Pi 保留最近原始尾部和较早内容的模型摘要；不会机械保证�
 
 Router 批次已经 `admitted`、随后模型轮失败或正常 `stop` 但事件尚未 `settled` 时，普通恢复不能把它重新 `enqueue` / `deliver` 成另一份业务输入。正常停机留下的最后 `aborted` 生成由 Host 普通恢复沿原会话领取一次；模型 `error` 和正常 `stop` 未结批次不自动续轮，只允许受信 Host 显式调用 `application.tasks.resumeRouterBatch({conversationId,generation,sessionId,packetId,failedEntryId})`，绑定原 conversation、当前 generation/Router active session、原 packet 和原生失败 checkpoint；该方法拒绝模型域调用；操作者通过本机 `night-bot-router` CLI 接入同一 Host 能力，不直调 Pi SDK。`inspect` 只读取已经打开的原 owner，返回包含 generation/session/packet/失败 entry、checkpoint revision 和完整 inbox digest 的 proposal；无 owner、busy 或不满足既有守卫时明确拒绝。`resume --check` 不领取 claim、不提交历史、不调用模型或清告警；实际 resume 重新核对 proposal，并继续执行原来源授权与全部 no-replay 检查。入口使用独立私有 capability，拒绝远端、浏览器 Origin 和普通渠道发送者；操作流程见 [Windows runbook](ops/windows-local-runtime.md#router-模型错误的显式续办)。
 
-续办前重新校验 active owner、原官方会话 idle、来源权限、packet/历史一致性及未结事件全集。原事件必须仍是队列前缀；较新事件全部经原业务 admission 校验，写成真实 `night.business-input` 后才触发推理，current 来源同时绑定原 packet 与新 packet。模型先统筹新取消/延期/变更，不能只沿旧请求执行。原 packet 不重复 enqueue/admit，控制消息不是来源或新授权。联合批次仍至多15条用户消息、30事件及原编码预算；pending 总数必须与已读取全集一致，分页外较新输入或超限仍拒绝，不能忽略后续取消以求恢复。
+续办前重新校验 active owner、原官方会话 idle、来源权限、packet/历史一致性及未结事件全集。原事件必须仍是队列前缀；较新事件全部经原业务 admission 校验，写成真实 `night.business-input` 后才触发推理，current 来源同时绑定原 packet 与新 packet。模型先统筹新取消/延期/变更，不能只沿旧请求执行。原 packet 不重复 enqueue/admit，控制消息不是来源或新授权。续办控制消息显式列出原批次及补充批次的事件ID全集，要求必要动作已有持久收据后调用 `resident_router_settle`；纯文字结束不消费事件，Host仍不代替模型结清。学习维护失败保留真实失败，不撤销已完成交付或重开业务任务。联合批次仍至多15条用户消息、30事件及原编码预算；pending 总数必须与已读取全集一致，分页外较新输入或超限仍拒绝，不能忽略后续取消以求恢复。
 
 原批次身份比较忽略可变的来源观测计时，以及独立首答通知的发送/回读进度（如 prepared→delivered）；通知ID、种类、冻结正文/载荷摘要、来源/版本和撤销状态仍须一致。比较不改写原packet或Pi历史，不把旧packet中的发送状态当作当前送达权威；真实效果仍以Host投递账本和回读为准。
 

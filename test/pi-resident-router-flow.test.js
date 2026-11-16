@@ -604,7 +604,10 @@ for(const outcome of ['complete','stopped','stopped-failed-tool','newer-input','
       return submit(triage(body),()=>({needsHandling:true}))
     }
     if(requestTools(body).includes('resident_router_settle')){
-      if(continuationPacket)continuationAdmissions.push(await h.host.ctx.agents.get(continuationSessionId).admission.current())
+      if(continuationPacket){
+        continuationAdmissions.push(await h.host.ctx.agents.get(continuationSessionId).admission.current())
+        assert.deepEqual(requestEnvelope(body,'Router 续办检查点：'),{eventIds:continuationPacket.source.eventIds})
+      }
       if(failModel){
         if(outcome==='stopped-failed-tool')return body.messages.at(-1)?.role==='tool'?{text:''}:{tool:'resident_task_query',args:{taskId:'not-a-task-in-this-conversation'}}
         return outcome==='stopped'?{text:''}:{error:'TEST_ROUTER_MODEL_CHECKPOINT_FAILURE'}
@@ -778,6 +781,7 @@ test('operator recovery binds the entire inbox and includes a newer cancellation
       if(failing)return {error:'TEST_RECOVERY_AUTH_FAILURE'}
       const inputs=requestText(body).flatMap(text=>text.split('\n')).filter(line=>line.startsWith('Router 请求：')).map(line=>JSON.parse(line.slice('Router 请求：'.length)))
       const events=[...new Map(inputs.flatMap(input=>input.events).map(event=>[event.id,event])).values()]
+      assert.deepEqual(requestEnvelope(body,'Router 续办检查点：'),{eventIds:events.map(event=>event.id)})
       observed=events
       return settle(body,{events})
     }
