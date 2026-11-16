@@ -26,7 +26,7 @@ test('工作日志未知保存与冲突保持草稿且不重复提交',async({pa
 test('工作日志环境覆盖、忙碌防重复、离开保留草稿',async({page})=>{
  await page.route('**/api/settings',async route=>{const response=await route.fetch(),data=await response.json();data.workLog.environmentOverrides=[{name:'NIGHT_BOT_WORK_LOG_TIME',source:'process'}];await route.fulfill({response,json:data})})
  await login(page);await expect(card(page)).toContainText('NIGHT_BOT_WORK_LOG_TIME');await page.getByLabel('每天执行时间（24 小时制）',{exact:true}).fill('21:00')
- await page.locator('.desktop-sidebar a[href="#/channels"]').click();await expect(page.getByRole('dialog')).toContainText('设置还有未保存的修改');await page.keyboard.press('Escape');await expect(page.getByLabel('每天执行时间（24 小时制）',{exact:true})).toHaveValue('21:00')
+ await page.getByRole('button',{name:'关闭设置',exact:true}).click();await expect(page.locator('dialog.settings-confirm')).toContainText('设置还有未保存的修改');await page.keyboard.press('Escape');await expect(page.getByLabel('每天执行时间（24 小时制）',{exact:true})).toHaveValue('21:00')
  let release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve});let writes=0
  await page.route('**/api/settings/work-log',async route=>{writes++;await pending;await route.fulfill({status:503,json:{error:'SETTINGS_SAVE_UNAVAILABLE'}})})
  await card(page).getByRole('button',{name:'保存工作日志配置',exact:true}).click();await expect(page.getByLabel('执行时区（local = 服务器时区）',{exact:true})).toBeDisabled();await expect(card(page).getByRole('button',{name:'保存工作日志配置',exact:true})).toBeDisabled();expect(writes).toBe(1);release();await expect(card(page)).toContainText('无法确认最新保存结果')

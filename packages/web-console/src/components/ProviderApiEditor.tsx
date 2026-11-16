@@ -5,13 +5,13 @@ import {Confirm} from './ConfirmDialog';
 
 const protocols:Record<string,string>={'openai-completions':'OpenAI Chat Completions','openai-responses':'OpenAI Responses','anthropic-messages':'Anthropic Messages'};
 type Draft={provider:string;api:string;baseURL:string;model:string};
-export function ProviderApiEditor({provider,version,onSaved,onStateChange,disabled=false,onCancel}:{provider?:ModelProvider;version:string;onSaved:(provider?:string)=>void;onStateChange:(key:string,dirty:boolean,busy:boolean)=>void;disabled?:boolean;onCancel?:()=>void}) {
+export function ProviderApiEditor({provider,version,onSaved,onStateChange,disabled=false,onCancel}:{provider?:ModelProvider;version:string;onSaved:(provider?:string)=>void;onStateChange:(key:string,dirty:boolean,busy:boolean,locked?:boolean)=>void;disabled?:boolean;onCancel?:()=>void}) {
  const initial=():Draft=>({provider:provider?.provider??'',api:provider?.api??'openai-completions',baseURL:provider?.baseURL??'',model:''});
  const [draft,setDraft]=useState<Draft>(initial),[base,setBase]=useState<Draft>(initial),[draftVersion,setDraftVersion]=useState(version),[dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState(''),[field,setField]=useState(''),[feedback,setFeedback]=useState(''),[confirmation,setConfirmation]=useState<{body:Record<string,string>;draft:Draft}|null>(null);
  const inFlight=useRef(false),mounted=useRef(true),pendingVersion=useRef<string|null>(null),creating=!provider;
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
  useEffect(()=>{if(pendingVersion.current&&pendingVersion.current!==version)return;pendingVersion.current=null;if(!dirty&&!busy&&!locked){const next=initial();setDraft(next);setBase(next);setDraftVersion(version)}},[provider,version,dirty,busy,locked]);
- useEffect(()=>{onStateChange('provider-api',dirty||locked||creating,busy);return()=>onStateChange('provider-api',false,false)},[dirty,locked,creating,busy,onStateChange]);
+ useEffect(()=>{onStateChange('provider-api',dirty||locked||creating,busy,locked);return()=>onStateChange('provider-api',false,false)},[dirty,locked,creating,busy,onStateChange]);
  const stale=dirty&&draftVersion!==version,blocked=disabled||busy||locked||stale;
  const change=(key:keyof Draft,value:string)=>{if(!dirty)setDraftVersion(version);setDraft({...draft,[key]:value});setDirty(true);setError('');setField('');setFeedback('')};
  const invalid=(key:string,message:string)=>{setField(key);setError(message);document.getElementById(key)?.focus()};

@@ -13,10 +13,11 @@ const referenceText=(values:string[])=>values.map(value=>referenceLabels[value]?
 type Draft={originalId?:string;model:string;name:string;version:string;references:string[]};
 type Mutation={action:'add'|'edit'|'remove';provider:string;id?:string;model?:string;name?:string;expectedVersion:string;confirm?:true};
 
-export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onStateChange}:{settingsVersion:string;defaultProvider:string;onSaved:()=>void;onStateChange:(key:string,dirty:boolean,busy:boolean)=>void}) {
+export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onStateChange}:{settingsVersion:string;defaultProvider:string;onSaved:()=>void;onStateChange:(key:string,dirty:boolean,busy:boolean,locked?:boolean)=>void}) {
  const query=useResource<ModelCatalog>('/settings/model-catalog');
- const [providerId,setProviderId]=useState(defaultProvider),[creating,setCreating]=useState(false),[connectionKey,setConnectionKey]=useState(0),[connectionStates,setConnectionStates]=useState<Record<string,{dirty:boolean;busy:boolean}>>({});
- const onConnectionState=useCallback((key:string,dirty:boolean,busy:boolean)=>setConnectionStates(states=>({...states,[key]:{dirty,busy}})),[]);
+ const [providerId,setProviderId]=useState(defaultProvider),[creating,setCreating]=useState(false),[connectionKey,setConnectionKey]=useState(0),[connectionStates,setConnectionStates]=useState<Record<string,{dirty:boolean;busy:boolean;locked:boolean}>>({});
+ const onConnectionState=useCallback((key:string,dirty:boolean,busy:boolean,locked=false)=>setConnectionStates(states=>({...states,[key]:{dirty,busy,locked}})),[]);
+ const connectionLocked=Object.values(connectionStates).some(state=>state.locked);
  const connectionDirty=Object.values(connectionStates).some(state=>state.dirty),connectionBusy=Object.values(connectionStates).some(state=>state.busy);
  const [filter,setFilter]=useState(''),[page,setPage]=useState(0),[draft,setDraft]=useState<Draft|null>(null),[remove,setRemove]=useState<{entry:ModelCatalogEntry;provider:string;version:string}|null>(null);
  const [busy,setBusy]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState(''),[feedback,setFeedback]=useState(''),[fieldError,setFieldError]=useState(''),[pendingVersion,setPendingVersion]=useState<string|null>(null),[saveConfirmation,setSaveConfirmation]=useState<Mutation|null>(null);
@@ -26,7 +27,7 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
  useEffect(()=>{if(initialVersion.current!==settingsVersion){initialVersion.current=settingsVersion;query.refresh()}},[settingsVersion,query.refresh]);
  useEffect(()=>{if(!providerId&&query.data?.providers.length)setProviderId(query.data.providers[0].provider)},[providerId,query.data]);
  useEffect(()=>{if(pendingVersion&&query.data?.version===pendingVersion)setPendingVersion(null)},[query.data,pendingVersion]);
- useEffect(()=>{onStateChange('model-catalog',!!draft||locked||connectionDirty,busy||connectionBusy);return()=>onStateChange('model-catalog',false,false)},[draft,locked,busy,connectionDirty,connectionBusy,onStateChange]);
+ useEffect(()=>{onStateChange('model-catalog',!!draft||locked||connectionDirty,busy||connectionBusy,locked||connectionLocked);return()=>onStateChange('model-catalog',false,false)},[draft,locked,busy,connectionDirty,connectionBusy,connectionLocked,onStateChange]);
  const provider=query.data?.providers.find(row=>row.provider===providerId),stale=!!draft&&draft.version!==query.data?.version;
  const unavailable=query.error instanceof ApiError&&[401,403,404].includes(query.error.status);
  const disabled=busy||locked||stale||query.loading||!!pendingVersion||!!query.error||connectionDirty||connectionBusy;

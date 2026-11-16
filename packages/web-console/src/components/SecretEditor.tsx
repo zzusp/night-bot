@@ -3,12 +3,12 @@ import {api, operationErrorText, type SecretState} from '../api';
 import {Badge, Button, IconButton} from './BoardPrimitives';
 import {Confirm} from './ConfirmDialog';
 
-export function SecretEditor({kind,provider,state,version,onSaved,onStateChange,disabled=false,embedded=false}: {kind:'model'|'github';provider?:string;state:SecretState;version:string;onSaved:()=>void;onStateChange:(key:string,dirty:boolean,busy:boolean)=>void;disabled?:boolean;embedded?:boolean}) {
+export function SecretEditor({kind,provider,state,version,onSaved,onStateChange,disabled=false,embedded=false}: {kind:'model'|'github';provider?:string;state:SecretState;version:string;onSaved:()=>void;onStateChange:(key:string,dirty:boolean,busy:boolean,locked?:boolean)=>void;disabled?:boolean;embedded?:boolean}) {
  const [value,setValue]=useState(''),[show,setShow]=useState(false),[busy,setBusy]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState(''),[feedback,setFeedback]=useState(''),[confirm,setConfirm]=useState<{action:'replace'|'clear';version:string}|null>(null);
  const inFlight=useRef(false),mounted=useRef(true),draftVersion=useRef(version);
  const label=kind==='model'?'模型 API Key':'GitHub Token',key=`secret-${kind}`,blocked=disabled||busy||locked||!state.writable,stale=!!value&&draftVersion.current!==version;
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
- useEffect(()=>{onStateChange(key,!!value||locked,busy);return()=>onStateChange(key,false,false)},[key,value,locked,busy,onStateChange]);
+ useEffect(()=>{onStateChange(key,!!value||locked,busy,locked);return()=>onStateChange(key,false,false)},[key,value,locked,busy,onStateChange]);
  const save=async(action:'replace'|'clear',expectedVersion:string)=>{if(inFlight.current||blocked||stale)return;inFlight.current=true;setBusy(true);setError('');setFeedback('');const input=value;setValue('');setShow(false);
   try{const result=await api<{ok:boolean;state:SecretState}>(`/settings/secrets/${kind}`,{method:'PUT',body:{action,...provider?{provider}:{},...action==='replace'?{value:input}:{},confirm:true,expectedVersion}});if(result?.ok!==true||typeof result.state?.configured!=='boolean'||result.state.configured!==(action==='replace'))throw new Error('UNKNOWN_SAVE');if(mounted.current){setFeedback('已保存。');onSaved()}}
   catch(cause){if(mounted.current){setLocked(true);setError(operationErrorText(cause)+' 密钥输入已清空，请先重新读取状态；不会自动重试。')}}finally{inFlight.current=false;if(mounted.current)setBusy(false)}

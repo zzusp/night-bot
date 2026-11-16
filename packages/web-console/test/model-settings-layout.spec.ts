@@ -76,8 +76,8 @@ test('编辑与新增弹窗保留标签、验证和安全确认且无空说明�
  const model=page.getByLabel('模型 ID',{exact:true});
  await expect(model).toBeFocused();await expect(model).toHaveAttribute('aria-invalid','true');
  await model.fill('layout-test-not-saved');await card.getByRole('button',{name:'保存模型',exact:true}).click();
- await expect(page.getByRole('dialog')).toContainText('正常重启后生效');
- await expect(page.getByRole('dialog').getByRole('button',{name:'取消',exact:true})).toBeFocused();
+ await expect(page.locator('dialog.settings-confirm')).toContainText('正常重启后生效');
+ await expect(page.locator('dialog.settings-confirm').getByRole('button',{name:'取消',exact:true})).toBeFocused();
  await page.keyboard.press('Escape');await expect(card.getByRole('button',{name:'保存模型',exact:true})).toBeFocused();
  await card.getByRole('button',{name:'取消编辑',exact:true}).click();
  await card.getByRole('button',{name:'添加路由',exact:true}).click();
