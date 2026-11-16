@@ -1,4 +1,4 @@
-// MIT source-derived capability error vocabulary; see licenses/dsh-{web,authorization,workspace,session-title}-MIT.txt.
+// MIT source-derived capability error vocabulary; see licenses/dsh-{web,authorization,workspace}-MIT.txt.
 import {HarnessError} from './native-llm-protocol.js';
 var WebError = class extends HarnessError {};
 var AuthorizationError = class extends HarnessError {
@@ -70,8 +70,5 @@ var WorkspaceOrderInvalidError = class extends Error {
 		this.name = "WorkspaceOrderInvalidError";
 	}
 };
-var SessionTitleInvalidError = class extends Error {
-	name = "SessionTitleInvalidError";
-};
 
-export { WebError, AuthorizationError, AuthorizationDeclinedError, WorkspaceMoveInvalidError, WorkspaceUnknownSessionError, WorkspaceActiveSessionError, WorkspaceArchivedSessionPinError, WorkspaceOrderInvalidError, SessionTitleInvalidError };
+export { WebError, AuthorizationError, AuthorizationDeclinedError, WorkspaceMoveInvalidError, WorkspaceUnknownSessionError, WorkspaceActiveSessionError, WorkspaceArchivedSessionPinError, WorkspaceOrderInvalidError };

@@ -168,25 +168,6 @@ function isJsonValue(value) {
 	return walkJsonValue(value, false) === true;
 }
 /**
-* Compare JSON-compatible values structurally.
-* @param a - one JSON-compatible value.
-* @param b - the other JSON-compatible value.
-* @returns whether both values contain the same JSON data.
-*/
-function deepEqualJson(a, b) {
-	if (a === b) return true;
-	if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
-	if (Array.isArray(a) || Array.isArray(b)) {
-		if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-		return a.every((entry, index) => deepEqualJson(entry, b[index]));
-	}
-	const left = a;
-	const right = b;
-	const keys = Object.keys(left);
-	if (keys.length !== Object.keys(right).length) return false;
-	return keys.every((key) => key in right && deepEqualJson(left[key], right[key]));
-}
-/**
 * Deep-freeze an object graph in place while leaving live AbortSignal objects mutable.
 * @param value - value to freeze.
 * @returns the same value after every reachable enumerable child is frozen.
@@ -229,4 +210,4 @@ function deepFreeze(value) {
 	return value;
 }
 
-export {assertNever, deepEqualJson, deepFreeze, isJsonValue, snapshotJsonValue};
+export {assertNever, deepFreeze, isJsonValue, snapshotJsonValue};

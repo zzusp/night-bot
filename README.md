@@ -142,7 +142,7 @@ Pi 文件工具的匹配错误及底层原子锁内的观察/版本拒绝，在�
 | [`src/`](src) | Host、Pi 接线、工具、权限、记忆、排期与配置服务 |
 | [`bin/`](bin) | 初始化、运行、配置、凭据和维护命令 |
 | [`packages/dingtalk-core/`](packages/dingtalk-core) | 消息路由、常驻 Router、任务与交付实现；目录名保留历史来源，不表示核心启动需要钉钉 |
-| [`packages/dingtalk-dsh-assistant/`](packages/dingtalk-dsh-assistant) | 可选钉钉 DWS 渠道插件 |
+| [`src/channels/plugins/`](src/channels/plugins) | 可选钉钉 DWS 渠道插件及其配置、认证和接收适配 |
 | [`packages/web-console/`](packages/web-console) | 可选 Web 渠道、服务端与前端 |
 | [`test/`](test) / [`docs/`](docs) | 测试、操作手册、架构与按版本记录的验收证据 |
 

@@ -2,20 +2,6 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {runInNewContext} from 'node:vm'
 import {snapshotJsonValue,isJsonValue,deepFreeze} from '../src/native-values.js'
-import {foldConsumedWork} from '../src/native-consumed-work.js'
-const event=(type,data)=>({type,data})
-const begin=n=>event('turn/start',{turn:n}),step=n=>event('step/start',{turn:n}),end=(n,kind)=>event('turn/end',{turn:n,reason:{kind}}),splice=(outcome,inserted=[])=>event('agent/inbox/spliced',{removedCount:1,outcome,inserted})
-test('native consumed-work accounting preserves source cancellation, claim and suffix semantics',()=>{
- for(const reason of ['completed','blocked','aborted','interrupted','error','backend-added'])for(const stepped of [false,true]){
-  const events=[begin(1),splice('claimed'),...stepped?[step(1)]:[],end(1,reason),splice('canceled')]
-  const actual=foldConsumedWork(events),accounted=stepped||reason!=='completed'
-  assert.deepEqual(actual,accounted?{end:events.at(-2),droppedUnrun:true}:{droppedUnrun:true});if(accounted)assert.equal(actual.end,events.at(-2),'accounting borrows the original end event')
- }
- for(const events of [[],[begin(1),end(1,'completed')],[splice('canceled',[{id:'replacement'}])]])assert.deepEqual(foldConsumedWork(events),{droppedUnrun:false})
- assert.deepEqual(foldConsumedWork([splice('canceled')]),{droppedUnrun:true})
- const events=[begin(1),step(1),end(1,'completed'),splice('canceled'),begin(2),step(2),end(2,'completed')]
- assert.deepEqual(foldConsumedWork(events),{end:events.at(-1),droppedUnrun:false});assert.equal(foldConsumedWork(events.slice(4)).end,events.at(-1))
-})
 test('native JSON snapshots preserve duplicate-realm and lossless rejection contracts',()=>{
  const realm=runInNewContext('({a:[1,2,{b:"realm"}]})'),nullRecord=Object.assign(Object.create(null),{a:'null prototype'})
  for(const [value,expected] of [[null,null],[true,true],['text','text'],[0,0],[realm,{a:[1,2,{b:'realm'}]}],[nullRecord,{a:'null prototype'}]]){assert.equal(isJsonValue(value),true);const copy=snapshotJsonValue(value);assert.deepEqual(copy,expected);if(value&&typeof value==='object')assert.notEqual(copy,value)}

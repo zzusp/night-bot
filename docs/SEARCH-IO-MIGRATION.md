@@ -83,3 +83,7 @@ checks the argv passed before processPrivacy wrapping, not just displayed result
 The integration owner must refresh source/reference manifests and audit remaining
 source/test copies before retiring the former search license notice. Package,
 lockfile and notices were not changed in this slice.
+
+## 后续来源核查（2026-11-16）
+
+已完成应用、测试、脚本及文档源码副本扫描；当前搜索配置schema仍与旧派生模块存在40-token连续匹配，路径解析等兼容代码也保留。因此继续保留 `dsh-tool-fs-search-MIT.txt`，不将IO重构表述为所有片段已独立重写。详见 `dsh-license-copy-audit.json`。

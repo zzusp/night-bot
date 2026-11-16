@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as errors from '../src/native-capability-errors.js'
 const packages=['authorization','workspace']
-const samples={WebError:['fixture','WEB_ABORTED',{cause:new Error('cause')}],AuthorizationError:['fixture','ABORTED',{cause:new Error('cause')}],AuthorizationDeclinedError:[],WorkspaceMoveInvalidError:['fixture'],WorkspaceUnknownSessionError:['session','archive'],WorkspaceActiveSessionError:['session',[{kind:'tool'}]],WorkspaceArchivedSessionPinError:['session'],WorkspaceOrderInvalidError:['workspace'],SessionTitleInvalidError:['fixture']}
+const samples={WebError:['fixture','WEB_ABORTED',{cause:new Error('cause')}],AuthorizationError:['fixture','ABORTED',{cause:new Error('cause')}],AuthorizationDeclinedError:[],WorkspaceMoveInvalidError:['fixture'],WorkspaceUnknownSessionError:['session','archive'],WorkspaceActiveSessionError:['session',[{kind:'tool'}]],WorkspaceArchivedSessionPinError:['session'],WorkspaceOrderInvalidError:['workspace']}
 test('canonical capability errors preserve independent original names, codes, facts and causes',async()=>{
  for(const pkg of packages){
   const original=await import('./fixtures/legacy-'+pkg+'-interface.mjs')
@@ -38,15 +38,8 @@ test('native HTTP and web share canonical error identity',async()=>{
  await assert.rejects(new HttpFetchProvider({maxResponseBytes:1024,timeoutMs:1000,maxRedirects:1}).fetch({url:'file:///fixture'}),errors.WebError)
 })
 
-test('canonical session-name validation errors retain native facts and cause without a retired namespace',async()=>{
- const cause=new Error('original validation cause')
- const error=new errors.SessionTitleInvalidError('invalid session name',{cause})
- assert.ok(error instanceof Error)
- assert.equal(error.name,'SessionTitleInvalidError')
- assert.equal(error.message,'invalid session name')
- assert.equal(error.cause,cause)
- assert.deepEqual(Object.keys(error),['name'])
- assert.equal(error.code,undefined)
+test('retired session-title constructor and service namespaces remain absent',async()=>{
+ assert.equal('SessionTitleInvalidError' in errors,false)
  await assert.rejects(import('../packages/capability-compat/session-title/index.js'),{code:'ERR_MODULE_NOT_FOUND'})
  await assert.rejects(import('./fixtures/legacy-session-title-interface.mjs'),{code:'ERR_MODULE_NOT_FOUND'})
 })

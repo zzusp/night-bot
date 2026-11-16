@@ -62,11 +62,11 @@ Trusted shell facts: `src/native-shell-env.js` retains attributed registry/contr
 
 ## Subagent control and read-only query compatibility
 
-子代理 manager/control/query 和对应测试副本已删除，见 `docs/retired-session-drivers.md`。会话观察使用严格提交的 Pi journal 与官方 `buildSessionProjection`/`convertToLlm`，不恢复旧缓存或 Session facade。`native-time-zone.js` 的 MIT 派生时区 helper 保留 `licenses/dsh-util-time-MIT.txt`；共享 sandbox 片段仍要求 `licenses/dsh-subagent-MIT.txt`。
+子代理 manager/control/query 和对应测试副本已删除，见 `docs/retired-session-drivers.md`。会话观察使用严格提交的 Pi journal 与官方 `buildSessionProjection`/`convertToLlm`，不恢复旧缓存或 Session facade。无生产消费者的 `native-time-zone.js` 及专属测试已退役，对应 util-time notice 随源码副本核查移除；共享 sandbox 片段仍要求 `licenses/dsh-subagent-MIT.txt`。
 
 ## Session title protocol
 
-会话标题服务、fold 和原测试副本已删除。`src/native-capability-errors.js` 仍保留 `SessionTitleInvalidError` 的派生错误构造器，因此 `licenses/dsh-session-title-MIT.txt` 继续保留；这不代表恢复旧标题服务。
+会话标题服务、fold 和原测试副本已删除。无生产消费者的 `SessionTitleInvalidError` 派生构造器及专属测试已退役，因此对应 session-title notice 随源码副本核查移除；这不代表恢复旧标题服务。
 
 ## Web capability and HTTP transport
 
@@ -90,7 +90,7 @@ Trusted shell facts: `src/native-shell-env.js` retains attributed registry/contr
 
 `src/native-fs-local.js` 使用 Node IO，模型 read/write/edit 使用 Pi 官方工具。`native-fs-protocol.js` 与 `native-fs-observation-policy.js` 仍保留精简改写的能力契约及 owner/target 观察、CAS 意图算法；官方 actor 校验等新增逻辑不消除原来源，继续保留 `licenses/dsh-fs-MIT.txt` 与 `licenses/dsh-fs-observation-policy-MIT.txt`。`src/fs-windows-security.js` 的 DACL/ReplaceFileW 派生桥及 `native-fs-sandbox.js` 隔离策略分别保留 `licenses/dsh-fs-local-MIT.txt` 和 `licenses/dsh-fs-sandbox-MIT.txt`。来源复核见 `docs/acceptance/pi-native-retirement-local/`。
 
-旧 `src/native-tool-fs.js` 及语言映射、副本已删除，当前模型文件能力来自官方 Pi。搜索使用官方 find 与 Night 有界 grep/进程适配；尚未完成专属副本核查的搜索 notice 继续保留，见 `docs/SEARCH-IO-MIGRATION.md`。
+旧 `src/native-tool-fs.js` 及语言映射、副本已删除，当前模型文件能力来自官方 Pi。搜索使用官方 find 与 Night 有界 grep/进程适配；搜索配置schema和路径适配仍含派生片段，专项副本核查后搜索 notice 继续保留，见 `docs/SEARCH-IO-MIGRATION.md`。
 
 `src/native-spill.js` preserves MIT private spill IO, encoding and sweep algorithms from `dsh-spill-local`/the `dsh-spill` data contract@0.2.1-alpha.2; app admission/drain and cleanup scope are explicit adaptations. The old root discovery/scanner, temporary default-root fallback and empty service/locator wrappers are removed. The service now requires an absolute application root; direct comparison dependencies are retired while inherited storage/encoding/sweep attribution remains. See matching licenses. External diff9.0.0 and @vscode/ripgrep1.18.0 licenses are included.
 
@@ -102,7 +102,7 @@ Native shell capability/render protocol, Bash/PowerShell local executors, sandbo
 
 Native Bash/Pwsh executors explicitly adapt cancellation: admitted confinement preparation is drained before a timeout/cancel outcome, with no late spawn; owned timeout reason identity prevents same-code ancestor deadlines being misclassified. PowerShell retains the historical BASH_TIMEOUT wire code. These are application lifecycle changes beyond the attributed baseline algorithms. 工具层 timeout/abort 只发起取消，随后等待原 Job 的准备、范围排空及耐久结算；后台准备错误也先等待同 Job 终态，再保留原错误。`src/native-jobs.js` 是应用自有生命周期实现，省略 wait timeout 不创建计时器；账面 failed 不代表 producer 已排空，原 unknown/remove 守卫仍保留。这不新增 dsh-jobs 来源，也不消除 `src/native-tool-jobs.js` 及实际 scope/process 依赖的既有 MIT 归属。
 
-`native-consumed-work.js` and `native-values.js` retain MIT consumed-work audit accounting and JSON snapshot/freeze algorithms from `dsh-agent`/`dsh-util-values@0.2.1-alpha.2`, with their notices. The primitive brand runtime was a pair of identity functions without runtime state or validation. Calls are inlined without changing evaluation or values; both the standalone source and the embedded skill-tool copy are removed, including the test-support import. The dedicated `dsh-brand` notice is removed only after those copies are gone. Session/tool ownership and validated event positions remain enforced separately.
+`native-consumed-work.js` and its sole retired accounting test are removed; the exclusive `dsh-agent` notice is retired after source/copy review. `native-values.js` retains MIT JSON snapshot/freeze algorithms from `dsh-util-values@0.2.1-alpha.2` with its notice. The primitive brand runtime was a pair of identity functions without runtime state or validation. Calls are inlined without changing evaluation or values; both the standalone source and the embedded skill-tool copy are removed, including the test-support import. The dedicated `dsh-brand` notice is removed only after those copies are gone. Session/tool ownership and validated event positions remain enforced separately.
 
 `native-http-proxy.js` 保留 MIT `dsh-http-proxy` 派生策略和 undici/子进程环境代理算法，见 `licenses/dsh-http-proxy-MIT.txt`。旧 `native-code-language.js` 及其专属 notice 已删除。所有应用 CLI/HTTP/进程共享受控代理；未新增备用凭据或外部 home。
 
@@ -116,13 +116,13 @@ The former `native-prompt-render.js` implementation and original-renderer compar
 
 `src/native-message-protocol.js` derives immutable message construction, context/image/file projections and retained compact audit decoding from MIT `@deepseek-ai/dsh-llm@0.2.1-alpha.2`; see `licenses/dsh-llm-MIT.txt`. Pi continues to own execution. The legacy LlmRuntime service, duplicate retry schema/resolver and differential LLM fixture are removed. Public error classes remain attributed local source; product attribution is application-owned. Provider catalog acceptance is checked against the pinned Pi SDK rather than a DSH provider package. The old stream accumulator and block assembler are removed; owned Pi attempt observation and compact audit writing are in `src/runtime/{attempt-observation,assistant-audit}.js`. Remaining derived message/projection/error code still requires the DSH LLM notice.
 
-`src/native-capability-errors.js` retains MIT error vocabulary from `dsh-web`, `dsh-authorization`, `dsh-workspace` and `dsh-session-title` version0.2.1-alpha.2 (individual licenses in `licenses/`). Historical package-name facades are not a supported product ABI; their retirement does not turn the retained error vocabulary or local source forks into original implementations. Independent original service references in `test/fixtures/legacy-*-interface.mjs` retain their own constructors/algorithms; verified values/brands/domain support imports are local, with original and fixture hashes in `docs/capability-error-reference-manifest.json`.
+`src/native-capability-errors.js` retains MIT error vocabulary from `dsh-web`, `dsh-authorization` and `dsh-workspace` version0.2.1-alpha.2 (individual licenses in `licenses/`). Historical package-name facades are not a supported product ABI; their retirement does not turn the retained error vocabulary or local source forks into original implementations. Independent original service references in `test/fixtures/legacy-*-interface.mjs` retain their own constructors/algorithms; verified values/brands/domain support imports are local, with original and fixture hashes in `docs/capability-error-reference-manifest.json`.
 
 `native-fs-protocol.js` 保留 MIT 派生的错误/能力契约及 `licenses/dsh-fs-MIT.txt`。`native-sandbox-protocol.js` 与 `native-skill-protocol.js` 的 MIT 派生 sandbox/skill 算法继续保留对应 notices。现行独立 sandbox 比较 fixture 见 `docs/interface-reference-manifest.json`；失效的 projection fixture 条目已经移除。
 
 `native-llm-errors.js`、`native-llm-protocol.js` 与 `native-tool-protocol.js` 保留 MIT 派生的 LLM/tools 公共错误、schema 和渲染算法，对应 notices 保留。旧 LlmRuntime/ToolRuntime/子代理 errors 实现与独立运行时副本已删除，记录见 `docs/execution-protocol-reference-manifest.json`。默认产品标识为 Night Bot。
 
-旧 `native-session-protocol.js` 和 Session/projection facade 已删除；`native-values.js` 仍含共享 JSON 等值算法，保守保留 `licenses/dsh-session-MIT.txt`。`native-persistence-protocol.js` 保留 MIT 派生的严格 IO/error 契约及对应 notice。DSH 历史 JSONL import、v0-v4 converters、format catalog、verifier worker 和原测试副本已删除，不再提供历史数据转换。原 `src/legacy-v4/` 下的 Windows ACL 与 runner 已迁接到 `src/process/windows-acl.js`、`src/process/windows-acl-runner.js`，调用方使用本地模块；二者仍是 DeepSeek `dsh-sandbox-windows-acl@0.2.1-alpha.2` 的 MIT 派生实现，保留源码版权头及 `licenses/dsh-subprocess-local-MIT.txt`，不因路径迁移改称原创或删除许可。
+旧 `native-session-protocol.js` 和 Session/projection facade 已删除；`native-values.js` 中无人调用的 JSON 等值算法已删除，源码副本核查后移除专属 session notice；其余 JSON snapshot/freeze 仍保留 util-values notice。`native-persistence-protocol.js` 保留 MIT 派生的严格 IO/error 契约及对应 notice。DSH 历史 JSONL import、v0-v4 converters、format catalog、verifier worker 和原测试副本已删除，不再提供历史数据转换。原 `src/legacy-v4/` 下的 Windows ACL 与 runner 已迁接到 `src/process/windows-acl.js`、`src/process/windows-acl-runner.js`，调用方使用本地模块；二者仍是 DeepSeek `dsh-sandbox-windows-acl@0.2.1-alpha.2` 的 MIT 派生实现，保留源码版权头及 `licenses/dsh-subprocess-local-MIT.txt`，不因路径迁移改称原创或删除许可。
 
 ## 当前原生权威与保留边界
 
@@ -131,3 +131,7 @@ The former `native-prompt-render.js` implementation and original-renderer compar
 独立投影注册表及其测试副本均已删除，本轮移除相应专属 notice。副本扫描及人工核查入口见 `docs/acceptance/pi-native-retirement-local/scripts/audit-retired-copies.mjs`；扫描不构成通用版权法律判断。
 
 外部 DSH 生产/开发声明及锁定包均为零；仍在树中的派生源码和独立测试参考继续保留各自许可，具体范围按实际来源清单核定。Windows ACL/process、Linux/macOS 进程平台桥、scope、权限、凭据、附件、技能、shell、HTTP、调度及部分协议继续显式署源。Linux 进程观察与后续 signal 非原子；非 Linux 的便携模型进程隐私 namespace 尚不支持，保持 fail closed，不为验收取消限制。
+
+## 2026-11-16 逐份许可核查
+
+51份 DSH notices 逐份核查，4份随无消费者源码/测试一并退休，47份保留。完整映射、默认未挂载的保留源边界与副本证据见 [DSH-LICENSE-AUDIT](docs/DSH-LICENSE-AUDIT.md) 和 `docs/dsh-license-copy-audit.json`。

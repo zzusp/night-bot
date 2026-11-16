@@ -1,5 +1,3 @@
-import yaml from 'js-yaml'
-import { planProjectLocalAcceptance } from './configure-project-local-acceptance.mjs'
 import { readFile, readdir, lstat, mkdir, copyFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -314,20 +312,4 @@ export function verifyEngineeringRepositoryDigests({ db, config }) {
   }
   return { compatible: checked.every(item => item.matches), checkedRuns: checked.length,
     mismatches: checked.filter(item => !item.matches), writes: 0 }
-}
-export async function verifyPlannedEngineeringConfig({ db, profile, bundle, mergePolicy, checksProposal, repositoryPatches }) {
-  const source = await readFile(profile, 'utf8')
-  const json = async path => path ? JSON.parse(await readFile(path, 'utf8')) : undefined
-  const plan = planProjectLocalAcceptance(source, await json(bundle), yaml, { allowUpdate: true,
-    mergePolicy: await json(mergePolicy), checksProposal: await json(checksProposal), repositoryPatches: await json(repositoryPatches) })
-  const schema = yaml.DEFAULT_SCHEMA.extend([new yaml.Type('tag:yaml.org,2002:js', { kind: 'scalar', construct: value => value })])
-  const configs = []
-  const visit = value => {
-    if (!value || typeof value !== 'object') return
-    if (Array.isArray(value.repositories) && value.repositories.some(repository => repository.id === 'dataset')) configs.push(value)
-    for (const child of Object.values(value)) visit(child)
-  }
-  visit(yaml.load(plan.updated, { schema }))
-  if (configs.length !== 1) fail('DEPLOY_ENGINEERING_CONFIG_AMBIGUOUS')
-  return { ...verifyEngineeringRepositoryDigests({ db, config: configs[0] }), plannedProfileSha256: hash(plan.updated) }
 }
