@@ -135,6 +135,8 @@ Invoke-RestMethod 'http://127.0.0.1:19198/state/supervisor/alerts?limit=10&type=
 
 既有只读 `/state/performance?sessionId=<分流会话ID>`（或 `groupId`）返回 `runtimeOwner: channel-triage`、原生模型/工具指标和 `phaseMs`。重点查看 `session-create` 及其存储/挂载/模型解析子项、`resources-create` / `resources-deliver` / `resources-before-run`、`instructions` / `skills` / `sdk-reload`、`input-enqueue` / `input-acknowledge`、`request-prepare` / `request-guards` / `request-commit`、`triage-commit` / `session-dispose`。每项有 `count/sum/max/p50/p95/failures`，单位为毫秒。总分流用 `triage-total`；父子项、并行读取和发送可能重叠，不相加。该投影异步落盘，分流结束不等于查询尾部已写完；正常关停沿用观测队列排空，冷恢复不重放消息。历史数据不会凭空补出分项。
 
+分诊运行中追加来源后，若提交返回 `ok:false,code:TRIAGE_BATCH_INCOMPLETE`，以返回的完整 `messages` 补齐后再提交；该反馈没有保存处置，也未封存批次。完整提交后的旧 steer `TRIAGE_INACTIVE` 不阻塞后续溢出队列。排查时结合 `triage-commit` 和来源业务终态，不以模型调用次数或局部 idle 代替提交成功。
+
 这仅提供定位依据，不证明真实渠道提速；应在另行授权部署后，用同口径消息测量首答可见时间。
 
 若冷启动保留 `ROUTER_BATCH_UNSETTLED`，应核对任务服务 `recover()` 的 `degraded` 结果和现有恢复告警，不能把入口可用或已完成任务当作 Router 已消费。只有严格满足中止生成条件的批次自动沿原会话领取一次；普通 error 继续由已授权 Host 集成按[原批次续办合同](../CHANNELS.md#已接纳未结批次的安全续办)绑定原失败 checkpoint；没有新增可供操作者直接使用的 HTTP/CLI，不直调 SDK、不重建任务、不改 journal、DB 或通知收据。其它恢复错误仍停止启动。若关闭报错，保留错误和原资源，独立核对实际排空；Host/application 异常关闭短路风险尚未修复，不能因正常路径曾退出就认定异常路径资源已释放。
