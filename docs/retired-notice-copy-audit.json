@@ -77,5 +77,6 @@
     "licenses/dsh-subagent-MIT.txt": "Shared 40-token algorithm windows remain in sandbox capability/protocol copies; manager class removal alone is not enough.",
     "licenses/dsh-session-title-MIT.txt": "Canonical SessionTitleInvalidError vocabulary/constructor remains; service removal alone is not enough."
   },
-  "scope": "Only exclusive removed implementations and test copies; Pi and all currently retained third-party implementations remain attributed."
+  "scope": "Only exclusive removed implementations and test copies; Pi and all currently retained third-party implementations remain attributed.",
+  "subsequentReview": "2026-11-16: historical retainedNotices describes the earlier audit. Session-title constructor and its tests are now retired; see docs/dsh-license-copy-audit.json and docs/DSH-LICENSE-AUDIT.md. Subagent shared snippets remain."
 }

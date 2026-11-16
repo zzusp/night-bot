@@ -1,0 +1,56 @@
+{
+  "method": "Exact continuous 40-token matching, supplemental to source/caller review; not a general copyright test",
+  "baseline": "Per-source revisions below",
+  "sources": [
+    {
+      "tag": "time-zone",
+      "path": "src/native-time-zone.js",
+      "rev": "9a3d60b",
+      "sha256": "e7fe1157822be5075c66c34cdbb5ae1026be8e8c7a8dd561a27f67e889fb6a89",
+      "reviewedFragmentSha256": "e7fe1157822be5075c66c34cdbb5ae1026be8e8c7a8dd561a27f67e889fb6a89",
+      "windowTokens": 40
+    },
+    {
+      "tag": "consumed-work",
+      "path": "src/native-consumed-work.js",
+      "rev": "9a3d60b",
+      "sha256": "1588e37f0ad65c63334e07751cccebb002e0c4e217be5f5ee82f9b181e16c94a",
+      "reviewedFragmentSha256": "1588e37f0ad65c63334e07751cccebb002e0c4e217be5f5ee82f9b181e16c94a",
+      "windowTokens": 40
+    },
+    {
+      "tag": "search",
+      "path": "src/native-tool-fs-search.js",
+      "rev": "729d231^",
+      "sha256": "4b79b504af1c79822d74cd27fe9f3b7003cd27921dd47ed42e9a36b51e98b4e2",
+      "reviewedFragmentSha256": "4b79b504af1c79822d74cd27fe9f3b7003cd27921dd47ed42e9a36b51e98b4e2",
+      "windowTokens": 40
+    },
+    {
+      "tag": "session-equality",
+      "path": "src/native-values.js",
+      "rev": "9a3d60b",
+      "sha256": "10bf0c74f56d7c2bc5907d1946a5b42171579013415722e32b7ecbdacc088292",
+      "reviewedFragmentSha256": "c7ba01a5e58c62cc8248faa3cb73122d12e5fe98aad53eff77163ce162c9ef51",
+      "windowTokens": 40
+    },
+    {
+      "tag": "session-title",
+      "path": "src/native-capability-errors.js",
+      "rev": "9a3d60b",
+      "sha256": "1abe1c4910dc8303ee7c3dc73c3ed4785329993030764ea838a336a9870283fb",
+      "reviewedFragmentSha256": "ed198f94219eafdc5fa300111cad6771f0ab30b20de802b9403da36d87014092",
+      "windowTokens": 13
+    }
+  ],
+  "parsed": 1186,
+  "failures": [],
+  "matches": [
+    {
+      "tag": "search",
+      "path": "src/native-tool-fs-search.js",
+      "windows": 40,
+      "firstLine": 19
+    }
+  ]
+}

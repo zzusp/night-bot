@@ -22,3 +22,12 @@ test('generic deployment integrity helpers remain available without DSH profile 
     'reverifyDeploymentBackup', 'verifyDeploymentWeb', 'verifyEngineeringRepositoryDigests',
   ]) assert.equal(typeof integrity[name], 'function', name)
 })
+
+test('unused DSH helper sources and their exclusive notices stay retired', async () => {
+  for (const file of ['src/native-consumed-work.js', 'src/native-time-zone.js',
+    ...['agent', 'util-time', 'session', 'session-title'].map(name => `licenses/dsh-${name}-MIT.txt`)]) {
+    await assert.rejects(access(new URL(`../${file}`, import.meta.url)), { code: 'ENOENT' })
+  }
+  const values = await import('../src/native-values.js')
+  assert.equal('deepEqualJson' in values, false)
+})
