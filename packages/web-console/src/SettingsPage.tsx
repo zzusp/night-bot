@@ -62,11 +62,11 @@ export default function SettingsPage({onClose,registerClose}:{onClose?:()=>void;
  const [refreshKey,setRefreshKey]=useState(0);const reload=()=>{if(busyRoles)return;setRefreshKey(value=>value+1);query.refresh()};
 
  return <div className="page-content settings-page settings-workspace">
-  {onClose&&<header className="settings-modal-heading"><div><h2 id="settings-modal-title">设置</h2></div><IconButton label="关闭设置" onClick={requestClose}><RiCloseLine size={20}/></IconButton></header>}
+  {onClose&&<div className="settings-modal-close"><IconButton label="关闭设置" onClick={requestClose}><RiCloseLine size={18}/></IconButton></div>}
   {query.error&&<Notice read error={query.error} onRetry={busyRoles?undefined:query.refresh}/>}
   {query.loading&&!query.data?<Loading/>:query.data?<>
    <div className="settings-workspace-layout">
-    <div className="settings-navigation" role="tablist" aria-label="设置分类" aria-orientation="vertical">
+    <aside className="settings-sidebar"><h2 id="settings-modal-title" className="settings-sidebar-title">设置</h2><div className="settings-navigation" role="tablist" aria-label="设置分类" aria-orientation="vertical">
      {sections.filter(item=>item.id!=='worklog'||query.data?.workLog).map(item=>{
       const Icon=item.icon;
       return <button type="button" key={item.id} id={`settings-tab-${item.id}`} role="tab" aria-selected={section===item.id} aria-controls={`settings-panel-${item.id}`} tabIndex={section===item.id?0:-1} onClick={()=>setSection(item.id)} onKeyDown={event=>{
@@ -76,7 +76,7 @@ export default function SettingsPage({onClose,registerClose}:{onClose?:()=>void;
        if(next<0)return;event.preventDefault();setSection(available[next].id);document.getElementById(`settings-tab-${available[next].id}`)?.focus();
       }}><Icon size={18} aria-hidden="true"/><span>{item.label}</span></button>
      })}
-    </div>
+    </div></aside>
     <div className="settings-panels" ref={panels}>
      <div role="tabpanel" id="settings-panel-models" aria-labelledby="settings-tab-models" hidden={section!=='models'} tabIndex={0}><ReadErrorVisibility active={section==='models'}>
       <ModelCatalogEditor key={`catalog-${refreshKey}`} settingsVersion={query.data.version} defaultProvider={query.data.model.provider} onSaved={query.refresh} onStateChange={onRoleState}/>
