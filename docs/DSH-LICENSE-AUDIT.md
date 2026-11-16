@@ -67,12 +67,13 @@
 | `web-fetch-http` | native-http-fetch.js：公网/DNS/NAT64和固定HTTP传输 |
 | `workspace` | native-workspace.js、native-capability-errors.js及workspace fixture：v2账户协议、admission与错误 |
 
-## 后续移除边界
+## 当前维护边界
 
-- shell/local/sandbox 是实际生产执行链。Pi已有官方本地shell operations，但当前只使用官方工具定义并委托旧适配执行；替换必须覆盖后台Job、完整输出、取消排空及隔离后才可退休源码/通知。
-- Windows process/ACL、网络、文件策略、凭据和调度属于跨平台或持久化边界，替换需逐模块实现、Linux/Windows 回归和格式兼容检查，不是改名或删除许可可完成的清理。
-- 小型错误/schema/工具适配片段也保留真实来源；使用 Pi 的工具定义并不自动覆盖 Night 保留的进程、输出和策略实现。
-- 保留的具体范围由 `THIRD_PARTY.md` 与对应 source manifest 说明。历史归属文字不因退休而伪造或覆盖。
+- 保留当前正常运行的执行实现，不为消除 DSH 名称重写或替换 Pi 后端。
+- 只清理无消费者的旧入口、失效命名和容易误导当前架构的说明；不改工作中的接口、持久化协议、进程控制、取消排空及隔离行为。
+- shell/local/sandbox 是实际生产执行链。Pi提供工具定义，应用适配提供后台Job、完整输出、取消排空及隔离，继续按现状使用。
+- Windows process/ACL、网络、文件策略、凭据、调度及工具协议保留现有实现与许可。名称整理不代表这些代码已独立重写。
+- 原版权头、许可正文、来源包名、source manifest和历史验收身份原样保留；这些是有效归属，不属于无用标记。
 
 ## 动态加载核对更正
 

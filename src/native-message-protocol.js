@@ -233,7 +233,7 @@ const IMAGE_OFFLOAD_REQUIRED_CODE = "IMAGE_OFFLOAD_REQUIRED";
 * changed snapshots instead of allowing silent per-call drift.
 * @module dsh-llm/call-config
 */
-/** Process-local identities of request objects assembled by dsh-agent-loop. */
+/** Retained process-local request identity helpers; not the active Pi execution loop. */
 const AGENT_LOOP_REQUESTS = /* @__PURE__ */ new WeakSet();
 /**
 * Field-wise equality over {@link LlmCallConfig} — the comparison a caller
@@ -249,7 +249,7 @@ function callConfigEquals(a, b) {
 	return a.stop.length === b.stop.length && a.stop.every((s, i) => s === b.stop?.[i]);
 }
 /**
-* Mark one exact request object as assembled by dsh-agent-loop.
+* Mark one exact request object in the retained process-local identity set.
 * @param request - loop-owned request envelope before LLM dispatch.
 * @returns the same request object marked as created by the process-local agent loop.
 */
@@ -258,7 +258,7 @@ function markAgentLoopRequest(request) {
 	return request;
 }
 /**
-* Test whether the exact request object was assembled by dsh-agent-loop.
+* Test whether the exact request object was recorded in that identity set.
 * @param request - request envelope observed at the LLM waterfall.
 * @returns whether {@link markAgentLoopRequest} recorded this object.
 */
