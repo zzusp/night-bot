@@ -586,7 +586,7 @@ for(const format of ['legacy','neutral','compact'])test(`cold Router resumes an 
 })
 
 
-for(const outcome of ['complete','newer-input','fails-again','unrelated-error'])test(outcome==='unrelated-error'?'an unsettled Router cannot mask an unrelated conversation recovery failure':outcome==='newer-input'?'an admitted failed Router checkpoint refuses a newer pending business input before inference':outcome==='fails-again'?'a second failed Router continuation retains its checkpoint history and cannot replay the consumed proof':'an admitted failed Router batch resumes only through an explicit Host checkpoint after strict cold recovery',{timeout:nativeTestTimeout(60000)},async t=>{
+for(const outcome of ['complete','stopped','stopped-failed-tool','newer-input','fails-again','unrelated-error'])test(outcome==='stopped-failed-tool'?'a normally stopped Router checkpoint still refuses a failed tool without inference':outcome==='stopped'?'a normally stopped but unsettled Router batch resumes only through an explicit Host checkpoint after strict cold recovery':outcome==='unrelated-error'?'an unsettled Router cannot mask an unrelated conversation recovery failure':outcome==='newer-input'?'an admitted failed Router checkpoint refuses a newer pending business input before inference':outcome==='fails-again'?'a second failed Router continuation retains its checkpoint history and cannot replay the consumed proof':'an admitted failed Router batch resumes only through an explicit Host checkpoint after strict cold recovery',{timeout:nativeTestTimeout(60000)},async t=>{
   const continuationAdmissions=[]
   let failModel=true,resumeEntered,releaseResume,holdResume=false,fatalConversation,continuationPacket,continuationSessionId,observeHandoffRecovery
   const entered=new Promise(resolve=>resumeEntered=resolve),released=new Promise(resolve=>releaseResume=resolve)
@@ -605,7 +605,10 @@ for(const outcome of ['complete','newer-input','fails-again','unrelated-error'])
     }
     if(requestTools(body).includes('resident_router_settle')){
       if(continuationPacket)continuationAdmissions.push(await h.host.ctx.agents.get(continuationSessionId).admission.current())
-      if(failModel)return {error:'TEST_ROUTER_MODEL_CHECKPOINT_FAILURE'}
+      if(failModel){
+        if(outcome==='stopped-failed-tool')return body.messages.at(-1)?.role==='tool'?{text:''}:{tool:'resident_task_query',args:{taskId:'not-a-task-in-this-conversation'}}
+        return outcome==='stopped'?{text:''}:{error:'TEST_ROUTER_MODEL_CHECKPOINT_FAILURE'}
+      }
       if(holdResume&&body.messages.at(-1)?.role!=='tool'){holdResume=false;resumeEntered();await released}
       return settle(body,router(body))
     }
@@ -623,7 +626,7 @@ for(const outcome of ['complete','newer-input','fails-again','unrelated-error'])
   const business=failed.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'&&entry.details.source.kind==='conversation-router')
   assert.equal(business.length,1)
   const assistant=failed.entries.findLast(entry=>entry.type==='message'&&entry.message.role==='assistant')
-  assert.equal(assistant.message.stopReason,'error');assert.match(assistant.message.errorMessage,/TEST_ROUTER_MODEL_CHECKPOINT_FAILURE/)
+  assert.equal(assistant.message.stopReason,outcome.startsWith('stopped')?'stop':'error');if(!outcome.startsWith('stopped'))assert.match(assistant.message.errorMessage,/TEST_ROUTER_MODEL_CHECKPOINT_FAILURE/)
   const packetId=business[0].details.packetId
   assert.equal(failed.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='enqueued'&&receipt.payload.id===packetId).length,1)
   assert.equal(failed.audit.filter(receipt=>receipt.domain==='admission'&&receipt.kind==='admitted'&&receipt.payload.id===packetId).length,1)
@@ -642,6 +645,15 @@ for(const outcome of ['complete','newer-input','fails-again','unrelated-error'])
     assert.equal(h.requests.length,count,'a refused continuation must not call the model')
   }
   for(const candidate of [{...proof,conversationId:'foreign-conversation'},{...proof,generation:row.generation+1},{...proof,sessionId:'foreign-router-session'},{...proof,packetId:packetId+':foreign'},{...proof,failedEntryId:business[0].id}])await rejectedWithoutInference(candidate)
+  if(outcome==='stopped-failed-tool'){
+    assert.ok(closed.entries.some(entry=>entry.type==='message'&&entry.message.role==='toolResult'&&entry.message.toolName==='resident_task_query'&&entry.message.isError))
+    await assert.rejects(h.service.inspectRouterBatch({conversationId}),{code:'PI_ROUTER_RESUME_EFFECT_UNRESOLVED'})
+    await assert.rejects(h.service.resumeRouterBatch(proof),{code:'PI_ROUTER_RESUME_EFFECT_UNRESOLVED'})
+    assert.equal(h.requests.length,requests)
+    assert.deepEqual((await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})).entries,closed.entries)
+    assert.equal((await h.query('router.inbox',{conversationId})).length,1)
+    return
+  }
   if(outcome==='unrelated-error'){
     const source=await h.query('source.get',{sourceId:inbox.find(event=>event.sourceId).sourceId}),other='unrelated-failed-conversation'
     await h.store.command({id:'fixture-unrelated-source',kind:'source.record-direct',args:{source:{sourceId:'unrelated-recovery-source',groupId:other,messageId:'unrelated-recovery-message',actorId:source.actorId,channel:source.channel,version:1,text:'A separate recovery scope must still be inspected',resources:[]},conversation:{conversationId:other}}})
