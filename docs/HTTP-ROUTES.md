@@ -28,6 +28,16 @@
 
 `phase` 只能为 `triage` 或 `router`，不能夹带旧 token/decision 字段。Host 校验 sourceId、conversation、messageId 和当前版本；已分诊来源不能重走 `triage`。旧 `routing` / `decision` / `host` phase 明确返回 410 `TOPIC_ROUTING_RETIRED`，其它非法字段返回 400 `MESSAGE_RECOVERY_REQUEST_INVALID`。返回 `status: "attempted"` 只表示该次恢复尝试已调用入口，不证明 Router 已 settle、任务完成或通知送达。通知重试仍使用其独立 `expectedToken` 合同，不与消息重试混用。
 
+## Router 操作者续办
+
+`POST /operator/router` 由 application 接线，限 loopback、准确 Host/端口、无 Origin、唯一 Bearer capability，且在读取正文前鉴权；不复用 Web cookie 或普通渠道身份。私有 token 由 `operator-capability` 保管。仅接收 JSON，不提供任意 SDK、代码或模型工具入口。
+
+- inspect：`{"command":"inspect","conversationId":"CONVERSATION_ID"}` 返回 `{proposal,eventIds,pendingCount}`，仅元数据，无业务正文。
+- check：`{"command":"check","proposal":{...}}` 零写检查；proposal 精确包含 `conversationId,generation,sessionId,packetId,failedEntryId,checkpointRevision,inboxDigest`，不接受额外字段。
+- resume：`{"command":"resume","proposal":{...}}` 按原 Host 合同重验并续办；保留来源授权、当前 owner、原输入唯一接纳、claim、效果及 15/30 限制。全部原/新增事件消费才返回 `settled:true`。
+
+检查不创建 owner、不清错误、不调模型。执行不会因客户端断开自动回滚或重试；不确定时按 [runbook](ops/windows-local-runtime.md#router-模型错误的显式续办) 先读回。响应 `cache-control:no-store`，只输出安全错误码，不返回异常正文、token 或完整历史。
+
 ## 静态路径索引
 
 - `/config/agent`

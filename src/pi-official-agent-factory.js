@@ -238,6 +238,12 @@ export class OfficialAgentFactory {
     deliver:(packetId,deliveryOptions)=>{
      active();if(routerFrozen||routerContinuing)throw fail('PI_ROUTER_FROZEN');const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,()=>bundle.deliver(packetId,deliveryOptions)));pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation
     },whenIdle,interrupt,cancel,
+    checkRouterBatch({packet,failedEntryId}){
+     active();check()
+     if(ownerCtx.agents.currentInitiator?.()!==undefined)throw fail('PI_ROUTER_RESUME_HOST_ONLY')
+     if(routerContinuing||routerFrozen||maintenanceCount||admission.paused||pending.size)throw fail('PI_ROUTER_RESUME_BUSY')
+     return routerCheckpoint(packet,failedEntryId)
+    },
     resumeRouterBatch({packet,failedEntryId,supplements=[]},validate){
      active();check()
      if(ownerCtx.agents.currentInitiator?.()!==undefined)throw fail('PI_ROUTER_RESUME_HOST_ONLY')

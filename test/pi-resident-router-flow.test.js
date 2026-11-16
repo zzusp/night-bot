@@ -1,5 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {createServer,request} from 'node:http'
+import {readFile,writeFile} from 'node:fs/promises'
+import {join} from 'node:path'
+import {spawn} from 'node:child_process'
+import {fileURLToPath} from 'node:url'
+import {createRouterOperatorAuth,createRouterOperatorHttp} from '../src/channels/router-operator.js'
 import {hash} from '../src/memory/format.js'
 import {conversationSource} from '../src/channels/message-safety.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
@@ -686,7 +692,41 @@ for(const outcome of ['complete','newer-input','fails-again','unrelated-error'])
     return
   }
   failModel=false;holdResume=true
-  const resumed=h.service.resumeRouterBatch(proof)
+  const paths=h.host.ctx.runtimePaths,auth=await createRouterOperatorAuth(paths)
+  const http=createRouterOperatorHttp({auth,getTasks:()=>h.service}),server=createServer((req,res)=>void http(req,res).catch(error=>res.destroy(error)))
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve))
+  t.after(()=>new Promise(resolve=>server.close(resolve)))
+  const cliConfig={...h.config,resident:{host:'127.0.0.1',port:server.address().port}},configFile=join(paths.temp,'router-config.json')
+  await writeFile(configFile,JSON.stringify(cliConfig))
+  const invoke=args=>new Promise((resolve,reject)=>{
+    const child=spawn(process.execPath,[fileURLToPath(new URL('../bin/night-bot-router.js',import.meta.url)),configFile,...args],{stdio:['ignore','pipe','pipe']})
+    const stdout=[],stderr=[];child.stdout.on('data',chunk=>stdout.push(chunk));child.stderr.on('data',chunk=>stderr.push(chunk));child.once('error',reject)
+    child.once('close',code=>{if(code!==0)return reject(Error(Buffer.concat(stderr).toString()));try{resolve(JSON.parse(Buffer.concat(stdout).toString()))}catch(error){reject(error)}})
+  })
+  const inspected=await invoke(['inspect',conversationId])
+  assert.deepEqual({...proof,checkpointRevision:inspected.proposal.checkpointRevision,inboxDigest:inspected.proposal.inboxDigest},inspected.proposal)
+  const proposalFile=join(paths.temp,'router-resume.json')
+  await writeFile(proposalFile,JSON.stringify(inspected.proposal))
+  const checked=await invoke(['resume','--proposal',proposalFile,'--check'])
+  assert.equal(checked.checkOnly,true)
+  assert.equal(h.requests.length,requests,'inspect/check never invoke the model')
+  assert.deepEqual((await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})).entries,closed.entries,'inspect/check never commit or claim')
+  assert.ok(h.service.listAlerts().some(row=>row.detail==='ROUTER_BATCH_UNSETTLED'))
+  const endpoint=`http://127.0.0.1:${server.address().port}/operator/router`
+  const token=JSON.parse(await readFile(join(paths.secrets,'router-operator.credentials.json'),'utf8')).token
+  for(const headers of [{},{authorization:'Bearer '+token,origin:'http://localhost'}]){
+    const refused=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify({command:'resume',proposal:inspected.proposal})})
+    await refused.arrayBuffer();assert.equal(refused.status,403)
+  }
+  const foreign=await new Promise((resolve,reject)=>{
+    const req=request(endpoint,{method:'POST',headers:{host:'foreign.invalid',authorization:'Bearer '+token,'content-type':'application/json'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode))})
+    req.on('error',reject);req.end(JSON.stringify({command:'resume',proposal:inspected.proposal}))
+  })
+  assert.equal(foreign,403)
+  await assert.rejects(h.service.checkRouterBatch({...inspected.proposal,inboxDigest:'0'.repeat(64)}),{code:'ROUTER_RESUME_STALE'})
+  await assert.rejects(h.service.resumeRouterBatch({...inspected.proposal,checkpointRevision:'0'.repeat(64)}),{code:'ROUTER_RESUME_STALE'})
+  assert.equal(h.requests.length,requests)
+  const resumed=invoke(['resume','--proposal',proposalFile])
   await Promise.race([entered,resumed.then(()=>assert.fail('continuation completed before its model gate'))])
   await rejectedWithoutInference(proof)
   observeHandoffRecovery=true
@@ -716,6 +756,42 @@ for(const outcome of ['complete','newer-input','fails-again','unrelated-error'])
   assert.ok(!h.service.listAlerts().some(row=>row.detail==='ROUTER_BATCH_UNSETTLED'),'only a settled batch clears its recovery issue')
   assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
   t.diagnostic(JSON.stringify({case:'explicit-failed-router-batch-continuation',originalMemoryAdmissionBound:true,liveContinuationRecoverySerialized:true,strictCold:true,originalPacketUnique:true,originalAdmissionUnique:true,originalPrefixUnchanged:true,concurrentAndStaleRejectedBeforeInference:true,settled:true,sameOwnerRetained:true,coldReplay:false,realVendorExecuted:false}))
+})
+
+test('operator recovery binds the entire inbox and includes a newer cancellation before settling the original batch',{timeout:nativeTestTimeout(60000)},async t=>{
+  let failing=true,observed
+  const h=await residentRouterHost(t,body=>{
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('resident_router_settle')){
+      if(failing)return {error:'TEST_RECOVERY_AUTH_FAILURE'}
+      const inputs=requestText(body).flatMap(text=>text.split('\n')).filter(line=>line.startsWith('Router 请求：')).map(line=>JSON.parse(line.slice('Router 请求：'.length)))
+      const events=[...new Map(inputs.flatMap(input=>input.events).map(event=>[event.id,event])).values()]
+      observed=events
+      return settle(body,{events})
+    }
+    return handoff(body)??{text:'No other work'}
+  })
+  const message=channelMessage('original-recovery-input'),conversationId=h.host.ctx.channels.identity(message).sessionId
+  await h.receive(message);await assert.rejects(h.service.whenIdle(),{code:'ROUTER_BATCH_UNSETTLED'})
+  const first=await h.service.inspectRouterBatch({conversationId}),before=await h.host.ctx.sessionPersistence.readNative(first.proposal.sessionId,{requireComplete:true})
+  const source=await h.query('source.get',{sourceId:(await h.query('router.inbox',{conversationId}))[0].sourceId})
+  await h.store.command({id:'newer-cancellation',kind:'source.record-direct',args:{source:{sourceId:'newer-cancellation',groupId:conversationId,messageId:'cancel-now',actorId:source.actorId,channel:source.channel,version:1,text:'Cancel the original operation. Do not execute it.',resources:[]},conversation:{conversationId}}})
+  await h.store.command({id:'route-newer-cancellation',kind:'triage.commit',args:{dispositions:[{sourceId:'newer-cancellation',messageVersion:1,needsHandling:true,reason:'New cancellation must be visible before continuing'}]}})
+  const count=h.requests.length
+  await assert.rejects(h.service.checkRouterBatch(first.proposal),{code:'ROUTER_RESUME_STALE'})
+  await assert.rejects(h.service.resumeRouterBatch(first.proposal),{code:'ROUTER_RESUME_STALE'})
+  assert.equal(h.requests.length,count)
+  const current=await h.service.inspectRouterBatch({conversationId})
+  assert.equal(current.pendingCount,2);assert.notEqual(current.proposal.inboxDigest,first.proposal.inboxDigest)
+  failing=false
+  assert.equal((await h.service.resumeRouterBatch(current.proposal)).settled,true)
+  assert.ok(observed.some(event=>event.source?.sourceId==='newer-cancellation'&&event.source.text.includes('Cancel')))
+  assert.equal(await h.query('router.inbox-count',{conversationId}),0)
+  const after=await h.host.ctx.sessionPersistence.readNative(first.proposal.sessionId,{requireComplete:true})
+  assert.deepEqual(after.entries.slice(0,before.entries.length),before.entries)
+  assert.equal(after.audit.filter(row=>row.domain==='admission'&&row.kind==='admitted'&&row.payload.id===first.proposal.packetId).length,1)
+  assert.equal((await h.query('router.get',{conversationId})).activeSessionId,first.proposal.sessionId)
+  assert.equal(h.sent.length,0)
 })
 
 // 等待真实模型请求，关停必须先取消 SDK；放行模型夹具不能成为关闭条件。
