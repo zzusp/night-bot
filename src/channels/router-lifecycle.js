@@ -225,8 +225,8 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     void work.then(()=>errors.delete(conversationId),error=>errors.set(conversationId,error)).finally(()=>{inflight.delete(work);if(tails.get(conversationId)===work)tails.delete(conversationId)}).catch(()=>{})
     return work
   }
-  async function continueBatch(row,handle,packet,failedEntryId,onAttempt=()=>{}){
-    const conversationId=row.id,packetId=packet.id,ids=packet.source.eventIds,startedAt=new Date().toISOString()
+  async function prepareResume(row,handle,packet){
+    const conversationId=row.id,ids=packet.source.eventIds
     if(!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)fail('ROUTER_PACKET_ID_CONFLICT')
     const inbox=await query('router.inbox',{conversationId,limit:30});assertOpen()
     const pendingCount=await query('router.inbox-count',{conversationId});assertOpen()
@@ -243,6 +243,43 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
       if(await query('router.inbox-count',{conversationId})!==allIds.length||!sameRouterPacket(routerPacketViews(current,pending)[0],snapshot))fail('ROUTER_RESUME_BATCH_STALE')
     }
     await validate();assertOpen()
+    return {inbox,supplements,allIds,validate,inboxDigest:hash(comparableRouterPacket(snapshot))}
+  }
+  async function inspectBatch(row,handle){
+    const branch=handle.session.sessionManager.getBranch()
+    const input=branch.findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')
+    const failed=branch.findLast(entry=>entry.type==='message')
+    const packet=handle.agent.admission.lookupPacket(input?.details?.packetId)
+    if(!packet||packet.source.kind!=='conversation-router')fail('ROUTER_PACKET_ID_CONFLICT')
+    const prepared=await prepareResume(row,handle,packet)
+    const checkpoint=await handle.checkRouterBatch({packet,failedEntryId:failed?.id,supplements:prepared.supplements})
+    await prepared.validate()
+    const {inputEntryId,...proof}=checkpoint
+    return {proposal:{...proof,inboxDigest:prepared.inboxDigest},eventIds:prepared.allIds,pendingCount:prepared.inbox.length}
+  }
+  async function inspectRouterBatch({conversationId}={}){
+    assertOpen();ctx.get('channels').assertGroupTarget(conversationId)
+    if(agents.currentInitiator?.()!==undefined)fail('ROUTER_RESUME_HOST_ONLY')
+    if(tails.has(conversationId))fail('ROUTER_RESUME_BUSY')
+    const row=await query('router.get',{conversationId});assertOpen()
+    const handle=row&&handles.get(row.activeSessionId)
+    // 只读检查不能为冷 session 创建 owner、提交历史或清除恢复错误。
+    if(!row||row.phase!=='active'||!handle)fail('ROUTER_RESUME_OWNER_UNAVAILABLE')
+    return inspectBatch(row,handle)
+  }
+  async function checkRouterBatch(proposal){
+    const result=await inspectRouterBatch(proposal)
+    if(!isDeepStrictEqual(result.proposal,proposal))fail('ROUTER_RESUME_STALE')
+    return {...result,checkOnly:true}
+  }
+  async function continueBatch(row,handle,packet,failedEntryId,onAttempt=()=>{},expected){
+    const conversationId=row.id,packetId=packet.id,startedAt=new Date().toISOString()
+    const {inbox,supplements,allIds,validate,inboxDigest}=await prepareResume(row,handle,packet)
+    if(expected){
+      const checkpoint=await handle.checkRouterBatch({packet,failedEntryId,supplements})
+      if(checkpoint.checkpointRevision!==expected.checkpointRevision||inboxDigest!==expected.inboxDigest)fail('ROUTER_RESUME_STALE')
+      await validate()
+    }
     for(const input of [packet,...supplements])packets.set(input.id,input)
     const observed=timing(row,`${packetId}:resume:${failedEntryId}`,1),stopObserving=observed.observe(handle.session)
     observed.start(inbox.filter(event=>event.sourceId).map(event=>({sourceId:event.sourceId,messageId:event.source?.messageId,version:event.messageVersion})),startedAt)
@@ -253,7 +290,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
     if(pending.some(event=>allIds.includes(event.id)))fail('ROUTER_BATCH_UNSETTLED')
   }
-  async function resumeRouterBatch({conversationId,generation,sessionId:activeSessionId,packetId,failedEntryId}={}){
+  async function resumeRouterBatch({conversationId,generation,sessionId:activeSessionId,packetId,failedEntryId,checkpointRevision,inboxDigest}={}){
     assertOpen();ctx.get('channels').assertGroupTarget(conversationId)
     if(agents.currentInitiator?.()!==undefined)fail('ROUTER_RESUME_HOST_ONLY')
     if(![conversationId,activeSessionId,packetId,failedEntryId].every(value=>typeof value==='string'&&value.length)||!Number.isSafeInteger(generation)||generation<1)fail('ROUTER_RESUME_REQUEST_INVALID')
@@ -267,7 +304,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
       if(!await persistence.stat(activeSessionId))fail('ROUTER_NATIVE_IDENTITY_INVALID')
       const handle=await open(row),packet=handle.agent.admission.lookupPacket(packetId)
       if(packet?.id!==packetId)fail('ROUTER_PACKET_ID_CONFLICT')
-      await continueBatch(row,handle,packet,failedEntryId,()=>{attempted=true})
+      await continueBatch(row,handle,packet,failedEntryId,()=>{attempted=true},checkpointRevision!==undefined||inboxDigest!==undefined?{checkpointRevision,inboxDigest}:undefined)
       await drain(conversationId)
       return {conversationId,generation,sessionId:activeSessionId,packetId,resumed:true,settled:true}
     })
@@ -275,7 +312,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
     void work.then(()=>errors.delete(conversationId),error=>{if(attempted)errors.set(conversationId,error)}).finally(()=>{inflight.delete(work);if(tails.get(conversationId)===work)tails.delete(conversationId)}).catch(()=>{})
     return work
   }
-  return {schedule,resumeRouterBatch,errors,hasInflight:conversationId=>tails.has(conversationId),
+  return {schedule,inspectRouterBatch,checkRouterBatch,resumeRouterBatch,errors,hasInflight:conversationId=>tails.has(conversationId),
     async whenIdle(){for(;;){const work=[...tails.values()];await Promise.all(work);if(!tails.size)break}},
     async recover(){
       const conversations=new Set((await query('router.list')).map(row=>row.id))

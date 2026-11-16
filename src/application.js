@@ -1,3 +1,4 @@
+import {createRouterOperatorAuth,createRouterOperatorHttp} from './channels/router-operator.js'
 import {createSettingsOperatorAuth} from './settings/auth.js'
 import {createSettingsHttp} from './settings/http.js'
 import {createEffectOperatorAuth} from './tasks/effect-operator-auth.js'
@@ -22,8 +23,11 @@ export async function apply(ctx,config){
     const errors=[]
     const attempt=async action=>{try{await action();return true}catch(error){errors.push(error);return false}}
     await attempt(()=>ctx.parallel('night/stopping'))
-    await attempt(async()=>{if(server?.listening)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()))})
+    // 先拒绝新连接，再取消在途模型轮；不能等待续办 HTTP 返回后才中断它。
+    const serverClosed=server?.listening?new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve())):Promise.resolve()
+    void serverClosed.catch(()=>{})
     const tasksClosed=await attempt(()=>tasks?.close())
+    await attempt(()=>serverClosed)
     // tasks 仍可能依赖原来源/通知/归档 store；close 拒绝不构成其可拆证明。
     if(tasksClosed)await attempt(()=>runtime.close?.())
     if(errors.length)throw new AggregateError(errors,'Application shutdown failed; ownership retained')
@@ -36,6 +40,7 @@ export async function apply(ctx,config){
     readResource:(...args)=>ctx.get('channels').readResource('readResource',...args),
     readMentioned:(...args)=>ctx.get('channels').readResource('readMentioned',...args),
     notifications:operatorNotifications??{canDisclose:()=>false,send:unsupported,readback:unsupported}})
+  const routerAuth=await createRouterOperatorAuth(paths),routerHttp=createRouterOperatorHttp({auth:routerAuth,getTasks:()=>tasks})
   const effectOperatorAuth=await createEffectOperatorAuth(paths)
   const settingsAuth=await createSettingsOperatorAuth(paths),settingsHttp=createSettingsHttp({auth:settingsAuth,getSettings:()=>ctx.get('operatorSettings'),getChannels:()=>ctx.get('channelConfiguration'),getPermissions:()=>ctx.get('toolPermissions')})
   const bindings={listExecutionTrace:'listExecutionTrace',inspectTaskEffect:'inspectTaskEffect',reconcileTaskEffect:'reconcileTaskEffect',listAlertPage:'listAlertPage',listAlerts:'listAlerts',listActivities:'listActivities',listTaskTimings:'listTaskTimings',listPerformance:'listPerformance',getActivityAuditStatus:'getActivityAuditStatus',ingest:'ingest',isOwnNotification:'isOwnNotification',listObserverGroups:'listObserverGroups',observerGroupPage:'observerGroupPage',listTaskView:'boardTasks',hasPendingTopicFacts:'hasPendingTopicFacts',messageProcessingSources:'messageProcessingSources',messageProcessingRequests:'messageProcessingRequests',getTaskSessionDetail:'taskDetail',getTaskSessionIdentity:'taskIdentity',getTaskSessionExecutions:'taskExecutions',getTaskSessionDecisions:'taskDecisions',createTask:'createTask',appendTaskContext:'appendTaskContext',reopenTask:'reopenTask',getTaskDialogue:'taskDialogue',sendTaskDialogue:'sendTaskDialogue',cancelTask:'cancelTask',archiveTask:'archiveTask',listAuthorizationRequests:'listAuthorizationRequests',respondTaskHumanRequest:'respondHumanRequest',reconcileWebTaskTopics:'reconcileWebTaskTopics',respondTaskPrivateHumanReply:'respondPrivateHumanReply',retryDecisionFailedMessage:'retryMessageProcessing',updateMessageRoutingHold:'updateMessageRoutingHold',retryNotification:'retryNotification'}
@@ -44,7 +49,7 @@ export async function apply(ctx,config){
   const oldIssues=runtime.listRecoveryIssues.bind(runtime);runtime.listRecoveryIssues=()=>[...oldIssues(),...tasks.listAlerts().filter(alert=>alert.type!=='task').map(alert=>({kind:'task',...alert,error:alert.detail}))]
   const application={runtime,tasks,store,config,close};ctx.provide('application',application)
   timer=setInterval(()=>void tasks.recover().catch(error=>ctx.logger.warn(error.code??'TASK_RECOVERY_FAILED')),taskConfig.recoveryIntervalMs??5000);timer.unref()
-  server=createServer((request,response)=>(async()=>{if(await settingsHttp(request,response))return;await handleRequest(request,response,runtime,{transport:'channels',outboundAuthorized:ctx.get('channels').transports.size>0,modelMode:'real',effectOperatorAuth})})().catch(error=>{applyResidentCorsHeaders(request,response);if(!response.headersSent)response.writeHead(residentErrorStatus(error),{'content-type':'application/json; charset=utf-8'});response.end(JSON.stringify({error:error.code??error.message}))}))
+  server=createServer((request,response)=>(async()=>{if(await routerHttp(request,response)||await settingsHttp(request,response))return;await handleRequest(request,response,runtime,{transport:'channels',outboundAuthorized:ctx.get('channels').transports.size>0,modelMode:'real',effectOperatorAuth})})().catch(error=>{applyResidentCorsHeaders(request,response);if(!response.headersSent)response.writeHead(residentErrorStatus(error),{'content-type':'application/json; charset=utf-8'});response.end(JSON.stringify({error:error.code??error.message}))}))
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(resident.port??18998,resident.host??'127.0.0.1',resolve)})
   await tasks.recover();await ctx.parallel('night/ready',application)
 }

@@ -1758,6 +1758,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   const api = {
     withChannelTargetSwitch,
+    async inspectRouterBatch(args){
+      if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
+      return hostScheduler(()=>residentRouter.inspectRouterBatch(args))
+    },
+    async checkRouterBatch(args){
+      if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
+      return hostScheduler(()=>residentRouter.checkRouterBatch(args))
+    },
     async resumeRouterBatch(args){
       if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
       try{return await hostScheduler(()=>residentRouter.resumeRouterBatch(args))}finally{syncRouterFailures()}

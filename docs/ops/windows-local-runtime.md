@@ -139,7 +139,22 @@ Invoke-RestMethod 'http://127.0.0.1:19198/state/supervisor/alerts?limit=10&type=
 
 这仅提供定位依据，不证明真实渠道提速；应在另行授权部署后，用同口径消息测量首答可见时间。
 
-若冷启动保留 `ROUTER_BATCH_UNSETTLED`，应核对任务服务 `recover()` 的 `degraded` 结果和现有恢复告警，不能把入口可用或已完成任务当作 Router 已消费。只有严格满足中止生成条件的批次自动沿原会话领取一次；普通 error 继续由已授权 Host 集成按[原批次续办合同](../CHANNELS.md#已接纳未结批次的安全续办)绑定原失败 checkpoint；没有新增可供操作者直接使用的 HTTP/CLI，不直调 SDK、不重建任务、不改 journal、DB 或通知收据。其它恢复错误仍停止启动。若关闭报错，保留错误和原资源，独立核对实际排空；Host/application 异常关闭短路风险尚未修复，不能因正常路径曾退出就认定异常路径资源已释放。
+若冷启动保留 `ROUTER_BATCH_UNSETTLED`，应核对任务服务 `recover()` 的 `degraded` 结果和现有恢复告警，不能把入口可用或已完成任务当作 Router 已消费。只有严格满足中止生成条件的批次自动沿原会话领取一次；普通 error 使用下述操作者入口按[原批次续办合同](../CHANNELS.md#已接纳未结批次的安全续办)绑定原失败 checkpoint；不直调 SDK、不重建任务、不改 journal、DB 或通知收据。其它恢复错误仍停止启动。若关闭报错，保留错误和原资源，独立核对实际排空；Host/application 异常关闭短路风险尚未修复，不能因正常路径曾退出就认定异常路径资源已释放。
+
+### Router 模型错误的显式续办
+
+先修复原认证/服务问题并确认安装授权。以下命令连接已运行的本机 Host，不启动第二个实例。将 inspect 的 `proposal` 对象保存到本安装忽略的 `data/temp/router-resume.json`；不把运行身份或业务材料写入 Git。
+
+```powershell
+$result = node bin/night-bot-router.js data/config/config.json inspect CONVERSATION_ID | ConvertFrom-Json
+$result.proposal | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8 data/temp/router-resume.json
+node bin/night-bot-router.js data/config/config.json resume --proposal data/temp/router-resume.json --check
+node bin/night-bot-router.js data/config/config.json resume --proposal data/temp/router-resume.json
+```
+
+`--check` 必须先运行：它检查原生失败点、完整 inbox 与 owner，不写 claim/journal，不调模型，不清错误，也不替代执行时来源授权。新输入或检查点变化会令 proposal 失效，须重新 inspect/check，不能手改 hash。无已打开 owner 时先核查正常恢复的失败原因，不为检查创建新 session。私有 capability 位于 `data/secrets/router-operator.credentials.json`，CLI 自行读取；不要打印、传到 URL/环境或手工复制到请求材料。
+
+实际续办可能调用模型、由原 Router 调度原任务和履行原来源授权的效果。CLI 不自动重试；`ROUTER_OPERATOR_RESULT_UNKNOWN` 表示响应丢失或取消，服务端可能仍在执行，先 inspect 并查询 inbox/任务/告警。busy 时等待原轮；已消费的检查点不得再次领取。成功响应的 `settled:true` 表示联合批次已消费，任务最终交付与渠道回读仍要单独核验。完成后删除本次 proposal 临时文件。
 
 ## 文件工具纠错与未知效果
 

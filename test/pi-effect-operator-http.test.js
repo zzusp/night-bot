@@ -66,4 +66,10 @@ test('actual application publishes the protected operator routes with its privat
  const token=await readEffectOperatorToken(f.host.ctx.runtimePaths),path='/tasks/nonexistent/effects/nonexistent/inspect';assert.equal((await post(port,path,{})).status,403)
  const result=await post(port,path,{}, {authorization:'Bearer '+token});assert.equal(result.status,409,JSON.stringify(result.body));assert.equal(result.body.error,'TASK_EFFECT_TASK_NOT_QUIESCENT');assert.ok(!result.text.includes(token));assert.equal(f.requests.length,0)
  const actionResponse=await post(port,'/tasks/nonexistent/effects/new-action',{}, {authorization:'Bearer '+token});assert.equal(actionResponse.status,410);assert.equal(f.requests.length,0)
+ const routerToken=JSON.parse(await readFile(join(f.host.ctx.runtimePaths.secrets,'router-operator.credentials.json'),'utf8')).token
+ assert.equal((await post(port,'/operator/router',{command:'inspect',conversationId:'nonexistent'})).status,403)
+ assert.equal((await post(port,'/operator/router',{command:'inspect',conversationId:'nonexistent'},{authorization:'Bearer '+token})).status,403,'effects capability does not grant Router continuation')
+ const invalid=await post(port,'/operator/router',{command:'unknown'},{authorization:'Bearer '+routerToken})
+ assert.equal(invalid.status,400);assert.equal(invalid.body.error,'ROUTER_OPERATOR_REQUEST_INVALID');assert.equal(f.requests.length,0)
+ assert.ok(!invalid.text.includes(routerToken))
 })
