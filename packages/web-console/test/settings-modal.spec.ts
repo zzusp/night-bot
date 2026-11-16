@@ -4,7 +4,7 @@ import {FIXTURE_TOKEN,startPreview} from './preview.mjs';
 async function login(page:Page,path='/chat/sample-plan',origin=''){
  await page.goto(origin+'/#'+path);await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);await page.getByRole('button',{name:'连接工作空间',exact:true}).click();await expect(page.locator('.workspace-topbar')).toBeVisible();
 }
-async function open(page:Page){if(await page.getByRole('button',{name:'打开导航',exact:true}).isVisible())await page.getByRole('button',{name:'打开导航',exact:true}).click();await page.getByRole('button',{name:'设置',exact:true}).filter({visible:true}).click();await expect(page.getByRole('dialog',{name:'设置',exact:true})).toBeVisible()}
+async function open(page:Page){await page.getByRole('button',{name:'设置',exact:true}).filter({visible:true}).click();await expect(page.getByRole('dialog',{name:'设置',exact:true})).toBeVisible()}
 test('设置模态保留底页和草稿，键盘取消/放弃恢复焦点',async({page})=>{
  await login(page,'/tasks/task-research');const route=page.url();
  await page.locator('.main-panel').evaluate(el=>el.scrollTop=120);const before=await page.locator('.main-panel').evaluate(el=>el.scrollTop);
@@ -44,7 +44,7 @@ for(const width of [1440,390])test(`底页真实长记录滚动和聊天草稿�
   const transcript=page.locator('.execution-transcript .transcript');await expect(transcript).toBeVisible();await expect(transcript.locator('.message-user').first()).toBeAttached();
   await transcript.evaluate(el=>el.scrollTop=el.scrollHeight/2);const before=await transcript.evaluate(el=>el.scrollTop);expect(before).toBeGreaterThan(170);const original=await transcript.elementHandle();const url=page.url();
   await open(page);await expect(page.locator('.main-frame')).toHaveAttribute('inert','');await page.keyboard.press('Escape');await expect(page.locator('.settings-modal')).toHaveCount(0);expect(page.url()).toBe(url);expect(await original!.evaluate(el=>el.isConnected)).toBe(true);expect(Math.abs(await transcript.evaluate(el=>el.scrollTop)-before)).toBeLessThanOrEqual(1);
-  if(width===390)await expect(page.getByRole('button',{name:'打开导航',exact:true})).toBeFocused();
+  await expect(page.getByRole('button',{name:'设置',exact:true})).toBeFocused();
   await page.goto(fixture.origin+'/#/chat/sample-plan');const draft=page.getByLabel('消息内容',{exact:true});await draft.fill('仅用于预览的未发送草稿');const composer=await draft.elementHandle();await open(page);await page.getByRole('button',{name:'关闭设置',exact:true}).click();await expect(draft).toHaveValue('仅用于预览的未发送草稿');expect(await composer!.evaluate(el=>el.isConnected)).toBe(true);
  }finally{await fixture.close()}
 });
@@ -67,4 +67,16 @@ test('设置首次加载与读取失败始终有稳定弹窗名称',async({page}
   release();await expect(dialog.getByRole('alert')).toBeVisible();await expect(dialog).toHaveAccessibleName('设置');await expect(dialog.getByRole('alert')).toHaveCount(1);
   await dialog.getByRole('button',{name:'关闭设置',exact:true}).click();await expect(dialog).toHaveCount(0);
  }finally{release()}
+});
+
+for(const width of [1440,390,320])test(`设置入口位于全局工具组并紧邻外观切换 ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:900});await login(page);
+ const trigger=page.locator('.workspace-topbar').getByRole('button',{name:'设置',exact:true});
+ await expect(trigger).toBeVisible();await expect(trigger).toHaveAttribute('title','设置');await expect(trigger).toHaveAttribute('aria-haspopup','dialog');
+ await expect(page.locator('.sidebar button[aria-label="设置"],.sidebar-settings')).toHaveCount(0);
+ expect(await trigger.evaluate(el=>el.previousElementSibling?.getAttribute('aria-label'))).toMatch(/^切换[深浅]色外观$/);
+ const box=await trigger.boundingBox();expect(box!.x).toBeGreaterThan(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:test.info().outputPath(`settings-header-${width}.png`)});
+ await trigger.focus();await page.keyboard.press('Enter');await expect(page.getByRole('dialog',{name:'设置',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(trigger).toBeFocused();
 });

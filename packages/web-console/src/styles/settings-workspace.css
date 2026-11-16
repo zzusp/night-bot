@@ -61,9 +61,6 @@
 }
 
 /* Native top-layer dialog keeps the underlying route and scroll mounted. */
-.sidebar-settings { display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;margin-bottom:10px;border:0;border-radius:var(--board-radius-control);background:transparent;color:var(--board-muted);font:inherit;font-size:13px;text-align:left;cursor:pointer; }
-.sidebar-settings:hover {background:var(--board-surface);color:var(--board-text)}
-.sidebar-settings:focus-visible {outline:2px solid var(--board-primary);outline-offset:2px}
 .settings-modal { position:fixed;inset:0;width:min(1120px,calc(100vw - 80px));height:min(800px,calc(100dvh - 80px));max-width:none;max-height:none;margin:auto;padding:0;border:1px solid var(--board-border);border-radius:20px;background:var(--board-surface);color:var(--board-text);box-shadow:0 24px 80px #00000030;overflow:hidden; }
 .settings-modal::backdrop {background:#11182766;}
 .settings-modal .settings-workspace {display:flex;flex-direction:column;width:100%;height:100%;max-width:none;padding:0;margin:0;}

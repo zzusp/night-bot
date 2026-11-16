@@ -23,10 +23,10 @@ async function confirm(page: Page) {
   await page.getByRole('dialog', {name: '保存自定义渠道', exact: true}).getByRole('button', {name: '确认保存', exact: true}).click()
 }
 
-test('添加渠道发现真实插件并保存非钉钉配置，保留侧栏设置而移除顶部设置链接', async ({page}) => {
+test('添加渠道发现真实插件并保存非钉钉配置，保留全局设置入口而移除渠道专用设置链接', async ({page}) => {
   const {dialog, form} = await custom(page, 'generic-entry-created')
   await expect(page.getByRole('link', {name: '自定义渠道设置', exact: true})).toHaveCount(0)
-  await expect(page.locator('.desktop-sidebar').getByRole('link', {name: '设置', exact: true})).toHaveAttribute('href', '#/settings')
+  await expect(page.locator('.workspace-topbar button[aria-label="设置"]')).toHaveCount(1)
   await expect(form.getByLabel('启用渠道', {exact: true})).toHaveValue('false')
   await expect(form.getByLabel('监听（必填）', {exact: true})).toHaveValue('false')
   let dingtalkWrites = 0
@@ -45,7 +45,7 @@ test('添加渠道发现真实插件并保存非钉钉配置，保留侧栏设�
   expect(saved.channels.find((row: {channelId: string}) => row.channelId === 'generic-entry-created')).toMatchObject({type: 'fixture-custom', enabled: false, config: {room: 'generic-test-room'}})
   await dialog.getByRole('button', {name: '关闭添加渠道', exact: true}).click()
   await expect(page.getByRole('button', {name: '添加渠道', exact: true})).toBeFocused()
-  await page.reload(); await page.locator('.desktop-sidebar').getByRole('link', {name: '设置', exact: true}).click()
+  await page.reload(); await page.locator('.workspace-topbar').getByRole('button', {name: '设置', exact: true}).click(); await page.getByRole('tab', {name: '助手外观', exact: true}).click()
   await expect(page.getByLabel('显示名称', {exact: true})).toBeVisible()
   await expect(page.getByRole('heading', {name: '自定义渠道', exact: true})).toHaveCount(0)
   await expect(page.getByRole('button', {name: '编辑 generic-entry-created', exact: true})).toHaveCount(0)
