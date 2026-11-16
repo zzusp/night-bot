@@ -1,0 +1,13 @@
+case_id,description,round_1,evidence
+progress,提及绑定操作者的既有任务追问,PASS,bfcc3a3+Router修改；query→reply→handled-inline；consumed+delivered
+third-party,明确交给他人的另一事项,PASS,0 Router回复；任务数仍为1；无业务动作
+evidence-gap,缺少线上验收证据,PASS,查证后明确未确认；未虚构验收通过
+running-progress,原任务会话活动租约下追问,PASS,drained=false；同session查询回复；1条delivered
+cold-restart,结清后冷重启不重放,PASS,工具与发送数量均不增长
+router-regressions,最终相关路由回归77项,PASS,bfcc3a3+Router修改；77/77；详见round-1.md
+source-guards,项目源码导入及原生边界检查,PASS,fe97ee6+Router修改；pnpm check和语法及diff检查通过
+routing-full,路由全量150项,FAIL,0a2aa75+Router修改；149通过1失败；人工答复后active而非completed
+baseline-comparison,未修改Router对照同一失败,PASS,bfcc3a3未改Router模块同样在pi-resident-router.test.js:133失败；未扩展修复
+digest-bytes,主线摘要字节变化与竞争拒绝,PASS,fe97ee6；2项通过
+digest-symlink,主线摘要文件symlink拒绝,BLOCKED,Windows缺少文件symlink权限；EPERM；不记通过
+live-deployment,实际Bot升级与真实消息补报,NOT_RUN,未获授权；不以隔离测试替代上线
