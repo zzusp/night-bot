@@ -1444,3 +1444,19 @@ Diagnostics must investigate before reporting: establish object and timing seman
 The session has a five-minute abort deadline, at most 24 evidence calls and 30,000 characters of evidence. A budget refusal is returned as a coverage gap, not silently truncated JSON. Final output remains a local, editable preview. Neither collection nor preview automatically creates an issue. GitHub submission requires a separate confirmation of the exact edited content. Native image attachment remains a manual GitHub handoff.
 
 Run `node --test test/pi-feedback.test.js test/pi-feedback-session.test.js test/feedback-diagnostic-contract.test.js test/feedback-chain-evidence.test.js` with synthetic fixtures only. Do not submit live issues or collect personal installation data during these tests.
+
+## Learned Skill history identity (#160)
+
+Learned Skill history is authorized against its concrete scope/key, own revision,
+content fingerprint, active status and currently valid support. Unrelated shared
+memory writes no longer invalidate that history. Support authorization checks the
+complete experience index rather than a display-sized first 50 entries. Actual
+skill changes/deletion, lost support and lost reader scope still invalidate old
+body projections. Original Pi journals are not rewritten and tools are not replayed.
+
+Pre-upgrade markers contain only the shared library revision, not a provable
+skill version/content identity. They remain fail-closed; an explicit normal skill
+load supplies a new marker. No background reload or execution is performed.
+Regression coverage: `test/pi-learned-skill-history.test.js`, including the real
+Host/Pi native skill loop using a local scripted model, cross-task unrelated
+writes, current reload, true revocation and more than 50 supporting-index entries.
