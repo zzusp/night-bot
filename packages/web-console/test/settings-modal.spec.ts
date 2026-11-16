@@ -74,7 +74,7 @@ for(const width of [1440,390,320])test(`设置入口位于全局工具组并紧�
  const trigger=page.locator('.workspace-topbar').getByRole('button',{name:'设置',exact:true});
  await expect(trigger).toBeVisible();await expect(trigger).toHaveAttribute('title','设置');await expect(trigger).toHaveAttribute('aria-haspopup','dialog');
  await expect(page.locator('.sidebar button[aria-label="设置"],.sidebar-settings')).toHaveCount(0);
- expect(await trigger.evaluate(el=>el.previousElementSibling?.getAttribute('aria-label'))).toMatch(/^切换[深浅]色外观$/);
+ expect(await trigger.evaluate(el=>el.nextElementSibling?.getAttribute('aria-label'))).toMatch(/^切换[深浅]色外观$/);
  const box=await trigger.boundingBox();expect(box!.x).toBeGreaterThan(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:test.info().outputPath(`settings-header-${width}.png`)});
