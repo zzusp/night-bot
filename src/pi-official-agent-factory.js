@@ -210,7 +210,8 @@ export class OfficialAgentFactory {
     const failure=branch.find(entry=>entry.id===failedEntryId),claims=entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.router-resume-claim'&&entry.details?.failedEntryId===failedEntryId)
     if(claim===undefined&&claims.length)throw fail('PI_ROUTER_RESUME_CHECKPOINT_USED')
     if(claim!==undefined&&(claims.length!==1||!isDeepStrictEqual(claims[0].details,claim)||messages.at(-1)?.id!==claims[0].id||entries.length!==store.snapshot().nativeEntryCount))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
-    if(failure?.type!=='message'||failure.message.role!=='assistant'||!['error','aborted'].includes(failure.message.stopReason)||messages.at(claim===undefined?-1:-2)?.id!==failedEntryId||branch.indexOf(input)>=branch.indexOf(failure))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+    // 正常 stop 不保证批次已结清；操作者可沿同一检查点继续，默认恢复仍不重放。
+    if(failure?.type!=='message'||failure.message.role!=='assistant'||!['error','aborted','stop'].includes(failure.message.stopReason)||messages.at(claim===undefined?-1:-2)?.id!==failedEntryId||branch.indexOf(input)>=branch.indexOf(failure))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
     // 未配对或错误工具结果不能凭 idle 推断外部效果已结算。
     const suffix=branch.slice(branch.indexOf(input)+1),calls=new Map()
     for(const entry of suffix){

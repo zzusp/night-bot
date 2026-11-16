@@ -139,7 +139,7 @@ Invoke-RestMethod 'http://127.0.0.1:19198/state/supervisor/alerts?limit=10&type=
 
 这仅提供定位依据，不证明真实渠道提速；应在另行授权部署后，用同口径消息测量首答可见时间。
 
-若冷启动保留 `ROUTER_BATCH_UNSETTLED`，应核对任务服务 `recover()` 的 `degraded` 结果和现有恢复告警，不能把入口可用或已完成任务当作 Router 已消费。只有严格满足中止生成条件的批次自动沿原会话领取一次；普通 error 使用下述操作者入口按[原批次续办合同](../CHANNELS.md#已接纳未结批次的安全续办)绑定原失败 checkpoint；不直调 SDK、不重建任务、不改 journal、DB 或通知收据。其它恢复错误仍停止启动。若关闭报错，保留错误和原资源，独立核对实际排空；Host/application 异常关闭短路风险尚未修复，不能因正常路径曾退出就认定异常路径资源已释放。
+若冷启动保留 `ROUTER_BATCH_UNSETTLED`，应核对任务服务 `recover()` 的 `degraded` 结果和现有恢复告警，不能把入口可用或已完成任务当作 Router 已消费。只有严格满足中止生成条件的批次自动沿原会话领取一次；普通 error 或正常 stop 未结批次使用下述操作者入口按[原批次续办合同](../CHANNELS.md#已接纳未结批次的安全续办)绑定原检查点；不直调 SDK、不重建任务、不改 journal、DB 或通知收据。其它恢复错误仍停止启动。若关闭报错，保留错误和原资源，独立核对实际排空；Host/application 异常关闭短路风险尚未修复，不能因正常路径曾退出就认定异常路径资源已释放。
 
 ### 既有事项进度追问
 
@@ -147,7 +147,7 @@ Router 会结合当前职责与原任务处理进度追问，不因提及操作�
 
 ### Router 模型错误的显式续办
 
-先修复原认证/服务问题并确认安装授权。以下命令连接已运行的本机 Host，不启动第二个实例。将 inspect 的 `proposal` 对象保存到本安装忽略的 `data/temp/router-resume.json`；不把运行身份或业务材料写入 Git。
+本入口也适用于最后 assistant 正常 `stop`、但原批次仍未结清的情况；正常 stop 不证明事件已消费，不会由普通恢复自动重试。先核实原停止原因、修复认证/服务问题（若存在）并确认安装授权；未结工具结果、作业或效果必须先按原合同处理，不能靠续办跳过。以下命令连接已运行的本机 Host，不启动第二个实例。将 inspect 的 `proposal` 对象保存到本安装忽略的 `data/temp/router-resume.json`；不把运行身份或业务材料写入 Git。
 
 ```powershell
 $result = node bin/night-bot-router.js data/config/config.json inspect CONVERSATION_ID | ConvertFrom-Json
