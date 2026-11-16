@@ -15,7 +15,7 @@
 
 ## 保留清单
 
-以下所有许可路径均为 `licenses/dsh-<名称>-MIT.txt`，源码路径默认以 `src/` 为根。默认未挂载的完整保留源/测试副本也仍需归属；下表不将它们误记为生产必需。
+以下所有许可路径均为 `licenses/dsh-<名称>-MIT.txt`，源码路径默认以 `src/` 为根。需同时核对动态加载：`src/host.js:250` 按 shell 拼接加载 Bash/PowerShell sandbox，不能只查完整文件名引用。独立保留测试副本也仍需归属。
 
 | 名称 | 对应仍分发的派生实现 / 保留依据 |
 | --- | --- |
@@ -24,8 +24,8 @@
 | `app-boot` | native-profile-preflight.js：manifest/include准入子集 |
 | `attachment-local` | native-attachment-{codec,storage,errors}.js、native-attachments.js：v1内容寻址与图像规范化 |
 | `authorization` | native-capability-errors.js；test/fixtures/legacy-authorization-interface.mjs：错误及独立参考算法 |
-| `bash-local` | native-bash-local.js：旧本地executor；仅测试/保留源链消费，并非默认Host |
-| `bash-sandbox` | native-bash-sandbox.js：旧sandbox executor；仅测试/保留源链消费，并非默认Host |
+| `bash-local` | native-bash-local.js：本地executor；Host动态加载sandbox后继承此实现 |
+| `bash-sandbox` | native-bash-sandbox.js：sandbox executor；Host第250行按shell动态加载 |
 | `credentials` | native-credential-protocol.js、native-credentials.js：scope/id/reference与v1存储协议 |
 | `fs` | native-fs-protocol.js：错误与能力契约 |
 | `fs-local` | fs-windows-security.js：Windows DACL/ReplaceFileW桥 |
@@ -34,14 +34,14 @@
 | `http-proxy` | native-http-proxy.js：代理策略与环境适配 |
 | `llm` | native-message-protocol.js、native-llm-{errors,protocol}.js：消息、错误与schema |
 | `permission-presets` | native-permission-presets.js：权限preset/投影及准入算法 |
-| `pwsh-local` | native-pwsh-local.js：旧PowerShell executor；仅测试/保留源链消费，并非默认Host |
-| `pwsh-sandbox` | native-pwsh-sandbox.js：旧PowerShell sandbox；仅测试/保留源链消费，并非默认Host |
+| `pwsh-local` | native-pwsh-local.js：PowerShell executor；Host动态加载sandbox后继承此实现 |
+| `pwsh-sandbox` | native-pwsh-sandbox.js：PowerShell sandbox；Host第250行按shell动态加载 |
 | `sandbox` | native-sandbox-protocol.js；test/fixtures/legacy-sandbox-interface.mjs：root/escalation/diagnostic算法 |
 | `sandbox-windows-acl` | process/windows-acl.js、process/windows-acl-runner.js：Windows ACL派生源 |
 | `schedule` | native-schedule-protocol.js、native-schedule.js：calendar/record/history管理 |
 | `scope` | native-scope.js；test/fixtures/legacy-scope.mjs：scope存储、parent graph及事件 |
 | `session-persistence` | native-persistence-protocol.js：严格IO/error契约 |
-| `shell` | native-shell.js：旧shell/render协议；仅测试/保留源链消费，并非默认Host |
+| `shell` | native-shell.js：shell/render协议；Host动态加载的Bash/Pwsh执行器继承此实现 |
 | `shell-env` | native-shell-env.js：registry/contributor ownership及snapshot |
 | `skill` | native-skill-protocol.js：技能协议算法 |
 | `skill-filesystem` | native-skill-watcher.js：watcher平台后端 |
@@ -69,7 +69,11 @@
 
 ## 后续移除边界
 
-- 旧 shell/local/sandbox 完整源链若另行退休，可在清理专属测试与共享片段后继续减少通知；不能只删 notices。
+- shell/local/sandbox 是实际生产执行链。Pi已有官方本地shell operations，但当前只使用官方工具定义并委托旧适配执行；替换必须覆盖后台Job、完整输出、取消排空及隔离后才可退休源码/通知。
 - Windows process/ACL、网络、文件策略、凭据和调度属于跨平台或持久化边界，替换需逐模块实现、Linux/Windows 回归和格式兼容检查，不是改名或删除许可可完成的清理。
 - 小型错误/schema/工具适配片段也保留真实来源；使用 Pi 的工具定义并不自动覆盖 Night 保留的进程、输出和策略实现。
 - 保留的具体范围由 `THIRD_PARTY.md` 与对应 source manifest 说明。历史归属文字不因退休而伪造或覆盖。
+
+## 动态加载核对更正
+
+初次静态文件名检索将shell链误判为仅测试引用，已纠正。实际链路为 Host 动态加载 native-{bash,pwsh}-sandbox → native-{bash,pwsh}-local → native-shell → process backend。Pi工具定义不等于其默认本地执行后端已采用。
