@@ -141,6 +141,10 @@ Invoke-RestMethod 'http://127.0.0.1:19198/state/supervisor/alerts?limit=10&type=
 
 若冷启动保留 `ROUTER_BATCH_UNSETTLED`，应核对任务服务 `recover()` 的 `degraded` 结果和现有恢复告警，不能把入口可用或已完成任务当作 Router 已消费。只有严格满足中止生成条件的批次自动沿原会话领取一次；普通 error 使用下述操作者入口按[原批次续办合同](../CHANNELS.md#已接纳未结批次的安全续办)绑定原失败 checkpoint；不直调 SDK、不重建任务、不改 journal、DB 或通知收据。其它恢复错误仍停止启动。若关闭报错，保留错误和原资源，独立核对实际排空；Host/application 异常关闭短路风险尚未修复，不能因正常路径曾退出就认定异常路径资源已释放。
 
+### 既有事项进度追问
+
+Router 会结合当前职责与原任务处理进度追问，不因提及操作者而直接结清。此规则更新没有 schema/config 迁移，也不改变渠道配置；安装升级仍按本页排空与正常重启流程执行。已经错误结清的历史来源不会自动重放或补发，模型错误续办入口也不适用于已消费事件；需要补报时由操作者明确发起新的进度查询。隔离真实模型场景验证见 [Router 进度追问验收](../acceptance/router-progress-followup/round-1.md)。
+
 ### Router 模型错误的显式续办
 
 先修复原认证/服务问题并确认安装授权。以下命令连接已运行的本机 Host，不启动第二个实例。将 inspect 的 `proposal` 对象保存到本安装忽略的 `data/temp/router-resume.json`；不把运行身份或业务材料写入 Git。

@@ -1,0 +1,157 @@
+{
+  "startedAt": "2026-11-16T10:55:57.912Z",
+  "mode": "real-router-model/isolated-host/fake-channel/scripted-triage-and-executor",
+  "head": "bfcc3a3c2bb667c0919a90ea5921519344bbdb6e",
+  "routerSourceSha256": "cbb76e1b113f885e721f8bb56a42ec09f28b157fa748e1c6d4c9d072df06b7dc",
+  "cases": [
+    {
+      "id": "progress",
+      "message": "@协作员(协作员) 进度如何",
+      "sourceState": "consumed",
+      "outcome": "handled-inline",
+      "startedWithRunningExecution": false,
+      "tools": [
+        {
+          "name": "channel_triage_submit",
+          "isError": false
+        },
+        {
+          "name": "resident_task_query",
+          "isError": false,
+          "taskId": "synthetic-release-progress",
+          "detail": "full"
+        },
+        {
+          "name": "resident_router_reply",
+          "isError": false
+        },
+        {
+          "name": "resident_router_settle",
+          "isError": false
+        }
+      ],
+      "taskCount": 1,
+      "taskSessionPreserved": true,
+      "replyCount": 1,
+      "replies": [
+        {
+          "state": "delivered",
+          "text": "当前记录显示：候选核对已完成，尚无合并完成的确认；本地代码包还未构建，也未执行上线。卡点是演示构建条件未就绪，目前在等待条件就绪。现有记录仅为模拟进展，未连接真实业务服务，不能据此确认真实线上状态。"
+        }
+      ],
+      "inboxPending": 0,
+      "passed": true
+    },
+    {
+      "id": "third-party",
+      "message": "@其他同事 请你独立处理另一个演示项目，小助手不用参与。",
+      "sourceState": "consumed",
+      "outcome": null,
+      "startedWithRunningExecution": false,
+      "tools": [
+        {
+          "name": "channel_triage_submit",
+          "isError": false
+        },
+        {
+          "name": "resident_router_settle",
+          "isError": false
+        }
+      ],
+      "taskCount": 1,
+      "taskSessionPreserved": true,
+      "replyCount": 0,
+      "replies": [],
+      "inboxPending": 0,
+      "passed": true
+    },
+    {
+      "id": "evidence-gap",
+      "message": "小助手，刚才那个演示发布线上业务验收都通过了吗？",
+      "sourceState": "consumed",
+      "outcome": null,
+      "startedWithRunningExecution": false,
+      "tools": [
+        {
+          "name": "channel_triage_submit",
+          "isError": false
+        },
+        {
+          "name": "resident_task_query",
+          "isError": false,
+          "taskId": "synthetic-release-progress",
+          "detail": "full"
+        },
+        {
+          "name": "resident_router_reply",
+          "isError": false
+        },
+        {
+          "name": "resident_router_settle",
+          "isError": false
+        }
+      ],
+      "taskCount": 1,
+      "taskSessionPreserved": true,
+      "replyCount": 1,
+      "replies": [
+        {
+          "state": "delivered",
+          "text": "目前不能确认线上业务验收通过。刚核对的任务记录显示：仅候选核对完成，本地代码包尚未构建，未执行上线，也没有线上业务验收结果；当前卡在演示构建条件未就绪。另外，这份任务记录仅记录模拟进展，未连接真实业务服务，不能作为真实线上验收通过的依据。"
+        }
+      ],
+      "inboxPending": 0,
+      "passed": true
+    },
+    {
+      "id": "running-progress",
+      "message": "@协作员(协作员) 进度如何",
+      "sourceState": "consumed",
+      "outcome": "handled-inline",
+      "startedWithRunningExecution": true,
+      "tools": [
+        {
+          "name": "channel_triage_submit",
+          "isError": false
+        },
+        {
+          "name": "resident_task_query",
+          "isError": false,
+          "taskId": "synthetic-release-progress",
+          "detail": "full"
+        },
+        {
+          "name": "resident_router_reply",
+          "isError": true
+        },
+        {
+          "name": "resident_router_reply",
+          "isError": false
+        },
+        {
+          "name": "resident_router_settle",
+          "isError": false
+        },
+        {
+          "name": "task_result",
+          "isError": false
+        }
+      ],
+      "taskCount": 1,
+      "taskSessionPreserved": true,
+      "replyCount": 1,
+      "replies": [
+        {
+          "state": "delivered",
+          "text": "正在核对演示构建状态，暂时还没有新的核对结果，本轮不会进行真实发布。已确认候选核对完成，合并是否完成尚未确认；最新已知结果是本地代码包未构建、未上线，上次卡点是构建条件未就绪。目前还没有构建成功或线上业务验收通过的证据。"
+        }
+      ],
+      "inboxPending": 0,
+      "passed": true
+    }
+  ],
+  "realChannelMessages": 0,
+  "coldRestartNoReplay": true,
+  "passed": true,
+  "completedAt": "2026-11-16T10:58:07.522Z"
+}
