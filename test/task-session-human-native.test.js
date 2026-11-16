@@ -50,7 +50,7 @@ for(const failure of ['none','empty','invalid-source'])test(`Router 判断业务
     }
     const input=latestInput(request);turns++
     assert.equal(input.humanReview,undefined)
-    if(!input.task.humanRequests.length)return [requestHuman('requester')]
+    if(!input.sources.some(source=>source.text===answer))return [requestHuman('requester')]
     resumed=input
     return [call('task_result',{decision:{action:'wait',summary:'原会话已接纳 Router 核实的限制，保持只读',evidence:[answer],limitations:[]}})]
   })
@@ -147,7 +147,7 @@ for(const permission of [false,true])test(`operator technical reply retains orig
  }
  await h.service.respondHumanRequest(args);await h.service.whenIdle();const after=await h.query('task.get',{taskId:original.taskId})
  assert.equal(after.sessionId,original.sessionId);assert.equal(after.requirementRevision,original.requirementRevision);assert.equal(after.controlRevision,original.controlRevision);assert.equal(after.humanRequests[0].status,'answered');assert.equal(after.lastDecision.action,'wait');assert.equal(turns,2)
- assert.equal(seen.at(-1).sources.find(source=>source.messageId==='business-authorization').text,'测试助手，'+objective);assert.equal(seen.at(-1).sources.find(source=>source.text===reply).actorId,'operator-user')
+ assert.equal(seen[0].sources.find(source=>source.messageId==='business-authorization').text,'测试助手，'+objective);assert.ok(!seen.at(-1).sources.some(source=>source.messageId==='business-authorization'),'already admitted source stays in Pi history rather than being resent');assert.equal(seen.at(-1).sources.find(source=>source.text===reply).actorId,'operator-user')
  const saved=await h.ctx.sessionPersistence.readNative(after.sessionId);assert.equal(saved.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='identity').length,1);assert.deepEqual(saved.audit.filter(receipt=>['permission','sandbox','approval'].includes(receipt.domain)),originalPolicy)
  assert.deepEqual(await h.query('execution.list'),[]);assert.deepEqual(await h.query('operation.list'),[])
 })
@@ -247,7 +247,7 @@ test('an original official task tool result cannot bypass human waiting and surv
  const materialReady=Promise.withResolvers();t.after(()=>materialReady.resolve())
  let step=0,answered
  const proof='原任务此前只读核对结果，不能冒充人工授权'
- const h=await fixture(t,async request=>{const input=latestInput(request);if(!input.task.humanRequests.length){await materialReady.promise;if(step++===0)return [call('read',{path:'materials/original.txt'})];return [requestHuman()]};answered=input;assert.match(JSON.stringify(request.messages),new RegExp(proof));return [finish('依据人工只读边界与原结果完成')]})
+ const h=await fixture(t,async request=>{const input=latestInput(request);if(!input.sources.some(source=>source.text==='仅使用现有只读结果，不追加写入')){await materialReady.promise;if(step++===0)return [call('read',{path:'materials/original.txt'})];return [requestHuman()]};answered=input;assert.match(JSON.stringify(request.messages),new RegExp(proof));return [finish('依据人工只读边界与原结果完成')]})
  // A managed task-local material is Host-owned evidence, not another execution session.
  const created=await h.service.createTask({groupId:'native-group',requestId:'human-original-result',objective:'核对原目标'}),id=created.taskId
  const {taskWorkspace}=await import('../packages/dingtalk-core/session-workspaces.js'),{writeFile}=await import('node:fs/promises'),cwd=await taskWorkspace(h.ctx.runtimePaths.workspaces,id);await writeFile(join(cwd,'materials','original.txt'),proof);materialReady.resolve()
@@ -281,7 +281,7 @@ test('a native blocked decision without a human question is corrected into an ex
 for(const changed of [false,true])test(`original-group human input preserves clarification and fences explicit authorization changes: changed=${changed}`,{timeout:nativeTestTimeout(30000)},async t=>{
  let original,answeredInput;const reply='测试助手，本次只允许 UAT3 只读核对，不得发布生产。'
  const h=await fixture(t,async request=>{let routed=routeTask(request,original);if(routed){if(original&&routed[0].name==='resident_task_action'){const current=await h.query('task.get',{taskId:original.taskId});routed[0].args={...routed[0].args,...(changed?{kind:'revise',text:reply,objective:reply}:{kind:'resume',humanRequestId:current.humanRequests[0].requestId,expectedContextRevision:current.contextRevision??0,reason:'原需求人补齐 UAT3 只读范围，不新增实施权限'})}}return routed}
-  const input=latestInput(request);if(!input.task.humanRequests.length)return [requestHuman('requester')]
+  const input=latestInput(request);if(!input.sources.some(source=>source.text===reply))return [requestHuman('requester')]
   assert.equal(input.humanReview,undefined)
   answeredInput=input;return [call('task_result',{decision:{action:'wait',summary:'保持原任务来源和当前范围',evidence:[reply],limitations:[]}})]
  })
@@ -326,7 +326,7 @@ test('Web answer recalls its delivered operator notification once without recall
 test('anonymous missing-original-file wait preserves completed authorized progress, inspection and same-session recovery',{timeout:nativeTestTimeout(30000)},async t=>{
  let original,resumed,phase=0;const answer='原件已通过原受管入口提供；仅只读复现，不修改权限、共享数据或部署。'
  const h=await fixture(t,async request=>{const routed=routeTask(request,original);if(routed){if(original&&routed[0].name==='resident_task_action'){const current=await h.query('task.get',{taskId:original.taskId});routed[0].args={...routed[0].args,kind:'resume',humanRequestId:current.humanRequests[0].requestId,expectedContextRevision:current.contextRevision??0,reason:'原需求人通过受管入口补齐原件，保持只读限制'}}return routed}const input=latestInput(request)
-  if(!input.task.humanRequests.length){if(phase++===0)return [call('write',{path:'work/independent-progress.txt',content:'已授权范围内的独立修复已完成；原件精确复现待补证'})];return [humanRequest({audience:'requester',reason:'已知契约修复已保存；匿名原件仅阻塞精确复现',question:'请原需求负责人补充原件；不索取账号、不猜测匿名上传人',evidence:['独立修复已保存'],attemptedActions:['保留既有成果，不修改共享数据或部署']})]}
+  if(!input.sources.some(source=>source.text===answer)){if(phase++===0)return [call('write',{path:'work/independent-progress.txt',content:'已授权范围内的独立修复已完成；原件精确复现待补证'})];return [humanRequest({audience:'requester',reason:'已知契约修复已保存；匿名原件仅阻塞精确复现',question:'请原需求负责人补充原件；不索取账号、不猜测匿名上传人',evidence:['独立修复已保存'],attemptedActions:['保留既有成果，不修改共享数据或部署']})]}
   assert.equal(input.humanReview,undefined)
   resumed=input;return [finish('沿原任务及已保存成果完成只读核验')]
  })

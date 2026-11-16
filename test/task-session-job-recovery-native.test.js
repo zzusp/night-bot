@@ -103,14 +103,18 @@ for(const background of [false,true])test(`task cancellation joins the original 
 
 async function unknown(t){
  let calls=0
- const h=await fixture(t,async(request)=>JSON.stringify(request).includes('TASK_EFFECT_ALREADY_ATTEMPTED')?[result()]:[call('uncertain_native',{})])
+ const h=await fixture(t,async request=>request.messages.some(message=>message.role==='toolResult'&&message.isError&&JSON.stringify(message.content).includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY'))?[result()]:[call('uncertain_native',{})])
  h.ctx.get('tools').register({name:'uncertain_native',description:'Original local effect loses its acknowledgement',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){calls++;await writeFile(join(exec.agent.metadata.cwd,'work/evidence.txt'),'Original partial effect');throw Error('lost acknowledgement')}})
  const id=await create(h);await idle(h);return {h,id,get calls(){return calls},stored:await snapshot(h,id)}
 }
-test('unknown effect holds all future execution while Host readback remains available and cannot authorize replay',{timeout:20000},async t=>{
+test('unknown effect holds future side effects while explicit input permits readback but cannot authorize replay',{timeout:20000},async t=>{
  const f=await unknown(t),{h,id,stored}=f,intent=stored.auditEntries.find(e=>e.data.domain==='task'&&e.data.kind==='effect-intent'),before=modelCount(h)
  const inspection=await h.service.inspectTaskEffect({taskId:id,intentEntryId:intent.entryId});assert.equal(inspection.outcome,'unknown');assert.equal(inspection.noReplay,true);assert.equal(await readFile(join(taskRoot(h,id),'work/evidence.txt'),'utf8'),'Original partial effect')
- await h.service.appendTaskContext({taskId:id,requestId:'investigate',progressImpact:'replan',context:'Read the existing evidence; this is not effect reconciliation.'});await idle(h);assert.equal(f.calls,1);assert.equal(modelCount(h),before,'unknown receipt cannot reopen a model executor');assert.equal((await snapshot(h,id)).audit.filter(r=>r.domain==='task'&&r.kind==='effect-reconciled').length,0)
+ await h.service.appendTaskContext({taskId:id,requestId:'investigate',progressImpact:'replan',context:'Read the existing evidence; this is not effect reconciliation.'});await idle(h);assert.equal(f.calls,1);assert.equal(modelCount(h),before+1,'explicit input may open only the held readback turn')
+ const after=await snapshot(h,id),packet=latestInput(h.requests.filter(request=>request.tools.some(tool=>tool.name==='task_result')).at(-1))
+ assert.ok(packet.sources.some(source=>source.text==='Read the existing evidence; this is not effect reconciliation.'));assert.equal(after.task.lastDecision.action,'wait');assert.equal(after.task.completion??null,null)
+ assert.equal(after.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,1);assert.equal(after.audit.filter(r=>r.domain==='task'&&['effect-result','effect-reconciled'].includes(r.kind)).length,0)
+ const count=modelCount(h);await h.service.recover();await idle(h);assert.equal(modelCount(h),count,'ordinary recovery cannot retry an unresolved effect');assert.equal(f.calls,1)
 })
 
 test('cold restart reads the original durable terminal receipt and the same task file without replaying its producer',{skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false,timeout:25000},async t=>{
