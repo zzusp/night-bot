@@ -24,13 +24,14 @@ import { assertTaskContextSemantics } from './task-input-contract.js'
 import { migrationStateDigest } from './coordination-migration-state.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, realpathSync, readFileSync, openSync, writeFileSync, fsyncSync, closeSync, renameSync, unlinkSync } from 'node:fs'
-import { isAbsolute, dirname, basename } from 'node:path'
+import { isAbsolute, dirname, basename, join } from 'node:path'
 
 // This ledger belongs to the trusted Host. None of its write commands are model tools.
 // SQLite transactions commit command receipts and causal wakes together, before dispatch.
 const VERSION = 4
 const APPLICATION = 0x44535453
 const livePaths = new Set()
+const OWNER_LOCK_PREFIX = 'sqlite-exclusive-v1-'
 const terminalOperations = new Set(['succeeded', 'failed', 'cancelled'])
 const terminalExecutions = new Set(['succeeded', 'failed', 'cancelled', 'stale'])
 const currentFeedback = (execution, item) => item.requirementRevision === execution.requirementRevision
@@ -146,11 +147,15 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     if (!existed) fail('DYNAMIC_STORE_LOST', 'The initialized database is missing; restore or explicitly reconcile it instead of creating an empty ledger.')
   }
   if (!existed && !initialize) fail('DYNAMIC_STORE_MISSING')
-  const pathKey = existed ? realpathSync(dbPath) : dbPath
+  const pathKey = existed ? realpathSync(dbPath) : join(realpathSync(dirname(dbPath)), basename(dbPath))
   if (livePaths.has(pathKey)) fail('DYNAMIC_STORE_ALREADY_OPEN')
   livePaths.add(pathKey)
-  let db, closed = false, healthy = true
-  const incarnation = `${process.pid}:${randomUUID()}`
+  let db, ownerLock, closed = false, healthy = true
+  const incarnation = `${process.pid}:${OWNER_LOCK_PREFIX}${randomUUID()}`
+  const closeConnections = () => {
+    try { db?.close() }
+    finally { try { ownerLock?.close() } finally { livePaths.delete(pathKey) } }
+  }
   const now = () => new Date().toISOString()
   const all = (table, where = '', args = []) => db.prepare(`SELECT body FROM ${table} ${where}`).all(...args).map(row => JSON.parse(row.body))
   const archivedTask = id => !!db.prepare('SELECT 1 FROM dynamic_archived_tasks WHERE id=?').get(id)
@@ -377,6 +382,14 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
   }
   try {
+    // 独立连接持有 OS 排他锁，进程退出即释放，业务 WAL 读者不受影响。
+    try {
+      ownerLock = new DatabaseSync(pathKey + '.owner.sqlite')
+      ownerLock.exec('PRAGMA busy_timeout=0; PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE;')
+    } catch (error) {
+      if (error.errcode === 5 || error.errcode === 6) fail('DYNAMIC_STORE_ALREADY_OPEN')
+      throw error
+    }
     const fresh = !existed && !marker
     if (fresh) { marker = { version: 1, instanceId, phase: 'initializing', initToken: randomUUID(), ingressEpoch: configuredIngressEpoch }; durableMarker(markerPath, marker, true) }
     db = new DatabaseSync(dbPath)
@@ -424,7 +437,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; BEGIN IMMEDIATE;')
     try {
       const previous = db.prepare('SELECT value FROM dynamic_meta WHERE key=\'owner\'').get()?.value
-      if (previous) {
+      // 已取得 OS 锁即可接管新版残留 owner；旧版无锁记录仍按 PID 失败关闭。
+      if (previous && !previous.split(':')[1]?.startsWith(OWNER_LOCK_PREFIX)) {
         const pid = Number(previous.split(':')[0])
         let alive = true
         try { process.kill(pid, 0) } catch (error) { if (error.code === 'ESRCH') alive = false; else throw error }
@@ -505,7 +519,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     } catch (error) { startup.record('task-store.recovery', recoveryStarted, 'failed'); if (db.isTransaction) db.exec('ROLLBACK'); throw error }
   } catch (error) {
     try { if (db?.isTransaction) db.exec('ROLLBACK'); db?.prepare("DELETE FROM dynamic_meta WHERE key='owner' AND value=?").run(incarnation) } catch {}
-    db?.close(); livePaths.delete(pathKey); throw error
+    closeConnections(); throw error
   }
 
   const taskVersion = task => ({ requirementRevision: task.requirementRevision, contextRevision: task.contextRevision ?? 0, controlRevision: task.controlRevision, runSequence: task.runSequence })
@@ -2259,7 +2273,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if (closed) return
       try { if (healthy) transaction(() => db.prepare('DELETE FROM dynamic_meta WHERE key=\'owner\' AND value=?').run(incarnation));
         else db.prepare("DELETE FROM dynamic_meta WHERE key='owner' AND value=?").run(incarnation) }
-      finally { closed = true; db.close(); livePaths.delete(pathKey) }
+      finally { closed = true; closeConnections() }
     },
   })
 }

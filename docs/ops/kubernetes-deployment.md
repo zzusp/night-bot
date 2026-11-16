@@ -114,4 +114,10 @@ kubectl --kubeconfig $kube -n $ns exec deployment/night-bot -c night-bot -- dws 
 
 失败时保留 PVC 和错误证据；正常停机后回退已验证且数据兼容的镜像，不删除安装锁强行启动、不重放 JSON 快照、不用两个 Pod 同时写库。清理一次性预检 Job 前核对其 UID/标签与最终证据；不执行 PVC 删除。
 
+## 数据库占用故障
+
+`DYNAMIC_STORE_ALREADY_OPEN` 表示同一账本已被占用，不能删除 owner 或 `.owner.sqlite` 强行启动。新版 task store 在规范数据库路径旁的 `.owner.sqlite` 上持有 `BEGIN EXCLUSIVE`，随连接/进程退出自动释放；业务 WAL 读者不被该锁阻塞，事务内 owner fencing、unknown 效果和 no-replay 保持。仅适用于当前单副本、经验证的本地 SQLite 文件系统，不增加共享网络文件系统、混合版本并行或恶意替换锁文件的支持。
+
+旧版 PID-only owner 无法证明进程身份，若 PID 被新容器复用仍会失败关闭。维护时先核对 workload/PVC/镜像身份、正常停机至所有原 Pod 消失，并确认无其他运行或待启动的 PVC 消费者；保留错误和只读完整性、严格 committed Pi journal 证据。使用相同已发布镜像的隔离维护进程，只有旧 PID 在该进程命名空间中确实不存在且无任何业务写者时，才可运行原 `openDynamicTaskStore()` 恢复流程并立即正常 `close()` 释放其 owner。检查脚本必须先 `--check` 零副作用核对；写后逐项核验原生恢复字段投影、身份/凭据/技能/历史保持，再恢复原 workload。不要启动模型、工具或渠道来清 owner，也不要重放不确定副作用。若旧 PID 仍存在或完整性检查失败，停止并定位冲突，不能跳过检查。普通维修不默认创建备份，亦不删除既有备份。
+
 参考：[Kubernetes v1.29.2 Pod API 类型](https://github.com/kubernetes/kubernetes/blob/v1.29.2/staging/src/k8s.io/api/core/v1/types.go)、[Deployment 类型](https://github.com/kubernetes/kubernetes/blob/v1.29.2/staging/src/k8s.io/api/apps/v1/types.go)。字段须由目标版本 API 的服务端 dry-run 和实际 Pod 核验；引用不替代环境验收。
