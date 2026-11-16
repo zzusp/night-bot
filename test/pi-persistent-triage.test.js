@@ -9,10 +9,10 @@ const input=body=>requestEnvelope(body,'一级分诊请求：')
 const submit=body=>({tool:'channel_triage_submit',args:{dispositions:input(body).messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:false,reason:'Current batch only',reply:'Received '+source.messageId}))}})
 const sessions=h=>h.host.ctx.agents.list().filter(actor=>actor.metadata.runtimeOwner==='channel-triage')
 
-test('triage 64K budget uses actual model window with native compaction and leaves Router policy separate',()=>{
+test('triage 500K target respects actual model window and native compaction',()=>{
  for(const window of [32768,65536,262144,1000000]){
   const model=Object.freeze({provider:'fixture',id:'m',contextWindow:window}),settings=SettingsManager.inMemory({compaction:officialTriageCompactionSettings(model)}).getCompactionSettings(model)
-  const threshold=Math.min(window,65536)-16384
+  const budget=Math.min(window,500000),threshold=Math.min(Math.floor(budget*0.8),budget-16384)
   assert.equal(shouldCompact(threshold,window,settings),false);assert.equal(shouldCompact(threshold+1,window,settings),true)
   assert.ok(settings.keepRecentTokens<threshold);assert.equal(model.contextWindow,window)
  }

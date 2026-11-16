@@ -12,13 +12,13 @@ import {createOfficialHostResourceResolver} from '../src/pi-official-host-resour
 import {runtimePaths,prepareRuntimePaths} from '../src/runtime/paths.js'
 import {recordUsage,readUsage} from '../src/memory/evolution.js'
 
-async function fixture(t){
+async function fixture(t,{maxTokens}={}){
  const root=await mkdtemp(join(tmpdir(),'night-official-resources-')),ctx=new Context(),paths=runtimePaths({installRoot:root});await prepareRuntimePaths(paths)
  new NativeAgents(ctx);new NativeSkills(ctx)
  const models=[],memoryPorts=[],credentials={resolve:async()=>({value:'scoped'})},registry={list:()=>[]},systemPrompt={officialSections:async()=>({night_fixture:'scoped'})}
  let alive=true
  ctx.provide('runtimePaths',paths);ctx.provide('credentials',credentials);ctx.provide('tools',registry);ctx.provide('systemPrompt',systemPrompt)
- ctx.provide('nativePiProvider',{official:{resolve:async(route,scope)=>{models.push({route,credentials:scope.credentials});return {modelRuntime:{},model:{id:route.model,provider:route.provider,contextWindow:400000},retrySettings:{enabled:true,maxRetries:2,baseDelayMs:25,provider:{maxRetries:1}}}}}})
+ ctx.provide('nativePiProvider',{official:{resolve:async(route,scope)=>{models.push({route,credentials:scope.credentials});return {requestOptions:{maxTokens},modelRuntime:{},model:{id:route.model,provider:route.provider,contextWindow:400000},retrySettings:{enabled:true,maxRetries:2,baseDelayMs:25,provider:{maxRetries:1}}}}}})
  ctx.provide('permissionPresets',{authorizeMemoryWrite:actor=>actor===a.actor})
  ctx.provide('memory',{official:ports=>{memoryPorts.push(ports);return {fixture:'official-memory'}}})
  const fs={resolve:async path=>({path}),stat:async target=>{try{const value=await lstat(target.path);return {type:value.isFile()?'file':'directory',size:value.size}}catch(error){if(error.code==='ENOENT')return;throw error}},readText:async target=>readFile(target.path,'utf8'),async *streamText(target){yield await readFile(target.path,'utf8')},processPath:target=>target.path}
@@ -282,25 +282,36 @@ test('parallel skill mapping rechecks catalog revision after all scoped reads be
 })
 
 
-test('Router gets the native 256K compaction budget on create and resume without rewriting model metadata',async t=>{
+test('Router gets the native 500K target / 80% compaction waterline on create and resume without rewriting model metadata',async t=>{
  const f=await fixture(t)
  f.a.header.runtimeOwner='conversation-router'
  const resource=await f.resolve(f.a),model=resource.resolved.model
  assert.equal(model.contextWindow,400000)
- assert.deepEqual(resource.settingsManager.getCompactionSettings(model),{enabled:true,reserveTokens:154240,keepRecentTokens:20000})
+ assert.deepEqual(resource.settingsManager.getCompactionSettings(model),{enabled:true,reserveTokens:80000,keepRecentTokens:20000})
  const ordinary=await f.resolve(f.b)
  assert.deepEqual(ordinary.settingsManager.getCompactionSettings(model),{enabled:true,reserveTokens:16384,keepRecentTokens:20000})
  const resumed=await f.resolve({...f.a,mode:'resume',store:{manager:{buildSessionProjection:()=>({model:{provider:'saved',modelId:'saved'}})}}})
- assert.equal(resumed.settingsManager.getCompactionSettings(resumed.resolved.model).reserveTokens,154240)
+ assert.equal(resumed.settingsManager.getCompactionSettings(resumed.resolved.model).reserveTokens,80000)
  assert.equal(resumed.settingsManager.getCompactionSettings({provider:'other',id:'smaller',contextWindow:128000}).reserveTokens,16384,'another model cannot inherit a large reserve')
 })
 
 
-test('triage alone gets the native 64K budget on create and resume',async t=>{
+test('triage alone gets the native 500K target / 80% waterline on create and resume',async t=>{
  const f=await fixture(t);f.a.header.runtimeOwner='channel-triage'
  for(const input of [f.a,{...f.a,mode:'resume',store:{manager:{buildSessionProjection:()=>({})}}}]){
   const resource=await f.resolve(input),model=resource.resolved.model
   assert.equal(model.contextWindow,400000)
-  assert.deepEqual(resource.settingsManager.getCompactionSettings(model),{enabled:true,reserveTokens:350848,keepRecentTokens:20000})
+  assert.deepEqual(resource.settingsManager.getCompactionSettings(model),{enabled:true,reserveTokens:80000,keepRecentTokens:20000})
+ }
+})
+
+
+test('conversation foreground waterlines preserve actual configured output allowance',async t=>{
+ const f=await fixture(t,{maxTokens:150000})
+ for(const role of ['channel-triage','conversation-router']){
+  f.a.header.runtimeOwner=role
+  const resource=await f.resolve(f.a),model=resource.resolved.model
+  assert.equal(model.contextWindow,400000)
+  assert.equal(resource.settingsManager.getCompactionSettings(model).reserveTokens,150000)
  }
 })

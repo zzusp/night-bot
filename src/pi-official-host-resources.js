@@ -48,7 +48,7 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
   assertCurrent()
   const agentDir=join(privateRoot,'pi-agents',hash(actor.id));await safePath(agentDir);await privateDirectory(agentDir);assertCurrent()
   if(!resolved.retrySettings)fail('PI_OFFICIAL_RETRY_SETTINGS_REQUIRED')
-  const settingsManager=SettingsManager.inMemory({packages:[],retry:structuredClone(officialRetrySettings(resolved.retrySettings).retry),...(header.runtimeOwner==='conversation-router'?{compaction:officialRouterCompactionSettings(resolved.model)}:header.runtimeOwner==='channel-triage'?{compaction:officialTriageCompactionSettings(resolved.model)}:{})})
+  const settingsManager=SettingsManager.inMemory({packages:[],retry:structuredClone(officialRetrySettings(resolved.retrySettings).retry),...(header.runtimeOwner==='conversation-router'?{compaction:officialRouterCompactionSettings(resolved.model,{outputReserveTokens:resolved.requestOptions?.maxTokens})}:header.runtimeOwner==='channel-triage'?{compaction:officialTriageCompactionSettings(resolved.model,{outputReserveTokens:resolved.requestOptions?.maxTokens})}:{})})
   const registry=service(actorCtx,'tools'),systemPrompt=service(actorCtx,'systemPrompt'),skills=service(actorCtx,'skills'),memory=service(actorCtx,'memory')
   // A mounted preset's narrower FS is the resource capability too. If that
   // selection is absent, never retry through a broader inherited filesystem.

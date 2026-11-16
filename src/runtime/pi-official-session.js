@@ -1,3 +1,5 @@
+import {createBackgroundCompaction} from './pi-background-compaction.js'
+import {compactPiCandidate,snapshotPiCompaction} from './pi-background-candidate.js'
 import {bindPiLiveOutput} from './pi-live-output.js'
 import {skillCommand} from './pi-skill-command-input.js'
 import {bindBusinessTurnYield} from './pi-business-turn-yield.js'
@@ -33,7 +35,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
  const audit=Object.freeze({...methods,flush:async()=>{if(failure)throw failure;try{await sourceAudit.flush()}catch(cause){throw fence(cause)}}})
  actor.audit=audit
  const unbindApproval=bindApprovalAudit(actor,audit)
- let session,imageBudget,toolBatchGuard,businessYield,liveOutput
+ let session,imageBudget,toolBatchGuard,businessYield,liveOutput,background
  try {
   // Initial permission selection in application setup must see its exact
   // approval capability, before any scoped resource is resolved or tool copied.
@@ -68,8 +70,14 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
   liveOutput=bindPiLiveOutput(actor)
   tools.bindContextDelivery(createOfficialToolContextDelivery({session,actor,fence}))
   if(!deferResources){await bridge.refreshResources();await bridge.reloadResources()}
-  return {actor,session,tools,bridge,durability,get requestImageFailure(){return imageBudget?.failure},
+  if(['channel-triage','conversation-router'].includes(store.header.runtimeOwner))background=createBackgroundCompaction({session,store,admission,signal:actor.lifecycle?.signal,commit:()=>durability.commit(),measurePhase,outputReserveTokens:resolved.requestOptions?.maxTokens,
+   isHealthy:()=>!failure&&!durability.failure&&!durability.requestFailure&&!bridge.policyFailure&&!imageBudget?.failure,
+   compact:({signal})=>compactPiCandidate({snapshot:snapshotPiCompaction(store.manager),cwd:store.header.cwd,resolved:{...resolved,model:session.model,thinkingLevel:session.thinkingLevel},agentDir,settingsManager,signal}),
+   onError:()=>ctx.logger?.warn('Background Pi compaction failed; original session retained'),
+  })
+  return {actor,session,tools,bridge,durability,background,get requestImageFailure(){return imageBudget?.failure},
    async deliver(packetId,options){
+    await background?.beforeInput(admission.lookupPacket?.(packetId))
     if(typeof admission.deliver!=='function')throw new TypeError('Durable business delivery capability required')
     if(!session.isStreaming)tools.beginTurn()
     // Ordinary packets use sendCustomMessage: refresh at actual before_agent_start.
@@ -85,6 +93,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     return result
    },
    async resumeRouterBatch(packet,beforeStart,afterClaim,supplements=[]){
+    await background?.beforeInput()
     tools.beginTurn()
     await bridge.refreshResources();await bridge.reloadResources()
     const proof=await beforeStart()
@@ -114,6 +123,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     }finally{resumedInput=undefined}
    },
    async prompt(...args){
+    await background?.beforeInput()
     tools.beginTurn()
     await bridge.refreshResources();await bridge.reloadResources()
     await session.prompt(...args)
@@ -125,10 +135,10 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     if(durability.requestFailure)throw durability.requestFailure
     if(failure)throw failure
    },
-   async close(){try{await durability.close()}finally{liveOutput?.close()}businessYield?.close();imageBudget?.close();toolBatchGuard?.close();unbindApproval()},
+   async close(){await background?.close();try{await durability.close()}finally{liveOutput?.close()}businessYield?.close();imageBudget?.close();toolBatchGuard?.close();unbindApproval()},
   }
  }catch(cause){
-  liveOutput?.close();unbindApproval();businessYield?.close();imageBudget?.close();toolBatchGuard?.close();await session?.abort();await tools?.close();session?.dispose()
+  await background?.close();liveOutput?.close();unbindApproval();businessYield?.close();imageBudget?.close();toolBatchGuard?.close();await session?.abort();await tools?.close();session?.dispose()
   // No SDK execution has been admitted during construction. Preserve any
   // independently owned store for its caller to inspect and close explicitly.
   throw cause

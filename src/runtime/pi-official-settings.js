@@ -21,24 +21,35 @@ export function officialRetrySettings(input) {
  return Object.freeze({retry:Object.freeze({...defaults.getRetrySettings(),...input,provider:Object.freeze({...defined(defaults.getProviderRetrySettings()),...provider})})})
 }
 
-// Router's operational budget is independent of the provider's real model
-// window. Pi owns threshold checks, summarization, recent-tail retention and
-// journal projection. This is not a hard input/output limit.
-export const ROUTER_CONTEXT_TOKENS = 256 * 1024
-export const TRIAGE_CONTEXT_TOKENS = 64 * 1024
-export const officialRouterCompactionSettings = model => officialConversationCompactionSettings(model, ROUTER_CONTEXT_TOKENS, 'ROUTER')
-export const officialTriageCompactionSettings = model => officialConversationCompactionSettings(model, TRIAGE_CONTEXT_TOKENS, 'TRIAGE')
-function officialConversationCompactionSettings(model, contextTokens, role) {
+// Budgets never enlarge the actual model window. Pi owns compaction/projection.
+export const ROUTER_CONTEXT_TOKENS = 500_000
+export const TRIAGE_CONTEXT_TOKENS = 500_000
+export const CONVERSATION_BACKGROUND_RATIO = 0.6
+export const CONVERSATION_FOREGROUND_RATIO = 0.8
+
+/** outputReserveTokens is the actual request output allowance, not the model's
+ * advertised maximum. Small windows preserve Pi's native reserve. */
+export function officialConversationContextBudget(model, role = 'CONVERSATION', {outputReserveTokens} = {}) {
  const defaults = SettingsManager.inMemory().getCompactionSettings(model)
  if (!model || !Number.isSafeInteger(model.contextWindow) || model.contextWindow <= defaults.reserveTokens ||
      typeof model.provider !== 'string' || !model.provider || typeof model.id !== 'string' || !model.id) {
   fail(`PI_${role}_CONTEXT_WINDOW_INVALID`, `${role} requires a model with a valid context window larger than Pi reserve tokens`)
  }
- const budget = Math.min(contextTokens, model.contextWindow)
- // Model-keyed settings cannot accidentally apply a large-window reserve to a
- // smaller model. A newly resolved create/resume route gets its own override.
- return {enabled: true, modelOverrides: {[`${model.provider}/${model.id}`]: {
-  reserveTokens: model.contextWindow - budget + defaults.reserveTokens,
-  keepRecentTokens: Math.min(defaults.keepRecentTokens, Math.floor((budget - defaults.reserveTokens) / 2)),
- }}}
+ if (outputReserveTokens !== undefined && (!Number.isSafeInteger(outputReserveTokens) || outputReserveTokens < 0)) fail(`PI_${role}_OUTPUT_RESERVE_INVALID`, 'Output reserve must be a nonnegative integer')
+ const targetTokens = ROUTER_CONTEXT_TOKENS
+ const budgetTokens = Math.min(targetTokens, model.contextWindow)
+ const outputHeadroomTokens = Math.max(defaults.reserveTokens, outputReserveTokens ?? 0)
+ if (outputHeadroomTokens >= budgetTokens) fail(`PI_${role}_OUTPUT_RESERVE_INVALID`, 'Output reserve must be smaller than the effective context budget')
+ const foregroundTokens = Math.min(Math.floor(budgetTokens * CONVERSATION_FOREGROUND_RATIO), budgetTokens - outputHeadroomTokens)
+ const backgroundTokens = Math.min(Math.floor(budgetTokens * CONVERSATION_BACKGROUND_RATIO), Math.floor(foregroundTokens * CONVERSATION_BACKGROUND_RATIO / CONVERSATION_FOREGROUND_RATIO))
+ return Object.freeze({targetTokens, budgetTokens, backgroundTokens, foregroundTokens, outputHeadroomTokens,
+  reserveTokens: model.contextWindow - foregroundTokens,
+  keepRecentTokens: Math.min(defaults.keepRecentTokens, Math.floor(foregroundTokens / 2)),
+ })
+}
+export const officialRouterCompactionSettings = (model, options) => officialConversationCompactionSettings(model, 'ROUTER', options)
+export const officialTriageCompactionSettings = (model, options) => officialConversationCompactionSettings(model, 'TRIAGE', options)
+function officialConversationCompactionSettings(model, role, options) {
+ const {reserveTokens, keepRecentTokens} = officialConversationContextBudget(model, role, options)
+ return {enabled: true, modelOverrides: {[`${model.provider}/${model.id}`]: {reserveTokens, keepRecentTokens}}}
 }
