@@ -92,6 +92,6 @@ test('任务待办清单与模型思考展示真实记录，更新和撤权不�
  await todos.locator('summary').click()
  await expect(cards.first()).toBeVisible()
  denied=true; await page.evaluate(() => window.dispatchEvent(new Event('online')))
- await expect(page.getByText('执行记录暂不可读',{exact:true})).toBeVisible()
+ await expect(page.getByText('执行记录加载失败',{exact:true})).toBeVisible()
  await expect(todos).toHaveCount(0); await expect(page.locator('.thinking-message')).toHaveCount(0); await expect(page.locator('.message-tool')).toHaveCount(0)
 })

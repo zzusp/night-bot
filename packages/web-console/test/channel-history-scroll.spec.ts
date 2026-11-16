@@ -33,9 +33,9 @@ test('更早页暂时失败可重试；权限撤销清除已累积消息',async(
   });
   await login(page);await expect(page.locator('[data-message-id]')).toHaveCount(50);
   await page.locator('.transcript').evaluate(el=>{el.scrollTop=0;el.dispatchEvent(new Event('scroll'));});
-  await expect(page.locator('.execution-history-start button')).toBeVisible();
+  await expect(page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button',{name:'重试',exact:true})).toBeVisible();
   await expect(page.locator('[data-message-id]')).toHaveCount(50);
-  await page.locator('.execution-history-start button').click();
+  await page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button',{name:'重试',exact:true}).click();
   await expect(page.locator('[data-message-id]')).toHaveCount(0);
 });
 

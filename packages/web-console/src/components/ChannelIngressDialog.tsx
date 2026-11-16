@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { RiCloseLine } from '@remixicon/react';
-import { api, ApiError, errorText, type Channel } from '../api';
+import { api, ApiError, operationErrorText, type Channel } from '../api';
 import { channelPath } from '../channel-url';
 import { ingressStateText, ingressTargetPaused, ingressUnavailable, validChannelIngress, validChannelVersion } from '../channel-ingress';
 import { Button, IconButton } from './BoardPrimitives';
@@ -12,7 +12,7 @@ type Receipt = { ok: true; changed: boolean; restartRequired: false; liveApplied
 const definitive = (error: unknown) => error instanceof ApiError && error.code !== 'CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN' &&
   ([400, 401, 403, 404, 409, 413, 429].includes(error.status) || ['CHANNEL_INGRESS_CONTROL_UNSUPPORTED', 'CHANNEL_INGRESS_UNAVAILABLE'].includes(error.code));
 const ingressError = (error: unknown) => {
-  if (!(error instanceof ApiError)) return errorText(error);
+  if (!(error instanceof ApiError)) return operationErrorText(error);
   const messages: Record<string, string> = {
     DINGTALK_CHANNEL_VERSION_CONFLICT: '渠道配置已变化，本次没有覆盖。请重新读取状态，核对后再确认。',
     CHANNEL_RUNTIME_VERSION_CONFLICT: '保存配置与当前接入版本不一致，本次没有执行。请先核对运行状态。',
@@ -22,7 +22,7 @@ const ingressError = (error: unknown) => {
     CHANNEL_INGRESS_CONFIRMATION_REQUIRED: '此操作需要明确确认，本次没有执行。',
     CHANNEL_RECONFIGURING: '渠道正在处理另一项变更，本次没有执行。请稍后重新读取状态。',
   };
-  return messages[error.code] ?? errorText(error);
+  return messages[error.code] ?? operationErrorText(error);
 };
 
 // Kept outside polling cards so pending receipts survive list refresh and closing.

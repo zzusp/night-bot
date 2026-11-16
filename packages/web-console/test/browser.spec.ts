@@ -495,9 +495,9 @@ test('初次读取失败与真实空数据分开显示，恢复路径只有一�
   await page.route('**/api/tasks/task-research/session?**', route => route.fulfill({status: 503, json: {error: 'FIXTURE_UNAVAILABLE'}}))
   await page.goto('/#/tasks/task-research?view=execution')
   await page.evaluate(() => window.dispatchEvent(new Event('online')))
-  await expect(page.getByRole('heading', {name: '执行记录暂不可读', exact: true})).toBeVisible()
+  await expect(page.getByRole('heading', {name: '执行记录加载失败', exact: true})).toBeVisible()
   await expect(page.getByRole('heading', {name: '暂无可展示的执行记录', exact: true})).toHaveCount(0)
-  await expect(page.locator('.task-dialogue').getByRole('button', {name: '重新获取', exact: true})).toHaveCount(1)
+  await expect(page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button', {name: '重试', exact: true})).toHaveCount(1)
 })
 
 test('窄屏长发送者与工具名不撑宽消息区，未知来源不冒称当前用户', async ({page}) => {

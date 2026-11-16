@@ -36,7 +36,7 @@ export default function SchedulesPage({ route }: { route: URL }) {
     </div>
     {query.error && <Notice error={query.error} stale={!!data} onRetry={query.refresh} />}
     <section className="task-table-wrap schedule-results" aria-label={`${selected.label}的定时任务`} aria-busy={query.loading}>
-      {!data ? query.loading ? <Loading>正在读取定时任务…</Loading> : <EmptyState title="定时任务暂不可读" /> : !data.items.length ?
+      {!data ? query.loading ? <Loading>正在读取定时任务…</Loading> : query.error ? null : <EmptyState title="定时任务暂不可读" /> : !data.items.length ?
         <EmptyState title={selected.empty} /> :
         <table className="task-table schedule-table">
           <caption className="sr-only">定时任务与执行计划</caption>

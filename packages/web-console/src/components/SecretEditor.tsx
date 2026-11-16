@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
-import {api, errorText, type SecretState} from '../api';
+import {api, operationErrorText, type SecretState} from '../api';
 import {Badge, Button, IconButton} from './BoardPrimitives';
 import {Confirm} from './ConfirmDialog';
 
@@ -11,7 +11,7 @@ export function SecretEditor({kind,provider,state,version,onSaved,onStateChange,
  useEffect(()=>{onStateChange(key,!!value||locked,busy);return()=>onStateChange(key,false,false)},[key,value,locked,busy,onStateChange]);
  const save=async(action:'replace'|'clear',expectedVersion:string)=>{if(inFlight.current||blocked||stale)return;inFlight.current=true;setBusy(true);setError('');setFeedback('');const input=value;setValue('');setShow(false);
   try{const result=await api<{ok:boolean;state:SecretState}>(`/settings/secrets/${kind}`,{method:'PUT',body:{action,...provider?{provider}:{},...action==='replace'?{value:input}:{},confirm:true,expectedVersion}});if(result?.ok!==true||typeof result.state?.configured!=='boolean'||result.state.configured!==(action==='replace'))throw new Error('UNKNOWN_SAVE');if(mounted.current){setFeedback('已保存。');onSaved()}}
-  catch(cause){if(mounted.current){setLocked(true);setError(errorText(cause)+' 密钥输入已清空，请先重新读取状态；不会自动重试。')}}finally{inFlight.current=false;if(mounted.current)setBusy(false)}
+  catch(cause){if(mounted.current){setLocked(true);setError(operationErrorText(cause)+' 密钥输入已清空，请先重新读取状态；不会自动重试。')}}finally{inFlight.current=false;if(mounted.current)setBusy(false)}
  };
  return <section className={embedded?'provider-secret':'settings-card secret-settings'} aria-label={label}>
   {embedded?<h3>{label}</h3>:<h2>{label}</h2>}<div className="secret-state"><Badge tone={state.configured?'success':'neutral'}>{state.configured?'已配置':'未配置'}</Badge><span>{state.writable?'安装密钥存储':'由环境提供'}</span>{!state.writable&&<Badge>只读</Badge>}</div>

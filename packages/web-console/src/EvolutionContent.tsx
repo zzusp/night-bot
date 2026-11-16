@@ -36,8 +36,8 @@ export default function EvolutionContent({ item, onClose, onRefreshList }: {
     </div><span className="evolution-reader-updated">{body && <>更新于 <time>{dateTime(body.current.updatedAt || undefined)}</time></>}</span></div>
     <div className="evolution-content-body" aria-busy={query.loading}>
       {query.loading ? <Loading>正在读取内容…</Loading> : query.error ? <>
-        <Notice error={query.error instanceof ApiError ? query.error : new ApiError(503, 'EVOLUTION_READ_FAILED')} onRetry={refreshNeeded ? onRefreshList : query.refresh} />
-        <p className="muted">{code === 'EVOLUTION_BODY_FORBIDDEN' ? '当前内容不可安全展示。请检查读取权限、敏感信息或条目是否仍有效。' : code === 'EVOLUTION_VERSION_STALE' ? '条目已经更新，请重新获取列表后查看最新内容。' : code === 'EVOLUTION_ITEM_NOT_FOUND' ? '条目已不存在或不再可见，请重新获取列表。' : '内容暂不可读，请稍后重试。'}</p>
+        <Notice read error={query.error} message={code === 'EVOLUTION_BODY_FORBIDDEN' ? '当前内容不可安全展示。请检查读取权限、敏感信息或条目是否仍有效。' : code === 'EVOLUTION_VERSION_STALE' ? '条目已经更新，请重新获取列表后查看最新内容。' : code === 'EVOLUTION_ITEM_NOT_FOUND' ? '条目已不存在或不再可见，请重新获取列表。' : undefined} onRetry={refreshNeeded ? onRefreshList : query.refresh} />
+
       </> : body && <>
         {body.comparison.basis === 'observed' && <p className="muted">比较范围：上次采集 → 当前</p>}
         {body.redacted && <p role="status" className="muted">敏感信息已隐藏</p>}

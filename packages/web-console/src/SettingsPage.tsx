@@ -1,5 +1,6 @@
+import {ReadErrorVisibility} from './components/ReadErrors';
 import {useCallback, useEffect, useState, type KeyboardEvent} from 'react';
-import {api, errorText, type OperatorSettings} from './api';
+import {api, operationErrorText, type OperatorSettings} from './api';
 import {useResource} from './hooks';
 import {Button} from './components/BoardPrimitives';
 import {Loading, Notice} from './components/Shared';
@@ -25,7 +26,7 @@ const preventCompositionSubmit=(event:KeyboardEvent<HTMLFormElement>)=>{if(event
 function Configuration({data,refresh,onReload,reloading}: {data:OperatorSettings;refresh:()=>void;onReload:()=>void;reloading:boolean}) {
  const [name,setName]=useState(data.appearance.name),[icon,setIcon]=useState(data.appearance.icon),[busy,setBusy]=useState(false),[error,setError]=useState(''),[feedback,setFeedback]=useState('');
  useEffect(()=>{setName(data.appearance.name);setIcon(data.appearance.icon)},[data.version]);
- const save=async()=>{if(busy)return;setBusy(true);setError('');setFeedback('');try{await api('/settings/appearance',{method:'PUT',body:{expectedVersion:data.version,name,icon}});setFeedback('外观已保存。');refresh();window.dispatchEvent(new Event('night-settings-updated'))}catch(error){setError(errorText(error))}finally{setBusy(false)}};
+ const save=async()=>{if(busy)return;setBusy(true);setError('');setFeedback('');try{await api('/settings/appearance',{method:'PUT',body:{expectedVersion:data.version,name,icon}});setFeedback('外观已保存。');refresh();window.dispatchEvent(new Event('night-settings-updated'))}catch(error){setError(operationErrorText(error))}finally{setBusy(false)}};
  return <>
   <section className="settings-card"><div className="settings-card-heading"><h2>助手外观</h2><Button variant="secondary" onClick={onReload} disabled={reloading} busy={reloading}>重新读取设置</Button></div><form noValidate onKeyDown={preventCompositionSubmit} onSubmit={event=>{event.preventDefault();if(!name.trim()){setError('请输入助手名称。');document.getElementById('assistant-name')?.focus();return}void save()}}><label htmlFor="assistant-name">显示名称</label><input id="assistant-name" maxLength={64} value={name} disabled={busy} onChange={event=>setName(event.target.value)}/><label htmlFor="assistant-icon">助手图标</label><select id="assistant-icon" value={icon} disabled={busy} onChange={event=>setIcon(event.target.value as typeof icon)}><option value="moon">月亮</option><option value="star">星光</option><option value="robot">机器人</option><option value="leaf">叶片</option></select><Button type="submit" variant="primary" disabled={busy} busy={busy}>保存外观</Button><p role="alert" hidden={!error}>{error}</p><p role="status" hidden={!feedback}>{feedback}</p></form></section>
  </>;
@@ -53,7 +54,7 @@ export default function SettingsPage(){
  const [refreshKey,setRefreshKey]=useState(0);const reload=()=>{if(busyRoles)return;setRefreshKey(value=>value+1);query.refresh()};
 
  return <div className="page-content settings-page settings-workspace">
-  {query.error&&<Notice error={query.error} onRetry={busyRoles?undefined:reload}/>}
+  {query.error&&<Notice read error={query.error} onRetry={busyRoles?undefined:query.refresh}/>}
   {query.loading&&!query.data?<Loading/>:query.data?<>
    <div className="settings-workspace-layout">
     <div className="settings-navigation" role="tablist" aria-label="设置分类" aria-orientation="vertical">
@@ -68,21 +69,21 @@ export default function SettingsPage(){
      })}
     </div>
     <div className="settings-panels">
-     <div role="tabpanel" id="settings-panel-models" aria-labelledby="settings-tab-models" hidden={section!=='models'} tabIndex={0}>
+     <div role="tabpanel" id="settings-panel-models" aria-labelledby="settings-tab-models" hidden={section!=='models'} tabIndex={0}><ReadErrorVisibility active={section==='models'}>
       <ModelCatalogEditor key={`catalog-${refreshKey}`} settingsVersion={query.data.version} defaultProvider={query.data.model.provider} onSaved={query.refresh} onStateChange={onRoleState}/>
+     </ReadErrorVisibility></div>
+     <div role="tabpanel" id="settings-panel-roles" aria-labelledby="settings-tab-roles" hidden={section!=='roles'} tabIndex={0}><ReadErrorVisibility active={section==='roles'}>
+      <div className="settings-role-stack">{query.data.roleModels?.roles.map(role=><RoleModelEditor key={`${role.role}-${refreshKey}`} state={role} onStateChange={onRoleState} catalog={query.data!.roleModels.catalog} version={query.data!.version} onSaved={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/>)}</div></ReadErrorVisibility>
      </div>
-     <div role="tabpanel" id="settings-panel-roles" aria-labelledby="settings-tab-roles" hidden={section!=='roles'} tabIndex={0}>
-      <div className="settings-role-stack">{query.data.roleModels?.roles.map(role=><RoleModelEditor key={`${role.role}-${refreshKey}`} state={role} onStateChange={onRoleState} catalog={query.data!.roleModels.catalog} version={query.data!.version} onSaved={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/>)}</div>
-     </div>
-     <div role="tabpanel" id="settings-panel-appearance" aria-labelledby="settings-tab-appearance" hidden={section!=='appearance'} tabIndex={0}>
+     <div role="tabpanel" id="settings-panel-appearance" aria-labelledby="settings-tab-appearance" hidden={section!=='appearance'} tabIndex={0}><ReadErrorVisibility active={section==='appearance'}>
       <Configuration key={refreshKey} data={query.data} refresh={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/>
-     </div>
-     {query.data.workLog&&<div role="tabpanel" id="settings-panel-worklog" aria-labelledby="settings-tab-worklog" hidden={section!=='worklog'} tabIndex={0}>
+     </ReadErrorVisibility></div>
+     {query.data.workLog&&<div role="tabpanel" id="settings-panel-worklog" aria-labelledby="settings-tab-worklog" hidden={section!=='worklog'} tabIndex={0}><ReadErrorVisibility active={section==='worklog'}>
       <WorkLogEditor key={`work-log-${refreshKey}`} state={query.data.workLog} version={query.data.version} onSaved={query.refresh} onReload={reload} reloading={query.loading||busyRoles} onStateChange={onRoleState}/>
-     </div>}
-     <div role="tabpanel" id="settings-panel-credentials" aria-labelledby="settings-tab-credentials" hidden={section!=='credentials'} tabIndex={0}>
+     </ReadErrorVisibility></div>}
+     <div role="tabpanel" id="settings-panel-credentials" aria-labelledby="settings-tab-credentials" hidden={section!=='credentials'} tabIndex={0}><ReadErrorVisibility active={section==='credentials'}>
       <SecretEditor key={`github-${refreshKey}`} kind="github" state={query.data.secrets.github} version={query.data.version} onSaved={query.refresh} onStateChange={onRoleState}/>
-     </div>
+     </ReadErrorVisibility></div>
     </div>
    </div>
   </>:null}

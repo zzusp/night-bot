@@ -677,3 +677,17 @@ html, body, #root { width: 100%; min-width: 0; }
 .task-conclusion-label { color: var(--board-muted); font-size: 11px; margin-bottom: 6px; padding-left: 17px; }
 .task-final-conclusion .message-body > :first-child { margin-top: 0; }
 .task-final-conclusion .message-body > :last-child { margin-bottom: 0; }
+
+/* A failed first read is one centered state; failed refreshes keep the transcript. */
+.execution-history.execution-read-failed { flex: 1; min-height: 0; }
+
+/* BoardUI Notification rhythm: compact persistent card, outside document flow. */
+.read-error-summary { position:fixed; z-index:50; right:24px; bottom:24px; display:flex; align-items:flex-start; gap:12px; width:380px; max-width:calc(100vw - 32px); box-sizing:border-box; padding:16px; border:1px solid var(--board-border); border-radius:16px; background:var(--board-surface); color:var(--board-muted); box-shadow:0 8px 24px rgb(0 0 0 / 12%),0 2px 6px rgb(0 0 0 / 5%); font-size:12px; line-height:1.6; }
+.read-error-symbol { display:grid; place-items:center; flex:0 0 40px; width:40px; height:40px; border-radius:50%; background:color-mix(in srgb,var(--board-danger) 9%,var(--board-surface)); color:var(--board-danger); }
+.read-error-copy { flex:1; min-width:0; overflow-wrap:anywhere; }
+.read-error-copy h2 { font-size:14px; line-height:20px; font-weight:600; color:var(--board-text); margin:0 0 4px; }
+.read-error-copy p { margin:0; }
+.read-error-copy .read-error-reason { margin-top:4px; }
+.read-error-copy > .board-button { min-height:28px; padding:3px 8px; margin:8px 0 -3px -8px; font-size:12px; color:var(--board-text); }
+.permission-dialog .read-error-summary,.channel-create-dialog .read-error-summary,.message-process-popover .read-error-summary { position:relative; inset:auto; width:380px; max-width:100%; margin:0 0 16px auto; z-index:auto; }
+@media(max-width:520px) { .read-error-summary { left:16px; right:16px; bottom:16px; width:auto; max-width:none; } .conversation-workspace .read-error-summary { bottom:104px; } .permission-dialog .read-error-summary,.channel-create-dialog .read-error-summary,.message-process-popover .read-error-summary { left:auto; right:auto; bottom:auto; max-width:100%; } }

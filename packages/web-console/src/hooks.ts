@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from './api';
+import { api, ApiError } from './api';
 
 /** 轮询只有一个在途请求；换路由取消旧读，连续失败三次后等待刷新或网络恢复。 */
 export function useResource<T>(path: string | null, interval = 0, { pauseWhenHidden = false, refreshPath, timeoutMs }: { pauseWhenHidden?: boolean; refreshPath?: string; timeoutMs?: number } = {}) {
@@ -30,6 +30,8 @@ export function useResource<T>(path: string | null, interval = 0, { pauseWhenHid
         setData(value); setError(null); setUpdatedAt(Date.now()); failures = 0;
       } catch (err) {
         if (disposed) return;
+        // A new GET must re-authorize a revoked snapshot; retries cannot flash its old data.
+        if (err instanceof ApiError && [401,403,404].includes(err.status)) setData(null);
         setError(err instanceof Error ? err : new Error('REQUEST_FAILED')); failures += 1;
       } finally {
         if (!disposed) {

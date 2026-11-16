@@ -121,7 +121,7 @@ test('退出在途时不允许旧401提前进入重登，完成后迟到消息�
   await page.getByRole('button', {name: '发送消息', exact: true}).click(); await chatReady.promise
   await page.getByRole('button', {name: '退出登录', exact: true}).first().click(); await exitReady.promise
   await page.getByRole('button', {name: '刷新概览', exact: true}).click()
-  await expect(page.getByText('连接中断', {exact: true})).toBeVisible()
+  await expect(page.getByText('概览暂不可读', {exact: true})).toBeVisible()
   await expect(page.getByLabel('访问令牌', {exact: true})).toHaveCount(0)
   exitHeld.resolve(); await expect(page.getByLabel('访问令牌', {exact: true})).toBeVisible()
   await login(page, false)
@@ -186,19 +186,19 @@ test('聊天和侧栏初读失败不伪装首次使用，概览局部失败明�
     await route.fulfill({json: {...data, channels: null, sectionErrors: {channels: 'SECTION_UNAVAILABLE'}}})
   })
   await login(page)
-  await expect(page.locator('.desktop-sidebar')).toContainText('对话列表暂不可读')
+  await expect(page.getByRole('alert',{name:'读取状态汇总'})).toContainText('最近对话')
   await expect(page.locator('.desktop-sidebar')).not.toContainText('从第一段对话开始')
-  await expect(page.getByText('部分工作动态暂不可读，可刷新概览重新获取。')).toBeVisible()
+  await expect(page.getByRole('alert',{name:'读取状态汇总'})).toContainText('工作动态');await expect(page.getByRole('alert',{name:'读取状态汇总'})).toHaveCount(1)
   await expect(page.locator('.rail-task').first()).toBeVisible()
   await go(page, '/chat/sample-plan')
-  await expect(page.getByRole('heading', {name: '对话暂不可读'})).toBeVisible()
+  await expect(page.getByRole('alert',{name:'读取状态汇总'})).toContainText('对话');await expect(page.getByRole('heading', {name: '对话暂不可读'})).toHaveCount(0)
   await expect(page.getByRole('heading', {name: '今天，有什么可以帮你？'})).toHaveCount(0)
   await page.unrouteAll({behavior: 'wait'})
-  await page.locator('.chat-page').getByRole('button', {name: '重新获取', exact: true}).click()
+  await page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button', {name: '重试', exact: true}).click()
   await page.getByRole('button', {name: '刷新概览', exact: true}).click()
   await expect(page.locator('.message-user').first()).toBeVisible()
   await expect(page.locator('.desktop-sidebar').getByRole('navigation', {name: '最近对话'})).toBeVisible()
-  await expect(page.getByText('部分工作动态暂不可读，可刷新概览重新获取。')).toHaveCount(0)
+  await expect(page.getByRole('alert',{name:'读取状态汇总'})).toHaveCount(0)
 })
 
 test('退出被CSRF拒绝但同步新会话成功后，不再消费先前旧401的过期标记', async ({page, context}) => {
@@ -229,7 +229,7 @@ test('退出被CSRF拒绝但同步新会话成功后，不再消费先前旧401�
   })
   await page.getByRole('button', {name: '退出登录', exact: true}).first().click(); await exitReady.promise
   readHeld.resolve(); await readDone.promise
-  await expect(page.getByText('连接中断', {exact: true})).toBeVisible()
+  await expect(page.getByText('概览暂不可读', {exact: true})).toBeVisible()
   exitHeld.resolve()
   await expect(page.getByText('连接状态已变化，内容已保留。请重新确认连接后重试刚才的操作。', {exact: true})).toBeVisible()
   await expect(page.getByLabel('消息内容', {exact: true})).toBeVisible()

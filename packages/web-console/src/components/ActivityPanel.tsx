@@ -1,3 +1,5 @@
+import {useMemo} from 'react';
+import {ApiError} from '../api';
 import { RiArrowRightSLine, RiCheckboxCircleLine, RiTimeLine, RiLoader4Line } from '@remixicon/react';
 import type { Overview, Page, Task } from '../api';
 import { dateTime } from '../hooks';
@@ -18,7 +20,7 @@ function TaskSection({title, tasks, href, tone, failed}: {title: string; tasks?:
   const Icon = tone === 'running' ? RiLoader4Line : tone === 'waiting' ? RiTimeLine : RiCheckboxCircleLine;
   return <section className={`rail-section rail-section-${tone}`} aria-label={title}>
     <div className="rail-section-title"><h3><Icon size={16} aria-hidden="true" />{title}</h3><a href={href} aria-label={`查看${title}任务`}>查看<RiArrowRightSLine size={15} aria-hidden="true" /></a></div>
-    {tasks?.items.length ? <div className="rail-task-list">{tasks.items.slice(0, 5).map(task => <TaskRow key={task.taskId} task={task}/>)}</div> : <p className="rail-empty">{failed || !tasks || tasks.total > 0 ? '暂时无法读取任务，请刷新。' : tone === 'running' ? '暂无执行中的任务' : tone === 'waiting' ? '暂无等待中的任务' : '暂无任务'}</p>}
+    {tasks?.items.length ? <div className="rail-task-list">{tasks.items.slice(0, 5).map(task => <TaskRow key={task.taskId} task={task}/>)}</div> : <p className="rail-empty">{failed || !tasks || tasks.total > 0 ? '—' : tone === 'running' ? '暂无执行中的任务' : tone === 'waiting' ? '暂无等待中的任务' : '暂无任务'}</p>}
   </section>;
 }
 
@@ -26,6 +28,7 @@ export function ActivityPanel({data, loading, error, onRetry, conversation}: {co
   // The overview pages own their totals and membership. Waiting never implies a
   // human approval request, and an unavailable page must not become a zero.
   const incomplete = !!Object.keys(data?.sectionErrors || {}).length;
+  const partialError=useMemo(()=>new ApiError(503,'OVERVIEW_PARTIAL'),[]);
   const idle = !error && !!data?.running && !!data?.waiting
     && !data.sectionErrors?.running && !data.sectionErrors?.waiting
     && data.running.total === 0 && data.waiting.total === 0
@@ -33,7 +36,7 @@ export function ActivityPanel({data, loading, error, onRetry, conversation}: {co
   return <aside id="activity-panel" className="activity-rail" aria-label="任务动态">
     <div className="rail-heading"><h2>工作动态</h2><a href="#/tasks">全部任务<RiArrowRightSLine size={16} aria-hidden="true" /></a></div>
     {!!error && <Notice error={error} stale={!!data} onRetry={onRetry}/>}
-    {incomplete && <p className="rail-empty rail-warning" role="status">部分工作动态暂不可读，可刷新概览重新获取。</p>}
+    {incomplete && !error && <Notice read error={partialError} source="/overview" message="部分工作动态暂不可读。" onRetry={onRetry}/>}
     {!data && loading ? <Loading/> : <>
       <StageTimingChart kind={conversation.kind} id={conversation.id}/>
       <div className="activity-counts">

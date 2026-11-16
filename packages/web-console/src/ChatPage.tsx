@@ -99,7 +99,7 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
     {query.loading && !query.data && id ? <Loading>正在读取会话…</Loading> : <ConversationMessages key={key} endpoint={id ? `/chat/${encodeURIComponent(id)}` : null} accessError={query.error} accessUpdatedAt={query.updatedAt} onRefresh={query.refresh} messages={[...messages, ...extra]}
       pending={['accepted', 'pending', 'running'].includes(query.data?.status || '')}
       footer={query.data?.status === 'ready' && messages.at(-1)?.role === 'user' ? <p className="muted chat-receipt" role="status">消息已接纳</p> : undefined}
-      empty={query.error && !query.data ? <EmptyState title="对话暂不可读" /> : <div className="welcome"><div className="welcome-mark"><Logo compact /></div>
+      empty={query.error && !query.data ? <></> : <div className="welcome"><div className="welcome-mark"><Logo compact /></div>
         <h2>今天，有什么可以帮你？</h2>
         <div className="suggestions">{[
           { title: '梳理一项任务', prompt: '我想和你一起梳理一项任务：' },

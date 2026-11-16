@@ -61,7 +61,7 @@ export function ResponseTimes({ endpoint, message, onAccessRevoked }: { endpoint
   const data = revoked || denied ? null : query.data;
   return <section className="response-times" aria-label="消息首答与处理过程">
     {query.error && <Notice error={query.error} onRetry={query.refresh} message={data ? '读取失败 · 上次快照' : '读取失败'} />}
-    {!data ? query.loading ? <Loading>读取中</Loading> : <div className="execution-empty"><Badge>记录不可读</Badge></div>
+    {!data ? query.loading ? <Loading>读取中</Loading> : query.error ? null : <div className="execution-empty"><Badge>记录不可读</Badge></div>
       : data.status !== 'ready' ? <div className="execution-empty"><Badge title={data.reason}>来源不可核验</Badge></div> : <>
         {!data.items.length && <div className="execution-empty"><Badge>无来源记录</Badge></div>}
         {data.items.length > 1 && <div className="message-process-scope"><Badge>{data.items.length} 个来源</Badge></div>}

@@ -1,3 +1,4 @@
+import {ReadErrorScope, ReadErrorOutlet} from './ReadErrors';
 import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { RiCloseLine } from '@remixicon/react';
@@ -90,7 +91,7 @@ export function MessageProcessPopover({ endpoint, message, trigger, onDismiss, o
       if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); close(true); }
       else if (!event.shiftKey && document.activeElement === controls.at(-1)) close(true);
     }}>
-    <header className="message-process-heading"><h2 id={title}>消息处理过程</h2><IconButton label="关闭消息处理过程" onClick={() => close(true)}><RiCloseLine size={18} /></IconButton></header>
-    <div className="message-process-body"><ResponseTimes endpoint={endpoint} message={message} onAccessRevoked={onAccessRevoked} /></div>
-  </div>, document.body);
+    <ReadErrorScope><header className="message-process-heading"><h2 id={title}>消息处理过程</h2><IconButton label="关闭消息处理过程" onClick={() => close(true)}><RiCloseLine size={18} /></IconButton></header>
+    <div className="message-process-body"><ReadErrorOutlet/><ResponseTimes endpoint={endpoint} message={message} onAccessRevoked={onAccessRevoked} /></div>
+  </ReadErrorScope></div>, document.body);
 }
