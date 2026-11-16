@@ -1,16 +1,13 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createHash } from 'node:crypto'
-import yaml from 'js-yaml'
 import { openExecutionStore } from '../packages/dingtalk-core/execution-store.js'
 import { openExecutionArtifacts } from '../packages/dingtalk-core/execution-artifacts.js'
 import { createExecutionController } from '../packages/dingtalk-core/execution-controller.js'
 import { createExecutionDelivery } from '../packages/dingtalk-core/execution-delivery.js'
 import { createUatSchemaMigrationTaskWorkflow } from '../packages/dingtalk-core/task-uat-schema-migration.js'
 import { createTrustedWorkflowPlatforms } from '../packages/dingtalk-core/workflow-trusted-platforms.js'
-import { planReleaseTargetAppend, configureReleaseTargetAppend } from '../scripts/configure-release-targets.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
@@ -108,17 +105,6 @@ await test('native failed attempt settles only after read-only empty-schema proo
   await controller.createRun({commandId:'second',runId:'schema-fresh-attempt',taskId:target.taskId,workflowId:workflow.id,input});const state=await controller.whenIdle('schema-fresh-attempt');assert.equal(state.run.status,'succeeded')
   const unchanged=await store.query({kind:'effect.get',effectId:old.effectId});assert.equal(unchanged.state,'failed');assert.deepEqual(unchanged.result,settled.result)
   assert.equal((await host().reconcile({target,migrationKey})).status,'succeeded')
-})
-await test('formal profile CAS append is exact, writes0 in Check, and preserves existing release/production config', async () => {
-  const hash=x=>createHash('sha256').update(x).digest('hex')
-  const source=yaml.dump([{name:'@zzusp/dingtalk-dsh-assistant/resident',config:{workflow:{repositories:[{githubRepository:target.repository}],platforms:{release:{targets:[]},uatMerge:{targets:[]},bytebase:{unchanged:'production'},untouched:'keep'}}}}])
-  const proposal={expectedProfileSha256:hash(source),uatSchemaMigrationTarget:target};const plan=await planReleaseTargetAppend(source,proposal);assert.equal(plan.changed,true)
-  const config=yaml.load(plan.updated)[0].config.workflow.platforms;assert.deepEqual(config.uatSchemaMigration,{targets:[target]});assert.equal(config.bytebase.unchanged,'production');assert.equal(config.untouched,'keep')
-  const dir=await mkdtemp(join(tmpdir(),'dsh-schema-config-'));const profile=join(dir,'profile.yml'),file=join(dir,'proposal.json');await writeFile(profile,source);await writeFile(file,JSON.stringify(proposal))
-  assert.equal((await configureReleaseTargetAppend({profile,proposal:file,mode:'check',expectedSha256:hash(source)})).writes,0);assert.equal(await readFile(profile,'utf8'),source)
-  assert.equal((await configureReleaseTargetAppend({profile,proposal:file,mode:'apply',expectedSha256:hash(source)})).writes,1)
-  await assert.rejects(planReleaseTargetAppend(source,{...proposal,uatSchemaMigrationTarget:{...target,environment:'production'}}),/UAT_SCHEMA_TARGET_NOT_ALLOWED/)
-  assert.equal((await planReleaseTargetAppend(plan.updated,{expectedProfileSha256:hash(plan.updated),uatSchemaMigrationTarget:target})).changed,false)
 })
 await test('trusted native registration exposes only the approved original task target',async()=>{
   const platform=createTrustedWorkflowPlatforms({config:{uatSchemaMigration:{targets:[target]}},clients:{uatSchemaMigration:host(),release:{github:{readPullRequest:async()=>{},readBranch:async()=>{},readVersionedFile:async()=>{}}}},ownerActorId:'owner'})

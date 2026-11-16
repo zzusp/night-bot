@@ -17,7 +17,13 @@
 
 在当前 checkout 内按锁文件安装依赖，不要将 `node_modules` 符号链接到另一个工作树。真实搜索/进程隔离只映射本安装目录及获准系统依赖；外部工作树中的 ripgrep 会被正确隔离，表现为 `SEARCH_FAILED` 或 `bwrap: execvp .../rg: No such file or directory`。先核对 ripgrep 的真实路径是否属于当前 checkout，再排查搜索实现。不要为共享依赖扩大沙箱映射、跳过安全断言或把该失败当作无匹配。
 
-## Clean installation policy
+## Historical clean-install checkpoint (superseded)
+
+The counts and DSH dependency statements in this section describe an earlier
+checkpoint, not the current package graph. The current root manifest and lockfile
+contain no external `@deepseek-ai/dsh-*` runtime or development dependency.
+Retained generic Cordis/schema/platform packages are not the retired DSH runtime.
+See [retired profile tooling](RETIRED-DSH-PROFILE-TOOLING.md) for the later cleanup.
 
 Four direct DSH development entries were removed following a 1049-module
 AST import/require/resolve audit. The audit initially missed a table-driven

@@ -35,7 +35,7 @@ been replaced by an assertion that the current Single automatically provides the
 
 The independent resource/database capabilities and strict authorization/evidence
 contracts remain in `agent-query-tools`, `agent-query-runtime`,
-`agent-query-database-all-tables` and `configure-agent-query-resources` tests:
+`agent-query-database-all-tables` tests:
 registered-resource allowlists, source/subject and input-generation binding,
 read-only database transaction/replica checks, column/table restrictions, redaction,
 content-addressed retained evidence and invalid-reference rejection.
@@ -86,3 +86,7 @@ their private-response, stale-token, readback-only and concurrent-send assertion
 The lifecycle HTTP case retains actual SQL completion/reopen intervals with no
 independent node jobs; pure historical timeline/conclusion projections remain
 separately tested and are not executed as restored split sessions.
+
+The old `configure-agent-query-resources` profile-writer suite is retired with
+the DSH profile tooling; it no longer proves a supported configuration entry.
+See [retirement scope](RETIRED-DSH-PROFILE-TOOLING.md).

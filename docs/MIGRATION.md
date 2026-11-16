@@ -1,3 +1,5 @@
+> 旧 DSH resident/profile 配置脚本已退役，不能用于当前 Night Bot 安装。配置使用当前 Night Bot CLI/Web 统一入口；清理范围与保留边界见 [旧 profile 工具清理](RETIRED-DSH-PROFILE-TOOLING.md)。
+
 > 当前 Windows 安全执行、DSH 清理、全量基线与最终受验状态统一见 [SG11 目标](acceptance/resident-conversation-routing/goal.md)。`7416964` 及[此前本机目标](acceptance/pi-native-retirement-local/goal.md)属于先前退休阶段。以下旧架构映射保留迁移历史，多执行成员、旧子代理和历史导入均不是当前能力。
 
 > [PI-NATIVE-DEFAULT-STATUS.md](PI-NATIVE-DEFAULT-STATUS.md)和 [PI-NATIVE-REBUILD.md](PI-NATIVE-REBUILD.md)记录各自源码 checkpoint，不能代替 SG11 当前工作树验证。DSH 历史数据导入、v0–v4 转换器和插件 ABI 豁免已移除；零外部 registry 包不代表派生源码、旧 namespace 或发行残留都已清完。

@@ -2,8 +2,6 @@ import {createUatMergePlatform} from '../packages/dingtalk-core/workflow-uat-mer
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {validUatAcceptancePolicy,assertUatLocalAcceptance,assertCurrentUatOwnerBinding} from '../packages/dingtalk-core/uat-acceptance-policy.js'
-import {planReleaseTargetAppend} from '../scripts/configure-release-targets.mjs'
-import {createHash} from 'node:crypto'
 const policy={targetId:'dataset-uat2-deployment',requiredChecks:[],acceptancePolicy:'original-owner-current-scope'}
 const proof={taskId:'current-task',manifestRef:'accepted-candidate',reviewRef:'current-review',definitionVersion:'original-owner-candidate-v1',scenarioIds:['withdrawal-queue-once','isolated-retry'],evidenceDigest:'a'.repeat(64)}
 test('current task policy has no per-task fixed scenario list; historical list remains valid',()=>{
@@ -26,25 +24,6 @@ test('legacy fixed scenarios still reject missing business evidence',()=>{
  assert.doesNotThrow(()=>assertUatLocalAcceptance({requiredScenarioIds:['withdrawal-queue-once']},proof))
  assert.throws(()=>assertUatLocalAcceptance({requiredScenarioIds:['unrelated']},proof),{code:'UAT_LOCAL_SCENARIO_REQUIRED'})
 })
-test('formal configuration planner accepts generic project/environment policy without changing old scope',async()=>{
- const target={id:policy.targetId,kind:'uat-deployment',repository:'HiQ-AI/dataset',environment:'uat',service:'dataset',runbookId:'dataset-uat2-deployment',branch:'feature/uat2-base',woodpecker:{baseUrl:'https://woodpecker.hiqdat.dev',repositoryId:1,cronName:'dataset-uat2-poll'},kubernetes:{namespace:'hiqlcd-app-uat2',deployment:'dataset'},registry:{image:'registry.cn-sh1.ctyun.cn/hiq-ai/dataset'},entryUrl:'https://editor2.hiqdat.dev/api/dataset/ready'}
- const source=`- name: '@zzusp/dingtalk-dsh-assistant/resident'
-  config:
-    workflow:
-      repositories:
-        - id: dataset
-          remote: https://github.com/HiQ-AI/dataset.git
-      platforms:
-        release:
-          targets: []
-        uatMerge:
-          targets: []
-`
- const result=await planReleaseTargetAppend(source,{expectedProfileSha256:createHash('sha256').update(source).digest('hex'),target,policy})
- assert.equal(result.changed,true);assert.match(result.updated,/original-owner-current-scope/);assert.doesNotMatch(result.updated,/requiredScenarioIds/)
- const repeat=await planReleaseTargetAppend(result.updated,{expectedProfileSha256:createHash('sha256').update(result.updated).digest('hex'),target,policy});assert.equal(repeat.changed,false)
-})
-
 test('generic policy passes complete platform preflight using accepted current scenarios; engineering and empty proofs cannot publish',async()=>{
  const head='a'.repeat(40),base='b'.repeat(40),tree='c'.repeat(40)
  const target={id:policy.targetId,kind:'uat-deployment',repository:'HiQ-AI/dataset',service:'dataset',branch:'feature/uat2-base'}
