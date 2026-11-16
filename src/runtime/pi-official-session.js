@@ -72,6 +72,9 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
   if(!deferResources){await bridge.refreshResources();await bridge.reloadResources()}
   if(['channel-triage','conversation-router'].includes(store.header.runtimeOwner))background=createBackgroundCompaction({session,store,admission,signal:actor.lifecycle?.signal,commit:()=>durability.commit(),measurePhase,outputReserveTokens:resolved.requestOptions?.maxTokens,
    isHealthy:()=>!failure&&!durability.failure&&!durability.requestFailure&&!bridge.policyFailure&&!imageBudget?.failure,
+   // The next agent_start clears a prior per-request rejection. It must not
+   // prevent a fresh durable input; permanent durability/policy fences remain.
+   isInputHealthy:()=>!failure&&!durability.failure&&!bridge.policyFailure&&!imageBudget?.failure,
    compact:({signal})=>compactPiCandidate({snapshot:snapshotPiCompaction(store.manager),cwd:store.header.cwd,resolved:{...resolved,model:session.model,thinkingLevel:session.thinkingLevel},agentDir,settingsManager,signal}),
    onError:()=>ctx.logger?.warn('Background Pi compaction failed; original session retained'),
   })

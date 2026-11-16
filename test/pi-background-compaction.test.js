@@ -4,14 +4,14 @@ import {setTimeout as delay} from 'node:timers/promises'
 import {createBackgroundCompaction} from '../src/runtime/pi-background-compaction.js'
 const deferred=()=>Promise.withResolvers()
 async function eventually(predicate){for(let i=0;i<100;i++){if(predicate())return;await delay(2)}assert.ok(predicate(),'condition did not settle')}
-function fixture(t,{tokens=300000,compact,commit,outputReserveTokens}={}){
+function fixture(t,{tokens=300000,compact,commit,outputReserveTokens,isHealthy,isInputHealthy}={}){
  const listeners=new Set(),calls=[],appends=[],errors=[],phases=[]
  const state={leaf:'leaf',revision:1,entries:[{id:'leaf'}],tokens,paused:false,inputs:[],refreshes:0,commits:0,projection:[],settings:{},foreground:0}
  const signal=new AbortController()
  const session={model:{provider:'fixture',id:'model',contextWindow:1000000},settingsManager:{getSettings:()=>state.settings},thinkingLevel:'low',systemPrompt:'prompt',isIdle:true,pendingMessageCount:0,isRetrying:false,getActiveToolNames:()=>['read'],getContextUsage:()=>({tokens:state.tokens}),subscribe:listener=>{listeners.add(listener);return()=>listeners.delete(listener)},refreshContext(){state.refreshes++}}
  const store={snapshot:()=>({revision:state.revision}),manager:{getLeafId:()=>state.leaf,getEntries:()=>state.entries,getBranch:()=>state.entries,appendCompaction(...args){appends.push(args);state.leaf='compacted';state.entries.push({id:state.leaf});state.revision++}}}
  session.sessionManager={buildSessionProjection:()=>({messages:state.projection})};session.compact=async()=>{state.foreground++;state.tokens=10;state.projection=[]}
- const worker=createBackgroundCompaction({session,store,outputReserveTokens,signal:signal.signal,admission:{get paused(){return state.paused},pending:()=>state.inputs},compact:args=>{calls.push(args);return compact?compact(args):Promise.resolve(result())},commit:async()=>{state.commits++;await commit?.()},onError:error=>errors.push(error),measurePhase:async(name,run)=>{phases.push(name);return run()}})
+ const worker=createBackgroundCompaction({session,store,outputReserveTokens,isHealthy,isInputHealthy,signal:signal.signal,admission:{get paused(){return state.paused},pending:()=>state.inputs},compact:args=>{calls.push(args);return compact?compact(args):Promise.resolve(result())},commit:async()=>{state.commits++;await commit?.()},onError:error=>errors.push(error),measurePhase:async(name,run)=>{phases.push(name);return run()}})
  const emit=type=>{for(const listener of listeners)listener({type})}
  t.after(()=>worker.close())
  return {worker,session,store,state,calls,appends,errors,phases,emit,signal,listeners}
@@ -102,4 +102,13 @@ test('closing foreground compaction settles its observation span',async t=>{
  for(const listener of listeners)listener({type:'compaction_start'})
  await worker.close()
  await Promise.race([Promise.allSettled(spans),delay(200).then(()=>assert.fail('foreground observation never settled'))])
+})
+
+test('recoverable request failure blocks background but permits next input; permanent fence still rejects',async t=>{
+ let inputHealthy=true
+ const f=fixture(t,{isHealthy:()=>false,isInputHealthy:()=>inputHealthy})
+ f.worker.settled();await delay(10);assert.equal(f.calls.length,0)
+ await f.worker.beforeInput({content:'next batch'})
+ inputHealthy=false
+ await assert.rejects(f.worker.beforeInput({content:'forbidden'}),{code:'PI_OFFICIAL_ACTOR_NOT_LIVE'})
 })

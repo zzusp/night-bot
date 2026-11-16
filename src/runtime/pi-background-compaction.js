@@ -3,7 +3,7 @@ import {officialConversationContextBudget} from './pi-official-settings.js'
 
 /** Disposable native Pi snapshots never own business effects. Adoption appends
  * an official compaction and commits it before admitting another model turn. */
-export function createBackgroundCompaction({session,store,admission,compact,commit,signal,isHealthy=()=>true,measurePhase=(_phase,run)=>run(),onError=()=>{},outputReserveTokens}) {
+export function createBackgroundCompaction({session,store,admission,compact,commit,signal,isHealthy=()=>true,isInputHealthy=isHealthy,measurePhase=(_phase,run)=>run(),onError=()=>{},outputReserveTokens}) {
  let generation=0,candidate,adopting,closed=false,timer,lastAttempt,preflight
  const running=new Set()
  const fingerprint=()=>JSON.stringify({leaf:store.manager.getLeafId(),count:store.manager.getEntries().length,revision:store.snapshot().revision,model:session.model,thinking:session.thinkingLevel,tools:session.getActiveToolNames(),prompt:session.systemPrompt,settings:session.settingsManager?.getSettings()})
@@ -14,7 +14,7 @@ export function createBackgroundCompaction({session,store,admission,compact,comm
   if(candidate){const old=candidate;candidate=undefined;old.controller.abort();report('background-compaction-cancelled')}
  }
  const budgetFor=()=>officialConversationContextBudget(session.model,'CONVERSATION',{outputReserveTokens})
- const assertLive=()=>{signal?.throwIfAborted();if(closed||!isHealthy())throw Object.assign(new Error('Compaction owner unavailable'),{code:'PI_OFFICIAL_ACTOR_NOT_LIVE'})}
+ const assertLive=()=>{signal?.throwIfAborted();if(closed||!isInputHealthy())throw Object.assign(new Error('Compaction owner unavailable'),{code:'PI_OFFICIAL_ACTOR_NOT_LIVE'})}
  const projectedTokens=()=>session.sessionManager.buildSessionProjection().messages.reduce((sum,message)=>sum+estimateTokens(message),0)
  const beforeInput=async packet=>{
   invalidate();if(adopting)await adopting
