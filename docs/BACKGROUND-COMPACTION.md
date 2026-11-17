@@ -8,6 +8,10 @@
 
 候选不在重启时恢复。只有已提交的原生 compaction 属于正式历史；持久化失败沿现有 store fence 停止使用，不能把不确定写入当作成功。已接纳消息的恢复与防重复仍由原 admission/journal 负责。
 
-80% 水位与 overflow 继续使用 Pi 官方自动压缩，压缩开始即作废后台候选。对首次投递的大消息，使用 Pi 官方 token 估算提前压缩已有上下文，保留输出余量。单条消息或压缩后剩余历史仍超出可用预算时返回 PI_CONTEXT_INPUT_TOO_LARGE，消息保留在耐久队列，不截断、不声称已消费。估算不等于厂商精确计数，厂商 overflow 仍走 Pi 原生机制。
+80% 水位与 overflow 继续使用 Pi 官方自动压缩，压缩开始即作废后台候选。投递先完成 admission 授权与去重，再使用 Pi 官方 token 估算预检；重复或已取消输入不触发摘要，预检等待后仍检查撤权、暂停与取消。活动 steer 也检查单包容量，但不在活动推理中调用手动压缩。空闲时，无论当前历史是否已越过前台水位，都按“已有上下文 + 新输入”决定预压缩并复核输出余量。
 
-阶段观测包括 background-compaction、background-compaction-cancelled、background-compaction-adopted 和 foreground-compaction，记录耗时，不记录摘要正文。测试使用隔离 Host、真实 Pi SDK 和本地脚本化模型；不代表真实厂商压缩延迟，也不验证百部生产部署。
+预算包含合并后的当前原生系统提示与工具声明，不重复累加系统增量；首次尚无系统条目时补计 Night 将注入的 sections、记忆提示与资源声明。首次资源权限检查在 Pi 接纳正文前完成，保持创建期分诊的延迟资源加载。Router 显式续办在领取失败 checkpoint 前累计检查 supplements 和两条控制正文。单条消息或压缩后剩余历史仍超出可用预算时返回 PI_CONTEXT_INPUT_TOO_LARGE，消息保留在耐久队列，不截断、不声称已消费。估算不等于厂商精确计数，厂商 overflow 仍走 Pi 原生机制。
+
+请求级图片错误阻止不健康状态下的后台摘要，但不永久阻断下一次输入：新 agent_start 重新校验图片策略；历史图片仍超额时仍拒绝，不删除历史绕过策略。持久化和权限失败栅栏不放宽。关闭/取消时在原生 compaction_start 再次校验 owner，覆盖 Pi 尚未安装取消 token 的窗口；关闭先排空预检再移除订阅。
+
+阶段观测包括 background-compaction、background-compaction-cancelled、background-compaction-adopted 和 foreground-compaction，记录耗时，不记录摘要正文。原生摘要调用不建立业务模型 span，也不占用前一包或后一包的 runId。测试使用隔离 Host、真实 Pi SDK 和本地脚本化模型；不代表真实厂商压缩延迟，也不验证百部生产部署。

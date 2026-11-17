@@ -131,7 +131,7 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
     append('cancelled',{id,reason});await commit();cancelled.add(id)
    })
   },
-  async deliver(session,id,{deliverAs='steer'}={}){
+  async deliver(session,id,{deliverAs='steer',beforeDeliver}={}){
    healthy();if(taskFinished&&internalPackets.has(id)&&packets.get(id)?.source.kind==='job-completion')return {id,retired:true};if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED')
    if(!['steer','followUp'].includes(deliverAs))throw fail('PI_BUSINESS_ADMISSION_MODE_INVALID')
    const packet=packets.get(id);if(!packet)throw fail('PI_BUSINESS_ADMISSION_MISSING')
@@ -143,14 +143,21 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
    if(!internalPackets.has(id)&&await authorize(packet)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED')
    healthy();if(taskFinished&&internalPackets.has(id)&&packets.get(id)?.source.kind==='job-completion')return {id,retired:true};if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED')
    if(admitted.has(id)||inflight.has(id))return {id,duplicate:true}
-   const command=!internalPackets.has(id)?skillCommand(packet):undefined
-   if(command){
-    if(typeof authorizeSkillCommand!=='function')throw fail('PI_SKILL_COMMAND_DENIED')
-    commands.bindSession(session);current={id,messages:[structuredClone(packet)]}
-    return commands.deliver(packet,command,{deliverAs})
-   }
-   inflight.add(id);current={id,messages:[structuredClone(packet)]}
+   if(commands.status(id)==='admitted')return {id,duplicate:true,admitted:true}
+   if(commands.has(id))throw fail('PI_SKILL_COMMAND_UNCERTAIN')
+   inflight.add(id)
    try{
+    await beforeDeliver?.(structuredClone(packet))
+    if(beforeDeliver&&!internalPackets.has(id)&&await authorize(packet)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED')
+    healthy();if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED')
+    if(cancelled.has(id))throw fail('PI_BUSINESS_INPUT_CANCELLED')
+    const command=!internalPackets.has(id)?skillCommand(packet):undefined
+    current={id,messages:[structuredClone(packet)]}
+    if(command){
+     if(typeof authorizeSkillCommand!=='function')throw fail('PI_SKILL_COMMAND_DENIED')
+     commands.bindSession(session)
+     return await commands.deliver(packet,command,{deliverAs})
+    }
     await session.sendCustomMessage({customType:'night.business-input',content:packet.content,display:false,details:{packetId:id,source:packet.source}},{triggerTurn:true,deliverAs})
     await serialize(acknowledge)
     return {id,duplicate:false,admitted:admitted.has(id)}

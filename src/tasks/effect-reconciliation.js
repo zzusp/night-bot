@@ -7,7 +7,7 @@ import {SessionManager} from '@earendil-works/pi-coding-agent'
 import {z} from 'zod'
 import {validateTaskIdentity} from './session-audit.js'
 import {admissionAuditKinds} from '../runtime/pi-business-admission.js'
-import {unresolvedNativeJobReceipts} from '../runtime/job-ledger.js'
+import {unresolvedNativeJobReceipts,jobReceiptKinds,jobRegistrationDigest} from '../runtime/job-ledger.js'
 
 const text=z.string().min(1).max(2000),hex=z.string().regex(/^[a-f0-9]{64}$/),positive=z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
 const timestamp=z.iso.datetime({offset:true}).refine(value=>Number.isFinite(Date.parse(value)))
@@ -26,7 +26,8 @@ const evidenceRefSchema=z.strictObject({path:z.string().regex(/^materials\/runti
 const evidenceRefsSchema=z.array(evidenceRefSchema).min(1).max(8).refine(values=>new Set(values.map(value=>value.path)).size===values.length)
 const outcome='closed-with-possible-partial-effects'
 const identitySchema=z.strictObject({taskId:text,intentEntryId:text,intentDigest:hex,currentBinding:bindingSchema,journalRevision:hex,scopeDigest:hex,requestId:text,evidenceRefs:evidenceRefsSchema,outcome:z.literal(outcome),noReplay:z.literal(true)})
-const receiptSchema=z.strictObject({taskId:text,sessionId:text,intentEntryId:text,intentDigest:hex,key:hex,toolName:text,callId:text,callEntryId:text,argumentsDigest:hex,inputEntryId:text,packetId:text,inputDigest:hex,originBinding:bindingSchema,currentBinding:bindingSchema,ownerDrainEntryId:text,ownerDrainDigest:hex,scopeDigest:hex,journalRevision:hex,evidenceRefs:evidenceRefsSchema,operatorSourceId:text,operatorActorId:text,operatorTextDigest:hex,requestId:text,outcome:z.literal(outcome),partialEffectsPossible:z.literal(true),noReplay:z.literal(true)})
+const coldJobSchema=z.strictObject({entryId:text,digest:hex})
+const receiptSchema=z.strictObject({coldJobReconciliation:coldJobSchema.optional(),taskId:text,sessionId:text,intentEntryId:text,intentDigest:hex,key:hex,toolName:text,callId:text,callEntryId:text,argumentsDigest:hex,inputEntryId:text,packetId:text,inputDigest:hex,originBinding:bindingSchema,currentBinding:bindingSchema,ownerDrainEntryId:text,ownerDrainDigest:hex,scopeDigest:hex,journalRevision:hex,evidenceRefs:evidenceRefsSchema,operatorSourceId:text,operatorActorId:text,operatorTextDigest:hex,requestId:text,outcome:z.literal(outcome),partialEffectsPossible:z.literal(true),noReplay:z.literal(true)})
 const evidenceSchema=z.strictObject({version:z.literal(1),kind:z.literal('task-effect-readback'),taskId:text,sessionId:text,intentEntryId:text,intentDigest:hex,callEntryId:text,argumentsDigest:hex,originBinding:bindingSchema,currentBinding:bindingSchema,scopeDigest:hex,observedAt:timestamp,summary:z.string().min(1).max(16000),outcome:z.literal('partial-or-unknown'),noReplay:z.literal(true)})
 const invocationSchema=z.strictObject({callEntryId:text,inputEntryId:text,packetId:text,inputDigest:hex,originBinding:bindingSchema})
 const legacyIntentSchema=z.strictObject({key:hex,name:text,callId:text})
@@ -97,6 +98,24 @@ function intentOrigin(entries,receipts,manager,task,currentBinding,intentEntryId
  return {target,intent,call,...source}
 }
 
+// 离线操作者的缺席核验不是原生产者 join；只接受同一原生 shell 调用的已结清作业。
+function coldJobReconciliation(entries,manager,task,currentBinding,intentEntryId){
+ const receipts=entries.filter(entry=>audit(entry)),origin=intentOrigin(entries,receipts,manager,task,currentBinding,intentEntryId)
+ assert(['bash','pwsh'].includes(origin.intent.payload.name),'TASK_EFFECT_DRAIN_ATTESTATION_REQUIRED')
+ const matches=receipts.filter(entry=>entry.data.domain==='job'&&entry.data.kind==='registered'&&entry.data.payload.owner===task.sessionId&&entry.data.payload.toolCall.callId===origin.intent.payload.callId)
+ assert(matches.length===1,'TASK_EFFECT_COLD_JOB_BINDING_REQUIRED')
+ const registered=matches[0],job=registered.data.payload,branch=manager.getBranch(registered.id)
+ assert(jobReceiptKinds['job/registered'](job)&&job.kind===origin.intent.payload.name&&job.toolCall.toolName===job.kind&&job.toolCall.rootCallId===job.toolCall.callId&&branch.some(entry=>entry.id===intentEntryId),'TASK_EFFECT_COLD_JOB_BINDING_REQUIRED')
+ const later=branch.slice(branch.findIndex(entry=>entry.id===origin.call.entry.id)+1)
+ assert(!later.some(entry=>entry.type==='message'&&entry.message.role==='assistant'&&Array.isArray(entry.message.content)&&entry.message.content.some(block=>block.type==='toolCall'&&block.id===job.toolCall.callId)),'TASK_EFFECT_COLD_JOB_BINDING_REQUIRED')
+ const closures=receipts.filter(entry=>entry.data.domain==='job'&&entry.data.kind==='reconciled'&&entry.data.payload.jobId===job.jobId)
+ assert(closures.length===1,'TASK_EFFECT_COLD_JOB_BINDING_REQUIRED')
+ const closed=closures[0],payload=closed.data.payload
+ assert(jobReceiptKinds['job/reconciled'](payload)&&payload.taskId===task.taskId&&payload.owner===task.sessionId&&payload.registeredEntryId===registered.id&&payload.registrationDigest===jobRegistrationDigest(job)&&manager.getBranch(closed.id).some(entry=>entry.id===registered.id),'TASK_EFFECT_COLD_JOB_BINDING_REQUIRED')
+ assert(unresolvedNativeJobReceipts(entries.map(audit).filter(Boolean),task.sessionId).length===0,'TASK_EFFECT_JOB_UNRESOLVED')
+ return closed
+}
+
 function effectOwnerDrain(entries,manager,task,currentBinding,intentEntryId,originBinding,scopeDigest){
  const receipts=entries.filter(entry=>audit(entry)),drains=receipts.filter(entry=>entry.data.domain==='task'&&['owner-drained','owner-drained-inputs'].includes(entry.data.kind))
  assert(drains.every(entry=>entry.data.version===1&&(entry.data.kind==='owner-drained'?drainSchema:inputsDrainSchema).safeParse(entry.data.payload).success),'TASK_EFFECT_DRAIN_ATTESTATION_INVALID')
@@ -113,13 +132,14 @@ function effectOwnerDrain(entries,manager,task,currentBinding,intentEntryId,orig
    assert(branch.some(entry=>entry.id===covered.intentEntryId),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
   }
  }
- // A later readback owner cannot substitute for the original producer's join.
- validate(original)
- const drain=drains.at(-1);if(drain!==original)validate(drain)
- assert(manager.getBranch(drain.id).some(entry=>entry.id===original.id)&&manager.getBranch(entries.at(-1).id).some(entry=>entry.id===drain.id),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
+ // 后续 owner 不能冒充原 join；缺失时必须有独立、精确绑定的冷作业核验。
+ const cold=original?undefined:coldJobReconciliation(entries,manager,task,currentBinding,intentEntryId)
+ if(original)validate(original)
+ const drain=drains.at(-1);if(!original||drain!==original)validate(drain)
+ assert(manager.getBranch(drain.id).some(entry=>entry.id===(original??cold).id)&&manager.getBranch(entries.at(-1).id).some(entry=>entry.id===drain.id),'TASK_EFFECT_DRAIN_BRANCH_MISMATCH')
  const later=entries.slice(entries.findIndex(entry=>entry.id===drain.id)+1)
  assert(later.every(entry=>entry.type==='custom'&&entry.customType==='night.commit'),'TASK_EFFECT_DRAIN_CUT_CHANGED')
- return drain
+ return {drain,...cold?{coldJobReconciliation:{entryId:cold.id,digest:taskEffectDigest(cold)}}:{}}
 }
 
 /** Read already committed Night closures against the original official calls.
@@ -144,7 +164,7 @@ export function verifyTaskEffectClosures({task,stored,closedIntentEntryIds}){
   const closureBranch=manager.getBranch(entry.id),drain=closureBranch.find(item=>item.id===payload.ownerDrainEntryId),drainReceipt=audit(drain??{})
   assert(drain&&taskEffectDigest(drain)===payload.ownerDrainDigest&&drainReceipt?.version===1&&drainReceipt.domain==='task'&&['owner-drained','owner-drained-inputs'].includes(drainReceipt.kind)&&(drainReceipt.kind==='owner-drained'?drainSchema:inputsDrainSchema).safeParse(drainReceipt.payload).success&&drainReceipt.payload.proof.ownerId===task.sessionId&&drainReceipt.payload.scopeDigest===payload.scopeDigest&&drain.parentId===drainReceipt.payload.cutEntryId,'TASK_EFFECT_DRAIN_ATTESTATION_INVALID')
   const checked=effectOwnerDrain(entries.slice(0,entries.indexOf(entry)),manager,task,payload.currentBinding,row.intentEntryId,origin.originBinding,payload.scopeDigest)
-  assert(checked.id===drain.id,'TASK_EFFECT_DRAIN_ATTESTATION_INVALID')
+  assert(checked.drain.id===drain.id&&isDeepStrictEqual(checked.coldJobReconciliation,payload.coldJobReconciliation),'TASK_EFFECT_DRAIN_ATTESTATION_INVALID')
   return {entryId:entry.id,parentId:entry.parentId,receipt:structuredClone(receipt)}
  })
 }
@@ -208,11 +228,11 @@ export function createTaskEffectReconciliation({persistence,readTask,readScope,i
    assert(!(entry.data.payload.key===intent.payload.key&&(entry.data.payload.isError===false||entry.data.payload.effect==='not-started')),'TASK_EFFECT_ALREADY_SETTLED')
   }
   assert(!receipts.some(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-reconciled'&&entry.data.payload.intentEntryId===intentEntryId),'TASK_EFFECT_ALREADY_RECONCILED')
-  const drain=effectOwnerDrain(entries,manager,task,currentBinding,intentEntryId,originBinding,scopeDigest)
+  const {drain,coldJobReconciliation}=effectOwnerDrain(entries,manager,task,currentBinding,intentEntryId,originBinding,scopeDigest)
   assert(unresolvedNativeJobReceipts(stored.audit,task.sessionId).length===0,'TASK_EFFECT_JOB_UNRESOLVED')
   const again=await readTask(taskId),againScope=scopeSchema.parse(await readScope(again,stored))
   assert(stableTask(again)&&isDeepStrictEqual(taskEffectBinding(again),currentBinding)&&taskEffectScopeDigest(againScope)===scopeDigest&&await isSessionLive(task.sessionId)===false,'TASK_EFFECT_CURRENT_BINDING_CHANGED')
-  return {kind:'single-task-effect-inspection',taskId,sessionId:task.sessionId,intentEntryId,intentDigest:taskEffectDigest(target),key:intent.payload.key,toolName:intent.payload.name,callId:intent.payload.callId,callEntryId:call.entry.id,argumentsDigest:taskEffectDigest(call.block.arguments),inputEntryId:input.id,packetId:packet.payload.id,inputDigest:taskEffectDigest(packet.payload),originBinding,currentBinding,ownerDrainEntryId:drain.id,ownerDrainDigest:taskEffectDigest(drain),scopeDigest,journalRevision:createHash('sha256').update(JSON.stringify(entries.at(-1))).digest('hex'),scope,drainedAt:drain.data.payload.proof.observedAt,proofScope:'registered-owned-provider-ranges',outcome:'unknown',noReplay:true}
+  return {...coldJobReconciliation?{coldJobReconciliation}:{},kind:'single-task-effect-inspection',taskId,sessionId:task.sessionId,intentEntryId,intentDigest:taskEffectDigest(target),key:intent.payload.key,toolName:intent.payload.name,callId:intent.payload.callId,callEntryId:call.entry.id,argumentsDigest:taskEffectDigest(call.block.arguments),inputEntryId:input.id,packetId:packet.payload.id,inputDigest:taskEffectDigest(packet.payload),originBinding,currentBinding,ownerDrainEntryId:drain.id,ownerDrainDigest:taskEffectDigest(drain),scopeDigest,journalRevision:createHash('sha256').update(JSON.stringify(entries.at(-1))).digest('hex'),scope,drainedAt:drain.data.payload.proof.observedAt,proofScope:'registered-owned-provider-ranges',outcome:'unknown',noReplay:true}
  }
  async function prepare({operatorSourceId,signal,...input}){
   const identity=identitySchema.parse(input),inspection=await inspect({taskId:identity.taskId,intentEntryId:identity.intentEntryId,signal})

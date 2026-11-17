@@ -42,7 +42,7 @@ test('command ACK is durable before request and binds original source to exact n
  assert.equal(saved.entries.find(e=>e.id===ack.payload.entryId).message.role,'user')
  const proof=q.lookupCommandEntry(ack.payload.entryId);assert.deepEqual(proof.packet,packet);assert.equal(checks,2)
  proof.packet.source.kind='forged';assert.equal(q.lookupCommandEntry(ack.payload.entryId).packet.source.kind,'direct-user')
- await q.deliver(session,packet.id);assert.equal(f.store.manager.getEntries().filter(e=>e.type==='message'&&e.message.role==='user').length,1)
+ assert.deepEqual(await q.deliver(session,packet.id,{beforeDeliver:()=>assert.fail('duplicate command must not compact')}),{id:packet.id,duplicate:true,admitted:true});assert.equal(f.store.manager.getEntries().filter(e=>e.type==='message'&&e.message.role==='user').length,1)
  await assert.rejects(q.enqueue({...packet,content:'/skill:verified changed'}),{code:'PI_BUSINESS_ADMISSION_ID_CONFLICT'})
  await q.close()
 })
@@ -54,7 +54,7 @@ test('missing command ACK after strict cold reopen remains uncertain and never g
  const reopened=await f.backend.openNative('commands',f.options),cold=await createBusinessAdmission({store:reopened,authorize:()=>true,authorizeSkillCommand:()=>true})
  assert.equal(cold.status(packet.id),'uncertain')
  await assert.rejects(cold.beforeRequest(),{code:'PI_SKILL_COMMAND_UNCERTAIN'})
- let calls=0;await assert.rejects(cold.deliver({subscribe(){return()=>{}},async prompt(){calls++}},packet.id),{code:'PI_SKILL_COMMAND_UNCERTAIN'});assert.equal(calls,0)
+ let calls=0;await assert.rejects(cold.deliver({subscribe(){return()=>{}},async prompt(){calls++}},packet.id,{beforeDeliver:()=>assert.fail('uncertain command must not compact')}),{code:'PI_SKILL_COMMAND_UNCERTAIN'});assert.equal(calls,0)
  await cold.close();await reopened.close()
 })
 test('internal notice source strings cannot obtain a native user command; revoked policy cannot dispatch',async t=>{

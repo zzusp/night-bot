@@ -117,7 +117,7 @@ export function bindPiAgentObservation({actor,emit,onError=()=>{},clock=Date.now
  // first event. It is not an HTTP dispatch counter (providers may retry).
  const originalStream=session.agent.streamFunction
  const observedStream=function(...args){
-  try{start();if(runId&&live()){model={spanId:hash([actor.id,runId,randomUUID()]),first:false,providerAttempted:true};send('model-started',null,model.spanId)}}catch(cause){report(cause)}
+  if(!session.isCompacting)try{start();if(runId&&live()){model={spanId:hash([actor.id,runId,randomUUID()]),first:false,providerAttempted:true};send('model-started',null,model.spanId)}}catch(cause){report(cause)}
   return Reflect.apply(originalStream,this,args)
  }
  session.agent.streamFunction=observedStream

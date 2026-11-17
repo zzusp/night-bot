@@ -111,3 +111,35 @@ test('effect hold preserves pending external inputs, retires late internal notic
  assert.equal(cancelled.length,2);assert.ok(cancelled.every(row=>row.payload.reason==='task-effect-held'))
  await restored.close();await store.close()
 })
+
+
+test('preflight runs once after authorization, preserves pending on failure and never runs for duplicates',async t=>{
+ const {store}=await fixture(t);let allowed=true,checks=0,calls=0
+ const queue=await createBusinessAdmission({store,authorize:()=>allowed});await queue.enqueue(packet)
+ const failure=new Error('preflight capacity rejected'),sdk={async sendCustomMessage(message){calls++;store.manager.appendCustomMessageEntry(message.customType,message.content,message.display,message.details)}}
+ const beforeDeliver=()=>{checks++;throw failure}
+ allowed=false;await assert.rejects(queue.deliver(sdk,packet.id,{beforeDeliver}),{code:'PI_BUSINESS_ADMISSION_DENIED'});assert.equal(checks,0)
+ allowed=true;await assert.rejects(queue.deliver(sdk,packet.id,{beforeDeliver}),error=>error===failure)
+ assert.equal(calls,0);assert.deepEqual(queue.pending(),[packet.id]);assert.equal(queue.current(),undefined)
+ assert.equal(store.manager.getEntries().some(entry=>entry.type==='custom_message'),false)
+ const entered=Promise.withResolvers(),release=Promise.withResolvers()
+ const first=queue.deliver(sdk,packet.id,{beforeDeliver:async()=>{checks++;entered.resolve();await release.promise}})
+ await entered.promise
+ assert.deepEqual(await queue.deliver(sdk,packet.id,{beforeDeliver}),{id:packet.id,duplicate:true})
+ release.resolve();await first
+ assert.deepEqual(await queue.deliver(sdk,packet.id,{beforeDeliver}),{id:packet.id,duplicate:true})
+ assert.equal(checks,2);assert.equal(calls,1);assert.equal(queue.status(packet.id),'admitted')
+})
+
+test('revocation or cancellation while preflight awaits never publishes business input',async t=>{
+ for(const change of ['revoke','cancel']){
+  const {store}=await fixture(t);let allowed=true
+  const queue=await createBusinessAdmission({store,authorize:()=>allowed});await queue.enqueue(packet)
+  let calls=0
+  await assert.rejects(queue.deliver({sendCustomMessage(){calls++}},packet.id,{beforeDeliver:async()=>{
+   if(change==='revoke')allowed=false
+   else await queue.cancelPending()
+  }}),{code:change==='revoke'?'PI_BUSINESS_ADMISSION_DENIED':'PI_BUSINESS_INPUT_CANCELLED'})
+  assert.equal(calls,0);assert.equal(queue.status(packet.id),change==='revoke'?'pending':'cancelled')
+ }
+})

@@ -12,17 +12,18 @@ import * as Authority from '../src/pi-authority.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {singleTaskAuditKinds} from '../src/tasks/single-session.js'
 import {admissionAuditKinds} from '../src/runtime/pi-business-admission.js'
+import {jobReceiptKinds,jobRegistrationDigest} from '../src/runtime/job-ledger.js'
 import {createTaskEffectReconciliation,effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectDigest,taskEffectScopeDigest,taskEffectReconciliationIdentity,taskEffectInvocationKey,verifyTaskEffectClosures} from '../src/tasks/effect-reconciliation.js'
 
 const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
 // The records below are deliberately injected Host attestations. These tests
 // verify strict native storage and business evidence binding, never kernel exit
 // or that a production factory already emits an authentic drain attestation.
-async function fixture(t,{mutate=async()=>{},withDrain=true,intentVersion=1,alterIntent=()=>{}}={}){
+async function fixture(t,{mutate=async()=>{},withDrain=true,intentVersion=1,alterIntent=()=>{},toolName='write',coldJob=false,beforeJob=()=>{}}={}){
  const root=await mkdtemp(join(tmpdir(),'night-effect-reconcile-')),ctx=new Context();await ctx.plugin(Authority)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')}),bindings={taskId:'task',sessionId:'session',requirementRevision:1,controlRevision:1,contextRevision:0,leaseEpoch:1}
  const task={...bindings,status:'active',control:'active',drained:true,recovering:false,ownerActorId:'owner',groupId:'group'},scope={taskId:'task',sessionId:'session',taskRoot:root,workingDirectory:root,ownerActorId:'owner',groupId:'group',channelDigest:taskEffectDigest({channel:'fixture'}),authorizationDigest:taskEffectDigest({mode:'workspace-write',memory:'fixture-group'})}
- const state={task,scope,live:false,operators:new Map()},auditKinds={...singleTaskAuditKinds,...admissionAuditKinds,...effectReconciliationAuditKinds,'directory/changed':()=>true}
+ const state={task,scope,live:false,operators:new Map()},auditKinds={...jobReceiptKinds,...singleTaskAuditKinds,...admissionAuditKinds,...effectReconciliationAuditKinds,'directory/changed':()=>true}
  // Malformed payload tests require a permissive fixture writer so the real
  // independent reader, rather than the producer's schema, must reject them.
  const writer=await backend.createNative(nativeSessionHeader('session',{cwd:root}),{auditKinds:Object.fromEntries(Object.keys(auditKinds).map(name=>[name,()=>true]))})
@@ -32,13 +33,16 @@ async function fixture(t,{mutate=async()=>{},withDrain=true,intentVersion=1,alte
  receipt('enqueued',packet,'admission')
  const inputEntryId=writer.manager.appendCustomMessageEntry('night.business-input',packet.content,false,{packetId:packet.id,source:packet.source})
  receipt('admitted',{id:packet.id,entryId:inputEntryId},'admission')
- const args={file_path:'work/proof.txt',content:'possible partial effect'},callId='call-one',toolName='write'
+ const args={file_path:'work/proof.txt',content:'possible partial effect'},callId='call-one'
  const assistant={role:'assistant',content:[{type:'toolCall',id:callId,name:toolName,arguments:args}],api:'openai-completions',provider:'fixture',model:'m',timestamp:1,stopReason:'toolUse',usage}
  const callEntryId=writer.manager.appendMessage(assistant)
  const intent={key:intentVersion===2?taskEffectInvocationKey({sessionId:'session',callEntryId,callId}):taskEffectDigest({requirementRevision:1,contextRevision:0,controlRevision:1,name:toolName,args}),name:toolName,callId,...intentVersion===2?{version:2,invocation:{callEntryId,inputEntryId,packetId:packet.id,inputDigest:taskEffectDigest(packet),originBinding:bindings}}:{}}
  alterIntent(intent);const intentEntryId=receipt('effect-intent',intent)
+ const job=coldJob?{version:1,jobId:'lost-shell',owner:'session',kind:toolName,label:'Lost fixture shell',startedAt:1,toolCall:{callId,rootCallId:callId,toolName}}:undefined
+ beforeJob(writer,assistant)
+ const registeredEntryId=job?receipt('registered',{...job,state:'admitted'},'job'):undefined
  writer.manager.appendMessage({role:'toolResult',toolCallId:callId,toolName,isError:true,content:[{type:'text',text:'Unknown external outcome'}],timestamp:1})
- const data={root,ctx,backend,writer,bindings,intent,intentEntryId,callEntryId,inputEntryId,assistant,args,receipt,state,auditKinds}
+ const data={job,registeredEntryId,root,ctx,backend,writer,bindings,intent,intentEntryId,callEntryId,inputEntryId,assistant,args,receipt,state,auditKinds}
  if(withDrain){
   const drain=await ownerDrainedReceipt({binding:bindings,scopeDigest:taskEffectScopeDigest(scope),cutEntryId:writer.manager.getLeafId()},async()=>({issuer:'night-owned-provider-drain-v1',scope:'registered-owned-provider-ranges',ownerId:'session',modelIdle:true,toolsIdle:true,processes:0,jobs:0,observedAt:new Date().toISOString(),evidenceDigest:taskEffectDigest({fixture:'not-kernel-proof'})}))
   data.ownerDrainEntryId=writer.appendAudit(drain)
@@ -91,6 +95,47 @@ test('a later attested readback cut retains the original producer attestation',a
 })
 test('a readback owner drain never replaces a missing original producer attestation',async t=>{
  const f=await fixture(t,{withDrain:false,mutate:appendReadbackDrain});await assert.rejects(f.inspect(),{code:'TASK_EFFECT_DRAIN_ATTESTATION_REQUIRED'})
+})
+async function appendColdJobReadback(f,{alter=()=>{},withReadback=true}={}){
+ const payload={...f.job,taskId:'task',registeredEntryId:f.registeredEntryId,registrationDigest:jobRegistrationDigest(f.job),journalRevision:'a'.repeat(64),requestDigest:'b'.repeat(64),operatorActorId:'local-operator',evidence:{path:'materials/runtime-evidence/jobs/'+ 'c'.repeat(64)+'.json',sha256:'c'.repeat(64)},observedAt:new Date().toISOString(),outcome:'closed-with-possible-partial-effects',exitStatus:'unknown',producerObservation:'operator-attested-absent',partialEffectsPossible:true,noReplay:true}
+ alter(payload,f)
+ f.coldJobEntryId=f.receipt('reconciled',payload,'job')
+ if(withReadback)await appendReadbackDrain(f)
+}
+test('cold shell reconciliation binds the original call without claiming its owner drained',async t=>{
+ const f=await fixture(t,{withDrain:false,intentVersion:2,toolName:'bash',coldJob:true,mutate:appendColdJobReadback})
+ const inspection=await f.inspect(),p=await proposal(f),receipt=await f.core.prepare(p.request)
+ assert.equal(inspection.ownerDrainEntryId,f.readbackDrainEntryId);assert.equal(inspection.coldJobReconciliation.entryId,f.coldJobEntryId)
+ assert.equal(receipt.payload.noReplay,true);assert.equal(receipt.payload.partialEffectsPossible,true)
+ const writer=await f.backend.openNative('session',{auditKinds:f.auditKinds}),entryId=writer.appendAudit(receipt);await writer.close()
+ const stored=await f.backend.readNative('session',{requireComplete:true})
+ const row={state:'committed',entryId,intentEntryId:f.intentEntryId,receipt,receiptDigest:taskEffectDigest(receipt)},task={...f.state.task,effectReconciliations:[row]}
+ assert.equal(stored.audit.filter(r=>r.kind==='owner-drained').length,1,'Only the actual readback owner has an attestation')
+ assert.equal(verifyTaskEffectClosures({task,stored,closedIntentEntryIds:[f.intentEntryId]}).length,1)
+ const native=stored.entries.find(e=>e.id===entryId)
+ native.data.payload.coldJobReconciliation.digest='0'.repeat(64);row.receipt=structuredClone(native.data);row.receiptDigest=taskEffectDigest(row.receipt)
+ assert.throws(()=>verifyTaskEffectClosures({task,stored,closedIntentEntryIds:[f.intentEntryId]}),{code:'TASK_EFFECT_DRAIN_ATTESTATION_INVALID'})
+})
+for(const [name,alter,code] of [
+ ['different registration',(p)=>{p.registeredEntryId='another-entry'},'TASK_EFFECT_COLD_JOB_BINDING_REQUIRED'],
+ ['wrong task',(p)=>{p.taskId='foreign-task'},'TASK_EFFECT_COLD_JOB_BINDING_REQUIRED'],
+ ['changed registration digest',(p)=>{p.registrationDigest='0'.repeat(64)},'TASK_EFFECT_COLD_JOB_BINDING_REQUIRED'],
+ ['wrong root call',(p,f)=>{f.writer.manager.getEntry(f.registeredEntryId).data.payload.toolCall.rootCallId='foreign'},'TASK_EFFECT_COLD_JOB_BINDING_REQUIRED'],
+ ['second registration',(p,f)=>{f.receipt('registered',{...f.job,jobId:'duplicate',state:'admitted'},'job')},'TASK_EFFECT_COLD_JOB_BINDING_REQUIRED'],
+ ['unresolved resource',(p,f)=>{f.receipt('registered',{...f.job,jobId:'pending',toolCall:{...f.job.toolCall,callId:'pending'},state:'admitted'},'job')},'TASK_EFFECT_JOB_UNRESOLVED'],
+])test('cold effect refuses '+name,async t=>{
+ const f=await fixture(t,{withDrain:false,toolName:'bash',coldJob:true,mutate:f=>appendColdJobReadback(f,{alter})})
+ await assert.rejects(f.inspect(),{code})
+})
+test('cold job registration cannot bind a reused provider call',async t=>{
+ const f=await fixture(t,{withDrain:false,toolName:'bash',coldJob:true,beforeJob:(writer,assistant)=>writer.manager.appendMessage(assistant),mutate:appendColdJobReadback})
+ await assert.rejects(f.inspect(),{code:'TASK_EFFECT_COLD_JOB_BINDING_REQUIRED'})
+})
+test('cold receipt alone cannot replace a real latest owner join or permit business after its cut',async t=>{
+ const noJoin=await fixture(t,{withDrain:false,toolName:'bash',coldJob:true,mutate:f=>appendColdJobReadback(f,{withReadback:false})})
+ await assert.rejects(noJoin.inspect(),{code:'TASK_EFFECT_DRAIN_ATTESTATION_REQUIRED'})
+ const after=await fixture(t,{withDrain:false,toolName:'bash',coldJob:true,mutate:async f=>{await appendColdJobReadback(f);f.writer.manager.appendMessage({role:'user',content:'late input',timestamp:1})}})
+ await assert.rejects(after.inspect(),{code:'TASK_EFFECT_DRAIN_CUT_CHANGED'})
 })
 test('a readback drain rejects an unadmitted owner and later business content',async t=>{
  const unadmitted=await fixture(t,{mutate:async f=>{await appendReadbackDrain(f);f.writer.manager.getEntry(f.readbackDrainEntryId).data.payload.binding.contextRevision=1}})

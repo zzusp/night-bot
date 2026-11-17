@@ -175,7 +175,9 @@ test('only new triage may defer resource mapping; memory is bound before created
  assert.equal(reads,0);assert.equal(bound,1);revoked=true
  await h.enqueue({id:'revoked',source:{kind:'test'},content:'custom triage input'})
  await assert.rejects(h.deliver('revoked'),{code:'FIXTURE_REVOKED'})
- assert.equal(beforeRuns,1);assert.ok(reads>=1);assert.equal(bound,reads+1);assert.equal(f.requests,0)
+ assert.equal(beforeRuns,0,'initial prompt preflight rejects revoked resources before agent_start');assert.ok(reads>=1);assert.equal(bound,reads+1);assert.equal(f.requests,0)
+ assert.deepEqual(h.agent.admission.pending(),['revoked'])
+ assert.equal(h.session.sessionManager.getEntries().some(entry=>entry.type==='custom_message'&&entry.details?.packetId==='revoked'),false)
  await h.dispose();f.setHandle(undefined);revoked=false
  const beforeTask=reads,task=await f.ctx.agents.create({sessionId:'eager-task',meta:{cwd:f.root,runtimeOwner:'task'}});f.setHandle(task)
  assert.equal(reads,beforeTask+1,'ordinary task retains its eager resource snapshot')

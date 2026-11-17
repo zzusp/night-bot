@@ -112,3 +112,33 @@ test('recoverable request failure blocks background but permits next input; perm
  inputHealthy=false
  await assert.rejects(f.worker.beforeInput({content:'forbidden'}),{code:'PI_OFFICIAL_ACTOR_NOT_LIVE'})
 })
+
+test('active steer refuses an oversized packet without compacting or consuming pending input',async t=>{
+ const f=fixture(t,{tokens:1000});f.session.model.contextWindow=131072;f.session.isIdle=false;f.state.inputs.push('steer')
+ await assert.rejects(f.worker.beforeInput({content:'x'.repeat(480000)}),{code:'PI_CONTEXT_INPUT_TOO_LARGE'})
+ assert.equal(f.state.foreground,0);assert.deepEqual(f.state.inputs,['steer'])
+ await f.worker.beforeInput({content:'ordinary steer'});assert.equal(f.state.foreground,0)
+})
+
+test('history already beyond foreground waterline compacts and verifies remaining room',async t=>{
+ const f=fixture(t,{tokens:110000});f.session.model.contextWindow=131072
+ f.session.compact=async()=>{f.state.foreground++;f.state.tokens=null;f.state.projection=[{role:'user',content:'x'.repeat(80000)}]}
+ await assert.rejects(f.worker.beforeInput({content:'x'.repeat(456000)}),{code:'PI_CONTEXT_INPUT_TOO_LARGE'})
+ assert.equal(f.state.foreground,1)
+})
+
+test('first input and post-compaction estimates include current system prompt and declared tools',async t=>{
+ const f=fixture(t,{tokens:0});f.session.model.contextWindow=131072;f.session.systemPrompt='s'.repeat(80000)
+ f.session.agent={state:{tools:[{name:'read',description:'d'.repeat(8000),parameters:{type:'object'}}]}}
+ await assert.rejects(f.worker.beforeInput({content:'x'.repeat(380000)}),{code:'PI_CONTEXT_INPUT_TOO_LARGE'})
+ assert.equal(f.state.foreground,0)
+ f.state.tokens=110000;f.session.compact=async()=>{f.state.foreground++;f.state.tokens=null;f.state.projection=[{role:'user',content:'h'.repeat(80000)}]}
+ await assert.rejects(f.worker.beforeInput({content:'x'.repeat(320000)}),{code:'PI_CONTEXT_INPUT_TOO_LARGE'})
+ assert.equal(f.state.foreground,1)
+})
+
+test('Router resume batch capacity counts all supplemental packets together',async t=>{
+ const f=fixture(t,{tokens:1000});f.session.model.contextWindow=131072
+ await assert.rejects(f.worker.beforeInput([{content:'a'.repeat(240000)},{content:'b'.repeat(240000)}]),{code:'PI_CONTEXT_INPUT_TOO_LARGE'})
+ assert.equal(f.state.foreground,0)
+})
