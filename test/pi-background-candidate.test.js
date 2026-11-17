@@ -18,7 +18,7 @@ async function fixture(t,{onStream}={}){
   calls++;assert.equal(context.tools?.length??0,0)
   const stream=createAssistantMessageEventStream()
   const message={role:'assistant',content:[{type:'text',text:'Preserved facts and remaining work.'}],api:model.api,provider:model.provider,model:model.id,timestamp:1,stopReason:'stop',usage:{input:100,output:10,cacheRead:0,cacheWrite:0,totalTokens:110,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}}
-  if(onStream)onStream({stream,message,options})
+  if(onStream)onStream({stream,message,options,context})
   else queueMicrotask(()=>{stream.push({type:'done',reason:'stop',message});stream.end(message)})
   return stream
  }})
@@ -61,4 +61,25 @@ test('already cancelled candidate does not dispatch or copy a changed live tail'
  await assert.rejects(compactPiCandidate({...f.args,snapshot,signal:AbortSignal.abort(new Error('preempted'))}),/preempted/)
  assert.equal(f.calls(),0)
  assert.deepEqual(snapshotPiCompaction(f.manager),changed)
+})
+
+for(const [role,marker] of [['channel-triage','triage'],['conversation-router','router']])test(`detached ${role} uses native role instructions without live journal mutation`,async t=>{
+ const f=await fixture(t,{onStream:({stream,message,context})=>{
+  assert.match(JSON.stringify(context),new RegExp('NIGHT_ROLE_SUMMARY='+marker))
+  assert.match(JSON.stringify(context),/standingInstructions/)
+  if(role==='conversation-router'){assert.match(JSON.stringify(context),/可选项待确认或已获用户同意/);assert.match(JSON.stringify(context),/既往明确要求的来源\/版本引用/)}
+  queueMicrotask(()=>{stream.push({type:'done',reason:'stop',message});stream.end(message)})
+ }}),snapshot=snapshotPiCompaction(f.manager)
+ const result=await compactPiCandidate({...f.args,snapshot,role,signal:new AbortController().signal})
+ assert.ok(result.summary);assert.deepEqual(snapshotPiCompaction(f.manager),snapshot)
+})
+
+test('role summary failure cancels native compaction without generic fallback or journal edits',async t=>{
+ const f=await fixture(t,{onStream:({stream,message})=>queueMicrotask(()=>{
+  const failed={...message,content:[],stopReason:'error',errorMessage:'fixture summary unavailable'}
+  stream.push({type:'error',reason:'error',error:failed});stream.end(failed)
+ })}),snapshot=snapshotPiCompaction(f.manager)
+ await assert.rejects(compactPiCandidate({...f.args,snapshot,role:'conversation-router',signal:new AbortController().signal}),/Compaction cancelled/)
+ assert.equal(f.calls(),1,'role summary failure must not dispatch a generic fallback')
+ assert.deepEqual(snapshotPiCompaction(f.manager),snapshot)
 })

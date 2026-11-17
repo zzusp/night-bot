@@ -162,6 +162,16 @@ Host 只允许当前已接纳且未结清批次中的原来源，回查当前版
 
 这是 Router 决策驱动的短维护，不触发空任务，不强制同时创建记忆与 Skill，也不把整个 Router JSON 包转换为真人输入。Skill 由 `resident_skill_query` 读取目标/版本，经 `resident_skill_mutate` 新增、更新或删除，只操作受管共享 learned 命名空间；无需先写 experience 或等待任务复盘，详见 [SELF-EVOLUTION](SELF-EVOLUTION.md)。历史已消费消息不自动回填、回复不自动重放。升级须按安装运维流程排空并重启，不直接编辑 Markdown、SQLite 或 Pi journal。 upsert 的步骤、理由及适用范围是候选输入，Host 必须经内置 `skill-creator` 的实际加载与模型生成后才能发布；生成证据与正式版本一并保存，失败不走旧直接拼装。
 
+## 独立长期行为指令
+
+明确持续调整 Bot 行为的要求使用现有共享 MarkdownMemoryStore 的预留 topic `standing-instructions`，与普通三段记忆区分。Router 仍自行作语义判断，不增加关键词门槛、另一个授权模型或任务。`resident_memory_remember` 在此 topic 使用 `instruction: {text}`，不同时传普通 `memory`；正文必须是本批当前原消息的逐字片段，并保留适用条件。新增提供 `expectedRevision: 0`，更新和 `resident_memory_forget` 提供当前条目版本。sourceId/messageVersion/sourceQuote、当前 Router generation、写权限和秘密校验不变。
+
+聊天入口仅维护当前原作者个人规则：Host 从认证来源绑定 actor hash，模型不能指定其他作者、会话级或 Bot 级 scope，不能改删他人的条目。安装级规则继续使用现有受信 AGENTS/instruction 资源，会话职责继续通过认证渠道配置维护；本轮不新增群聊提升全局规则的管理入口。存储 scope 元数据可表示 actor/conversation/bot，不代表普通渠道或任务获得了这些写权限。旧偏好和历史摘要不自动转成指令，普通记忆工具、候选提取和任务复盘不能写此预留分类。
+
+两角色每次模型请求前加载当前适用正文，输出条目 ID、revision 和准确 `appliesToSourceIds`；同轮 steer 加入的新作者也刷新，不能把个人规则套给整批。改删后以当前列表为准，一次性例外不自动修改规则。分诊只附当前主体的普通偏好导航；Router 保持普通目录及按需 `memory_read`。记忆只经官方 `night_memory_index` 注入一次，不再叠加另一个相同系统贡献。读取只刷新提示，不重放结构化记忆命令。
+
+条目仍使用既有 Markdown envelope、scope/hash、修订、事务与防重放；不建立新存储或迁移既有运行数据。新元数据写入后不能让不认识它的旧程序继续改写同一记忆目录；升级、回滚保持代码与离线数据匹配。摘要只保存指令 ID/版本引用，不能恢复已删规则或授予工具/跨会话权限。
+
 ## Persistence, forgetting and failures
 
 Writers acquire the Bot memory cross-process lease, reload current Markdown, and use

@@ -47,7 +47,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
   }
   if(!resolved?.modelRuntime||!agentDir||!registry||!settingsManager)throw new TypeError('Explicit model, settings, resources and registry required')
   tools=createPiOfficialTools({registry,owner:actor,businessAudit:audit,maxParallelToolCalls})
-  const bridge=createNightOfficialContext({...context,cwd:store.header.cwd,agentDir,getActor:()=>actor,settingsManager,measurePhase})
+  const bridge=createNightOfficialContext({...context,cwd:store.header.cwd,agentDir,getActor:()=>actor,settingsManager,measurePhase,compactionRole:store.header.runtimeOwner})
   await bridge.reloadResources()
   await measurePhase('session-sdk-create',async()=>{
    ;({session}=await createAgentSession({cwd:store.header.cwd,agentDir,modelRuntime:resolved.modelRuntime,model:resolved.model,thinkingLevel:resolved.thinkingLevel,settingsManager,resourceLoader:bridge.resourceLoader,sessionManager:store.manager,noTools:'builtin',tools:tools.customTools.map(tool=>tool.name),customTools:tools.customTools}))
@@ -75,7 +75,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
    // The next agent_start clears a prior per-request rejection. It must not
    // prevent a fresh durable input; permanent durability/policy fences remain.
    isInputHealthy:()=>!failure&&!durability.failure&&!bridge.policyFailure,
-   compact:({signal})=>compactPiCandidate({snapshot:snapshotPiCompaction(store.manager),cwd:store.header.cwd,resolved:{...resolved,model:session.model,thinkingLevel:session.thinkingLevel},agentDir,settingsManager,signal}),
+   compact:({signal})=>compactPiCandidate({snapshot:snapshotPiCompaction(store.manager),cwd:store.header.cwd,resolved:{...resolved,model:session.model,thinkingLevel:session.thinkingLevel},agentDir,settingsManager,signal,role:store.header.runtimeOwner}),
    onError:()=>ctx.logger?.warn('Background Pi compaction failed; original session retained'),
   })
   return {actor,session,tools,bridge,durability,background,get requestImageFailure(){return imageBudget?.failure},

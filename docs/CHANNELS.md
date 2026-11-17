@@ -190,6 +190,20 @@ Pi 保留最近原始尾部和较早内容的模型摘要；不会机械保证�
 
 摘要失败、截断、必要引用缺失或新代提交不完整时，不清空旧 journal，不回滚已完成业务，不重放动作。只有旧代提交、owner 和排空仍可信时才可恢复普通处理；SQL/Pi 不一致、旧实例已 fence 或效果不确定时保持阻断，依既有严格 journal 解码和维护证据恢复。连续流量未排空时继续处理，不假装空闲；Pi 原生阈值压缩仍保留。
 
+### 当前上下文与按需查询
+
+Router 按当前用户目标和完成条件安排工作，仅执行目标所必需的步骤与最小充分验证。部署本身的状态确认不等于业务复测；未要求复测时不自动追加，开发也不自行扩展为长流程耗时验收。可选复测或额外验收可在主线继续推进时询问，不作为主线依赖或完成门槛，未获同意不提前创建或启动；用户补充同意部署后复测时，先部署再复测。当前指令，或记忆/Router 上下文中有可核实来源、仍有效且适用的既往明确要求，可直接执行，无需重复询问；一般经验、模型建议或旧任务流程不能当作用户要求，当前修订/取消优先。原有权限、依赖、结果证据核对与如实交付仍须保留。
+
+原消息、引用、批次及 Pi journal 保持原样。Pi 压缩后若当前已接纳批次原文不再可见，系统仅补充原 packet 的只读引用；不重复接纳或重放已结动作，原文仍在上下文时不重复附加。分诊与 Router 的应用上下文在每次模型请求前只刷新命名的 Night sections，保留 Pi 自己的基础提示、资源与工具声明；同一轮追加来源也生效。分诊没有执行/查询工具，不加载 bash/jobs 等不可用工具的通用说明；长期指令按当前认证来源适用，普通偏好只提供相关导航，深入核实交 Router。
+
+两角色附当前/直接引用来源及直接相关任务的回复索引：通知 ID、来源版本、用途、冻结正文预览与读取时的实际状态。`prepared` 仅冻结，`unknown` 需读回原通知，只有 `delivered` 已确认送达；不能因为旧 packet 中还是 prepared 而重复承接，也不能因避免重复而省略真正的进度答复。索引不输出发送许可、恢复 token 或底层回执凭据。引用当前版本仍需核对 source-current 的状态，旧引文不成为新授权。
+
+Router 另附现有任务表/归档表的只读轻量索引：本会话非终态任务及本批直接关联的终态任务，默认 10 项、最多 100 项；返回版本、状态、依赖就绪、待答问题数、asOf 和分页信息，不内联完整简报与完成证据。使用 `resident_task_query(detail=index,offset,limit)` 翻页；`detail=full,taskId` 保持原完整要求/证据/依赖查询。
+
+`resident_task_query(detail=progress,taskId,cursor,limit)` 读取同会话原任务的严格已提交 Pi journal，核对 task identity audit 和当前需求/控制/租约边界，通过 Pi 官方 projection 返回最近活动（默认 10 条，最多 100 条，文本预览 1200 字符，明确截断）。模型陈述与记录的工具结果分别标记，不把意图当证据；读取期间版本变化拒绝返回旧结果。无持久记录或没有当前执行边界返回明确 unavailable；严格 journal 错误保持失败，不宽松解析物理尾部。查询不唤醒、重开或恢复任务。
+
+`resident_reply_query` 的 sourceId/taskId/notificationId 恰选一个，Host 固定本 conversation；source/task 查询默认最近 10 条、最多 100 条，正文预览 400 字符，以 rowid cursor 向前翻页，notificationId 读取单条完整冻结正文。每次从同一个 SQLite 通知账本取当前状态，查询不创建通知或触发重试。任务进度和回复都没有第二份状态库；外部报告优先保留原引用，摘要不替代权威查询。
+
 ### 已接纳未结批次的安全续办
 
 Router 批次已经 `admitted`、随后模型轮失败或正常 `stop` 但事件尚未 `settled` 时，普通恢复不能把它重新 `enqueue` / `deliver` 成另一份业务输入。正常停机留下的最后 `aborted` 生成由 Host 普通恢复沿原会话领取一次；模型 `error` 和正常 `stop` 未结批次不自动续轮，只允许受信 Host 显式调用 `application.tasks.resumeRouterBatch({conversationId,generation,sessionId,packetId,failedEntryId})`，绑定原 conversation、当前 generation/Router active session、原 packet 和原生失败 checkpoint；该方法拒绝模型域调用；操作者通过本机 `night-bot-router` CLI 接入同一 Host 能力，不直调 Pi SDK。`inspect` 只读取已经打开的原 owner，返回包含 generation/session/packet/失败 entry、checkpoint revision 和完整 inbox digest 的 proposal；无 owner、busy 或不满足既有守卫时明确拒绝。`resume --check` 不领取 claim、不提交历史、不调用模型或清告警；实际 resume 重新核对 proposal，并继续执行原来源授权与全部 no-replay 检查。入口使用独立私有 capability，拒绝远端、浏览器 Origin 和普通渠道发送者；操作流程见 [Windows runbook](ops/windows-local-runtime.md#router-模型错误的显式续办)。

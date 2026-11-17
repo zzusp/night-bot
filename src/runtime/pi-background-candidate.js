@@ -1,3 +1,4 @@
+import {roleCompactionExtension} from './pi-role-compaction.js'
 import {randomUUID} from 'node:crypto'
 import {createAgentSession,DefaultResourceLoader,SessionManager,SettingsManager} from '@earendil-works/pi-coding-agent'
 
@@ -11,7 +12,7 @@ export function snapshotPiCompaction(manager){
 /** Run only Pi's native compactor in an independent in-memory session. The
  * caller owns freshness checks and durable publication of the returned native
  * result. Candidate history is never published as business history. */
-export async function compactPiCandidate({snapshot,cwd,agentDir,resolved,settingsManager,signal}){
+export async function compactPiCandidate({snapshot,cwd,agentDir,resolved,settingsManager,signal,role}){
  signal?.throwIfAborted()
  if(!snapshot?.header||!Array.isArray(snapshot.entries)||!resolved?.modelRuntime||!resolved?.model||!settingsManager)throw fail('PI_BACKGROUND_CANDIDATE_INPUT_INVALID')
  const source=structuredClone(snapshot)
@@ -26,9 +27,11 @@ export async function compactPiCandidate({snapshot,cwd,agentDir,resolved,setting
  // Never reuse foreground extensions: they hold the live business actor and
  // may invoke memory/skill/write callbacks. Compaction needs only its journal.
  const settings=SettingsManager.inMemory({...structuredClone(settingsManager.getSettings()),packages:[],cacheWarming:'off'})
- const resourceLoader=new DefaultResourceLoader({cwd,agentDir,settingsManager:settings,noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,systemPrompt:'',appendSystemPrompt:[]})
+ let session
+ const roleExtension=roleCompactionExtension({role,getSession:()=>session})
+ const resourceLoader=new DefaultResourceLoader({cwd,agentDir,settingsManager:settings,extensionFactories:roleExtension?[roleExtension]:[],noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,systemPrompt:'',appendSystemPrompt:[]})
  await resourceLoader.reload();signal?.throwIfAborted()
- const {session}=await createAgentSession({cwd,agentDir,modelRuntime:resolved.modelRuntime,model:resolved.model,thinkingLevel:resolved.thinkingLevel,settingsManager:settings,resourceLoader,sessionManager:manager,noTools:'all',tools:[],customTools:[]})
+ ;({session}=await createAgentSession({cwd,agentDir,modelRuntime:resolved.modelRuntime,model:resolved.model,thinkingLevel:resolved.thinkingLevel,settingsManager:settings,resourceLoader,sessionManager:manager,noTools:'all',tools:[],customTools:[]}))
  const abort=()=>session.abortCompaction()
  // compact() first awaits abort(), before installing its cancellation token.
  const unsubscribe=session.subscribe(event=>{if(event.type==='compaction_start'&&signal?.aborted)abort()})

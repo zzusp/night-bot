@@ -1,3 +1,4 @@
+import {STANDING_TOPIC,checkedInstructionScope} from './standing-instructions.js'
 import {contentSnapshot,CONTENT_LIMIT,boundedRead} from './previous.js'
 import {memoryDirectory} from './scope.js'
 import {join,dirname,resolve} from 'node:path'
@@ -200,8 +201,9 @@ export class MarkdownMemoryStore {
     })
   }
   async reconciliationReceipt(scope,id){return this.locked(scope,async(_dir,meta)=>structuredClone(meta.reconciliations?.[id]))}
-  async remember(scope,{topic,key,text,source,originSource,provenance,context,content,expectedRevision,expiresAt,candidate=false,scopeRevision,validate,reconciliation}={}){
+  async remember(scope,{topic,key,text,source,originSource,provenance,context,content,instructionScope,expectedRevision,expiresAt,candidate=false,scopeRevision,validate,reconciliation}={}){
     if(!label(topic)||!label(key)||!source?.messageId||!source?.sessionId)throw failure('MEMORY_RECORD_INVALID')
+    if(topic===STANDING_TOPIC){if(candidate||content||context)throw failure('MEMORY_INSTRUCTION_WRITE_FORBIDDEN');instructionScope=checkedInstructionScope(instructionScope)}else if(instructionScope!==undefined)throw failure('MEMORY_INSTRUCTION_SCOPE_INVALID')
     if(context!==undefined)context=checkedMemoryContext(context)
     const structured=context?.version===2||context?.version===3||content!==undefined
     if(content!==undefined&&text!==renderMemoryContent(content))throw failure('MEMORY_CONTEXT_CONTENT_CHANGED')
@@ -217,9 +219,11 @@ export class MarkdownMemoryStore {
       const seen=hash(source.sessionId+':'+source.messageId+':'+topic+':'+key+':'+candidate)
       if(s.meta.seen.includes(seen))return {ok:true,duplicate:true,revision:s.meta.revision}
       const topicState=s.topics.get(topic)??{topic,entries:[]},entries=candidate?s.candidates:topicState.entries,prior=entries.find(e=>e.key===key&&(candidate?e.topic===topic:true))
+      if(topic===STANDING_TOPIC&&(!Number.isSafeInteger(expectedRevision)||expectedRevision<0))throw failure('MEMORY_INSTRUCTION_REVISION_REQUIRED')
+      if(topic===STANDING_TOPIC&&prior&&JSON.stringify(prior.instructionScope)!==JSON.stringify(instructionScope))throw failure('MEMORY_INSTRUCTION_SCOPE_FORBIDDEN')
       if(expectedRevision!==undefined&&(prior?.revision??0)!==expectedRevision)throw failure('MEMORY_REVISION_CONFLICT')
       if(candidate&&(s.meta.forgotten.includes(hash(text))||topicState.entries.some(e=>e.key===key)))return {ok:false,code:'MEMORY_CANDIDATE_SUPPRESSED'}
-      const now=new Date(this.now()).toISOString(),entry={id:prior?.id??randomUUID(),key,...candidate?{topic}: {},text,...context?{context}:{},revision:(prior?.revision??0)+1,scope:scope.kind,createdAt:prior?.createdAt??now,updatedAt:now,source:{sessionId:source.sessionId,messageId:source.messageId,observedAt:source.observedAt??now,...source.quoteSha256?{quoteSha256:source.quoteSha256}:{},actor:scope.actor},...(provenance?{provenance:structuredClone(provenance)}:{}),origins:[...new Map([...(prior?.origins??[]),...prior?.provenance?[prior.provenance]:[],...provenance?[provenance]:[]].map(value=>[JSON.stringify(value),value])).values()].slice(-32),...expiresAt?{expiresAt}:{}}
+      const now=new Date(this.now()).toISOString(),entry={id:prior?.id??randomUUID(),key,...candidate?{topic}: {},text,...context?{context}:{},...instructionScope?{instructionScope}:{},revision:(prior?.revision??0)+1,scope:scope.kind,createdAt:prior?.createdAt??now,updatedAt:now,source:{sessionId:source.sessionId,messageId:source.messageId,observedAt:source.observedAt??now,...source.quoteSha256?{quoteSha256:source.quoteSha256}:{},actor:scope.actor},...(provenance?{provenance:structuredClone(provenance)}:{}),origins:[...new Map([...(prior?.origins??[]),...prior?.provenance?[prior.provenance]:[],...provenance?[provenance]:[]].map(value=>[JSON.stringify(value),value])).values()].slice(-32),...expiresAt?{expiresAt}:{}}
       if(prior)entry.previous=contentSnapshot(prior.text,prior.revision,prior.updatedAt)
       if(originSource)entry.originSource={sessionId:originSource.sessionId,messageId:originSource.messageId,observedAt:originSource.observedAt,quoteSha256:originSource.quoteSha256,actor:originSource.actor}
       if(prior){entries.splice(entries.indexOf(prior),1);if(prior.text!==text)s.meta.forgotten.push(hash(prior.text))}
@@ -230,7 +234,7 @@ export class MarkdownMemoryStore {
       return ()=>({ok:true,entry:withoutPrevious(entry),revision:s.meta.revision,candidate})
     })
   }
-  async forget(scope,{topic,key,expectedRevision,source,validate,reconciliation}={}){
+  async forget(scope,{topic,key,expectedRevision,source,validate,reconciliation,instructionScope}={}){
     if(!label(topic)||!label(key))throw failure('MEMORY_RECORD_INVALID')
     return this.transaction(scope,async s=>{
       await validate?.()
@@ -238,6 +242,7 @@ export class MarkdownMemoryStore {
       const seen=source?.messageId?hash(source.sessionId+':'+source.messageId+':forget:'+topic+':'+key):undefined
       if(seen&&s.meta.seen.includes(seen))return {ok:true,duplicate:true,revision:s.meta.revision}
       const entries=s.topics.get(topic)?.entries??[],prior=entries.find(e=>e.key===key)
+      if(topic===STANDING_TOPIC){if(!Number.isSafeInteger(expectedRevision)||expectedRevision<0)throw failure('MEMORY_INSTRUCTION_REVISION_REQUIRED');const selected=checkedInstructionScope(instructionScope);if(prior&&JSON.stringify(prior.instructionScope)!==JSON.stringify(selected))throw failure('MEMORY_INSTRUCTION_SCOPE_FORBIDDEN')}
       if(expectedRevision!==undefined&&(prior?.revision??0)!==expectedRevision)throw failure('MEMORY_REVISION_CONFLICT')
       for(const entry of [...entries,...s.candidates])if(entry.key===key&&(!entry.topic||entry.topic===topic))s.meta.forgotten.push(hash(entry.text))
       if(prior)entries.splice(entries.indexOf(prior),1)

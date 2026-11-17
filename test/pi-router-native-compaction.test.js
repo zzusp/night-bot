@@ -1,10 +1,21 @@
+import {SettingsManager} from '@earendil-works/pi-coding-agent'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools} from './fixtures/resident-router-host.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 
-for(const mode of ['manual','automatic'])test(`native Pi ${mode} compaction preserves Router identity, journal and subsequent business delivery`,{timeout:nativeTestTimeout(60000)},async t=>{
- let summaries=0
+for(const mode of ['manual','automatic','overflow'])test(`native Pi ${mode} compaction preserves Router identity, journal and subsequent business delivery`,{timeout:nativeTestTimeout(60000)},async t=>{
+ let summaries=0,overflowed=false
+ // Resource reload resets applyOverrides; persist the small fixture retention
+ // in Pi's in-memory storage so real overflow has an eligible history prefix.
+ if(mode==='overflow'){
+  const inMemory=SettingsManager.inMemory
+  t.mock.method(SettingsManager,'inMemory',function(settings,...options){
+   const overrides=settings?.compaction?.modelOverrides
+   return inMemory.call(this,overrides?.['fixture/m']?{...settings,compaction:{...settings.compaction,modelOverrides:{...overrides,'fixture/m':{...overrides['fixture/m'],keepRecentTokens:200}}}}:settings,...options)
+  })
+ }
+
  const h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
   if(tools.includes('channel_triage_submit')){
@@ -12,11 +23,13 @@ for(const mode of ['manual','automatic'])test(`native Pi ${mode} compaction pres
    return {tool:'channel_triage_submit',args:{dispositions:input.messages.map(s=>({sourceId:s.sourceId,messageVersion:s.version,needsHandling:true,reason:'fixture'}))}}
   }
   if(tools.includes('resident_router_settle')){
+   if(mode==='overflow'&&!overflowed&&requestEnvelope(body,'Router 请求：')?.events.some(event=>event.source?.messageId==='after-compact')){overflowed=true;return {error:'maximum context length is 262144 tokens'}}
    if(body.messages.at(-1)?.role==='tool')return {text:'Settled'}
    const input=requestEnvelope(body,'Router 请求：')
    return {tool:'resident_router_settle',args:{operationId:'compact-settle:'+input.events.map(e=>e.id).join(','),eventIds:input.events.map(e=>e.id)}}
   }
   assert.equal(requestEnvelope(body,'Router 交接请求：'),undefined)
+  assert.match(JSON.stringify(body),/NIGHT_ROLE_SUMMARY=router/)
   summaries++
   return {text:'# Goal\nContinue the original conversation.\n# Progress\nEarlier input was processed; preserve source references and query current task state when needed.'}
  })
@@ -30,6 +43,7 @@ for(const mode of ['manual','automatic'])test(`native Pi ${mode} compaction pres
  actor.piSession.settingsManager.applyOverrides({compaction:{modelOverrides:{'fixture/m':{keepRecentTokens:200,...mode==='automatic'?{reserveTokens:262144-2000}:{}}}}})
  if(mode==='manual'){await actor.piSession.compact();await actor.receipts.commit()}
  await h.receive(channelMessage('after-compact'));await h.service.whenIdle()
+ if(mode==='overflow')assert.equal(overflowed,true)
  assert.ok(summaries>0)
  const after=await h.query('router.get',{conversationId}),native=await h.host.ctx.sessionPersistence.readNative(after.activeSessionId,{requireComplete:true})
  assert.equal(after.activeSessionId,before.activeSessionId);assert.equal(after.generation,before.generation)

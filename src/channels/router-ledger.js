@@ -1,3 +1,4 @@
+import {queryTaskIndex,queryReplyHistory} from './conversation-context.js'
 import {createHash} from 'node:crypto'
 import {querySourceHistory,queryCurrentSource,sourceHistorySchema} from './source-history.js'
 
@@ -305,6 +306,8 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     }
   }
   function query(q) {
+    if(q.kind==='router.task-index')return queryTaskIndex(db,q,{dependenciesReady})
+    if(q.kind==='router.reply-history')return queryReplyHistory(db,q)
     if(q.kind==='router.source-history')return querySourceHistory(db,q)
     if(q.kind==='router.source-current')return queryCurrentSource(db,q)
     if(q.kind==='triage.pending')return rows('triage').filter(row=>row.state==='pending'&&(!q.conversationId||row.conversationId===q.conversationId)).map(row=>read('sources',row.sourceId)).filter(row=>!row.routed&&!row.authorizationRevoked&&!row.triageHold&&!row.archiveRestoreHold&&latest(row)).slice(0,bounded(q.limit))

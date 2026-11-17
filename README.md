@@ -100,6 +100,8 @@ node bin/night-bot-settings.js data/config/config.json model-list --live
 
 分诊与 Router 的上下文目标均为 500,000 tokens，不超过模型真实窗口；完整轮次在 60% 水位尝试可取消的后台摘要，80% 由 Pi 原生前台压缩兜底。大消息预检包含系统提示、工具和输出余量；无法容纳时返回 `PI_CONTEXT_INPUT_TOO_LARGE`，保留耐久待办而不截断正文。重复输入不触发摘要，Router 续办先检查全部新输入再领取检查点。详见[后台压缩合同](docs/BACKGROUND-COMPACTION.md)。
 
+分诊与 Router 将适用的长期行为指令单独必载，普通偏好/背景只载索引；同轮追加来源后，在下一次模型请求前按认证作者刷新。Router 默认获得现有 SQLite 的分页任务索引及相关回复索引，可用 `resident_task_query(detail=progress)` 按需查看严格已提交的执行记录，用 `resident_reply_query` 核对冻结正文与当前送达状态；不会为查询唤醒任务或补发消息。手动、自动、overflow 与后台候选统一使用 Pi 原生角色摘要，详细事实仍以原账本为准。见[渠道上下文](docs/CHANNELS.md#当前上下文与按需查询)和[长期行为指令](docs/MEMORY.md#独立长期行为指令)。
+
 已有记忆布局升级须先正常停机并执行[离线检查与迁移](docs/MEMORY-MIGRATION.md)，未升级时新版拒绝启动。本地操作者明确不备份时，v3→v4可显式使用 `--no-backup`；保留中断续写与冲突校验，但不提供旧格式回滚。
 
 ## 权限与运行边界
