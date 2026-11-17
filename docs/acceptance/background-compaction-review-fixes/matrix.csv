@@ -1,0 +1,23 @@
+case_id,case,round_1,evidence
+image-recovery,图片错误后新输入恢复,PASS,先拒绝图片后新文本 admitted；旧正文保留
+active-steer,活动 steer 单包容量,PASS,超限拒绝且不 compact；普通输入通过
+over-waterline,旧历史已越水位,PASS,原生压缩后仍复核容量；pending 保留
+first-prompt,首次系统提示与工具,PASS,首次超限拒绝早于正文接纳
+system-patches,系统增量只计一次,PASS,合法近窗口输入 admitted
+small-window,32K 动态近期保留,PASS,压缩后接纳；成功或失败均恢复设置
+owner-cancel,取消 token 安装窗口,PASS,零摘要调用；owner reason 保留
+owner-close,关闭 token 安装窗口,PASS,关闭排空；零摘要；pending 保留
+observation,业务 runId 归属,PASS,只有 next runId 及一次业务 model-started
+resume-batch,Router 补充累计预检,PASS,超限拒绝早于 claim；原 admission 不变
+delivery-dedup,去重与预检顺序,PASS,重复/不确定命令零预检；同 ID 并发预检一次
+delivery-revocation,等待期间撤权取消,PASS,零 SDK 正文
+candidate-cold,原生候选接管冷恢复,PASS,真实 Host/SDK 接管及 no-replay
+triage-metrics,首次资源计数及冷重启,PASS,初跑旧断言失败后同步为三次；复验1/1
+task-reopen,普通消息重开原任务,PASS,容量修复后复验通过；原 session/revision 保持
+task-32-leases,32轮来源续办效果一次,PASS,32 leases / 33 business calls / 23 summaries / 11 compactions
+scheduled-report,定时正文双附件冷恢复,PASS_WITH_RISK,复验1/1；初跑超时原因未收敛
+final-focused,最终源码集中回归,PASS,183 pass / 0 fail / 0 skipped
+routing-initial,routing全组初跑,FAIL_RETESTED,179 pass / 1 fail；失败场景复验1/1，未全组复跑
+runtime-initial,runtime全组初跑,PARTIAL_RETESTED,147 pass / 3 fail / 12 skip；失败场景复验通过
+linux-process,Linux专属进程路径,SKIP,Windows不具备所需namespace；12项未验
+native-guards,来源导入原生守卫,PASS,pnpm check；453 production files；0 retired SDK imports

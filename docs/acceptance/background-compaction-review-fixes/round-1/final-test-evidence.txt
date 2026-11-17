@@ -1,0 +1,63 @@
+Final production source: 803f60ee7e09ef0a166de0cccf8916f6da9ec500
+Main: a8377ee319589df3dd0f5fe40376bd0fb84436f8
+
+--- final-regression.log ---
+✔ offline v2 invocation rejects reassigned originBinding (147.1326ms)
+ℹ tests 183
+ℹ suites 0
+ℹ pass 183
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 76766.389
+
+--- runtime-capacity-retest.log ---
+✔ Router reopens completed work from an ordinary message without execution authorization (46097.206ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":2114,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":43677,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":304,"aborted":false}
+✔ official service retains 32 source-authorized continuations in Pi history without replaying the completed effect (302888.0975ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":1318,"aborted":false}
+ℹ {"leases":32,"businessCalls":33,"officialSummaryCalls":23,"nativeCompactionEntries":11}
+ℹ {"lifecyclePhase":"business","elapsedMs":301072,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":498,"aborted":false}
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 351361.1693
+
+--- runtime-schedule-retest.log ---
+✔ native due members report shares final delivery and recovers attachments after cold restart (25758.6306ms)
+ℹ {"lifecyclePhase":"prepare","elapsedMs":7,"aborted":false}
+ℹ {"lifecyclePhase":"business","elapsedMs":25526,"aborted":false}
+ℹ {"lifecyclePhase":"cleanup","elapsedMs":224,"aborted":false}
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28257.7144
+
+--- routing-retest.log ---
+✔ taskless persistent triage retains owner and native metrics through service restart (3517.6156ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7985.8542
+
+--- check.log ---
+$ node scripts/check-coverage.mjs && node scripts/check-production-imports.mjs && node scripts/check-native-runtime.mjs
+{"source":"93e431a2a76938d32aefc070b093fcfb65691c70","retainedModules":190,"retiredModules":10,"excludedUiModules":3,"explicitlyAdaptedModules":60,"relativeImports":"closed","httpRoutes":"retained"}
+{"productionImportFiles":453,"literalBareImports":212,"status":"declared-production-imports"}
+{"runtimeJsFiles":453,"externalSdkImports":0,"legacyOrchestratorDefinitions":0,"legacySourceFilesVerified":2,"historicalFormatFilesRemoved":9}

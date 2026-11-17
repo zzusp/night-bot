@@ -1,4 +1,4 @@
-import {DefaultResourceLoader,SettingsManager} from '@earendil-works/pi-coding-agent'
+import {DefaultResourceLoader,SettingsManager,estimateTokens} from '@earendil-works/pi-coding-agent'
 import {createPiProjectionRequest} from './pi-request-context.js'
 
 const error=(code,message)=>Object.assign(new Error(message),{code})
@@ -57,6 +57,12 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
   pi.on('agent_settled',async(event,ctx)=>{await memory?.settled?.(actor(),{...event,outcome:lastOutcome},ctx)})
  }
  const resourceLoader=new DefaultResourceLoader({cwd,agentDir,settingsManager,extensionFactories:[{name:'night-business-context',factory:extensionFactory}],noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,systemPrompt:'',appendSystemPrompt:[],agentsFilesOverride:()=>({agentsFiles:resources.agentsFiles}),skillsOverride:()=>({skills:resources.skills,diagnostics:[]})})
+ // 首次请求尚无原生系统条目，先计入应用即将在 before_agent_start 注入的正文。
+ const estimateInputPromptTokens=async()=>{
+  const current=actor();await refreshResources();assertActive(current)
+  const sections=await systemPrompt?.officialSections(current)??{},policy=await memory?.prompt?.(current)
+  return estimateTokens({role:'system',sections,content:policy??'',toolsAdded:{contextFiles:resources.agentsFiles,skills:resources.skills}})
+ }
  const reloadResources=()=>measurePhase('sdk-reload',()=>resourceLoader.reload())
- return {extensionFactory,resourceLoader,bindActor,refreshResources,reloadResources,get policyFailure(){return lastPolicyFailure}}
+ return {extensionFactory,resourceLoader,bindActor,refreshResources,reloadResources,estimateInputPromptTokens,get policyFailure(){return lastPolicyFailure}}
 }

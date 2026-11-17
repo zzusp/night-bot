@@ -1,3 +1,5 @@
+import {createBackgroundCompaction} from './pi-background-compaction.js'
+import {compactPiCandidate,snapshotPiCompaction} from './pi-background-candidate.js'
 import {bindPiLiveOutput} from './pi-live-output.js'
 import {skillCommand} from './pi-skill-command-input.js'
 import {bindBusinessTurnYield} from './pi-business-turn-yield.js'
@@ -33,7 +35,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
  const audit=Object.freeze({...methods,flush:async()=>{if(failure)throw failure;try{await sourceAudit.flush()}catch(cause){throw fence(cause)}}})
  actor.audit=audit
  const unbindApproval=bindApprovalAudit(actor,audit)
- let session,imageBudget,toolBatchGuard,businessYield,liveOutput
+ let session,imageBudget,toolBatchGuard,businessYield,liveOutput,background
  try {
   // Initial permission selection in application setup must see its exact
   // approval capability, before any scoped resource is resolved or tool copied.
@@ -68,15 +70,24 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
   liveOutput=bindPiLiveOutput(actor)
   tools.bindContextDelivery(createOfficialToolContextDelivery({session,actor,fence}))
   if(!deferResources){await bridge.refreshResources();await bridge.reloadResources()}
-  return {actor,session,tools,bridge,durability,get requestImageFailure(){return imageBudget?.failure},
+  if(['channel-triage','conversation-router'].includes(store.header.runtimeOwner))background=createBackgroundCompaction({session,store,admission,signal:actor.lifecycle?.signal,commit:()=>durability.commit(),measurePhase,outputReserveTokens:resolved.requestOptions?.maxTokens,getInitialPromptTokens:()=>bridge.estimateInputPromptTokens(),
+   isHealthy:()=>!failure&&!durability.failure&&!durability.requestFailure&&!bridge.policyFailure&&!imageBudget?.failure,
+   // The next agent_start clears a prior per-request rejection. It must not
+   // prevent a fresh durable input; permanent durability/policy fences remain.
+   isInputHealthy:()=>!failure&&!durability.failure&&!bridge.policyFailure,
+   compact:({signal})=>compactPiCandidate({snapshot:snapshotPiCompaction(store.manager),cwd:store.header.cwd,resolved:{...resolved,model:session.model,thinkingLevel:session.thinkingLevel},agentDir,settingsManager,signal}),
+   onError:()=>ctx.logger?.warn('Background Pi compaction failed; original session retained'),
+  })
+  return {actor,session,tools,bridge,durability,background,get requestImageFailure(){return imageBudget?.failure},
    async deliver(packetId,options){
     if(typeof admission.deliver!=='function')throw new TypeError('Durable business delivery capability required')
-    if(!session.isStreaming)tools.beginTurn()
-    // Ordinary packets use sendCustomMessage: refresh at actual before_agent_start.
-    // Only slash skills need a current loader before Pi prompt expansion.
-    const packet=admission.lookupPacket?.(packetId)
-    if(!packet||skillCommand(packet))await measurePhase('resources-deliver',async()=>{await bridge.refreshResources();await bridge.reloadResources()})
-    const result=await admission.deliver(session,packetId,options)
+    const result=await admission.deliver(session,packetId,{...options,beforeDeliver:async packet=>{
+     await background?.beforeInput(packet)
+     if(!session.isStreaming)tools.beginTurn()
+     // Ordinary packets refresh at actual before_agent_start; slash skills need
+     // a current loader before Pi expands their command.
+     if(skillCommand(packet))await measurePhase('resources-deliver',async()=>{await bridge.refreshResources();await bridge.reloadResources()})
+    }})
     if(imageBudget?.failure)throw imageBudget.failure
     if(bridge.policyFailure)throw bridge.policyFailure
     if(durability.failure)throw durability.failure
@@ -85,12 +96,16 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     return result
    },
    async resumeRouterBatch(packet,beforeStart,afterClaim,supplements=[]){
+    const eventIds=[...new Set([packet,...supplements].flatMap(input=>input.source.eventIds))]
+    const content='Host 请求继续原已接纳的 Router 批次。沿原历史与当前权限处理未结事件；先统筹后续真实输入中的取消、延期和变更，再决定动作。不执行中断回复中未派发的旧生成调用，不重放已完成动作、不重跑任务。必要动作有持久收据后，本轮结束前必须调用 resident_router_settle 结清下列事件，文字答复不消费事件；工具拒绝时依据真实反馈处理，不伪造成功。学习维护失败如实保留失败，不撤销已完成交付或重开业务任务。本控制消息不是用户来源或新授权。\nRouter 续办检查点：'+JSON.stringify({eventIds})
+    const claimContent='Host 已领取原 Router 失败回合的显式续办；本控制记录不提供新来源或授权。'
+    await background?.beforeInput([...supplements,{content:claimContent},{content}])
     tools.beginTurn()
     await bridge.refreshResources();await bridge.reloadResources()
     const proof=await beforeStart()
     // 在官方入口可能触发压缩前，先持久消费原失败 checkpoint；它不是业务输入或授权。
     actor.lifecycle.signal.throwIfAborted()
-    await session.sendCustomMessage({customType:'night.router-resume-claim',content:'Host 已领取原 Router 失败回合的显式续办；本控制记录不提供新来源或授权。',display:false,details:proof},{triggerTurn:false})
+    await session.sendCustomMessage({customType:'night.router-resume-claim',content:claimContent,display:false,details:proof},{triggerTurn:false})
     await durability.commit()
     await afterClaim(proof)
     // 较新真实输入先耐久接纳但不启动推理，取消/延期必须早于恢复动作可见。
@@ -103,8 +118,6 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     resumedInput={id:packet.id,messages:structuredClone([packet,...supplements])}
     try{
      actor.lifecycle.signal.throwIfAborted()
-     const eventIds=[...new Set([packet,...supplements].flatMap(input=>input.source.eventIds))]
-     const content='Host 请求继续原已接纳的 Router 批次。沿原历史与当前权限处理未结事件；先统筹后续真实输入中的取消、延期和变更，再决定动作。不执行中断回复中未派发的旧生成调用，不重放已完成动作、不重跑任务。必要动作有持久收据后，本轮结束前必须调用 resident_router_settle 结清下列事件，文字答复不消费事件；工具拒绝时依据真实反馈处理，不伪造成功。学习维护失败如实保留失败，不撤销已完成交付或重开业务任务。本控制消息不是用户来源或新授权。\nRouter 续办检查点：'+JSON.stringify({eventIds})
      await session.sendCustomMessage({customType:'night.router-resume-turn',content,display:false,details:proof},{triggerTurn:true})
      if(imageBudget?.failure)throw imageBudget.failure
      if(bridge.policyFailure)throw bridge.policyFailure
@@ -114,6 +127,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     }finally{resumedInput=undefined}
    },
    async prompt(...args){
+    await background?.beforeInput()
     tools.beginTurn()
     await bridge.refreshResources();await bridge.reloadResources()
     await session.prompt(...args)
@@ -125,10 +139,10 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     if(durability.requestFailure)throw durability.requestFailure
     if(failure)throw failure
    },
-   async close(){try{await durability.close()}finally{liveOutput?.close()}businessYield?.close();imageBudget?.close();toolBatchGuard?.close();unbindApproval()},
+   async close(){await background?.close();try{await durability.close()}finally{liveOutput?.close()}businessYield?.close();imageBudget?.close();toolBatchGuard?.close();unbindApproval()},
   }
  }catch(cause){
-  liveOutput?.close();unbindApproval();businessYield?.close();imageBudget?.close();toolBatchGuard?.close();await session?.abort();await tools?.close();session?.dispose()
+  await background?.close();liveOutput?.close();unbindApproval();businessYield?.close();imageBudget?.close();toolBatchGuard?.close();await session?.abort();await tools?.close();session?.dispose()
   // No SDK execution has been admitted during construction. Preserve any
   // independently owned store for its caller to inspect and close explicitly.
   throw cause

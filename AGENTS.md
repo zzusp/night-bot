@@ -17,7 +17,8 @@ helpers for historical message/receipt formatting do not mean DWS is loaded or
 running, and other static-loading claims require test evidence.
 Each task has one execution session; no separate task Owner/coordinator or split
 execution team. First-tier triage keeps one durable Pi session per authenticated conversation,
-with a 64K effective context budget and native automatic compaction. It only decides per-source handling and optional
+with a 500,000-token target context budget capped by the model window,
+60% idle background native compaction and 80% foreground native compaction fallback. It only decides per-source handling and optional
 short replies; it never splits, creates or controls tasks. Each authenticated
 conversation has one durable Router identity for task arrangement and result
 assessment, separate from task execution and tool-free retrospectives. Router is
@@ -38,7 +39,8 @@ same-session steer, direct source/version/actor links, durable delivery
 deduplication and unknown-send readback. Task dependencies are Host-enforced;
 completion alone grants neither authorization nor dependent-task execution.
 Router retains its Pi session across idle periods; Pi native compaction owns context
-reduction with a Router-only 256K effective budget. Retained pre-upgrade generation
+reduction with the same 500,000-token target and 60%/80% waterlines as triage.
+Small model windows retain native output headroom and may compact earlier. Retained pre-upgrade generation
 recovery must preserve committed history, one business owner and durable pending inputs. Topic is historical audit,
 not an active routing entity. See docs/CHANNELS.md.
 Do not turn repetition counts into a universal gate for skill creation: the model
