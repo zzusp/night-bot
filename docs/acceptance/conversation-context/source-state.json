@@ -1,0 +1,89 @@
+{
+  "base": "98648cd84130f069bd4c52add10dacf2ba095f58",
+  "branch": "worktree-conversation-context",
+  "worktree": "uncommitted",
+  "files": [
+    {
+      "path": "src/channels/conversation-context.js",
+      "sha256": "cee617797b82f4800c9591f025a11ad31042e1877d79701ca6d0f518481d97f5"
+    },
+    {
+      "path": "src/channels/resident-router-business.js",
+      "sha256": "77e99372ccaf2c108f726655d45de0a43fd219b6ce434bf63ce562b9c116bd81"
+    },
+    {
+      "path": "src/channels/router-ledger.js",
+      "sha256": "45ee8a023c871449dd6a374008fcb92f80f8e437234bd0ae51ea52116f054226"
+    },
+    {
+      "path": "src/channels/router-progress.js",
+      "sha256": "3676e2085214ab6580991761c1b6f8d96908baf38ea76f69019b30ee0b950107"
+    },
+    {
+      "path": "src/memory/layered-format.js",
+      "sha256": "65911510939064c63432a51d80f610c3f26fc48d2b62693cc75dcb6b3e35015d"
+    },
+    {
+      "path": "src/memory/reconciliation.js",
+      "sha256": "827f8aafd10e9c3936b33b84a78dba50270d915adee4e173ea77eadb53a4509d"
+    },
+    {
+      "path": "src/memory/service.js",
+      "sha256": "13537d7c28d8a93ba8f9fb90e0a09f7d0d1ece902b7012fbd37e8de3e355217c"
+    },
+    {
+      "path": "src/memory/standing-instructions.js",
+      "sha256": "c71dd71be60768db6ed5e7404238e2d9298f3c1f2e345c1ac58fdfa016ac912d"
+    },
+    {
+      "path": "src/memory/store.js",
+      "sha256": "d6cb17b1e79d938c8b7b87e50b7a0935b4412b3f341a09c1c81f6df11f0e8f09"
+    },
+    {
+      "path": "src/native-system-prompt.js",
+      "sha256": "ab92073cf754bb122347e711fe4daa1c0bc1ed8afff5a7c9a7be9d94f3e4e19f"
+    },
+    {
+      "path": "src/runtime/pi-background-candidate.js",
+      "sha256": "95ce647c97829ec24fdcf256376b564e82048353c08c0c83cc128e2884530e45"
+    },
+    {
+      "path": "src/runtime/pi-official-context.js",
+      "sha256": "872c4760c36f0826fe9eac97a72e11b1ad35dab105323656de8bb2bb0ff5ae74"
+    },
+    {
+      "path": "src/runtime/pi-official-session.js",
+      "sha256": "c13a2fc04edf3694571f548dc86b086d7ad19b64d54d67fde5ba1134d49db5a5"
+    },
+    {
+      "path": "src/runtime/pi-role-compaction.js",
+      "sha256": "dfe40510a9ea957605787aad6873a61e2879096713abdf58cb1b46cdd040443e"
+    },
+    {
+      "path": "test/pi-background-candidate.test.js",
+      "sha256": "22a6acdc66f6d9aa11c161ece87bbb002613f7cadc6630a21c7ca56578149bfb"
+    },
+    {
+      "path": "test/pi-background-host.test.js",
+      "sha256": "7903c465393f0e45994ed19fbfd33ff1f9e35ef8953659918dbb44f50ba48c80"
+    },
+    {
+      "path": "test/pi-conversation-context.test.js",
+      "sha256": "045dd7603b625fb9301ea9f2a53f22d4220b3e910c89286fa78425da3bbb6187"
+    },
+    {
+      "path": "test/pi-persistent-triage.test.js",
+      "sha256": "91930f1c795fe769edb84541d27e5b258c3f7fe5eaace225dd871f31ed61954f"
+    },
+    {
+      "path": "test/pi-router-native-compaction.test.js",
+      "sha256": "f93f3e598d4459e4b5f7b48d7fbf01a3ab2b27f8d1a7d7d9d4f066feaf3178f2"
+    },
+    {
+      "path": "test/pi-standing-instructions.test.js",
+      "sha256": "9141f66ab17d5527f0e1ead84b7b3d151ddcf90a3451561a28426d17f5745b3a"
+    }
+  ],
+  "fingerprintRecipe": "SHA256 of UTF-8 lines: path + space + file SHA256 + LF, sorted by path",
+  "sourceFingerprint": "ad69c0f4e0b11665192ab2080074e803a67a3b54b52d8b26528f798e664066a3"
+}

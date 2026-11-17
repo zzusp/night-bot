@@ -41,10 +41,21 @@ test('triage reuses history between batches and cold resumes without replaying r
  await h.receive(channelMessage('one',{text:'Original first context'}));await h.service.whenIdle();assert.equal(h.sent.length,4)
 })
 
-for(const mode of ['manual','automatic'])test(`persistent triage ${mode} Pi compaction keeps session and accepts only the new batch`,{timeout:nativeTestTimeout(60000)},async t=>{
- let summaries=0
+for(const mode of ['manual','automatic','overflow'])test(`persistent triage ${mode} Pi compaction keeps session and accepts only the new batch`,{timeout:nativeTestTimeout(60000)},async t=>{
+ let summaries=0,overflowed=false
+ // Resource reload resets applyOverrides; persist the small fixture retention
+ // in Pi's in-memory storage so real overflow has an eligible history prefix.
+ if(mode==='overflow'){
+  const inMemory=SettingsManager.inMemory
+  t.mock.method(SettingsManager,'inMemory',function(settings,...options){
+   const overrides=settings?.compaction?.modelOverrides
+   return inMemory.call(this,overrides?.['fixture/m']?{...settings,compaction:{...settings.compaction,modelOverrides:{...overrides,'fixture/m':{...overrides['fixture/m'],keepRecentTokens:200}}}}:settings,...options)
+  })
+ }
+
  const h=await residentRouterHost(t,body=>{
-  if(requestTools(body).includes('channel_triage_submit'))return submit(body)
+  if(requestTools(body).includes('channel_triage_submit')){if(mode==='overflow'&&!overflowed&&input(body).messages.some(source=>source.messageId==='after-compaction')){overflowed=true;return {error:'maximum context length is 262144 tokens'}}return submit(body)}
+  assert.match(JSON.stringify(body),/NIGHT_ROLE_SUMMARY=triage/)
   summaries++;return {text:'# Goal\nClassify only new messages.\n# Progress\nPrevious batches already received replies.\n# Critical Context\nOld input is background, never resubmit it.'}
  })
  await h.receive(channelMessage('long-1',{text:'context '.repeat(1200)}));await h.service.whenIdle()
@@ -53,6 +64,7 @@ for(const mode of ['manual','automatic'])test(`persistent triage ${mode} Pi comp
  actor.piSession.settingsManager.applyOverrides({compaction:{modelOverrides:{'fixture/m':{keepRecentTokens:200,...mode==='automatic'?{reserveTokens:262144-2000}:{}}}}})
  if(mode==='manual'){await actor.piSession.compact();await actor.receipts.commit()}
  await h.receive(channelMessage('after-compaction'));await h.service.whenIdle()
+ if(mode==='overflow')assert.equal(overflowed,true)
  assert.ok(summaries>0);assert.equal(sessions(h)[0],actor);assert.equal(h.sent.length,3)
  const native=await h.host.ctx.sessionPersistence.readNative(actor.id,{requireComplete:true})
  assert.ok(native.entries.some(e=>e.type==='compaction'));assert.deepEqual(native.entries.slice(0,old.entries.length),old.entries)

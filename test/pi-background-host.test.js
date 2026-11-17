@@ -16,6 +16,7 @@ test('real resident Router adopts detached native compaction, cold restores it a
    const input=requestEnvelope(body,'Router 请求：');settles++
    return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'bg-settle:'+input.events.map(event=>event.id).join(',')}}
   }
+  assert.match(JSON.stringify(body),/NIGHT_ROLE_SUMMARY=router/)
   summaries++
   return {text:'All prior source events were settled through durable receipts. Do not repeat them. Continue with the next new source.'}
  },{hostOptions:{hostConfig:config=>{config.providers.fixture.models[0].contextWindow=131072;return config}}})

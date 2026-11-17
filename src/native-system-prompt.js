@@ -89,7 +89,9 @@ export default class NativeSystemPrompt extends Service {
   const definitions=[...this.contributions.named(scope,'section').values(),...this.contributions.named(scope,'context').values()].filter(c=>!this.suppressed(scope)||c.required===true||!this.contributions.named(scope,'context').has(c.name)).sort((a,b)=>a.order-b.order||lexical(a.name,b.name))
   if(definitions.some(c=>c.complete))throw problem('complete prompt')
   const sections={}
+  const toolDependencies={'safe-search':['find','grep'],jobs:['job_list','job_output','job_kill']}
   for(const entry of definitions){
+   if(entry.name.startsWith('tool:')){const names=toolDependencies[entry.name.slice(5)]??[entry.name.slice(5)];if(!names.some(name=>this.host.get('tools')?.get(name,actor)))continue}
    const value=entry.officialText?await entry.officialText(context):typeof entry.text==='function'?(()=>{throw problem(entry.name)})():entry.text
    if(typeof value!=='string')throw problem(entry.name)
    const text=entry.interpolate===false?value:compileTemplate(value,{kind:'section',name:entry.name})(variables)

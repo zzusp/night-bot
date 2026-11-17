@@ -1,0 +1,14 @@
+id,case,round-1,evidence
+CC1,轻量任务索引分页与会话隔离,PASS,round-1.md 最终必要验证
+CC2,回复游标与当前送达状态及冷恢复不重发,PASS,round-1.md 最终必要验证
+CC3,严格已提交进度与当前执行身份且查询不唤醒,PASS,round-1.md 最终必要验证
+CC4,个人指令增改删冷恢复作者隔离和一次例外,PASS,round-1.md 最终必要验证
+CC5,分诊同轮追加与Router后续批次精确来源刷新,PASS,round-1.md 最终必要验证
+CC6,用户目标范围提示与摘要的真实请求接线,PASS,round-1.md 最终必要验证
+CC7,两角色手动阈值overflow保持身份且不重放,PASS,round-1.md 最终必要验证
+CC8,后台候选采纳取消迟到及失败无通用回退,PASS,round-1.md 最终必要验证
+CC9,必要源码导入hash与原生守卫,PASS,round-1.md 最终必要验证
+CC10,完整默认回归,STOPPED,用户澄清验证范围后停止且不宣称通过
+CC11,中间版本任务runtime,150_PASS_12_SKIP,12项Linux进程隐私场景Windows不适用
+CC12,已观察到的DWS冷回填邻接失败复核,PASS,初次EPERM且定向复核通过未修改实现
+CC13,显式来源引用附件交付邻接用例,FAIL_BASELINE_ALSO,基线同现发送前标记等待超时根因未收敛

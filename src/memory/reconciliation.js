@@ -1,9 +1,11 @@
+import {STANDING_TOPIC} from './standing-instructions.js'
 import {isDeepStrictEqual} from 'node:util'
 import {hash,checkedText,renderMemoryContent} from './format.js'
 import {memoryScope} from './scope.js'
 import {failure} from '../runtime/files.js'
 
 export async function reconcileCompletion(memory,agent,proof,args,validate){
+ if(args.topic===STANDING_TOPIC)throw failure('MEMORY_INSTRUCTION_WRITE_FORBIDDEN')
  const {task,event}=proof
  if(!['keep','update','delete'].includes(args.decision)||!Number.isSafeInteger(args.expectedRevision)||args.expectedRevision<1)throw failure('MEMORY_RECONCILIATION_INVALID')
  const reason=checkedText(args.reason),channel=memory.host.get('channels')?.groupContext(task.groupId)

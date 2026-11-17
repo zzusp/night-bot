@@ -1,3 +1,4 @@
+import {STANDING_TOPIC,checkedInstructionScope} from './standing-instructions.js'
 import {hash,label,checkedMemoryContext,renderRouterMemory,encodeTopic} from './format.js'
 import {failure} from '../runtime/files.js'
 
@@ -95,6 +96,7 @@ export function decodeEntry(text,{scope,topic,key,sourceText,includeSources=fals
   const {meta,body}=decodeEnvelope(text,'night-bot-memory-entry-v3');checkScope(meta,scope)
   const entry=structuredClone(meta.entry),prefix='# '+entry?.key+'\n\n'
   if(!label(meta.topic)||topic!==undefined&&meta.topic!==topic||!entry||!validId(entry.id)||!label(entry.key)||key!==undefined&&entry.key!==key||!validRevision(entry.revision)||!entry.source?.messageId||!body.startsWith(prefix)||!body.endsWith('\n'))throw failure('MEMORY_MARKDOWN_INVALID')
+  if(meta.topic===STANDING_TOPIC)entry.instructionScope=checkedInstructionScope(entry.instructionScope)
   entry.text=body.slice(prefix.length,-1)
   if(hash(entry.text)!==meta.textSha256)throw failure('MEMORY_CONTENT_CHANGED')
   if(meta.sources){
@@ -127,9 +129,9 @@ export function buildLayeredWrites(scope,{meta,topics,candidates,indexEntries=[]
     for(const entry of value.entries){
       const encoded=encodeEntry(topic,entry,scope);writes.set(entryPath(topic,entry.key),encoded.text)
       if(encoded.sourceText)writes.set(sourcePath(entry.id),encoded.sourceText)
-      const {id,key,revision,createdAt,updatedAt,expiresAt,provenance,origins,migration,source}=entry
+      const {id,key,revision,createdAt,updatedAt,expiresAt,provenance,origins,migration,source,instructionScope}=entry
       const prior=indexEntries.find(row=>row.path===entryPath(topic,key)&&row.sha256===hash(encoded.text))
-      descriptors.push({id,key,topic,title:prior?.title??key,summary:prior?.summary??entrySummary(entry),path:'entries/'+encode(key)+'.md',sha256:hash(encoded.text),revision,createdAt,updatedAt,...expiresAt?{expiresAt}:{},...entry.context?.subject?{subject:entry.context.subject}:{},...source?.actor?{sourceActor:source.actor}:{},...provenance?{provenance}:{},...origins?{origins}:{},...migration?{migration}:{}})
+      descriptors.push({id,key,topic,title:prior?.title??key,summary:prior?.summary??entrySummary(entry),path:'entries/'+encode(key)+'.md',sha256:hash(encoded.text),revision,createdAt,updatedAt,...expiresAt?{expiresAt}:{},...entry.context?.subject?{subject:entry.context.subject}:{},...instructionScope?{instructionScope:checkedInstructionScope(instructionScope)}:{},...source?.actor?{sourceActor:source.actor}:{},...provenance?{provenance}:{},...origins?{origins}:{},...migration?{migration}:{}})
     }
     rows.push(...descriptors.map(row=>({...row,path:entryPath(topic,row.key)})))
   }
