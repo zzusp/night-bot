@@ -1224,8 +1224,11 @@ test('taskless persistent triage retains owner and native metrics through servic
   assert.ok(row.phaseMs[phase]?.count>0,phase);assert.equal(row.phaseMs[phase].failures,0,phase)
  }
  assert.equal(row.phaseMs['resources-deliver'],undefined,'custom delivery must not duplicate before-run reads')
- assert.equal(row.phaseMs['resources-create'],undefined,'triage defers initial mapping until before-run')
- assert.equal(row.phaseMs.skills.count,2,'cold one-turn triage maps resources at before-run and turn-end only')
+ assert.equal(row.phaseMs['resources-create'],undefined,'triage keeps construction lazy; first-input preflight maps resources later')
+ assert.equal(row.phaseMs['resources-before-run'].count,1)
+ assert.equal(row.phaseMs['resources-turn-end'].count,1)
+ assert.equal(row.phaseMs.skills.count,3,'cold one-turn triage maps resources at initial prompt preflight, before-run and turn-end')
+ assert.equal(row.phaseMs.instructions.count,3)
  assert.ok(row.phaseMs['triage-total'].sum>=row.phaseMs['session-create'].sum)
  assert.equal(JSON.stringify(rows).includes(message.text),false)
  assert.equal((await h.query('task.list')).length,0);assert.equal(h.sent.length,0)
