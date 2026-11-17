@@ -15,7 +15,7 @@ export function TaskList({ route }: { route: URL }) {
   const state = route.searchParams.get('state') || '';
   const offset = Math.max(0, Number(route.searchParams.get('offset')) || 0);
   const [search, setSearch] = useState(route.searchParams.get('q') || '');
-  const query = useResource<Page<Task>>(`/tasks?offset=${offset}&limit=20${state ? `&state=${encodeURIComponent(state)}` : ''}`, 5000);
+  const query = useResource<Page<Task>>(`/tasks?offset=${offset}&limit=10${state ? `&state=${encodeURIComponent(state)}` : ''}`, 5000);
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (query.error) return;
@@ -38,7 +38,7 @@ export function TaskList({ route }: { route: URL }) {
       <table className="task-table"><caption className="sr-only">任务与最近进度</caption><thead><tr><th scope="col">任务</th><th scope="col" className="task-status">状态</th><th scope="col" className="task-duration">总时长</th><th scope="col" className="task-duration">执行时长</th><th scope="col" className="task-updated">最近更新</th><th scope="col" className="task-action"><span className="sr-only">查看</span></th></tr></thead>
         <tbody>{items.map(task => <tr key={task.taskId}><td><div className="task-name"><span className={`task-glyph ${task.state}`} aria-hidden="true">{task.state === 'completed' ? <RiCheckboxCircleLine size={19} /> : task.state === 'running' ? <RiPulseLine size={19} /> : <RiTimeLine size={19} />}</span><div><a href={`#/tasks/${encodeURIComponent(task.taskId)}`}>{task.title || task.objective || '未命名任务'}</a>{(task.objective && task.objective !== task.title || textOf(task.result)) && <p>{task.objective && task.objective !== task.title ? task.objective : textOf(task.result)}</p>}</div></div></td><td className="task-status"><Status value={task.state} /></td><td className="task-duration">{taskDurationText(task.durations?.total, task.durations?.observedAt, elapsed)}</td><td className="task-duration">{taskDurationText(task.durations?.execution, task.durations?.observedAt, elapsed)}</td><td className="task-updated"><time dateTime={task.updatedAt}>{dateTime(task.updatedAt || task.createdAt)}</time></td><td className="task-action"><a className="row-link" aria-label={`查看任务：${task.title || '未命名任务'}`} href={`#/tasks/${encodeURIComponent(task.taskId)}`}><RiArrowRightLine size={18} /></a></td></tr>)}</tbody></table>}
     </div>
-    {query.data && <Pagination offset={offset} total={query.data.total} nextOffset={query.data.nextOffset} onPage={changePage} loading={query.loading} />}
+    {query.data && <Pagination offset={offset} total={query.data.total} pageSize={10} nextOffset={query.data.nextOffset} onPage={changePage} loading={query.loading} />}
   </div>;
 }
 

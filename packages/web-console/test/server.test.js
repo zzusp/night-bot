@@ -1124,3 +1124,14 @@ test('default HTTP refresh reuses SQLite per-file statistics and keeps stale pag
   assert.equal(stale.status, 200); assert.equal(stale.body.memory.readCount, 1); assert.equal(stale.body.cache.stale, true)
   assert.equal(stale.body.cache.updatedAt, restored.body.cache.updatedAt)
 })
+
+test('task list HTTP defaults to ten rows and preserves explicit page limits',async t=>{
+ const f=await fixture(t);await f.login()
+ const calls=[]
+ f.app.tasks.boardTasks=async options=>{calls.push(options);return {items:[],total:0,offset:options.offset,limit:options.limit,nextOffset:null}}
+ assert.equal((await f.fetchApi('/api/tasks')).status,200)
+ assert.equal(calls[0].limit,10)
+ assert.equal((await f.fetchApi('/api/tasks?offset=20&limit=25')).status,200)
+ assert.equal(calls[1].limit,25);assert.equal(calls[1].offset,20)
+ assert.equal((await f.fetchApi('/api/tasks?limit=101')).status,400)
+})
