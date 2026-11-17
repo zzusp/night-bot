@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {diagnosticPrompt,diagnosticSections,diagnosticToolParameters} from '../src/feedback/diagnostic-contract.js'
 test('diagnostic capability allows iterative correlation without arbitrary paths or commands',()=>{
- assert.deepEqual(diagnosticSections,['runtime','channels','errors','discover','message','trace','task','schedule','journal'])
+ assert.deepEqual(diagnosticSections,['runtime','channels','errors','discover','message','trace','task','schedule','journal','code_search','code_read','logs','evidence'])
  const p=diagnosticToolParameters();assert.equal(p.additionalProperties,false)
  assert.deepEqual(Object.keys(p.properties),['section','alias','query','target','offset','cursor'])
  assert.match(diagnosticPrompt,/先调查，再分析/);assert.match(diagnosticPrompt,/反证/)
