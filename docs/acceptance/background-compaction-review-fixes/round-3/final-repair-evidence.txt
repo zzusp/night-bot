@@ -1,0 +1,188 @@
+本地列表恢复最终脱敏证据
+
+{
+  "offlineRepair": {
+    "checkOnly": false,
+    "removedEmptyLock": true,
+    "removedFingerprint": "e941b28445e7cab1d60f51740c7d43a838fedadb58e7be21e995779cd7177993",
+    "memoryMetadataUnchanged": true,
+    "backupCreated": false
+  },
+  "live": {
+    "verifiedAt": "2026-11-17T05:14:23.981Z",
+    "sourceSha": "08a9324a29d1256bcb8f2bc4228a999cdc1f1e57",
+    "startedAt": "2026-11-17T05:13:09.196Z",
+    "supervisorPid": 45244,
+    "launcherPid": 32588,
+    "health": {
+      "status": "ok",
+      "recoveryIssueCount": 0,
+      "taskAttentionCount": 0
+    },
+    "channels": [
+      {
+        "index": 0,
+        "type": "web-console",
+        "connectionState": "unknown",
+        "connected": true,
+        "liveApplied": true,
+        "restartRequired": false,
+        "errorCode": null,
+        "ingress": {
+          "supported": false,
+          "available": false,
+          "backfill": null,
+          "requestedPaused": false,
+          "state": "unavailable",
+          "errorCode": null
+        }
+      },
+      {
+        "index": 1,
+        "type": "dingtalk-dws",
+        "connectionState": "listening",
+        "connected": true,
+        "liveApplied": true,
+        "restartRequired": false,
+        "errorCode": null,
+        "ingress": {
+          "supported": true,
+          "available": true,
+          "backfill": "history",
+          "requestedPaused": false,
+          "state": "receiving",
+          "errorCode": null
+        }
+      },
+      {
+        "index": 2,
+        "type": "dingtalk-dws",
+        "connectionState": "listening",
+        "connected": true,
+        "liveApplied": true,
+        "restartRequired": false,
+        "errorCode": null,
+        "ingress": {
+          "supported": true,
+          "available": true,
+          "backfill": "history",
+          "requestedPaused": false,
+          "state": "receiving",
+          "errorCode": null
+        }
+      }
+    ],
+    "evolution": {
+      "status": "ready",
+      "total": 73,
+      "itemsOnFirstPage": 50,
+      "nextOffset": 50,
+      "cache": {
+        "updatedAt": "2026-11-17T05:14:23.930Z",
+        "stale": false,
+        "refreshing": false
+      },
+      "refreshDurationMs": 1380,
+      "memory": {
+        "acceptedCount": 42,
+        "candidateCount": 0,
+        "todayUpdatedCount": 0,
+        "readCount": 1,
+        "searchCount": 3,
+        "lastUsedAt": "2026-11-12T08:58:35.887Z",
+        "trackingSince": "2026-11-11T09:21:23.169Z",
+        "entryTrackingSince": "2026-11-11T09:21:23.169Z",
+        "trackingStatus": "degraded"
+      },
+      "skills": {
+        "todayUpdatedCount": 0,
+        "activeCount": 18,
+        "candidateCount": 0,
+        "contentTrackingStatus": "ready",
+        "coverage": "bot-installed-and-learned",
+        "installedCount": 12,
+        "installedAvailableCount": 12,
+        "inventoryComplete": true,
+        "modelUseCount": 5,
+        "userUseCount": null,
+        "fileReadCount": 32,
+        "lastUsedAt": "2026-11-17T03:38:44.370Z",
+        "lastInvocationAt": "2026-11-16T03:08:44.917Z",
+        "loadCount": null,
+        "trackingSince": "2026-11-10T04:40:50.740Z",
+        "callTrackingSince": "2026-11-10T04:40:50.740Z",
+        "trackingStatus": "degraded"
+      },
+      "usageCoverage": {
+        "status": "partial",
+        "source": "retained-committed-pi-journals",
+        "sessionsDiscovered": 72,
+        "sessionsRead": 65,
+        "entriesRead": 12220,
+        "oldestObservedAt": "2026-11-10T04:40:50.740Z",
+        "newestObservedAt": "2026-11-17T03:38:44.370Z",
+        "limits": {
+          "maxSessions": 128,
+          "maxEntriesPerSession": 20000,
+          "maxEntries": 100000,
+          "maxSessionBytes": 8388608,
+          "maxPendingCalls": 128
+        },
+        "reasons": [
+          "SESSION_BYTE_LIMIT",
+          "SESSION_UNAVAILABLE"
+        ]
+      }
+    },
+    "recoveryIssues": 0,
+    "taskAlerts": 0
+  },
+  "pagination": {
+    "checkedAt": "2026-11-17T05:16:46.112Z",
+    "pages": [
+      {
+        "offset": 0,
+        "count": 50
+      },
+      {
+        "offset": 50,
+        "count": 23
+      }
+    ],
+    "total": 73,
+    "uniqueRows": 73,
+    "consistentRevision": true,
+    "cache": {
+      "updatedAt": "2026-11-17T05:14:23.930Z",
+      "stale": false,
+      "refreshing": false
+    },
+    "kinds": {
+      "memory": 42,
+      "skill": 31
+    }
+  }
+}
+
+运行态恢复证据摘要：
+- 活 Host 下执行零副作用 --check，被 Host writer is still alive 拒绝，未写入/删除。
+- 原 IPC 监督器 --stop --check 后 --stop；closedAt=2026-11-17T05:11:30.010Z、code=0、signal=null、ipcShutdownSent=true。
+- 独立进程及监听核查：监督器、launcher、实际核心均已退出，resident/Web 端口无监听。
+- 停机后 --check 通过：目录链无链接、目录为空无 owner、无 pending 或迁移 marker；检查结果绑定 inode/device/创建修改时间指纹。
+- --apply 在原安装 .host.lock 独占期间再核验指纹和空目录，只执行 rmdir（不递归）；scope/index/candidates/migration/evolution state 文件哈希保持。
+- 独立 lstat 回查 lock 不存在；本任务已完成的 stop 请求经 --check/--apply 精确清理。
+- 原监督器 --start --check 后同一干净合并发行重启，实际核心及 launcher 路径匹配。
+
+保护回归实跑（08a9324，隔离夹具）：
+node --test --test-name-pattern="short reflection leases|pending writes|actual writer" <release>/packages/web-console/test/evolution-inventory.test.js
+- Web inventory refuses pending writes without recovering them or opening dedicated statistics: PASS。
+- inventory waits for the actual writer to finish its pending journal and reads only the committed result: PASS。
+- short reflection leases recover; persistent leases stay bounded and untouched: PASS。
+- tests=3、pass=3、fail=0、skipped=0，duration_ms=8282.0772。
+
+历史与边界：
+- 本轮未修改生产代码、依赖、配置或统计上限，未删除业务资料、未创建备份或发送人工测试消息。
+- 第一轮最终源码803f60e集中回归183/183；routing/runtime初跑失败、复验及12项Linux skip仍保留原报告，不宣称全项目通过。
+- 第二轮合并提交08a9324的干净发行：两处frozen install、Web构建、pnpm check通过；空锁曾令列表刷新FAIL。
+- 当前src/test与803f60e零差异。本轮解决列表新鲜度，不改变历史调用统计覆盖限制：65/72，SESSION_BYTE_LIMIT、SESSION_UNAVAILABLE。
+- 未增加无owner自动回收或跳过busy；未知锁再次出现仍应停机核查。

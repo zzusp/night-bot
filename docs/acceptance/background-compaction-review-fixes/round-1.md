@@ -67,3 +67,7 @@ node --experimental-test-module-mocks --test test/pi-background-compaction.test.
 - 500K 扩预算与后台执行收益分开评估，脚本模型不证明真实首答/压缩延迟或成本。不可切分大轮次/过长摘要仍可能明确超限，pending 保留。
 - 无新增依赖、环境变量或数据迁移；未复制私有 Skill/凭据/业务资料，未改主检出或运行实例。
 - 原始中间日志在本报告和最终摘要核对后清理；保留本报告、matrix 历史及 `round-1/final-test-evidence.txt`，不保留逐命令流水。
+
+## 后续附件清理说明
+
+2026-11-17 第3轮恢复完成后，按仅保留最终轮必要证据的规则清理本轮附件 `round-1/final-test-evidence.txt`。本报告的用例结果、关键文字证据及结论保留；最新终态与必要历史摘要见 `round-3/final-repair-evidence.txt`，不改写本轮原结果。

@@ -1,8 +1,8 @@
 # PR 170 审查修复与本地部署
 
-> 状态：BLOCKED
+> 状态：COMPLETED
 > Goal ID：background-compaction-review-fixes
-> 最近维护：2026-11-17T03:45:04+00:00
+> 最近维护：2026-11-17T05:20:53+00:00
 > 权威目标：goal.md
 
 ## 总目标
@@ -33,19 +33,19 @@
 | SG5 | 幂等投递不触发预压缩 | 重复、取消及 uncertain 命令不重复摘要/接纳 | 已完成 | round-1.md |
 | SG6 | 验证、提交、更新 PR | 183 项集中回归、相关复验及来源守卫通过，真实边界入 PR | 已完成 | round-1.md、matrix.csv |
 | SG7 | 合并 PR #170 | GitHub 独立回查 MERGED 与合并提交 | 已完成 | round-2.md |
-| SG8 | 本地发行及恢复验收 | 运行版本、健康、Web、渠道通过，列表非陈旧且无错误 | 部分完成，列表刷新受阻 | round-2.md、matrix.csv |
+| SG8 | 本地发行及恢复验收 | 运行版本、健康、Web、渠道通过，列表非陈旧且无错误 | 已完成：列表fresh、分页完整、核心渠道恢复 | round-3.md、matrix.csv |
 
 ## 当前检查点
 
 - 当前子目标：SG8
-- 唯一下一步：对经核实的既有空无 owner 记忆快照栅栏取得相应处置授权，或通过单独修复完善恢复合同；处理后重新做认证显式刷新，fresh 且无错误才关闭剩余验收。
-- 未闭环项：记忆/技能列表 cache.stale=true / EVOLUTION_CACHE_REFRESH_FAILED；真实模型压缩/首答性能及第一轮明确的跳过未验证。
-- PR [#170](https://github.com/zzusp/night-bot/pull/170) 已于 `2026-11-17T03:15:57Z` 合并，实际运行提交 `08a9324a29d1256bcb8f2bc4228a999cdc1f1e57`。源码与测试和最终验证提交 `803f60e` 零差异。
-- 本地独立发行已运行；核心 status=ok、恢复异常 0、任务待处理 0，认证 Web 静态资源字节一致，两个已配置渠道 listening / receiving。接手时旧实例已关闭，没有冒称本轮执行过停机排空。
-- 列表失败已只读定位到部署前 `evolution/.lock` 空无 owner 目录；未删除既有目录或放宽检查。新发行保留运行，完整部署验收不标全绿。
-- 第一轮集中回归 183/183；routing/runtime 初跑失败与复验、12 项 Linux skip、定时报告初跑超时原因未收敛等边界仍见 round-1.md，不改写为最终 head 全组通过。
-- 收口文档分支：`worktree-background-compaction-local-release`；不修改生产源码。
+- 唯一下一步：无；本地列表故障已恢复，原合并发行保留运行，本目标完成。
+- 未闭环项：本目标无。历史调用次数为部分覆盖（65/72），真实模型性能、第一轮Linux跳过及全项目检查未新增验证，不能扩大本目标结论。
+- PR [#170](https://github.com/zzusp/night-bot/pull/170) 已合并，实际运行提交 `08a9324a29d1256bcb8f2bc4228a999cdc1f1e57`；本轮仅运行态维护，未改生产代码或配置，发行仍干净。
+- 用户授权后，原 IPC 关闭 code=0、实际进程退出；安装独占锁内绑定目录指纹，确认空无 owner、无 pending 后只用非递归 rmdir 处置，5个记忆元数据文件哈希保持。没有忽略锁或增加无 owner 自动回收。
+- 重启后核心 status=ok、恢复问题0、task alerts0；两条渠道 listening / receiving。认证刷新 fresh 无错误，73项两页50＋23，版本一致、无漏项重复。保护回归3/3。
+- 第一轮集中回归183/183及初跑失败/复验、12项Linux skip、定时报告初跑超时未收敛边界仍保留，不宣称全项目通过。历史调用统计的大小/不可读限制未改变，不把partial说成完整。
+- 收口分支：`worktree-background-compaction-local-release`；无新生产发行或统计算法改造，不发人工测试消息，不创建备份。
 
 ## 证据入口
 
-方案：`../../spec/background-compaction-review-fixes.md`；代码结果：`round-1.md`；最新部署结果：`round-2.md`；跨轮状态：`matrix.csv`；证据：`round-1/final-test-evidence.txt`、`round-2/final-deployment-evidence.txt`。
+方案：`../../spec/background-compaction-review-fixes.md`；代码结果：`round-1.md`；初次部署：`round-2.md`；最新恢复：`round-3.md`；跨轮状态：`matrix.csv`；最终证据：`round-3/final-repair-evidence.txt`。第1、2轮附件清理后，必要结果仍保留在各轮报告。

@@ -38,3 +38,7 @@
 ## 证据与清理
 
 最终脱敏证据：[round-2/final-deployment-evidence.txt](round-2/final-deployment-evidence.txt)；历史状态保留在 `matrix.csv`。已无用途的本轮检查脚本、中间状态和构建日志在集中归档并读回后清理。运行发行、现有安装资料和仍被监督器使用的输出不删除。没有生成 `report.md`。
+
+## 后续附件清理说明
+
+2026-11-17 第3轮恢复完成后，按仅保留最终轮必要证据的规则清理本轮附件 `round-2/final-deployment-evidence.txt`。本报告的用例结果、关键文字证据及结论保留；最新终态与必要历史摘要见 `round-3/final-repair-evidence.txt`，不改写本轮原结果。
