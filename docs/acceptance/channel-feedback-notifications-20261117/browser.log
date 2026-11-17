@@ -1,0 +1,27 @@
+
+Running 20 tests using 1 worker
+
+(node:2280) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 packages/web-console/test/channel-ingress.spec.ts:33:1 › 暂停确认默认取消、键盘关闭与焦点恢复，不发请求 (1.4s)
+  ✓   2 packages/web-console/test/channel-ingress.spec.ts:52:1 › 暂停单次提交携带版本，轮询不卸载确认，实际暂停与外发授权分离 (10.8s)
+  ✓   3 packages/web-console/test/channel-ingress.spec.ts:75:1 › 恢复回执为 recovering 只报告正在补拉，深色状态截图 (1.7s)
+  ✓   4 packages/web-console/test/channel-ingress.spec.ts:95:1 › 无补拉能力明确说明不可补拉，窄屏无溢出并通过 dialog 可访问性检查 (1.3s)
+  ✓   5 packages/web-console/test/channel-ingress.spec.ts:107:79 › 能力 unsupported 仅禁用暂停操作，保留编辑与删除 (768ms)
+  ✓   6 packages/web-console/test/channel-ingress.spec.ts:107:79 › 能力 unavailable 仅禁用暂停操作，保留编辑与删除 (661ms)
+  ✓   7 packages/web-console/test/channel-ingress.spec.ts:107:79 › 能力 missing 仅禁用暂停操作，保留编辑与删除 (589ms)
+  ✓   8 packages/web-console/test/channel-ingress.spec.ts:116:76 › 结果未知 network 关闭重开仍锁定，只读核对版本与实际状态 (1.1s)
+  ✓   9 packages/web-console/test/channel-ingress.spec.ts:116:76 › 结果未知 incomplete 关闭重开仍锁定，只读核对版本与实际状态 (1.2s)
+  ✓  10 packages/web-console/test/channel-ingress.spec.ts:116:76 › 结果未知 uncertain-409 关闭重开仍锁定，只读核对版本与实际状态 (1.1s)
+  ✓  11 packages/web-console/test/channel-ingress.spec.ts:139:1 › 等待认证但 available 为 true 时仍可保存暂停意图，不宣称实际已暂停 (759ms)
+  ✓  12 packages/web-console/test/channel-ingress.spec.ts:160:105 › 明确拒绝 403 先只读刷新，用户重新确认才重试 (884ms)
+  ✓  13 packages/web-console/test/channel-ingress.spec.ts:160:105 › 明确拒绝 409 先只读刷新，用户重新确认才重试 (894ms)
+  ✓  14 packages/web-console/test/channel-ingress.spec.ts:178:1 › 应用失败不报成功，保留已保存版本供显式重试同一暂停意图 (832ms)
+  ✓  15 packages/web-console/test/channel-ingress.spec.ts:197:1 › 暂停排空中不显示已暂停，恢复失败仍可明确重试恢复 (675ms)
+  ✓  16 packages/web-console/test/channel-ingress.spec.ts:209:47 › 特殊渠道 ID . 走安全路径 (738ms)
+  ✓  17 packages/web-console/test/channel-ingress.spec.ts:209:47 › 特殊渠道 ID .. 走安全路径 (695ms)
+  ✓  18 packages/web-console/test/channel-ingress.spec.ts:209:47 › 特殊渠道 ID 群/测试? 走安全路径 (767ms)
+  ✓  19 packages/web-console/test/channel-ingress.spec.ts:222:1 › 补拉回执关闭不影响卡片状态，轮询不重复通知，窄屏与自动消失 (1.5s)
+  ✓  20 packages/web-console/test/feedback-diagnosis.spec.ts:4:1 › diagnostic status is compact and aligned, with honest state and cancellation (1.2s)
+
+  20 passed (32.8s)
