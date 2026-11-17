@@ -1,3 +1,5 @@
+import {investigationBudget,diagnosticCompactionSettings,diagnosticOutputTokens} from '../src/feedback/investigation-budget.js'
+import {formatDiagnosticReport} from '../src/feedback/pi-session.js'
 import {createChainEvidence} from '../src/feedback/chain-evidence.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -15,7 +17,7 @@ test('real official Pi diagnostic session has only scoped tool, no home context 
  let calls=0,evidenceCalls=0;const requests=[]
  runtime.registerProvider(model.provider,{api:model.api,streamSimple:(_model,context)=>{
   requests.push(context);const tool=calls++===0
-  const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:1,usage,stopReason:tool?'toolUse':'stop',content:tool?[{type:'toolCall',id:'diag-1',name:'diagnosis_evidence',arguments:{section:'runtime'}}]:[{type:'text',text:'分析完成'}]}
+  const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:1,usage,stopReason:tool?'toolUse':'stop',content:tool?[{type:'toolCall',id:'diag-1',name:'diagnosis_evidence',arguments:{section:'runtime'}}]:[{type:'text',text:'分析完成，证据 E1'}]}
   queueMicrotask(()=>{stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream
  }})
  const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model,requestOptions:{maxTokens:100,maxRetries:0}},paths:{installRoot:root,runtime:join(root,'runtime')},title:'故障',description:'secretvalue',secrets:['secretvalue'],signal:AbortSignal.timeout(10000),evidence:async section=>{evidenceCalls++;assert.equal(section,'runtime');return{node:'v24'}}})
@@ -29,12 +31,13 @@ test('investigation budget stops repeated tools and preserves a partial editable
  const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false})
  const model=runtime.getModels().find(m=>m.provider==='openai');await runtime.setRuntimeApiKey(model.provider,'test-only')
  let calls=0,reads=0
- runtime.registerProvider(model.provider,{api:model.api,streamSimple:()=>{
+ runtime.registerProvider(model.provider,{api:model.api,streamSimple:(_model,context)=>{
+  if(calls>investigationBudget.calls){calls++;const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:1,usage,stopReason:'stop',content:[{type:'text',text:'已确认运行环境，尚缺链路证据，引用 E1。'}]};queueMicrotask(()=>{stream.push({type:'done',reason:'stop',message});stream.end(message)});return stream}
   calls++;const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:1,usage,stopReason:'toolUse',content:[{type:'toolCall',id:'budget-'+calls,name:'diagnosis_evidence',arguments:{section:'runtime'}}]}
   queueMicrotask(()=>{stream.push({type:'done',reason:'toolUse',message});stream.end(message)});return stream
  }})
  const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model},paths:{installRoot:root,runtime:join(root,'runtime')},title:'故障',description:'排查',signal:AbortSignal.timeout(10000),evidence:async()=>{reads++;return{node:'v24'}}})
- assert.equal(reads,24);assert.ok(calls<=26);assert.match(result,/调查未完成/);assert.match(result,/call-budget-exhausted/);assert.match(result,/v24/);assert.ok(result.length<48000)
+ assert.equal(reads,investigationBudget.calls);assert.ok(calls<=investigationBudget.calls+3);assert.match(result,/调查未完成/);assert.ok(result.length<48000)
 })
 
 test('real Pi can recover from an invalid task alias and inspect a schedule without message matches',async t=>{
@@ -51,10 +54,83 @@ test('real Pi can recover from an invalid task alias and inspect a schedule with
   if(step===1){assert.equal(evidence.reason,'FEEDBACK_ALIAS_INVALID');assert.match(evidence.correction,/discover/);args={section:'discover',query:'测试'}}
   if(step===2){assert.equal(evidence.candidates.length,0);assert.equal(evidence.scheduleCandidates.length,1);args={section:'schedule',alias:evidence.scheduleCandidates[0].alias}}
   if(step===3){assert.equal(evidence.recurring,true);assert.equal(evidence.timing.everySeconds,3600);assert.equal(evidence.stopCondition,'not-a-structured-schedule-field')}
-  const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:1,usage,stopReason:args?'toolUse':'stop',content:args?[{type:'toolCall',id:'recover-'+step,name:'diagnosis_evidence',arguments:args}]:[{type:'text',text:'已核实保存为每小时循环，指令中的停止条件尚未核实。'}]}
+  const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:1,usage,stopReason:args?'toolUse':'stop',content:args?[{type:'toolCall',id:'recover-'+step,name:'diagnosis_evidence',arguments:args}]:[{type:'text',text:'已核实保存为每小时循环，指令中的停止条件尚未核实。证据 E3。'}]}
   queueMicrotask(()=>{stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream
  }})
  const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model},paths:{installRoot:root,runtime:join(root,'runtime')},title:'核对测试事项',description:'预期循环，停止条件待核实',signal:AbortSignal.timeout(10000),evidence:collect})
- assert.equal(calls,4);assert.match(result,/FEEDBACK_ALIAS_INVALID/);assert.match(result,/每小时循环/);assert.match(result,/"everySeconds":3600/)
+ assert.equal(calls,4);assert.doesNotMatch(result,/FEEDBACK_ALIAS_INVALID/);assert.match(result,/每小时循环/);assert.match(result,/"everySeconds":3600/)
  assert.doesNotMatch(JSON.stringify(requests),/PRIVATE_SCHEDULE|PRIVATE_SESSION|PRIVATE_PROMPT/)
+})
+
+test('diagnostic context uses real window with sufficient output reserve',()=>{
+ for(const contextWindow of [1000,4096,8192,32000,128000,500000]){const model={contextWindow,maxTokens:32768},settings=diagnosticCompactionSettings(model);assert.equal(settings.enabled,true);assert.ok(settings.reserveTokens>=diagnosticOutputTokens(model));assert.ok(settings.keepRecentTokens< contextWindow-settings.reserveTokens)}
+ assert.throws(()=>diagnosticCompactionSettings({contextWindow:0}),/CONTEXT_WINDOW_INVALID/)
+})
+test('published report contains only cited evidence and stays within preview size',()=>{
+ const rows=Array.from({length:80},(_,i)=>({ref:'E'+(i+1),section:'runtime',text:'value '+i+' '+ 'x'.repeat(5000)}))
+ const output=formatDiagnosticReport('结论引用 E2。',rows)
+ assert.match(output,/### E2 ·/);assert.doesNotMatch(output,/### E1 ·/);assert.ok(output.includes('x'.repeat(5000)));assert.ok(output.length<46000)
+})
+
+test('real Pi investigation can exceed former evidence cap and reread retained evidence',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'feedback-large-'));t.after(()=>rm(root,{recursive:true,force:true}))
+ const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false})
+ const model=runtime.getModels().find(m=>m.provider==='openai');await runtime.setRuntimeApiKey(model.provider,'test-only')
+ let calls=0,reads=0
+ runtime.registerProvider(model.provider,{api:model.api,streamSimple:(_model,context)=>{
+  const step=calls++,args=step<5?{section:'runtime'}:step===5?{section:'evidence',alias:'E1'}:null
+  if(step===6){const result=context.messages.filter(row=>row.role==='toolResult').at(-1);assert.match(result.content[0].text,/E1/);assert.match(result.content[0].text,/page-1/)}
+  const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:1,usage,stopReason:args?'toolUse':'stop',content:args?[{type:'toolCall',id:'large-'+step,name:'diagnosis_evidence',arguments:args}]:[{type:'text',text:'核对完成，证据 E1、E5。'}]}
+  queueMicrotask(()=>{stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream
+ }})
+ const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model},paths:{installRoot:root,runtime:join(root,'runtime')},title:'故障',description:'排查',signal:AbortSignal.timeout(10000),evidence:async()=>({page:'page-'+(++reads),data:'x'.repeat(9000)})})
+ assert.equal(reads,5);assert.equal(calls,7);assert.match(result,/核对完成/);assert.doesNotMatch(result,/调查未完成/);assert.match(result,/### E5/)
+})
+
+test('native Pi compaction runs using model window and preserves final diagnosis',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'feedback-large-'));t.after(()=>rm(root,{recursive:true,force:true}))
+ const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false})
+ const model={...runtime.getModels().find(m=>m.provider==='openai'),contextWindow:8192};await runtime.setRuntimeApiKey(model.provider,'test-only')
+ let calls=0,reads=0,compactions=0,compactedDuringInvestigation=false
+ const authenticate=runtime.getAuth.bind(runtime)
+ runtime.getAuth=(selected,options)=>{assert.equal(options?.apiKey,undefined,'runtime credential must not be reinterpreted as an explicit API key');return authenticate(selected,options)}
+ runtime.registerProvider(model.provider,{api:model.api,streamSimple:(_model,context)=>{
+  if(JSON.stringify(context).includes('You are a context summarization assistant')){compactions++;if(reads<5)compactedDuringInvestigation=true;const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),usage,stopReason:'stop',content:[{type:'text',text:'调查记录：E1 至 E5 已核对，可用 evidence 工具重读。'}]};queueMicrotask(()=>{stream.push({type:'done',reason:'stop',message});stream.end(message)});return stream}
+  const step=calls++,args=step<5?{section:'runtime'}:step===5?{section:'evidence',alias:'E1'}:null
+  if(step===6){const result=context.messages.filter(row=>row.role==='toolResult').at(-1);assert.match(result.content[0].text,/E1/);assert.match(result.content[0].text,/page-1/)}
+  const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),usage:{...usage,input:7000,totalTokens:7000},stopReason:args?'toolUse':'stop',content:args?[{type:'toolCall',id:'large-'+step,name:'diagnosis_evidence',arguments:args}]:[{type:'text',text:'核对完成，证据 E1、E5。'}]}
+  queueMicrotask(()=>{stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream
+ }})
+ const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model},paths:{installRoot:root,runtime:join(root,'runtime')},title:'故障',description:'排查',signal:AbortSignal.timeout(10000),evidence:async()=>({page:'page-'+(++reads),data:'x'.repeat(9000)})})
+ assert.ok(compactedDuringInvestigation,'native Pi compacts before the next tool investigation response');assert.ok(compactions>0,'native Pi compaction called model');assert.equal(reads,5);assert.equal(calls,7);assert.match(result,/核对完成/);assert.doesNotMatch(result,/调查未完成/);assert.match(result,/### E5/)
+})
+
+async function scriptedDiagnosis(t,reply,{contextWindow=4096}={}){
+ const root=await mkdtemp(join(tmpdir(),'feedback-terminal-'));t.after(()=>rm(root,{recursive:true,force:true}))
+ const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false})
+ const model={...runtime.getModels().find(m=>m.provider==='openai'),contextWindow};await runtime.setRuntimeApiKey(model.provider,'test-only')
+ let step=0,reads=0
+ runtime.registerProvider(model.provider,{api:model.api,streamSimple:(_model,context)=>{
+  const response=reply(step++,context),stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),usage,...response}
+  queueMicrotask(()=>{if(message.stopReason==='error')stream.push({type:'error',reason:'error',error:message});else stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream
+ }})
+ const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model},paths:{installRoot:root,runtime:join(root,'runtime')},title:'故障',description:'排查',signal:AbortSignal.timeout(10000),evidence:async()=>{reads++;return {marker:'RETAINED_EVIDENCE'}}})
+ return {result,reads}
+}
+const runtimeCall=step=>({stopReason:'toolUse',content:[{type:'toolCall',id:'fixture-'+step,name:'diagnosis_evidence',arguments:{section:'runtime'}}]})
+test('a 4096-window diagnostic runs and an output-token terminal is explicitly partial',async t=>{
+ const {result,reads}=await scriptedDiagnosis(t,step=>step===0?runtimeCall(step):{stopReason:'length',content:[{type:'text',text:'部分分析，证据 E1。'}]})
+ assert.equal(reads,1);assert.match(result,/模型输出达到 token 上限/);assert.match(result,/RETAINED_EVIDENCE/)
+})
+test('summary failure after the investigation budget retains collected evidence',async t=>{
+ const {result,reads}=await scriptedDiagnosis(t,step=>step<=investigationBudget.calls?runtimeCall(step):{stopReason:'error',errorMessage:'fixture-network-failure',content:[]},{contextWindow:128000})
+ assert.equal(reads,investigationBudget.calls);assert.match(result,/调查未完成/);assert.match(result,/未能生成部分诊断/);assert.match(result,/RETAINED_EVIDENCE/);assert.match(result,/### E1 ·/);assert.ok(result.length<=investigationBudget.reportCharacters)
+})
+test('evidence tails are preserved and every dropped or unknown citation is explicitly accounted for',()=>{
+ const observations=Array.from({length:12},(_,i)=>({ref:'E'+(i+1),section:'trace',text:'x'.repeat(3000)+' DECISIVE_TAIL_'+(i+1)}))
+ const text='结论引用 '+observations.map(row=>row.ref).join('、')+'、E999。',result=formatDiagnosticReport(text,observations,[],{maxCharacters:30000})
+ assert.match(result,/DECISIVE_TAIL_1/);assert.match(result,/## 未附证据/);assert.ok(result.length<=30000)
+ const missing=result.split('## 未附证据')[1]
+ for(const row of observations)assert.ok(result.includes('### '+row.ref+' ·')||missing.includes(row.ref),'citation must be attached or listed missing: '+row.ref)
+ assert.match(missing,/E999/)
 })

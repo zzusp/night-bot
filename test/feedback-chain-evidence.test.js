@@ -8,6 +8,7 @@ import {openNativeDomains} from '../src/native-domain.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
 import {redactFeedback} from '../src/feedback/redaction.js'
 import {diagnosticQueryFailure} from '../src/feedback/diagnostic-contract.js'
+import {investigationBudget} from '../src/feedback/investigation-budget.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createChainEvidence} from '../src/feedback/chain-evidence.js'
@@ -47,7 +48,7 @@ test('query must be a user description fragment; abort and call budget stop read
  const {collect}=fixture();await assert.rejects(collect('discover',undefined,{query:'unrelated private message'}),/QUERY_INVALID/)
  const ac=new AbortController();ac.abort();await assert.rejects(collect('discover',ac.signal))
  const found=await collect('discover',undefined,{query:'原消息首答很慢'});assert.equal(found.candidates.length,1)
- for(let i=0;i<22;i++)try{await collect('discover')}catch{}
+ for(let i=0;i<investigationBudget.calls-2;i++)try{await collect('discover')}catch{}
  await assert.rejects(collect('discover'),/LIMIT/)
 })
 test('discovery performs bounded page reads and reports partial coverage',async()=>{

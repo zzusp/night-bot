@@ -1,3 +1,4 @@
+import {investigationBudget} from './investigation-budget.js'
 import {randomUUID} from 'node:crypto'
 import {diagnosticQueryFailure} from './diagnostic-contract.js'
 import {AGENT_PHASES} from '../runtime/pi-agent-observation.js'
@@ -29,7 +30,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
  const addSource=(source,match='literal-description-fragment')=>{const alias=identity('message',source.sourceId+':'+source.version);sources.set(alias,{sourceId:source.sourceId,groupId:source.groupId,messageId:source.messageId,version:source.version});return {alias,conversation:conversation(source.groupId),version:source.version,receivedAt:stamp(source.receivedAt),platformAt:stamp(source.timestamp),match}}
  const unavailable=reason=>({status:'unavailable',reason,complete:false})
  return async function collect(action,signal,args={}) {
-  signal?.throwIfAborted();if(++calls>24)fail('FEEDBACK_EVIDENCE_LIMIT')
+  signal?.throwIfAborted();if(++calls>investigationBudget.calls)fail('FEEDBACK_EVIDENCE_LIMIT')
   const service=app()?.tasks
   if(!service?.store?.query&&action!=='schedule'&&action!=='discover')return unavailable('task-service-unavailable')
   let result

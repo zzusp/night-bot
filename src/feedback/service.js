@@ -1,6 +1,9 @@
+import {packageRoot} from '../runtime/paths.js'
+import {createLocalEvidence} from './local-evidence.js'
+import {investigationBudget} from './investigation-budget.js'
 import {randomUUID} from 'node:crypto'
 import {redactFeedback} from './redaction.js'
-import {diagnoseWithPi} from './pi-session.js'
+import {diagnoseWithPi,limitDiagnosticText} from './pi-session.js'
 import {createChainEvidence} from './chain-evidence.js'
 import {feedbackErrorCodes} from './evidence.js'
 import {roleModelSelection,legacyRoleModelSelection} from '../role-models.js'
@@ -37,13 +40,14 @@ export function createFeedbackService({model,modelConsent=()=>({revision:'defaul
    const controller=new AbortController(),r={id:randomUUID(),owner,title:'',state:'collecting',expires:now()+30*60*1000,controller,additionalSecrets};reports.set(r.id,r)
    r.timer=setTimeout(()=>{r.controller.abort();reports.delete(r.id)},30*60*1000);r.timer.unref?.()
    r.done=(async()=>{try{
-    const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(300000)]),secrets=[...(r.manual?[]:await getSecrets()),...r.additionalSecrets]
+    const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(investigationBudget.timeoutMs)]),secrets=[...(r.manual?[]:await getSecrets()),...r.additionalSecrets]
     signal.throwIfAborted();r.title=redactFeedback(input.title.trim(),secrets)
     const description=redactFeedback(input.description.trim(),secrets)
     const resolved=await resolveModel({...selection,signal});signal.throwIfAborted();if(input.revision!==modelConsent().revision)fail('FEEDBACK_MODEL_CHANGED',409)
     const scopedEvidence=createEvidence?createEvidence({title:input.title,description:input.description,secrets}):evidence
-    const result=await diagnose({resolved,paths,title:r.title,description,evidence:scopedEvidence,signal,secrets});signal.throwIfAborted()
-    r.body=redactFeedback(`## 问题描述\n${description}\n\n## Pi 诊断\n${result}`,secrets);r.state='ready'
+    const prefix=`## 问题描述\n${description}\n\n## AI 诊断\n`,reportCharacters=Math.min(investigationBudget.reportCharacters,48000-prefix.length)
+    const result=await diagnose({resolved,paths,title:r.title,description,evidence:scopedEvidence,signal,secrets,reportCharacters});signal.throwIfAborted()
+    r.body=prefix+limitDiagnosticText(redactFeedback(result,secrets,{maxLength:Infinity}),reportCharacters,'诊断草稿');r.state='ready'
    }catch{if(r.state!=='cancelled'){r.state='failed';r.error='FEEDBACK_COLLECTION_FAILED'}}})()
    return view(r)
   },
@@ -90,9 +94,11 @@ export function hostFeedback(ctx,config,paths){
   getSecrets:async()=>[...(await ctx.get('credentials')?.redactionValues?.()??[]),...(launchEnvironmentOf(ctx).redactionValues?.()??[])],
   getToken:()=>ctx.get('credentials')?.resolveCurrent?.('GITHUB_TOKEN')?.value??launchEnvironmentOf(ctx).getFrom('GITHUB_TOKEN',['process'])?.value,
   createEvidence:({title,description,secrets})=>{
+   const local=createLocalEvidence({paths,secrets,codeRoot:packageRoot})
    const chain=createChainEvidence({application:ctx.get('application'),getSessionPersistence:()=>ctx.sessionPersistence,getSchedule:()=>ctx.get('schedule'),title,description,secrets})
    return async(section,signal,args)=>{
    signal.throwIfAborted()
+   if(['code_search','code_read','logs'].includes(section))return local(section,signal,args)
    if(section==='runtime')return {node:process.version,platform:process.platform,architecture:process.arch,uptimeSeconds:Math.floor(process.uptime()),rssMiB:Math.ceil(process.memoryUsage().rss/1048576)}
    if(section==='errors')return feedbackErrorCodes(paths.logs,signal)
    if(section==='channels'){
