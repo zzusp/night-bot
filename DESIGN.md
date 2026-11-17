@@ -193,7 +193,7 @@ Web 是可选可视化入口：关闭页面不停止已接纳任务，禁用插�
 | Form | `src/App.tsx` 的 Login、`src/components/BoardPrimitives.tsx` 的 Composer，权限控件与 `src/ChannelsPage.tsx` 的渠道新增与编辑、`src/components/CustomChannelForm.tsx` 的插件字段表单复用共享 Button、原生表单/dialog | 本文与服务端请求契约 | token-login / message-composer / operator-permission / channel-create-edit | `test/browser.spec.ts` 登录、IME、原文输入；`test/channels-create.spec.ts` 新增、编辑与版本核对 |
 | Select/Listbox | 原生 `select`，渠道配置字段样式由 `src/styles/app.css` 统一 | 本文原生选择器规则 | native（操作系统负责弹出选项） | `test/visual-consistency.spec.ts` 键盘与展开态 |
 | Scrollbar | `src/styles/boardui.css` 全局样式 | 本文 Layout 与运行时 token | 应用纵向区域 / 表格与代码横向区域 | computed style、窄屏、axe |
-| Toast | `src/components/Shared.tsx` 的 Notice、局部 `role=status` | 本文反馈与恢复规则 | 持久错误横幅 / 局部复制回执；当前无独立弹出 toast 系统 | `test/browser.spec.ts` failure paths |
+| Toast | `ReadErrors.tsx` 读取汇总、`ActionNotification.tsx` 操作回执、局部复制状态 | 本文反馈与恢复规则 | 右下持久读取错误 / 右上操作回执 / 局部复制回执 | `test/channel-ingress.spec.ts`、`test/browser.spec.ts` |
 | CRUD | `src/api.ts`、`src/ChatPage.tsx`、`src/ChannelsPage.tsx` 及认证操作者权限控件 | 本文发送、权限审批、渠道新增与编辑流程及 Host 回执 | 对话发送 / 模式保存 / 单调用审批 / 钉钉配置新增与编辑；任务与渠道消息不提供删除或代发，渠道输入框暂时隐藏 | `test/server.test.js`、`test/host.test.js`、浏览器测试 |
 | Message | `src/components/Shared.tsx` 的 MessageList、Markdown、Status | 本文消息、来源与安全展示规则 | Web 对话 / 渠道消息 / 执行上下文 | 长文本、工具折叠、滚动与复制用例 |
 | Message process | `src/components/ConversationMessages.tsx`、`MessageProcessPopover.tsx`、`ResponseTimes.tsx` | 本文消息侧边浮层与服务端精确来源关联 | Web / 外部渠道消息；只展示节点与真实耗时 | `test/execution-redesign.spec.ts`、`test/first-reply-runtime.test.js` |
@@ -651,3 +651,9 @@ Tokens弧段圆角（2026-11-14）：圆端帽收进每项真实角度范围，�
 
 ### 设置弹窗分组行（2026-11-16）
 以用户提供的 BoardUI 设置参考图为准：去掉横跨弹窗的标题栏与右侧嵌套大卡片。桌面 960px 上限弹窗采用 208px 浅灰分类栏，左栏顶部显示「设置」，右侧白底直接呈现分类标题和浅灰分组；选中导航为无描边浅灰行。API、密钥、外观、角色模型和工作日志采用左标签、右控件的紧凑设置行，保留各自提交边界、真实状态与必要安全提示，不暗改为自动保存。部署信息沿用分组行与路径复制。760px 以下满屏、横向分类与独立内容滚动；长路径自然换行，表单不横向溢出。关闭按钮始终可达，保留草稿、忙碌与未知回执保护及焦点恢复。
+
+### 渠道操作通知（2026-11-17）
+暂停、恢复与删除回执使用共享 ActionNotification，借鉴 BoardUI Notification 的中性表面、短标题、圆形图标与关闭按钮，桌面右上 360px、移动端左右 16px；不再在渠道列表顶部插入整行说明。暂停/恢复已接纳仅显示“请求已提交”，不把补拉中误报为已恢复；普通回执 6 秒后消失，悬停或键盘焦点停留时暂停计时。持续状态由卡片状态标签随原查询刷新，通知关闭不改变业务状态。只读核对和删除的必要限制不自动隐藏；应用失败、未知回执仍保留原弹窗和核对流程，不重复外部通知。读取错误保持右下唯一汇总，不与操作回执重叠。切页清理通知，不新增存储和业务请求。
+
+### 报错反馈诊断状态（2026-11-17）
+AI 排查中用与问题表单同宽、同轴的紧凑白色卡片展示共享 Spinner 与「AI 正在诊断」，右侧为「停止并清除」；不在空白画布中央显示加载文案，不模拟阶段、进度条或完成比例。复用原撤销接口，只清除本次诊断暂存，保留问题表单。诊断完成后清除操作移入提交内容标题行，不悬挂在页面左侧。失败沿用既有错误机制与清除入口，不改变采集、脱敏及 GitHub 最终确认边界。

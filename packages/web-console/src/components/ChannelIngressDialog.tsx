@@ -4,6 +4,7 @@ import { api, ApiError, operationErrorText, type Channel } from '../api';
 import { channelPath } from '../channel-url';
 import { ingressStateText, ingressTargetPaused, ingressUnavailable, validChannelIngress, validChannelVersion } from '../channel-ingress';
 import { Button, IconButton } from './BoardPrimitives';
+import type { ActionFeedback } from './ActionNotification';
 import { Notice } from './Shared';
 
 export type ChannelIngressRequest = { item: Channel; trigger: HTMLButtonElement | null };
@@ -27,7 +28,7 @@ const ingressError = (error: unknown) => {
 
 // Kept outside polling cards so pending receipts survive list refresh and closing.
 export function ChannelIngressDialog({ request, onDismiss, onChanged, onPending, focusFallback }: {
-  request: ChannelIngressRequest | null; onDismiss: () => void; onChanged: (message: string) => void; onPending: (channelId: string, pending: boolean) => void; focusFallback: () => void;
+  request: ChannelIngressRequest | null; onDismiss: () => void; onChanged: (message: ActionFeedback | null) => void; onPending: (channelId: string, pending: boolean) => void; focusFallback: () => void;
 }) {
   const id = useId(), dialog = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement | null>(null);
   const unresolved = useRef(new Map<string, Draft>()), live = useRef(true), writing = useRef(false), focusPending = useRef(false);
@@ -70,7 +71,7 @@ export function ChannelIngressDialog({ request, onDismiss, onChanged, onPending,
       if (!draft.uncertain) {
         setDraft({ item, paused: draft.paused, uncertain: false }); setRejected(false);
         setFeedback(`已读取最新状态：${ingressStateText(item)}请核对下方说明后重新确认。`);
-        onChanged(''); return;
+        onChanged(null); return;
       }
       // A matching intent alone cannot prove application. Require a valid saved
       // revision and the requested actual state, without attributing who changed it.
@@ -78,7 +79,7 @@ export function ChannelIngressDialog({ request, onDismiss, onChanged, onPending,
       const actualObserved = draft.paused ? ['paused', 'pausing'].includes(item.ingress.state) : ['receiving', 'recovering'].includes(item.ingress.state);
       if (versionObserved && item.ingress.requestedPaused === draft.paused && actualObserved) {
         unresolved.current.delete(item.channelId); onPending(item.channelId, false); setOpen(false);
-        onChanged(`只读核对当前状态：「${item.name || item.channelId}」${ingressStateText(item)}无法确认是否由本次请求完成。`);
+        onChanged({ title: '已核对当前接收状态', description: `「${item.name || item.channelId}」${ingressStateText(item)}无法确认是否由本次请求完成。` });
       } else setFeedback(`当前状态：${ingressStateText(item)}${item.savedVersion === draft.item.savedVersion ? '保存版本未变化。' : '保存版本已变化。'}本次操作结果仍未确认，不会重发请求。`);
     } catch (cause) {
       if (live.current) { setError(cause); setFeedback(draft.uncertain ? '暂时无法核对。原请求保持锁定，不会自动重试。' : '暂时无法重新读取。请恢复连接后再试。'); }
@@ -102,9 +103,14 @@ export function ChannelIngressDialog({ request, onDismiss, onChanged, onPending,
       if (item.ingress.state === 'error' || item.ingress.state === 'unavailable' || !result.liveApplied) {
         setDraft({ item, paused: draft.paused, uncertain: false });
         setFeedback(`请求已保存。${ingressStateText(item)}${item.ingress.state === 'error' ? '可在核对运行状态后，再次确认重试本次操作。' : ''}`);
-        onChanged(`「${item.name || item.channelId}」${ingressStateText(item)}`);
+        onChanged(null);
       } else {
-        setOpen(false); onChanged(`「${item.name || item.channelId}」${ingressStateText(item)}`);
+        setOpen(false);
+        onChanged({
+          title: draft.paused ? '暂停请求已提交' : '恢复请求已提交',
+          description: `「${item.name || item.channelId}」${item.ingress.state === 'recovering' && item.ingress.backfill === 'history' ? '正在补拉暂停期间的消息。' : ingressStateText(item)}`,
+          autoDismiss: true,
+        });
       }
     } catch (cause) {
       if (!live.current) return;

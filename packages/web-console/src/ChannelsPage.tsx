@@ -10,6 +10,7 @@ import { ingressAction, ingressUnavailable, validChannelIngress } from './channe
 import { validDingtalkCreated, channelApplicationText } from './channel-response';
 import { ChannelRemovalDialog, type ChannelRemovalRequest } from './components/ChannelRemovalDialog';
 import { ChannelIngressDialog, type ChannelIngressRequest } from './components/ChannelIngressDialog';
+import { ActionNotification, type ActionFeedback } from './components/ActionNotification';
 import { ActionMenu } from './components/ActionMenu';
 import { CustomChannelForm } from './components/CustomChannelForm';
 import { ConversationFrame } from './components/ConversationFrame';
@@ -333,7 +334,7 @@ export default function ChannelsPage({ id }: { id?: string }) {
   const [search, setSearch] = useState('');
   const [channel, setChannel] = useState('');
   const addChannelTrigger = useRef<HTMLButtonElement>(null);
-  const [removalRequest, setRemovalRequest] = useState<ChannelRemovalRequest | null>(null), [channelFeedback, setChannelFeedback] = useState('');
+  const [removalRequest, setRemovalRequest] = useState<ChannelRemovalRequest | null>(null), [channelFeedback, setChannelFeedback] = useState<ActionFeedback | null>(null);
   const [ingressRequest, setIngressRequest] = useState<ChannelIngressRequest | null>(null);
   const [pendingIngress, setPendingIngress] = useState(() => new Set<string>());
   const selected = conversations.data?.items.find(item => item.id === id);
@@ -344,8 +345,8 @@ export default function ChannelsPage({ id }: { id?: string }) {
     {query.loading && !query.data ? <Loading /> : !query.data && query.error ? null : <ConversationMessages endpoint={endpoint} accessError={query.error} accessUpdatedAt={query.updatedAt} onRefresh={query.refresh} key={id} older={query.older} messages={query.data?.items || []} userLabel="渠道成员" empty={<EmptyState title="暂无消息" />} />}
   </ConversationFrame>;
   return <div className="page-content channels-page">
-    {channelFeedback && <p className="channel-create-feedback" role="status">{channelFeedback}</p>}
-    <ChannelRemovalDialog focusAfterRemoval={() => addChannelTrigger.current?.focus({ preventScroll: true })} request={removalRequest} onDismiss={() => setRemovalRequest(null)} onChanged={message => { setChannelFeedback(message); if (channel === removalRequest?.item.channelId) setChannel(''); channels.refresh(); conversations.refresh(); }} />
+    {channelFeedback && <ActionNotification feedback={channelFeedback} onDismiss={() => setChannelFeedback(null)} />}
+    <ChannelRemovalDialog focusAfterRemoval={() => addChannelTrigger.current?.focus({ preventScroll: true })} request={removalRequest} onDismiss={() => setRemovalRequest(null)} onChanged={message => { setChannelFeedback({ title: '渠道配置已更新', description: message }); if (channel === removalRequest?.item.channelId) setChannel(''); channels.refresh(); conversations.refresh(); }} />
     <ChannelIngressDialog focusFallback={() => addChannelTrigger.current?.focus({ preventScroll: true })} request={ingressRequest} onDismiss={() => setIngressRequest(null)} onChanged={message => { setChannelFeedback(message); channels.refresh(); }}
       onPending={(channelId, pending) => setPendingIngress(previous => { const next = new Set(previous); if (pending) next.add(channelId); else next.delete(channelId); return next; })} />
     {channels.error && <Notice error={channels.error} onRetry={channels.refresh} stale={!!channels.data} />}

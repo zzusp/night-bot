@@ -1,0 +1,19 @@
+✔ ingress URLs preserve dot-only and reserved/unicode IDs (1.20244ms)
+✔ undeclared or unavailable ingress is blocked independently of enabled and outbound authorization (0.570035ms)
+✔ pause, resume and retry use the declared intent without claiming history completion (0.696872ms)
+✔ feedback defaults to no collection with visible scope and model destination, never starts collection on render (7.799209ms)
+✔ scope remains visible before configuration is available, submit stays unavailable (0.721389ms)
+✔ UI has separate exact-payload confirmation and model-bound collection with no persistent browser content storage (0.571687ms)
+✔ ready feedback displays editable exact server preview and unsaved edits block publication (1.865923ms)
+✔ editing clears approval and uses PATCH before permitting exact server-payload publication (0.337599ms)
+✔ no model still permits non-collection preview; collection without a model stays unavailable (1.176923ms)
+✔ native image handoff keeps explicit privacy disclosure and never carries draft or images in its URL (1.589464ms)
+✔ collection has no notice or extra checkbox and uses the configured model (0.720497ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1035.682286
