@@ -25,7 +25,7 @@ test('real Host inventory uses runtime pathInventory and mounted native skill ro
  assert.ok(result.skillDirectories.some(r=>r.path===bundledSkillDir&&r.kind==='bundled'))
  for(const path of [p.skills,join(p.agentsHome,'skills'),join(p.harnessHome,'skills')])assert.ok(result.skillDirectories.some(r=>r.path===path&&r.kind==='custom'))
  const web=await createWebConsole({channels:f.host.ctx.channels,paths:p,config:{senderId:'deployment-operator',channelId:'deployment-test',port:0},getApplication:()=>({}),getDeploymentInventory:()=>f.host.ctx.get('deploymentInventory').read()})
- t.after(()=>web.close())
+ try {
  assert.equal((await fetch(web.origin+'/api/settings/deployment')).status,401)
  const credential=(await readFile(web.credentialPath,'utf8')).trim()
  const login=await fetch(web.origin+'/api/login',{method:'POST',headers:{origin:web.origin,'content-type':'application/json'},body:JSON.stringify({token:credential})})
@@ -37,4 +37,5 @@ test('real Host inventory uses runtime pathInventory and mounted native skill ro
  assert.match(response.headers.get('cache-control'),/no-store/)
  assert.equal((await fetch(web.origin+'/api/settings/deployment',{headers:{cookie,origin:'https://foreign.invalid'}})).status,403)
  assert.equal(f.requests.length,0)
+ } finally {await web.close()}
 })
