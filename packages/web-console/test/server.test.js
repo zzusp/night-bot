@@ -516,8 +516,9 @@ test('evolution caches sanitized indexed inventory in a Web-owned file, supports
   assert.equal(first.body.cache.stale, false)
   const directory = join(f.paths.cache, (await readdir(f.paths.cache))[0])
   const files = await readdir(directory)
-  assert.equal(files.length, 1); assert.match(files[0], /^evolution-[a-f0-9]{64}\.pages$/)
-  const cacheFile = join(directory, files[0])
+  assert.equal(files.length, 2)
+  assert.equal(files.filter(name => /^evolution-usage-[a-f0-9]{64}\.sqlite$/.test(name)).length, 1)
+  const cacheFile = join(directory, files.find(name => name.endsWith('.pages')))
   assert.doesNotMatch(await readFile(cacheFile, 'utf8'), /PRIVATE_MEMORY_BODY|memoryResources|skillResources|storageId|scopeToken|\.sqlite/)
   await remember('two')
   assert.equal((await f.fetchApi('/api/evolution?kind=memory')).body.total, 1, 'ordinary reads serve the saved snapshot')
@@ -976,15 +977,14 @@ test('evolution HTTP defaults to ten records and serves disjoint current pages f
   assert.equal(skills.body.total,0); assert.deepEqual(skills.body.items,[])
 })
 
-test('feedback HTTP preserves consent, exact preview, owner and CSRF boundaries',async t=>{
+test('feedback HTTP starts explicit diagnosis and preserves publish consent, exact preview, owner and CSRF boundaries',async t=>{
  let collected=0,sent=0
  const feedback=createFeedbackService({model:()=>({provider:'test',model:'model'}),resolveModel:async()=>({}),getToken:async()=>'fake',diagnose:async()=>{collected++;return '诊断摘要'},fetchImpl:async()=>{sent++;return{ok:true,json:async()=>({html_url:'https://github.com/zzusp/night-bot/issues/123'})}}})
  t.after(()=>feedback.close());const f=await fixture(t,{feedback})
- const input={title:'异常',description:'操作步骤',model:'test/model',revision:'default',consent:true}
+ const input={title:'异常',description:'操作步骤',model:'test/model',revision:'default'}
  assert.equal((await f.fetchApi('/api/feedback')).status,401);await f.login()
  assert.equal((await f.fetchApi('/api/feedback')).status,200)
  assert.equal((await f.fetchApi('/api/feedback/collect',{method:'POST',body:input,headers:{'x-csrf-token':'forged'}})).status,403)
- assert.equal((await f.fetchApi('/api/feedback/collect',{method:'POST',body:{...input,consent:false}})).status,403)
  assert.equal(collected,0)
  const created=await f.fetchApi('/api/feedback/collect',{method:'POST',body:input});assert.equal(created.status,202)
  const path='/api/feedback/'+created.body.id;let r
@@ -1050,7 +1050,7 @@ test('evolution index labels are redacted before response and file caching', asy
   assert.ok(result.body.items[0].summary.startsWith('摘要 '))
   assert.ok(!JSON.stringify(result.body).includes(token))
   const directory = join(f.paths.cache, (await readdir(f.paths.cache))[0])
-  const cachePath = join(directory, (await readdir(directory))[0])
+  const cachePath = join(directory, (await readdir(directory)).find(name => name.endsWith('.pages')))
   assert.ok(!(await readFile(cachePath, 'utf8')).includes(token))
 })
 
@@ -1083,4 +1083,44 @@ test('drain failure summary and blocker expose only fixed facts, never arbitrary
  const view=taskView(task);assert.equal(view.blockers.length,1);assert.equal(view.blockers[0].status,'failed');assert.match(view.blockers[0].title,/排空失败/)
  assert.doesNotMatch(JSON.stringify(view),/SECRET_EXCEPTION|private|sessionFailure|message/)
  assert.deepEqual(taskView({...task,sessionFailure:{code:'UNKNOWN_ERROR',message:'SECRET_EXCEPTION'}}).blockers,[])
+})
+
+test('default HTTP refresh reuses SQLite per-file statistics and keeps stale pages if the database is damaged', async t => {
+  const {Context} = await import('@deepseek-ai/cordis')
+  const {default: PiPersistence} = await import('../../../src/pi-session-persistence.js')
+  const Authority = await import('../../../src/pi-authority.js')
+  const root = await mkdtemp(join(tmpdir(), 'night-web-usage-default-')), ctx = new Context()
+  await ctx.plugin(Authority)
+  const persistence = new PiPersistence(ctx, {root: join(root, 'sessions')})
+  const store = new MarkdownMemoryStore(join(root, 'memory')), scope = memoryScope({actorId: 'writer'})
+  const remembered = await store.remember(scope, {topic: 'facts', key: 'one', text: 'Public summary\n\nPRIVATE_HTTP_MEMORY_BODY', source: {sessionId: 'one', messageId: 'one'}})
+  const writer = await persistence.createNative({version: 4, id: 'one', createdAt: Date.now(), isSeeded: false, cwd: root}, {auditKinds: {'task/identity': () => true}})
+  writer.appendAudit({version: 1, domain: 'task', kind: 'identity', payload: {taskId: 'task-one', sessionId: 'one'}})
+  writer.manager.appendMessage({role: 'assistant', content: [{type: 'toolCall', id: 'read-one', name: 'memory_read', arguments: {}}], timestamp: Date.now()})
+  const value = {kind: 'night-memory-result', scopeToken: scope.kind + '/' + scope.id, revision: remembered.revision, entries: [{id: remembered.entry.id}]}
+  writer.manager.appendMessage({role: 'toolResult', toolName: 'memory_read', toolCallId: 'read-one', isError: false, timestamp: Date.now(), content: [], details: {nativeResult: {value}}})
+  await writer.close()
+  let f, reads = 0
+  const nativeRead = persistence.readNative.bind(persistence)
+  persistence.readNative = async (...args) => {reads++; return nativeRead(...args)}
+  t.after(async () => {await f?.web.close(); await ctx.fiber.dispose(); await rm(root, {recursive: true, force: true})})
+  f = await fixture(t, {memory: {store}, persistence})
+  f.app.tasks.store = {query: async q => q.kind === 'observer.page' ? {items: [{taskId: 'task-one', sessionId: 'one'}], total: 1, nextOffset: null} : []}
+  await f.login()
+  const first = await f.fetchApi('/api/evolution?refresh=1')
+  assert.equal(first.status, 200); assert.equal(first.body.memory.readCount, 1); assert.equal(first.body.cache.stale, false)
+  const coldReads = reads
+  const second = await f.fetchApi('/api/evolution?refresh=1')
+  assert.equal(second.body.memory.readCount, 1); assert.equal(second.body.usageCoverage.sessionsReused, 1); assert.equal(reads, coldReads)
+  const directory = join(f.paths.cache, (await readdir(f.paths.cache))[0])
+  const database = join(directory, (await readdir(directory)).find(name => name.endsWith('.sqlite')))
+  assert.doesNotMatch((await readFile(database)).toString(), /PRIVATE_HTTP_MEMORY_BODY|scopeToken|storageId/)
+  await f.restart(); await f.login()
+  const restored = await f.fetchApi('/api/evolution?refresh=1')
+  assert.equal(restored.body.usageCoverage.sessionsReused, 1); assert.equal(reads, coldReads)
+  await f.web.close(); await writeFile(database, 'broken cache, not business data')
+  await f.restart(); await f.login()
+  const stale = await f.fetchApi('/api/evolution?refresh=1')
+  assert.equal(stale.status, 200); assert.equal(stale.body.memory.readCount, 1); assert.equal(stale.body.cache.stale, true)
+  assert.equal(stale.body.cache.updatedAt, restored.body.cache.updatedAt)
 })
