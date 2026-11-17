@@ -237,6 +237,8 @@ test('补拉回执关闭不影响卡片状态，轮询不重复通知，窄屏�
   await page.screenshot({ path: shot('notification-narrow'), animations: 'disabled' });
   expect((await new AxeBuilder({ page }).include('.action-notification').analyze()).violations).toEqual([]);
   await notice.hover(); await page.clock.fastForward(7000); await expect(notice).toBeVisible();
+  await page.getByRole('button', { name: '关闭渠道操作提示', exact: true }).focus();
+  await page.mouse.move(0, 0); await page.clock.fastForward(7000); await expect(notice).toBeVisible();
   await page.getByRole('button', { name: '关闭渠道操作提示', exact: true }).click();
   await expect(notice).toHaveCount(0);
   await page.clock.fastForward(11000); await expect(notice).toHaveCount(0);

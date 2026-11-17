@@ -32,6 +32,9 @@ test('diagnostic status is compact and aligned, with honest state and cancellati
     await page.screenshot({path:test.info().outputPath(`diagnosis-light-${width}.png`)})
   }
   await page.setViewportSize({width:1440,height:900})
+  await page.getByRole('button',{name:'切换深色外观',exact:true}).click()
+  await page.screenshot({path:test.info().outputPath('diagnosis-dark-1440.png')})
+  await page.getByRole('button',{name:'切换浅色外观',exact:true}).click()
   await page.getByRole('button',{name:'停止并清除',exact:true}).click()
   await expect(panel).toHaveCount(0)
   await expect(page.getByLabel('标题',{exact:true})).toHaveValue('渠道消息拉取异常')
@@ -41,5 +44,6 @@ test('diagnostic status is compact and aligned, with honest state and cancellati
   await expect(panel).toHaveCount(0)
   await expect(page.getByRole('button',{name:'确认提交 Issue',exact:true})).toBeDisabled()
   await expect(page.locator('.feedback-preview .settings-card-heading').getByRole('button',{name:'清除暂存',exact:true})).toBeVisible()
+  await page.screenshot({path:test.info().outputPath('diagnosis-ready-1440.png')})
   expect(writes).toEqual(['POST /api/feedback/collect','DELETE /api/feedback/diagnosis','POST /api/feedback/collect'])
 })
