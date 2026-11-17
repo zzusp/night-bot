@@ -1,0 +1,116 @@
+本地部署最终脱敏证据
+
+{
+  "capturedAt": "2026-11-17T03:41:57.573Z",
+  "sourceSha": "08a9324a29d1256bcb8f2bc4228a999cdc1f1e57",
+  "supervisorPhase": "running",
+  "startedAt": "2026-11-17T03:32:46.061Z",
+  "health": {
+    "status": "ok",
+    "transport": "channels",
+    "modelMode": "real",
+    "recoveryIssueCount": 0,
+    "taskAttentionCount": 0
+  },
+  "authenticatedWeb": true,
+  "channels": [
+    {
+      "index": 0,
+      "type": "web-console",
+      "connectionState": "unknown",
+      "connected": true,
+      "liveApplied": true,
+      "restartRequired": false,
+      "errorCode": null,
+      "ingress": {
+        "supported": false,
+        "available": false,
+        "backfill": null,
+        "requestedPaused": false,
+        "state": "unavailable",
+        "errorCode": null
+      }
+    },
+    {
+      "index": 1,
+      "type": "dingtalk-dws",
+      "connectionState": "listening",
+      "connected": true,
+      "liveApplied": true,
+      "restartRequired": false,
+      "errorCode": null,
+      "ingress": {
+        "supported": true,
+        "available": true,
+        "backfill": "history",
+        "requestedPaused": false,
+        "state": "receiving",
+        "errorCode": null
+      }
+    },
+    {
+      "index": 2,
+      "type": "dingtalk-dws",
+      "connectionState": "listening",
+      "connected": true,
+      "liveApplied": true,
+      "restartRequired": false,
+      "errorCode": null,
+      "ingress": {
+        "supported": true,
+        "available": true,
+        "backfill": "history",
+        "requestedPaused": false,
+        "state": "receiving",
+        "errorCode": null
+      }
+    }
+  ],
+  "evolution": {
+    "status": "ready",
+    "cache": {
+      "updatedAt": "2026-11-16T01:07:44.500Z",
+      "stale": true,
+      "refreshing": false,
+      "error": "EVOLUTION_CACHE_REFRESH_FAILED"
+    }
+  },
+  "blockingFence": {
+    "kind": "existing-empty-ownerless-evolution-lock",
+    "entries": [],
+    "modifiedAt": "2026-11-16T06:01:05.012Z",
+    "symlink": false
+  },
+  "acceptance": "PARTIAL_BLOCKED_EVOLUTION_REFRESH"
+}
+
+发行准备实跑：
+- 核心与 Web 分别 pnpm install --frozen-lockfile 成功。
+- Web tsc --noEmit + vite build 成功，341 modules，构建 6.51 秒。
+- pnpm check 成功：retainedModules=190，productionImportFiles=453，externalSdkImports=0，legacyOrchestratorDefinitions=0。
+- 发行 git status --porcelain 为空。
+- git diff --exit-code 803f60ee7e09ef0a166de0cccf8916f6da9ec500 08a9324a29d1256bcb8f2bc4228a999cdc1f1e57 -- src test 为零差异。
+
+独立 HTTP 读回：
+- /health → 200，status=ok，recoveryIssueCount=0，taskAttentionCount=0。
+- /state/recovery-issues → 200，[]。
+- /state/supervisor/alerts?limit=10&type=task → 200，total=0。
+- Web HTML 与发行 dist/index.html 完全相同。
+- /assets/index-CW8km0GI.js → 200，666481 bytes，SHA256=f9cc2c8bc34f85c270bce002d95f0c68324e5fc475f739ec0384d78872b9b159。
+- /assets/index-g8Sw80RW.css → 200，136211 bytes，SHA256=ffb2e0eb98fa61d50ac2f6d5aea88691f5d673fd48f750dbb0d9ec6b226a3ba1。
+- 两个静态资源均逐字节等于发行本地产物。
+
+配置与进程：
+- updateConfig checkOnly 与插件发现先通过；离线 Host 锁内保存，仅替换 channelPluginDirs。
+- 保存后独立读回新版插件路径；未改变三条实例配置、身份或权限。
+- 原监督器 --start --check 通过；核心进程及 launcher 的实际路径均属于 08a9324 独立发行。
+- 部署前实际没有活 Host 或 resident 监听；旧监督器记录均 closed，未对旧 PID 发信号。
+
+失败证据与界限：
+- 首次等待脚本将 starting 阶段的 DINGTALK_CHANNEL_NOT_READY 误作终态；修正本任务等待脚本后，两条真实渠道均 listening/receiving。未改生产源码或降低渠道就绪要求。
+- 认证显式 refresh=1 后，Web 仍返回 stale=true / EVOLUTION_CACHE_REFRESH_FAILED。
+- 使用同一发行的 readEvolutionInventory、实际安装路径及同一 Web actor 绑定只读复现 EVOLUTION_BUSY。
+- 阻断栅栏 data/memory/v2/bot/evolution/.lock 为空目录、无 owner.json、无符号链接，mtime 为 2026-11-16T06:01:05.012Z，早于本轮部署；同作用域没有 pending.json 或 layout-migration.pending.json。
+- 生产只读清单明确将该目录存在视为 busy；未删除该既有目录、未放宽检查、未清账本。
+- 未发人工测试消息、未执行新模型请求验收，未创建备份或删除已有备份。
+- 新发行与正在使用的监督器输出保留；仅清理本轮已不用的临时检查脚本和中间结果。
