@@ -25,3 +25,12 @@
 
 /* The form grid owns spacing; do not stack privacy and consent margins. */
 .feedback-page .feedback-privacy + .feedback-consent { margin-top: 0; }
+
+/* Align diagnostic feedback with the form, never with the full page canvas. */
+.feedback-page .feedback-diagnosis { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; }
+.feedback-diagnosis-status { display: flex; align-items: center; gap: 12px; min-width: 0; color: var(--board-text); }
+.feedback-diagnosis-status strong { font-size: 14px; font-weight: 500; }
+.feedback-diagnosis-icon { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; color: var(--board-muted); background: var(--board-panel); }
+.feedback-diagnosis > .board-button { flex-shrink: 0; }
+.feedback-actions { width: 100%; max-width: 1000px; margin-inline: auto; display: flex; justify-content: flex-end; }
+@media (max-width: 520px) { .feedback-page .feedback-diagnosis { gap: 8px; padding: 14px; } .feedback-diagnosis-status { gap: 8px; } }

@@ -81,7 +81,12 @@ test('恢复回执为 recovering 只报告正在补拉，深色状态截图', as
   });
   const dialog = await open(page, '恢复接收'); await dialog.getByRole('button', { name: '恢复接收', exact: true }).click();
   await expect(dialog).not.toBeVisible(); await expect(page.locator('.channel-card-tag')).toHaveText('正在补拉');
-  await expect(page.locator('.channels-page > [role="status"]')).toContainText('正在补拉暂停期间的消息，尚未完成');
+  await expect(page.locator('.action-notification')).toContainText('正在补拉暂停期间的消息。');
+  const notice = page.locator('.action-notification');
+  await expect(notice).toContainText('恢复请求已提交');
+  await expect(page.locator('.channels-page > .channel-create-feedback')).toHaveCount(0);
+  expect(await notice.evaluate(el => getComputedStyle(el).position)).toBe('fixed');
+  await page.screenshot({ path: shot('notification-light'), animations: 'disabled' });
   await page.getByRole('button', { name: '切换深色外观', exact: true }).click();
   await page.screenshot({ path: shot('recovering'), animations: 'disabled' });
   expect((await new AxeBuilder({ page }).include('.channel-cards').analyze()).violations).toEqual([]);
@@ -128,7 +133,7 @@ for (const failure of ['network', 'incomplete', 'uncertain-409'] as const) test(
   state.data.items = [base({ requestedPaused: true, state: 'paused' }, { savedVersion: version('b') })];
   await dialog.getByRole('button', { name: '核对接收状态', exact: true }).click();
   await expect(dialog).not.toBeVisible(); expect(writes).toBe(1);
-  await expect(page.locator('.channels-page > [role="status"]')).toContainText('只读核对当前状态');
+  await expect(page.locator('.action-notification')).toContainText('无法确认是否由本次请求完成');
 });
 
 test('等待认证但 available 为 true 时仍可保存暂停意图，不宣称实际已暂停', async ({ page }) => {
@@ -148,7 +153,7 @@ test('等待认证但 available 为 true 时仍可保存暂停意图，不宣称
   await expect(dialog).toContainText('渠道仍在等待认证，暂停意图已保存');
   await expect(dialog).toContainText('实际接收状态尚未确认');
   await expect(page.locator('.channel-card-tag')).toHaveText('需要认证');
-  await expect(page.locator('.channels-page > [role="status"]')).not.toContainText('已暂停消息接收');
+  await expect(page.locator('.action-notification')).toHaveCount(0);
   expect(writes).toBe(1);
 });
 
@@ -212,4 +217,35 @@ for (const channelId of ['.', '..', '群/测试?']) test(`特殊渠道 ID ${chan
   });
   const dialog = await open(page, '暂停接收', channelId); await dialog.getByRole('button', { name: '暂停接收', exact: true }).click();
   await expect(dialog).not.toBeVisible();
+});
+
+test('补拉回执关闭不影响卡片状态，轮询不重复通知，窄屏与自动消失', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 720 });
+  const state = await setup(page, base({ requestedPaused: true, state: 'paused' }));
+  await page.clock.install();
+  await page.route(routeIngress, route => {
+    state.data.items = [base({ state: 'recovering' }, { savedVersion: version('b') })];
+    return route.fulfill({ json: receipt(state.data.items[0]) });
+  });
+  let dialog = await open(page, '恢复接收');
+  await dialog.getByRole('button', { name: '恢复接收', exact: true }).click();
+  const notice = page.locator('.action-notification');
+  await expect(notice).toBeVisible();
+  const bounds = await notice.boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(16); expect(bounds!.width).toBeLessThanOrEqual(358);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: shot('notification-narrow'), animations: 'disabled' });
+  expect((await new AxeBuilder({ page }).include('.action-notification').analyze()).violations).toEqual([]);
+  await notice.hover(); await page.clock.fastForward(7000); await expect(notice).toBeVisible();
+  await page.getByRole('button', { name: '关闭渠道操作提示', exact: true }).click();
+  await expect(notice).toHaveCount(0);
+  await page.clock.fastForward(11000); await expect(notice).toHaveCount(0);
+  await expect(page.locator('.channel-card-tag')).toHaveText('正在补拉');
+  // Another receipt has its own lifetime; ordinary completed receipts do not stay forever.
+  state.data.items = [base({ requestedPaused: true, state: 'paused' }, { savedVersion: version('c') })];
+  await page.clock.fastForward(11000);
+  dialog = await open(page, '恢复接收');
+  await dialog.getByRole('button', { name: '恢复接收', exact: true }).click();
+  await expect(notice).toBeVisible(); await page.mouse.move(0, 0);
+  await page.clock.fastForward(7000); await expect(notice).toHaveCount(0);
 });

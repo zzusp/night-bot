@@ -691,3 +691,14 @@ html, body, #root { width: 100%; min-width: 0; }
 .read-error-copy > .board-button { min-height:28px; padding:3px 8px; margin:8px 0 -3px -8px; font-size:12px; color:var(--board-text); }
 .permission-dialog .read-error-summary,.channel-create-dialog .read-error-summary,.message-process-popover .read-error-summary { position:relative; inset:auto; width:380px; max-width:100%; margin:0 0 16px auto; z-index:auto; }
 @media(max-width:520px) { .read-error-summary { left:16px; right:16px; bottom:16px; width:auto; max-width:none; } .conversation-workspace .read-error-summary { bottom:104px; } .permission-dialog .read-error-summary,.channel-create-dialog .read-error-summary,.message-process-popover .read-error-summary { left:auto; right:auto; bottom:auto; max-width:100%; } }
+
+/* Action receipts follow BoardUI Notification; never push the channel cards down. */
+.action-notification { position:fixed; z-index:50; right:24px; top:76px; display:flex; align-items:flex-start; gap:12px; width:360px; max-width:calc(100vw - 32px); box-sizing:border-box; padding:16px 44px 16px 16px; border:1px solid var(--board-border); border-radius:16px; background:var(--board-surface); color:var(--board-muted); box-shadow:0 8px 24px rgb(0 0 0 / 10%),0 2px 6px rgb(0 0 0 / 4%); font-size:12px; line-height:1.6; animation:action-notification-enter 160ms ease-out; }
+.action-notification-symbol { display:grid; place-items:center; flex:0 0 36px; width:36px; height:36px; border-radius:50%; background:var(--board-panel); color:var(--board-text); }
+.action-notification-copy { flex:1; min-width:0; overflow-wrap:anywhere; }
+.action-notification-copy h2 { margin:0 0 4px; color:var(--board-text); font-size:14px; line-height:20px; font-weight:600; }
+.action-notification-copy p { margin:0; }
+.action-notification .action-notification-close { position:absolute; top:10px; right:10px; width:24px; height:24px; min-width:24px; }
+@keyframes action-notification-enter { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+@media(prefers-reduced-motion:reduce) { .action-notification { animation:none; } }
+@media(max-width:520px) { .action-notification { top:68px; left:16px; right:16px; width:auto; max-width:none; } }
