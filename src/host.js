@@ -14,7 +14,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import {loadNativeEnvironment} from './native-environment.js'
 import { createRequire } from 'node:module'
-import { mkdir,realpath } from 'node:fs/promises'
+import { mkdir,realpath,lstat,readdir,rmdir } from 'node:fs/promises'
 import { resolve, join,dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {portablePaths} from './runtime/portable.js'
@@ -23,6 +23,18 @@ import {acquireLock,readRegular,failure} from './runtime/files.js'
 import {createPrivacy,installProcessPrivacy} from './memory/privacy.js'
 
 const require = createRequire(import.meta.url)
+// 只能在安装独占租约内、启动任何渠道写者前调用；通用锁仍拒绝未知 owner。
+async function recoverContextsLock(paths){
+  const path=join(paths.state,'channels','contexts.json.lock')
+  const info=await lstat(path).catch(error=>{if(error.code!=='ENOENT')throw error})
+  if(!info)return
+  if(!info.isDirectory()||info.isSymbolicLink()||await realpath(dirname(path))!==dirname(path))throw failure('NIGHT_PATH_UNSAFE')
+  if((await readdir(path)).length)return
+  if(process.getuid&&info.uid!==process.getuid())throw failure('NIGHT_LOCK_UNCERTAIN')
+  const current=await lstat(path)
+  if(current.ino!==info.ino||current.dev!==info.dev)throw failure('NIGHT_PATH_CHANGED')
+  await rmdir(path)
+}
 /** Compose host storage, policy and tools around the Pi agent loop. No GUI plugins. */
 export async function createHost(config, { extraPlugins = [], environmentOptions = {}, environmentSnapshot, deferScheduledDelivery = false, dingtalkProfileRunner, dingtalkPluginDependencies = {} } = {}) {
   assertPiTaskBackendConfiguration(config)
@@ -61,7 +73,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     if(errors.length)throw new AggregateError(errors,'Host shutdown failed; ownership retained')
   })()
   try {
-    if(paths.mode==='portable'){releaseData=await acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0});if(await readRegular(join(paths.runtime,'task-restore.pending.json'))!==undefined)throw failure('TASK_ARCHIVE_RESTORE_INCOMPLETE');if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE')}
+    if(paths.mode==='portable'){releaseData=await acquireLock(join(paths.runtime,'.host.lock'),{timeoutMs:0});if(await readRegular(join(paths.runtime,'task-restore.pending.json'))!==undefined)throw failure('TASK_ARCHIVE_RESTORE_INCOMPLETE');if(await readRegular(join(paths.runtime,'restore.pending.json'))!==undefined)throw failure('NIGHT_RESTORE_INCOMPLETE');await recoverContextsLock(paths)}
     if(paths.mode==='portable'){
       const file=configFileOf(config)??join(paths.config,'config.json')
       ctx.provide('operatorSettings',createOperatorSettings({file,paths,running:config,getCredentials:()=>ctx.get('credentials'),getRoleModels:()=>ctx.get('roleModels'),getEnvironment:()=>ctx.get('launchEnvironment'),getFallbackRoleModels:saved=>{

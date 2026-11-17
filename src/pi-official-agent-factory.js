@@ -199,7 +199,7 @@ export class OfficialAgentFactory {
     if(errors.length)throw new AggregateError(errors,'Official actor cancellation failed')
    }
    const thisFactory=this
-   const routerCheckpoint=(packet,failedEntryId,claim)=>{
+   const routerInputCheckpoint=packet=>{
     active();check()
     if(store.header.runtimeOwner!=='conversation-router'||packet.source.kind!=='conversation-router'||packet.source.conversationId!==store.header.conversationId||packet.source.generation!==store.header.generation)throw fail('PI_ROUTER_RESUME_SCOPE')
     if(!bundle.session.isIdle||bundle.session.pendingMessageCount||bundle.session.isRetrying||bundle.session.agent.state.isStreaming)throw fail('PI_ROUTER_RESUME_BUSY')
@@ -207,6 +207,10 @@ export class OfficialAgentFactory {
     const entries=store.manager.getEntries(),branch=store.manager.getBranch(),messages=branch.filter(entry=>['message','custom_message'].includes(entry.type))
     const inputs=entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'&&entry.details?.packetId===packet.id),input=inputs[0]
     if(inputs.length!==1||!isDeepStrictEqual(input.details,{packetId:packet.id,source:packet.source})||!isDeepStrictEqual(input.content,packet.content)||branch.findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')?.id!==input.id)throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
+    return {entries,branch,messages,input}
+   }
+   const routerCheckpoint=(packet,failedEntryId,claim)=>{
+    const {entries,branch,messages,input}=routerInputCheckpoint(packet)
     const failure=branch.find(entry=>entry.id===failedEntryId),claims=entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.router-resume-claim'&&entry.details?.failedEntryId===failedEntryId)
     if(claim===undefined&&claims.length)throw fail('PI_ROUTER_RESUME_CHECKPOINT_USED')
     if(claim!==undefined&&(claims.length!==1||!isDeepStrictEqual(claims[0].details,claim)||messages.at(-1)?.id!==claims[0].id||entries.length!==store.snapshot().nativeEntryCount))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
@@ -271,6 +275,52 @@ export class OfficialAgentFactory {
      }))
      pending.add(operation)
      void operation.finally(()=>{routerResumeCheck=undefined;routerContinuing=false;pending.delete(operation)}).catch(()=>{})
+     return operation
+    },
+    recoverRouterSettlement({packet},settle){
+     active();check()
+     if(ownerCtx.agents.currentInitiator?.()!==undefined)throw fail('PI_ROUTER_RESUME_HOST_ONLY')
+     if(routerContinuing||routerFrozen||maintenanceCount||admission.paused||pending.size)throw fail('PI_ROUTER_RESUME_BUSY')
+     const last=store.manager.getBranch().findLast(entry=>entry.type==='message')
+     if(last?.message.role!=='assistant'||last.message.stopReason!=='toolUse')return false
+     packet=deepFreeze(structuredClone(packet))
+     const {entries,branch,input}=routerInputCheckpoint(packet),calls=new Map()
+     for(const entry of branch.slice(branch.indexOf(input)+1)){
+      if(entry.type==='message'){
+       const message=entry.message
+       if(message.role==='user')throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
+       if(message.role==='assistant')for(const block of message.content)if(block.type==='toolCall'){
+        if(calls.has(block.id))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
+        calls.set(block.id,{call:block,entryId:entry.id})
+       }
+       if(message.role==='toolResult'){
+        if(calls.get(message.toolCallId)?.call.name!==message.toolName||message.isError)throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
+        calls.delete(message.toolCallId)
+       }
+      }else if(entry.type==='custom_message'&&entry.customType!=='night.tool-context')throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
+     }
+     if(calls.size!==1)return false
+     const {call,entryId}=calls.values().next().value
+     if(call.name!=='resident_router_settle'||entryId!==last.id)return false
+     const args=call.arguments
+     if(!args||Array.isArray(args)||typeof args.operationId!=='string'||!args.operationId||Object.keys(args).some(key=>!['eventIds','operationId','noTaskDispositions'].includes(key))||!isDeepStrictEqual(args.eventIds,packet.source.eventIds))throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
+     const receipts=entries.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit').map(entry=>entry.data)
+     if(unresolvedNativeJobReceipts(receipts,id).length||receipts.some(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent'))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
+     if(typeof settle!=='function')throw new TypeError('Router Host settlement required')
+     routerContinuing=true;routerFrozen=true;admission.pause()
+     // 仅补完原幂等账本事务；不通过模型或通用工具派发重放未知效果。
+     const operation=(async()=>{
+      active();check()
+      const receipt=await settle(deepFreeze(structuredClone(args)),{callId:call.id,callEntryId:entryId})
+      active();check()
+      if(receipt?.dispatchEligible!==false)throw fail('PI_ROUTER_SETTLEMENT_RECEIPT_INVALID')
+      store.manager.appendMessage({role:'toolResult',toolCallId:call.id,toolName:call.name,content:[{type:'text',text:JSON.stringify(receipt)}],details:{hostReconciliation:{version:1,packetId:packet.id,callEntryId:entryId,externalEffectsExecuted:false}},isError:false,timestamp:Date.now()})
+      await store.commit();active();check()
+      return true
+     })()
+     pending.add(operation)
+     void operation.finally(()=>{routerContinuing=false;pending.delete(operation)}).catch(()=>{})
+     // 调用方须关闭旧 handle，再由 Pi 从已提交历史重建同一会话。
      return operation
     },
     async routerCommitProof(){

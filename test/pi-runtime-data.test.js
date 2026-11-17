@@ -170,7 +170,9 @@ syncBuiltinESMExports();save();process.once('exit',()=>{trace.phase='closed';sav
   assert.equal(moduleLoads['packages/dingtalk-core/dws-bridge.js'],0);assert.equal(moduleLoads['packages/dingtalk-core/dws-adapter.js'],0)
 })
 
-test('new Night Bot data restores A to B: continued Pi history, workspace, scheduled task, attachment and Markdown memory',{timeout:20000},async t=>{
+test('new Night Bot data restores A to B: continued Pi history, workspace, scheduled task, attachment and Markdown memory',{timeout:nativeTestTimeout(20000)},async t=>{
+  // 先关闭恢复目标的 Host，再清理安装目录，避免存活 watcher 与清理互相等待。
+  let b;t.after(()=>b?.close())
   const f=await memoryHost(t),a=f.host.ctx.runtimePaths,h=await f.agent('relocation',{actorId:'owner'})
   await f.say(h.agent,'记住 facts/project：portable assistant')
   const workspace=await f.host.ctx.workspaceRegistry.create(a.workspaces);await workspace.attachSession('relocation')
@@ -180,7 +182,7 @@ test('new Night Bot data restores A to B: continued Pi history, workspace, sched
   await f.close()
   const backup=join(f.root,'backups','portable');await backupData(f.config,backup)
   const destination=await fixture(t),configB={...f.config,installRoot:destination},restored=await restoreData(configB,backup);assert.equal(restored.relocated,true);assert.equal((await loadConfig(join(destination,'data/config/config.json'))).installRoot,destination)
-  const b=await createHost(configB,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});t.after(()=>b.close())
+  b=await createHost(configB,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}})
   const paths=b.ctx.runtimePaths,resumed=await b.ctx.sessionController.resolveAgent('relocation');assert.ok(resumed.agent,resumed.error?.message)
   assert.equal(resumed.agent.metadata.cwd,paths.workspaces)
   const restoredPiCwd=resumed.agent.piSession.sessionManager.getCwd()
@@ -252,4 +254,40 @@ test('Windows 原子替换等待短暂共享占用，持续占用仍失败并保
    assert.deepEqual((await readdir(root)).sort(),['ingress.json','probe.json'])
   }finally{clearTimeout(timer);if(!child.stdin.destroyed)child.stdin.end(String.fromCharCode(10));await closed}
  }
+})
+
+
+test('default Host reclaims only an empty contexts lock after obtaining the installation lease',{timeout:nativeTestTimeout(30000)},async t=>{
+ const f=await memoryHost(t),paths=f.host.ctx.runtimePaths,lock=join(paths.state,'channels','contexts.json.lock')
+ const input={type:'chat-room',channelId:'fixture',conversationId:'room',senderId:'alice',messageId:'before-crash',text:'Original source'}
+ await f.host.ctx.channels.registerConversation(input)
+ const contexts=await readFile(join(paths.state,'channels','contexts.json'))
+ await mkdir(lock)
+ await assert.rejects(createHost(f.config),{code:'NIGHT_DATA_IN_USE'})
+ assert.deepEqual(await readdir(lock),[])
+ await f.close();await f.boot()
+ await assert.rejects(stat(lock),{code:'ENOENT'})
+ assert.deepEqual(await readFile(join(paths.state,'channels','contexts.json')),contexts)
+ await f.host.ctx.channels.registerConversation({...input,messageId:'after-crash'})
+})
+
+test('default Host does not clear a nonempty or live contexts lock',{timeout:nativeTestTimeout(30000)},async t=>{
+ const f=await memoryHost(t),lock=join(f.host.ctx.runtimePaths.state,'channels','contexts.json.lock')
+ await f.close()
+ const release=await acquireLock(lock),owner=await readFile(join(lock,'owner.json'))
+ try{await f.boot();assert.deepEqual(await readFile(join(lock,'owner.json')),owner);await assert.rejects(acquireLock(lock,{timeoutMs:0}),{code:'NIGHT_DATA_IN_USE'});await f.close()}finally{await release()}
+ await mkdir(lock);await writeFile(join(lock,'retained.txt'),'Uncertain lock evidence')
+ await f.boot();assert.equal(await readFile(join(lock,'retained.txt'),'utf8'),'Uncertain lock evidence')
+ await assert.rejects(acquireLock(lock,{timeoutMs:0}),{code:'NIGHT_LOCK_UNCERTAIN'})
+})
+
+
+test('default Host preserves empty contexts lock when restore is pending and rejects a linked lock',{timeout:nativeTestTimeout(30000)},async t=>{
+ const f=await memoryHost(t),paths=f.host.ctx.runtimePaths,lock=join(paths.state,'channels','contexts.json.lock'),pending=join(paths.runtime,'restore.pending.json')
+ await f.close();await mkdir(join(paths.state,'channels'),{recursive:true});await mkdir(lock);await writeFile(pending,'{}')
+ await assert.rejects(f.boot(),{code:'NIGHT_RESTORE_INCOMPLETE'});assert.deepEqual(await readdir(lock),[])
+ await rm(pending);await rm(lock,{recursive:true})
+ const outside=join(f.root,'outside-lock');await mkdir(outside);await writeFile(join(outside,'retained.txt'),'Keep original target')
+ await symlink(outside,lock,'junction')
+ await assert.rejects(f.boot(),{code:'NIGHT_PATH_UNSAFE'});assert.equal(await readFile(join(outside,'retained.txt'),'utf8'),'Keep original target')
 })

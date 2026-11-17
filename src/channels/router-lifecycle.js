@@ -6,6 +6,7 @@ import {sessionWorkspace} from '../../packages/dingtalk-core/session-workspaces.
 import {conversationSource} from './message-safety.js'
 import {routerModelBody,routerModelBatch} from './router-model-input.js'
 import {pendingBusinessInputs} from '../runtime/pi-business-inputs.js'
+import {residentOperationId} from './resident-router-business.js'
 
 const fail=code=>{throw Object.assign(new Error(code),{code})}
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -37,7 +38,7 @@ export function routerPacketViews(row,batch){
   }
 
 /** 串行调度只负责 Host 生命周期；推理、队列和历史始终由官方 Pi 执行。 */
-export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPreset='night-bot',recordStage}){
+export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,agentPreset='night-bot',recordStage}){
   const handles=new Map(),tails=new Map(),inflight=new Set(),packets=new Map(),errors=new Map(),interruptions=new Map(),cancellationReasons=new Set()
   const closeError=Object.assign(new Error('ROUTER_CLOSED'),{code:'ROUTER_CLOSED'})
   let closed=false,closing
@@ -169,6 +170,40 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,agentPr
       handle??=await open(row);assertOpen()
       const admittedInput=handle.session.sessionManager.getBranch().findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')
       const admittedPacket=admittedInput&&handle.agent.admission.lookupPacket(admittedInput.details?.packetId)
+      if(admittedPacket?.source.kind==='conversation-router'){
+        let recovered
+        try{recovered=await handle.recoverRouterSettlement({packet:admittedPacket},async(args,call)=>{
+          const validate=async()=>{
+            assertOpen();ctx.get('channels').assertGroupTarget(conversationId)
+            const current=await query('router.get',{conversationId});assertOpen()
+            if(current?.phase!=='active'||current.generation!==row.generation||current.activeSessionId!==row.activeSessionId||agents.get(row.activeSessionId)!==handle.agent)fail('ROUTER_GENERATION_STALE')
+          }
+          await validate()
+          const operationId=residentOperationId(conversationId,args.operationId)
+          const prior=await query('router.action',{conversationId,operationId});assertOpen()
+          if(!prior){
+            const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
+            const batch=pending.filter(event=>args.eventIds.includes(event.id))
+            if(!isDeepStrictEqual(batch.map(event=>event.id),args.eventIds)||!routerPacketViews(row,batch).some(view=>sameRouterPacket(admittedPacket,view)))fail('ROUTER_PACKET_ID_CONFLICT')
+            for(const event of batch)if(event.sourceId){
+              const source=await query('router.source-current',{conversationId,sourceId:event.sourceId});assertOpen()
+              if(source.sourceId!==event.sourceId||source.version!==event.messageVersion)fail('ROUTER_PACKET_ID_CONFLICT')
+            }
+          }
+          await validate()
+          const receipt=await settle({conversationId,generation:row.generation,...args,operationId},'router-settle-recovery:'+hash([row.activeSessionId,call.callEntryId,call.callId]))
+          await validate();return receipt
+        })}catch(error){
+          try{await handle.dispose()}catch(cleanup){throw new AggregateError([error,cleanup],'Router settlement recovery cleanup failed')}
+          handles.delete(row.activeSessionId);handle=undefined
+          if(/^(?:PI_ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT)/.test(error.code??''))fail('ROUTER_BATCH_UNSETTLED')
+          throw error
+        }
+        if(recovered){
+          await handle.dispose();handles.delete(row.activeSessionId);handle=undefined
+          row=await query('router.get',{conversationId});assertOpen();continue
+        }
+      }
       // 正常停机中止的生成沿原历史领取一次；原生 error 仍需显式 Host 续办。
       if(admittedPacket?.source.kind==='conversation-router'&&handle.agent.admission.status(admittedPacket.id)==='admitted'&&admittedPacket.source.eventIds.some(id=>inbox.some(event=>event.id===id))){
         const failed=handle.session.sessionManager.getBranch().findLast(entry=>entry.type==='message')
