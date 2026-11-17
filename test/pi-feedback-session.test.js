@@ -63,13 +63,13 @@ test('real Pi can recover from an invalid task alias and inspect a schedule with
 })
 
 test('diagnostic context uses real window with sufficient output reserve',()=>{
- for(const contextWindow of [8192,32000,128000,500000]){const model={contextWindow,maxTokens:32768},settings=diagnosticCompactionSettings(model);assert.equal(settings.enabled,true);assert.ok(settings.reserveTokens>=diagnosticOutputTokens(model));assert.ok(settings.keepRecentTokens< contextWindow-settings.reserveTokens)}
- assert.throws(()=>diagnosticCompactionSettings({contextWindow:1000}),/CONTEXT_WINDOW_INVALID/)
+ for(const contextWindow of [1000,4096,8192,32000,128000,500000]){const model={contextWindow,maxTokens:32768},settings=diagnosticCompactionSettings(model);assert.equal(settings.enabled,true);assert.ok(settings.reserveTokens>=diagnosticOutputTokens(model));assert.ok(settings.keepRecentTokens< contextWindow-settings.reserveTokens)}
+ assert.throws(()=>diagnosticCompactionSettings({contextWindow:0}),/CONTEXT_WINDOW_INVALID/)
 })
 test('published report contains only cited evidence and stays within preview size',()=>{
  const rows=Array.from({length:80},(_,i)=>({ref:'E'+(i+1),section:'runtime',text:'value '+i+' '+ 'x'.repeat(5000)}))
  const output=formatDiagnosticReport('结论引用 E2。',rows)
- assert.match(output,/### E2 ·/);assert.doesNotMatch(output,/### E1 ·/);assert.match(output,/证据节选/);assert.ok(output.length<46000)
+ assert.match(output,/### E2 ·/);assert.doesNotMatch(output,/### E1 ·/);assert.ok(output.includes('x'.repeat(5000)));assert.ok(output.length<46000)
 })
 
 test('real Pi investigation can exceed former evidence cap and reread retained evidence',async t=>{
@@ -91,14 +91,46 @@ test('native Pi compaction runs using model window and preserves final diagnosis
  const root=await mkdtemp(join(tmpdir(),'feedback-large-'));t.after(()=>rm(root,{recursive:true,force:true}))
  const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false})
  const model={...runtime.getModels().find(m=>m.provider==='openai'),contextWindow:8192};await runtime.setRuntimeApiKey(model.provider,'test-only')
- let calls=0,reads=0,compactions=0
+ let calls=0,reads=0,compactions=0,compactedDuringInvestigation=false
+ const authenticate=runtime.getAuth.bind(runtime)
+ runtime.getAuth=(selected,options)=>{assert.equal(options?.apiKey,undefined,'runtime credential must not be reinterpreted as an explicit API key');return authenticate(selected,options)}
  runtime.registerProvider(model.provider,{api:model.api,streamSimple:(_model,context)=>{
-  if(JSON.stringify(context).includes('You are a context summarization assistant')){compactions++;const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),usage,stopReason:'stop',content:[{type:'text',text:'调查记录：E1 至 E5 已核对，可用 evidence 工具重读。'}]};queueMicrotask(()=>{stream.push({type:'done',reason:'stop',message});stream.end(message)});return stream}
+  if(JSON.stringify(context).includes('You are a context summarization assistant')){compactions++;if(reads<5)compactedDuringInvestigation=true;const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),usage,stopReason:'stop',content:[{type:'text',text:'调查记录：E1 至 E5 已核对，可用 evidence 工具重读。'}]};queueMicrotask(()=>{stream.push({type:'done',reason:'stop',message});stream.end(message)});return stream}
   const step=calls++,args=step<5?{section:'runtime'}:step===5?{section:'evidence',alias:'E1'}:null
   if(step===6){const result=context.messages.filter(row=>row.role==='toolResult').at(-1);assert.match(result.content[0].text,/E1/);assert.match(result.content[0].text,/page-1/)}
-  const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),usage:args?usage:{...usage,input:7000,totalTokens:7000},stopReason:args?'toolUse':'stop',content:args?[{type:'toolCall',id:'large-'+step,name:'diagnosis_evidence',arguments:args}]:[{type:'text',text:'核对完成，证据 E1、E5。'}]}
+  const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),usage:{...usage,input:7000,totalTokens:7000},stopReason:args?'toolUse':'stop',content:args?[{type:'toolCall',id:'large-'+step,name:'diagnosis_evidence',arguments:args}]:[{type:'text',text:'核对完成，证据 E1、E5。'}]}
   queueMicrotask(()=>{stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream
  }})
  const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model},paths:{installRoot:root,runtime:join(root,'runtime')},title:'故障',description:'排查',signal:AbortSignal.timeout(10000),evidence:async()=>({page:'page-'+(++reads),data:'x'.repeat(9000)})})
- assert.ok(compactions>0,'native Pi compaction called model');assert.equal(reads,5);assert.equal(calls,7);assert.match(result,/核对完成/);assert.doesNotMatch(result,/调查未完成/);assert.match(result,/### E5/)
+ assert.ok(compactedDuringInvestigation,'native Pi compacts before the next tool investigation response');assert.ok(compactions>0,'native Pi compaction called model');assert.equal(reads,5);assert.equal(calls,7);assert.match(result,/核对完成/);assert.doesNotMatch(result,/调查未完成/);assert.match(result,/### E5/)
+})
+
+async function scriptedDiagnosis(t,reply,{contextWindow=4096}={}){
+ const root=await mkdtemp(join(tmpdir(),'feedback-terminal-'));t.after(()=>rm(root,{recursive:true,force:true}))
+ const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false})
+ const model={...runtime.getModels().find(m=>m.provider==='openai'),contextWindow};await runtime.setRuntimeApiKey(model.provider,'test-only')
+ let step=0,reads=0
+ runtime.registerProvider(model.provider,{api:model.api,streamSimple:(_model,context)=>{
+  const response=reply(step++,context),stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),usage,...response}
+  queueMicrotask(()=>{if(message.stopReason==='error')stream.push({type:'error',reason:'error',error:message});else stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream
+ }})
+ const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model},paths:{installRoot:root,runtime:join(root,'runtime')},title:'故障',description:'排查',signal:AbortSignal.timeout(10000),evidence:async()=>{reads++;return {marker:'RETAINED_EVIDENCE'}}})
+ return {result,reads}
+}
+const runtimeCall=step=>({stopReason:'toolUse',content:[{type:'toolCall',id:'fixture-'+step,name:'diagnosis_evidence',arguments:{section:'runtime'}}]})
+test('a 4096-window diagnostic runs and an output-token terminal is explicitly partial',async t=>{
+ const {result,reads}=await scriptedDiagnosis(t,step=>step===0?runtimeCall(step):{stopReason:'length',content:[{type:'text',text:'部分分析，证据 E1。'}]})
+ assert.equal(reads,1);assert.match(result,/模型输出达到 token 上限/);assert.match(result,/RETAINED_EVIDENCE/)
+})
+test('summary failure after the investigation budget retains collected evidence',async t=>{
+ const {result,reads}=await scriptedDiagnosis(t,step=>step<=investigationBudget.calls?runtimeCall(step):{stopReason:'error',errorMessage:'fixture-network-failure',content:[]},{contextWindow:128000})
+ assert.equal(reads,investigationBudget.calls);assert.match(result,/调查未完成/);assert.match(result,/未能生成部分诊断/);assert.match(result,/RETAINED_EVIDENCE/);assert.match(result,/### E1 ·/);assert.ok(result.length<=investigationBudget.reportCharacters)
+})
+test('evidence tails are preserved and every dropped or unknown citation is explicitly accounted for',()=>{
+ const observations=Array.from({length:12},(_,i)=>({ref:'E'+(i+1),section:'trace',text:'x'.repeat(3000)+' DECISIVE_TAIL_'+(i+1)}))
+ const text='结论引用 '+observations.map(row=>row.ref).join('、')+'、E999。',result=formatDiagnosticReport(text,observations,[],{maxCharacters:30000})
+ assert.match(result,/DECISIVE_TAIL_1/);assert.match(result,/## 未附证据/);assert.ok(result.length<=30000)
+ const missing=result.split('## 未附证据')[1]
+ for(const row of observations)assert.ok(result.includes('### '+row.ref+' ·')||missing.includes(row.ref),'citation must be attached or listed missing: '+row.ref)
+ assert.match(missing,/E999/)
 })

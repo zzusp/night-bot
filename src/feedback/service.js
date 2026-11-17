@@ -3,7 +3,7 @@ import {createLocalEvidence} from './local-evidence.js'
 import {investigationBudget} from './investigation-budget.js'
 import {randomUUID} from 'node:crypto'
 import {redactFeedback} from './redaction.js'
-import {diagnoseWithPi} from './pi-session.js'
+import {diagnoseWithPi,limitDiagnosticText} from './pi-session.js'
 import {createChainEvidence} from './chain-evidence.js'
 import {feedbackErrorCodes} from './evidence.js'
 import {roleModelSelection,legacyRoleModelSelection} from '../role-models.js'
@@ -45,8 +45,9 @@ export function createFeedbackService({model,modelConsent=()=>({revision:'defaul
     const description=redactFeedback(input.description.trim(),secrets)
     const resolved=await resolveModel({...selection,signal});signal.throwIfAborted();if(input.revision!==modelConsent().revision)fail('FEEDBACK_MODEL_CHANGED',409)
     const scopedEvidence=createEvidence?createEvidence({title:input.title,description:input.description,secrets}):evidence
-    const result=await diagnose({resolved,paths,title:r.title,description,evidence:scopedEvidence,signal,secrets});signal.throwIfAborted()
-    r.body=redactFeedback(`## 问题描述\n${description}\n\n## AI 诊断\n${result}`,secrets);r.state='ready'
+    const prefix=`## 问题描述\n${description}\n\n## AI 诊断\n`,reportCharacters=Math.min(investigationBudget.reportCharacters,48000-prefix.length)
+    const result=await diagnose({resolved,paths,title:r.title,description,evidence:scopedEvidence,signal,secrets,reportCharacters});signal.throwIfAborted()
+    r.body=prefix+limitDiagnosticText(redactFeedback(result,secrets,{maxLength:Infinity}),reportCharacters,'诊断草稿');r.state='ready'
    }catch{if(r.state!=='cancelled'){r.state='failed';r.error='FEEDBACK_COLLECTION_FAILED'}}})()
    return view(r)
   },

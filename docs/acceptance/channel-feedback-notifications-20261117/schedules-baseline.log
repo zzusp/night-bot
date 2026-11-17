@@ -1,0 +1,55 @@
+✔ scheduled task page renders compact native-state rows and only read controls (19.345857ms)
+✔ state and offset restore from URL without accepting obsolete or unsafe values (3.505098ms)
+✖ loading, empty, unavailable, stale and forbidden snapshots stay distinct (4.673668ms)
+✔ one-time schedules retain full year and local timezone with valid semantic time (1.847185ms)
+✖ every schedule result state stays inside the shared task-list surface (3.147319ms)
+✔ schedule table follows task-list structure and retains responsive labels (2.646117ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 4
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 788.852843
+
+✖ failing tests:
+
+test at ../../tmp/night-bot-baseline/packages/web-console/test/schedules-render.test.js:67:1
+✖ loading, empty, unavailable, stale and forbidden snapshots stay distinct (4.673668ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /定时任务暂不可读/. Input:
+  
+  '<div class="page-content schedules-page"><div class="list-toolbar"><nav class="filter-tabs" aria-label="定时任务状态"><a href="#/schedules?state=active" aria-current="page">启用</a><a href="#/schedules?state=inactive">停用</a></nav><button type="button" class="board-button board-button--secondary"><span class="board-button-icon" aria-hidden="true"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="remixicon "><path d="M5.46257 4.43262C7.21556 2.91688 9.5007 2 12 2C17.5228 2 22 6.47715 22 12C22 14.1361 21.3302 16.1158 20.1892 17.7406L17 12H20C20 7.58172 16.4183 4 12 4C9.84982 4 7.89777 4.84827 6.46023 6.22842L5.46257 4.43262ZM18.5374 19.5674C16.7844 21.0831 14.4993 22 12 22C6.47715 22 2 17.5228 2 12C2 9.86386 2.66979 7.88416 3.8108 6.25944L7 12H4C4 16.4183 7.58172 20 12 20C14.1502 20 16.1022 19.1517 17.5398 17.7716L18.5374 19.5674Z"></path></svg></span><span class="">刷新任务</span></button></div><div class="notice" role="alert"><span>暂时无法获取数据，请重试。</span><button type="button" class="board-button board-button--ghost"><span class="board-button-icon" aria-hidden="true"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="remixicon "><path d="M5.46257 4.43262C7.21556 2.91688 9.5007 2 12 2C17.5228 2 22 6.47715 22 12C22 14.1361 21.3302 16.1158 20.1892 17.7406L17 12H20C20 7.58172 16.4183 4 12 4C9.84982 4 7.89777 4.84827 6.46023 6.22842L5.46257 4.43262ZM18.5374 19.5674C16.7844 21.0831 14.4993 22 12 22C6.47715 22 2 17.5228 2 12C2 9.86386 2.66979 7.88416 3.8108 6.25944L7 12H4C4 16.4183 7.58172 20 12 20C14.1502 20 16.1022 19.1517 17.5398 17.7716L18.5374 19.5674Z"></path></svg></span><span class="">重新获取</span></button></div><section class="task-table-wrap schedule-results" aria-label="启用的定时任务" aria-busy="false"></section></div>'
+  
+      at TestContext.<anonymous> (file:///tmp/night-bot-baseline/packages/web-console/test/schedules-render.test.js:73:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '<div class="page-content schedules-page"><div class="list-toolbar"><nav class="filter-tabs" aria-label="定时任务状态"><a href="#/schedules?state=active" aria-current="page">启用</a><a href="#/schedules?state=inactive">停用</a></nav><button type="button" class="board-button board-button--secondary"><span class="board-button-icon" aria-hidden="true"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="remixicon "><path d="M5.46257 4.43262C7.21556 2.91688 9.5007 2 12 2C17.5228 2 22 6.47715 22 12C22 14.1361 21.3302 16.1158 20.1892 17.7406L17 12H20C20 7.58172 16.4183 4 12 4C9.84982 4 7.89777 4.84827 6.46023 6.22842L5.46257 4.43262ZM18.5374 19.5674C16.7844 21.0831 14.4993 22 12 22C6.47715 22 2 17.5228 2 12C2 9.86386 2.66979 7.88416 3.8108 6.25944L7 12H4C4 16.4183 7.58172 20 12 20C14.1502 20 16.1022 19.1517 17.5398 17.7716L18.5374 19.5674Z"></path></svg></span><span class="">刷新任务</span></button></div><div class="notice" role="alert"><span>暂时无法获取数据，请重试。</span><button type="button" class="board-button board-button--ghost"><span class="board-button-icon" aria-hidden="true"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="remixicon "><path d="M5.46257 4.43262C7.21556 2.91688 9.5007 2 12 2C17.5228 2 22 6.47715 22 12C22 14.1361 21.3302 16.1158 20.1892 17.7406L17 12H20C20 7.58172 16.4183 4 12 4C9.84982 4 7.89777 4.84827 6.46023 6.22842L5.46257 4.43262ZM18.5374 19.5674C16.7844 21.0831 14.4993 22 12 22C6.47715 22 2 17.5228 2 12C2 9.86386 2.66979 7.88416 3.8108 6.25944L7 12H4C4 16.4183 7.58172 20 12 20C14.1502 20 16.1022 19.1517 17.5398 17.7716L18.5374 19.5674Z"></path></svg></span><span class="">重新获取</span></button></div><section class="task-table-wrap schedule-results" aria-label="启用的定时任务" aria-busy="false"></section></div>',
+    expected: /定时任务暂不可读/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at ../../tmp/night-bot-baseline/packages/web-console/test/schedules-render.test.js:93:1
+✖ every schedule result state stays inside the shared task-list surface (3.147319ms)
+  AssertionError [ERR_ASSERTION]: 定时任务暂不可读 must be inside the shared bordered surface
+      at TestContext.<anonymous> (file:///tmp/night-bot-baseline/packages/web-console/test/schedules-render.test.js:105:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

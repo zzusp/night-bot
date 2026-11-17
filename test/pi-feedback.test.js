@@ -130,3 +130,12 @@ test('scoped evidence factory starts only after explicit collection and isolates
  assert.equal(diagnoses,2);assert.equal(f.sent,0)
  await f.service.close()
 })
+test('final preview reserves the full user description and explicitly marks oversized model output',async()=>{
+ let budget
+ const f=fixture({diagnose:async({reportCharacters})=>{budget=reportCharacters;return '```text\n'+'x'.repeat(46000)+'\n```\nEND_OF_DIAGNOSIS'}})
+ const description='说明'.repeat(3000),draft=f.service.collect('owner',{...input,description})
+ let result
+ for(let i=0;i<50;i++){result=f.service.read('owner',draft.id);if(result.state!=='collecting')break;await new Promise(resolve=>setTimeout(resolve,2))}
+ assert.equal(result.state,'ready');assert.ok(result.body.includes(description));assert.ok(result.body.length<=48000);assert.ok(budget<42000);assert.match(result.body,/诊断草稿达到长度限制/);assert.doesNotMatch(result.body,/END_OF_DIAGNOSIS/);assert.equal((result.body.match(/^```/gm)??[]).length%2,0);assert.equal(f.sent,0)
+ await f.service.close()
+})

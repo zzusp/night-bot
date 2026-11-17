@@ -7,7 +7,7 @@ const groups = {
   containment: ['task-single-artifact-kernel-native','native-tools-runtime','native-sandbox-runtime','native-shell-env-kernel-wire','native-shell-kernel-wire','native-memory-privacy-kernel'],
   domain: ['dws-adapter','dws-file-adapter','dws-bridge','group-notification','native-dws-send','task-final-delivery','task-artifact-files','task-artifact-write','coordination-schedule-revisions','task-notification-readback','topic-runtime','topic-facts','workflow-uat-build-authorization'],
 }
-const files = process.argv[2]==='default' ? (await readdir('test')).filter(name=>/^pi-.*\.test\.js$/.test(name)).map(name=>name.slice(0,-8)) : groups[process.argv[2]]
+const files = process.argv[2]==='default' ? (await readdir('test')).filter(name=>/^(?:pi-|feedback-).*\.test\.js$/.test(name)).map(name=>name.slice(0,-8)) : groups[process.argv[2]]
 if (!files) throw new Error('Expected default, runtime, routing, containment or domain')
 const concurrency=Number(process.env.NIGHT_BOT_TEST_CONCURRENCY??1)
 if(!Number.isSafeInteger(concurrency)||concurrency<1||concurrency>8)throw new Error('Test concurrency must be an integer from 1 to 8')

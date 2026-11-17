@@ -16,14 +16,20 @@ Pi 会话和报告只暂存在本进程内存中，最长 30 分钟；可撤销�
 
 ## 调查与上下文
 
-诊断沿用模型真实上下文窗口，不人为声明模型支持更大窗口。启用 Pi 原生自动压缩，预留约 20% 上下文，输出额度不超过该预留；压缩时机由 Pi 管理，不保证每次工具调用前都压缩。证据以 E 编号保存在本次诊断内存中，可在压缩后按编号重新读取。
+诊断沿用模型真实上下文窗口，接受配置层允许的正整数窗口，不另设 8192 下限。启用 Pi 原生自动压缩，按窗口比例预留上下文，输出额度不超过预留；Pi 1.5.0 会在连续工具调查的下一次模型响应前检查压缩。摘要仍由同一 ModelRuntime 解析鉴权，不把其预解析的 OAuth 凭据重新解释为显式 API Key。证据以 E 编号保存在本次诊断内存中，可在压缩后按编号重新读取。
 
-单次调查最多 96 次证据调用、约 20 万字符证据、15 分钟。达到证据预算时尝试生成部分诊断并标明未完成；超时或取消会中止。Issue 草稿只附分析引用的必要证据节选，不倾倒全部调查记录。提交前仍需用户审阅、编辑并确认精确正文。
+源码先整份识别多行凭据并脱敏，再搜索、分页和添加行号，保留原始行号及原文件哈希。长行使用 `nextOffset` 和 `nextCharacterOffset`（下次作为 `characterOffset`）一起续读，每页受字符预算约束。搜索结果与日志白名单投影在同次调查内固定，不随翻页期间的文件修改、日志增长或轮转重新排序；源码详情仍从磁盘读取，各页哈希不同就不能拼成同一版本。源码搜索最多扫描 3000 个文件、8 MiB，单文件最多 256 KiB；本地证据快照累计最多 10000 项、约 200 万序列化字符，触顶明确报告范围不完整，不将高 offset 转成无限内存保留。
+
+日志 query 只匹配允许公开的投影字段，不查询私有正文是否存在。日志支持 JSON 字符串/毫秒时间戳与普通文本 ISO 时间前缀、受控数值字段；产品堆栈位置依据完整路径核验，不能从业务路径中截取 `src/` 后缀。扫描完整候选目录后仅保留最新六个日志尾部；文件轮转或目录读取失败计入 `skipped`，其他证据仍保留。
+
+文件范围以已打开句柄核验，Linux 使用 `/proc/self/fd`、Windows 使用系统句柄最终路径、macOS 使用 F_GETPATH；无法核验的平台失败关闭。短读会继续读至固定边界，提前 EOF 或源码读取期间变化明确失败，不伪报完整文件。平台实测范围见本次验收报告。
+
+单次调查最多 96 次证据调用、约 20 万字符证据、15 分钟。达到预算时尝试生成部分诊断；摘要失败仍保留有界已采集证据，超时或取消会中止。模型以输出 token 上限结束时，草稿明确标为不完整。引用的证据页完整附上，超出附录预算或未采集的引用逐项列在“未附证据”，不以任意前缀冒充完整证据。最终 48000 字符预览统一预留问题描述，必要裁剪明确提示并闭合代码围栏。提交前仍需用户审阅、编辑并确认精确正文。
 
 ## 验证
 
-- `node --test test/pi-feedback.test.js test/pi-feedback-session.test.js`
+- `node --experimental-test-module-mocks --test test/feedback-chain-evidence.test.js test/feedback-local-evidence.test.js test/feedback-diagnostic-contract.test.js test/pi-feedback.test.js test/pi-feedback-session.test.js`
 - `node --test packages/web-console/test/feedback-render.test.js`
 - `node --test --test-name-pattern='feedback HTTP' packages/web-console/test/server.test.js`
 
-测试使用假模型和假 GitHub 响应，不会向真实模型发送诊断或创建真实 Issue。
+`pnpm test` 默认纳入全部 `feedback-*.test.js` 与 `pi-*.test.js`，并执行源码/导入/native 守卫。测试使用假模型和假 GitHub 响应，不会向真实模型发送诊断或创建真实 Issue。文件符号链接用例在缺权限的 Windows 上跳过；目录 junction 替换仍有独立回归，Linux/macOS 和真实 OAuth 未因此视为实测通过。

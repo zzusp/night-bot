@@ -1,0 +1,31 @@
+case_id,case,round-1,evidence,notes
+R1-01,私有路径伪装产品堆栈,PASS,src/feedback/local-evidence.js:93; test/feedback-local-evidence.test.js:55,完整路径归属核验；私有路径带 src 后缀或空格仍拒绝
+R1-02,父目录替换绕过路径检查,PASS,src/feedback/local-evidence.js:44; test/feedback-local-evidence.test.js:79,已打开句柄路径及身份核验；实际 Windows junction 切换时私有读取次数为 0
+R1-03,摘要预解析凭据被当显式 API Key,PASS,src/feedback/pi-session.js:34; test/pi-feedback-session.test.js:90,去除预解析鉴权覆盖并交回 ModelRuntime；参数机制已测；真实 OAuth 未验
+R1-04,原始日志 query 泄露私有正文存在性,PASS,src/feedback/local-evidence.js:163; test/feedback-local-evidence.test.js:55,query 仅匹配公开脱敏投影
+R1-05,单 prompt 内无主动原生压缩,NO_CHANGE,test/pi-feedback-session.test.js:90,审查判断被 Pi 1.5.0 源码及真实 SDK 中途压缩后继续调查反证；不新增压缩循环
+R1-06,80 行源码页可超字符预算,PASS,src/feedback/local-evidence.js:129; test/feedback-local-evidence.test.js:42,长行按 characterOffset 续读；重组到最后字符且各页不超过 16000 字符
+R1-07,8192 人工窗口下限,PASS,src/feedback/investigation-budget.js:3; test/pi-feedback-session.test.js:121,删除额外下限；实际 4096 窗口 Pi 调查成功；不保证任意极小窗口能容纳工具声明
+R1-08,活跃日志分页漂移,PASS,src/feedback/local-evidence.js:148; test/feedback-local-evidence.test.js:63,同次调查固定投影快照；append 后后页仍来自原尾部
+R1-09,日志轮转使全部取证中断,PASS,src/feedback/local-evidence.js:62; test/feedback-local-evidence.test.js:91,消失文件计 skipped；保留其他日志
+R1-10,普通文本和 epoch 时间丢失,PASS,src/feedback/local-evidence.js:88; test/feedback-local-evidence.test.js:63,受控 ISO 时间和数值字段解析
+R1-11,前 256 目录项漏掉最新日志,PASS,src/feedback/local-evidence.js:62; test/feedback-local-evidence.test.js:73,遍历完整候选目录仅保留 top six；280 旧日志后新日志可见
+R1-12,最终预览未预留用户描述,PASS,src/feedback/service.js:48; test/pi-feedback.test.js:133,6000 字描述完整保留；总预览不超过 48000；裁剪有提示且围栏闭合
+R1-13,预算摘要失败丢已有证据,PASS,src/feedback/pi-session.js:43; test/pi-feedback-session.test.js:125,失败保留 E 编号及有界证据兜底；不声称完整诊断
+R1-14,证据前 2500 字符裁掉关键尾部,PASS,src/feedback/pi-session.js:77; test/pi-feedback-session.test.js:69,完整证据页附上或明确列为缺口
+R1-15,源码搜索每页重扫,PASS,src/feedback/local-evidence.js:113; test/feedback-local-evidence.test.js:49,查询快照可在原文件删除后继续分页
+R2-01,先分页再脱敏漏掉跨页凭据,PASS,src/feedback/redaction.js:2; test/feedback-local-evidence.test.js:33,全源码脱敏且保留换行；再分页和标行号
+R2-02,大 offset 累计无界命中,PASS,src/feedback/local-evidence.js:76; test/feedback-local-evidence.test.js:49,10000 项及 2 MiB 累计上限；触顶明确不完整
+R2-03,length 终态冒充完整报告,PASS,src/feedback/pi-session.js:50; test/pi-feedback-session.test.js:121,明确输出 token 上限中断提示
+R2-04,不可读子目录中断整树搜索,PASS,src/feedback/local-evidence.js:77; test/feedback-local-evidence.test.js:91,计 skipped 并继续其他来源；complete=false
+R2-05,附录总预算静默丢引用,PASS,src/feedback/pi-session.js:67; test/pi-feedback-session.test.js:129,每项引用完整附上或列在未附证据；包括未采集 E999
+R2-06,fd.read 短读误当完整,PASS,src/feedback/local-evidence.js:55; test/feedback-local-evidence.test.js:85,多次短读累计原文及完整 SHA256；提前 EOF 显式 FEEDBACK_EVIDENCE_CHANGED
+R2-07,本地证据测试未进默认入口,PASS,scripts/test-pi.mjs:10,pnpm test 已实际执行 feedback-*；完整默认回归整体未通过；见 FULL-01
+R2-08,每行重建固定分类表与正则,PASS,src/feedback/local-evidence.js:24,分类表与数值正则置于模块级；现有日志投影测试覆盖行为
+PAR-01,并发工具共享构建中快照,PASS,test/feedback-local-evidence.test.js:98,Pi 默认并行工具调用；同查询两页和日志两页分别只打开源文件一次
+WEB-01,反馈页面渲染,PASS,packages/web-console/test/feedback-render.test.js,8/8 通过；无模型手动路径及精确预览确认保持
+HTTP-01,反馈 HTTP 安全边界,PASS,packages/web-console/test/server.test.js,feedback HTTP 定向 2/2 通过；owner、CSRF、确认和精确正文绑定保持
+GUARD-01,源码及生产导入/native 守卫,PASS,pnpm check,3 项守卫通过；455 生产文件；0 外部 SDK import；0 旧 orchestrator 定义
+FULL-01,完整默认 pnpm test,FAIL_INCOMPLETE,round-1.md,观察到 5 项失败后停滞在冷启动 Shell 用例清理；已停止本任务进程树；无最终总表
+ENV-01,反馈文件符号链接用例,SKIP,test/feedback-local-evidence.test.js:20; test/pi-feedback.test.js:60,Windows 当前账号文件 symlink EPERM；2 项跳过不等于通过
+PLATFORM-01,Linux/macOS 与真实 OAuth 集成,NOT_RUN,round-1.md,本轮仅 Windows 本地；未接真实模型、厂商账号或反馈 Issue
