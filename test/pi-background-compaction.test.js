@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {setTimeout as delay} from 'node:timers/promises'
+import {SettingsManager} from '@earendil-works/pi-coding-agent'
 import {createBackgroundCompaction} from '../src/runtime/pi-background-compaction.js'
 const deferred=()=>Promise.withResolvers()
 async function eventually(predicate){for(let i=0;i<100;i++){if(predicate())return;await delay(2)}assert.ok(predicate(),'condition did not settle')}
@@ -8,7 +9,7 @@ function fixture(t,{tokens=300000,compact,commit,outputReserveTokens,isHealthy,i
  const listeners=new Set(),calls=[],appends=[],errors=[],phases=[]
  const state={leaf:'leaf',revision:1,entries:[{id:'leaf'}],tokens,paused:false,inputs:[],refreshes:0,commits:0,projection:[],settings:{},foreground:0}
  const signal=new AbortController()
- const session={model:{provider:'fixture',id:'model',contextWindow:1000000},settingsManager:{getSettings:()=>state.settings},thinkingLevel:'low',systemPrompt:'prompt',isIdle:true,pendingMessageCount:0,isRetrying:false,getActiveToolNames:()=>['read'],getContextUsage:()=>({tokens:state.tokens}),subscribe:listener=>{listeners.add(listener);return()=>listeners.delete(listener)},refreshContext(){state.refreshes++}}
+ const session={model:{provider:'fixture',id:'model',contextWindow:1000000},settingsManager:{getSettings:()=>state.settings,getCompactionSettings:model=>SettingsManager.inMemory(state.settings).getCompactionSettings(model),applyOverrides:overrides=>{const manager=SettingsManager.inMemory(state.settings);manager.applyOverrides(overrides);state.settings=manager.getSettings()}},thinkingLevel:'low',systemPrompt:'prompt',isIdle:true,pendingMessageCount:0,isRetrying:false,getActiveToolNames:()=>['read'],getContextUsage:()=>({tokens:state.tokens}),subscribe:listener=>{listeners.add(listener);return()=>listeners.delete(listener)},refreshContext(){state.refreshes++}}
  const store={snapshot:()=>({revision:state.revision}),manager:{getLeafId:()=>state.leaf,getEntries:()=>state.entries,getBranch:()=>state.entries,appendCompaction(...args){appends.push(args);state.leaf='compacted';state.entries.push({id:state.leaf});state.revision++}}}
  session.sessionManager={buildSessionProjection:()=>({messages:state.projection})};session.compact=async()=>{state.foreground++;state.tokens=10;state.projection=[]}
  const worker=createBackgroundCompaction({session,store,outputReserveTokens,isHealthy,isInputHealthy,signal:signal.signal,admission:{get paused(){return state.paused},pending:()=>state.inputs},compact:args=>{calls.push(args);return compact?compact(args):Promise.resolve(result())},commit:async()=>{state.commits++;await commit?.()},onError:error=>errors.push(error),measurePhase:async(name,run)=>{phases.push(name);return run()}})
@@ -82,7 +83,8 @@ test('oversized input and insufficient post-compaction room preserve pending inp
  f.session.compact=async()=>{f.state.foreground++;f.state.tokens=null;f.state.projection=[{role:'user',content:'x'.repeat(1560000)}]};await assert.rejects(f.worker.beforeInput({content:'x'.repeat(80000)}),{code:'PI_CONTEXT_INPUT_TOO_LARGE'});assert.equal(f.state.foreground,1);assert.deepEqual(f.state.inputs,['durable-packet'])
 })
 test('preflight failure propagates and leaves input pending',async t=>{
- const failure=new Error('provider failed'),f=fixture(t,{tokens:390000});f.state.inputs.push('durable-packet');f.session.compact=async()=>{throw failure};await assert.rejects(f.worker.beforeInput({content:'x'.repeat(80000)}),error=>error===failure);assert.deepEqual(f.state.inputs,['durable-packet']);assert.equal(f.state.commits,0)
+ const failure=new Error('provider failed'),f=fixture(t,{tokens:390000}),previous=f.session.settingsManager.getCompactionSettings(f.session.model);f.state.inputs.push('durable-packet');f.session.compact=async()=>{throw failure};await assert.rejects(f.worker.beforeInput({content:'x'.repeat(80000)}),error=>error===failure);assert.deepEqual(f.state.inputs,['durable-packet']);assert.equal(f.state.commits,0)
+ assert.deepEqual(f.session.settingsManager.getCompactionSettings(f.session.model),previous)
 })
 test('exact native hard waterline compacts before incoming input',async t=>{
  const f=fixture(t,{tokens:400000});await f.worker.beforeInput({content:'new input'});assert.equal(f.state.foreground,1)

@@ -168,7 +168,7 @@ test('Router reopens completed work from an ordinary message without execution a
   const calls=topicTaskCalls(request);if(calls)return calls
   if(original){assert.equal(input.task.sessionId,original.sessionId);const expected=input.task.requirementRevision===2?'reopen-colleague':'reopen-author';assert.ok(input.sources.some(source=>source.messageId===expected))}
   return[singleResult('complete',original?'Router 调度的续办已完成':'原目标已经完成')]
- })
+ },{compactionSummary:'The original task completed. Later authenticated messages reopen that same task; preserve its identity and do not replay completed effects.'})
  await t.beginBusiness();await h.service.ingest(message);await h.service.whenIdle();[original]=await h.query('task.list')
  await h.service.ingest({...message,messageId:'reopen-colleague',senderOpenDingTalkId:'colleague',text:'测试助手，重新打开原任务'});await h.service.whenIdle()
  const denied=h.toolResults.filter(row=>row.name==='resident_task_action'&&row.result.isError)

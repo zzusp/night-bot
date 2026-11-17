@@ -70,14 +70,14 @@ test('real official components execute, commit, cold-read and reopen with no Hos
  await active.close();active=undefined;live=false
 })
 
-async function conversationFixture(t,{sections={},getLimits}={}){
+async function conversationFixture(t,{sections={},getLimits,contextWindow=131072,keepRecentTokens=100}={}){
  const root=await mkdtemp(join(tmpdir(),'night-compaction-review-')),agentDir=join(root,'agent');await mkdir(agentDir)
  const ctx=new Context();new NativeAgents(ctx);await ctx.plugin(Authority)
  ctx.provide('systemPrompt',{tools:()=>()=>{},section:()=>()=>{},getSectionOrder:()=>0,context:()=>()=>{},getContextOrder:()=>0});new NativeTools(ctx)
  const backend=new PiPersistence(ctx,{root:join(root,'sessions')}),controller=new AbortController()
  const store=await backend.createNative({version:4,id:'review-router',createdAt:Date.now(),isSeeded:false,cwd:root,runtimeOwner:'conversation-router',conversationId:'review-room',generation:1},{auditKinds:admissionAuditKinds})
  const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false})
- const base=runtime.getModels().find(m=>m.provider==='openai'&&m.input.includes('image')),model={...base,contextWindow:131072}
+ const base=runtime.getModels().find(m=>m.provider==='openai'&&m.input.includes('image')),model={...base,contextWindow}
  await runtime.setRuntimeApiKey(model.provider,'scripted-only')
  const requests=[];let failRequest=false
  runtime.registerProvider(model.provider,{api:model.api,models:[model],streamSimple:(_model,context)=>{
@@ -85,7 +85,7 @@ async function conversationFixture(t,{sections={},getLimits}={}){
   const stream=createAssistantMessageEventStream(),message={role:'assistant',content:[{type:'text',text:failRequest?'':'Preserved facts and next action.'}],api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),stopReason:failRequest?'error':'stop',...failRequest?{errorMessage:'Synthetic checkpoint failure'}:{},usage:{input:1,output:1,cacheRead:0,cacheWrite:0,totalTokens:2,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}}
   queueMicrotask(()=>{stream.push(failRequest?{type:'error',reason:'error',error:message}:{type:'done',reason:'stop',message});stream.end(message)});return stream
  }})
- const admission=await createBusinessAdmission({store,authorize:()=>true}),settingsManager=SettingsManager.inMemory({packages:[],cacheWarming:'off',compaction:{keepRecentTokens:100},retry:{enabled:false}})
+ const admission=await createBusinessAdmission({store,authorize:()=>true}),settingsManager=SettingsManager.inMemory({packages:[],cacheWarming:'off',compaction:{keepRecentTokens},retry:{enabled:false}})
  const official=await createNightOfficialSession({ctx,store,agentDir,admission,registry:ctx.tools,maxParallelToolCalls:1,settingsManager,resolved:{modelRuntime:runtime,model,thinkingLevel:'off',...getLimits?{requestImageLimitsFor:getLimits}:{}},
   prepareActor:actor=>{actor.metadata=Object.freeze({...store.header});actor.lifecycle=Object.freeze({signal:controller.signal,isLive:()=>!controller.signal.aborted})},
   context:{systemPrompt:{officialSections:()=>sections}},beforeRequest:()=>admission.beforeRequest(),
@@ -185,4 +185,19 @@ test('close during native preflight token installation aborts summary and drains
  await closing
  assert.equal(f.requests.length,0);assert.deepEqual(f.admission.pending(),['pending-close'])
  assert.equal(f.store.manager.getEntries().some(entry=>entry.type==='compaction'),false)
+})
+
+
+test('small-window native preflight leaves room for fixed prompt, input and summary, then restores retention',async t=>{
+ const f=await conversationFixture(t,{contextWindow:32000,keepRecentTokens:7808,sections:{night_review:'s'.repeat(32000)}})
+ await f.admission.enqueue(reviewPacket('first'));await f.official.deliver('first')
+ for(let i=0;i<9;i++){
+  f.store.manager.appendMessage({role:'user',content:'h'.repeat(3200),timestamp:Date.now()})
+  f.store.manager.appendMessage({role:'assistant',content:[{type:'text',text:'Reviewed.'}],api:f.official.session.model.api,provider:f.official.session.model.provider,model:f.official.session.model.id,timestamp:Date.now(),stopReason:'stop',usage:{input:1,output:1,totalTokens:2,cacheRead:0,cacheWrite:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}})
+ }
+ await f.store.commit();f.official.session.refreshContext()
+ await f.admission.enqueue(reviewPacket('next','x'.repeat(4000)));await f.official.deliver('next')
+ assert.equal(f.admission.status('next'),'admitted');assert.deepEqual(f.admission.pending(),[])
+ assert.ok(f.store.manager.getEntries().some(entry=>entry.type==='compaction'))
+ assert.equal(f.official.session.settingsManager.getCompactionSettings(f.official.session.model).keepRecentTokens,7808)
 })

@@ -43,12 +43,17 @@ export function createBackgroundCompaction({session,store,admission,compact,comm
   const current=Math.max(session.getContextUsage()?.tokens??0,projectedTokens())
   if(current+incoming>budget.foregroundTokens){
    preflight=(async()=>{
+    const settings=session.settingsManager,model=session.model,key=`${model.provider}/${model.id}`
+    const previous=settings.getCompactionSettings(model).keepRecentTokens
+    // 固定提示及新输入不可压缩；剩余额度由近期历史和摘要共享。
+    const keepRecentTokens=Math.min(previous,Math.floor((available-fixedTokens()-incoming)/2))
+    settings.applyOverrides({compaction:{modelOverrides:{[key]:{keepRecentTokens}}}})
     try{await session.compact()}
     catch(error){
      if(error?.name==='AbortError')signal?.throwIfAborted()
      // Pinned Pi 1.5 reports recent-only history as a no-op, not model failure.
      if(!['Nothing to compact (session too small)','Already compacted'].includes(error?.message))throw error
-    }
+    }finally{settings.applyOverrides({compaction:{modelOverrides:{[key]:{keepRecentTokens:previous}}}})}
     assertLive();await commit()
    })()
    try{await preflight}finally{preflight=undefined}
