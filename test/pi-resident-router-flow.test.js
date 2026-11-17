@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createServer,request} from 'node:http'
 import {readFile,writeFile} from 'node:fs/promises'
+import {piJournalFilename,decodePiJournal} from '../src/runtime/pi-journal.js'
 import {join} from 'node:path'
 import {spawn} from 'node:child_process'
 import {fileURLToPath} from 'node:url'
@@ -1429,4 +1430,88 @@ for(const scenario of ['newer-cancellation','committed-reply','failed-tool','lat
   await h.restart();await h.service.whenIdle()
   assert.equal(h.requests.length,requests,'cold restart after settlement adds no inference or delivery')
   t.diagnostic(JSON.stringify({case:'normal-stop-aborted-router',scenario,originalInputUnique:true,abortedCallNotDispatched:true,laterInputs:resumedSources.length-1,replayedEffects:0,realVendorExecuted:false}))
+})
+
+
+for(const scenario of ['before','after','retry'])test('cold Router reconciles original settle interrupted '+scenario+' SQLite commit without replaying other work',{timeout:nativeTestTimeout(60000)},async t=>{
+ const committed=scenario==='after';let cut=true,oldOperation,oldAttempts=0
+ const h=await residentRouterHost(t,body=>{
+  if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+  if(requestTools(body).includes('resident_router_settle'))return settle(body,router(body))
+  return {text:'No other work'}
+ },{wrapStore:store=>({...store,command:async command=>{
+  if(command.kind==='router.settle'){
+   oldOperation??=command.args.operationId
+   if(command.args.operationId===oldOperation){oldAttempts++;if(scenario==='retry'&&oldAttempts===2)throw Object.assign(Error('Transient ledger recovery failure'),{code:'TEST_RECOVERY_RETRY'})}
+   if(cut){cut=false;if(committed)await store.command(command);throw Object.assign(Error('Injected interruption before tool result'),{code:'TEST_SETTLE_CRASH'})}
+  }
+  return store.command(command)
+ }})})
+ await h.receive(channelMessage('interrupted-settle'));await h.service.whenIdle().catch(()=>{})
+ const row=(await h.query('router.list'))[0],file=join(h.host.ctx.runtimePaths.state,'sessions',piJournalFilename(row.activeSessionId))
+ await h.close();await h.host.close()
+ const full=await readFile(file);let offset=0,call,cutAt
+ for(const line of full.toString().split(/(?<=\n)/)){
+  if(!line.endsWith('\n'))break
+  offset+=Buffer.byteLength(line);const entry=JSON.parse(line)
+  if(entry.type==='message'&&entry.message.role==='assistant')call??=entry.message.content.find(b=>b.type==='toolCall'&&b.name==='resident_router_settle')
+  if(call&&entry.type==='custom'&&entry.customType==='night.commit'){cutAt=offset;break}
+ }
+ assert(call&&cutAt);const prefix=full.subarray(0,cutAt);decodePiJournal(prefix,row.activeSessionId,{requireComplete:true});await writeFile(file,prefix)
+ const requests=h.requests.length,sent=h.sent.length
+ if(scenario==='retry'){
+  await assert.rejects(h.restart(),{code:'TEST_RECOVERY_RETRY'})
+  assert.equal((await h.query('router.inbox',{conversationId:row.id})).length,1)
+  assert.equal(h.host.ctx.agents.get(row.activeSessionId),undefined,'failed recovery releases its frozen handle normally')
+  await h.service.recover()
+ }else await h.restart()
+ if(!committed){assert.equal((await h.query('router.inbox',{conversationId:row.id})).length,0);assert.equal(h.requests.length,requests,'pure ledger recovery does not ask the model or replay business tools')}
+ await h.receive(channelMessage('new-source'));await h.service.whenIdle()
+ const current=await h.query('router.get',{conversationId:row.id}),stored=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
+ assert.equal(current.activeSessionId,row.activeSessionId);assert.equal(current.generation,row.generation);assert.equal(current.cursor,2)
+ assert.equal((await h.query('router.inbox',{conversationId:row.id})).length,0)
+ const results=stored.entries.filter(e=>e.type==='message'&&e.message.role==='toolResult'&&e.message.toolCallId===call.id)
+ assert.equal(results.length,1);assert.equal(results[0].message.isError,false);assert.equal(JSON.parse(results[0].message.content[0].text).dispatchEligible,false)
+ assert((await readFile(file)).subarray(0,prefix.length).equals(prefix));assert.equal(oldAttempts,scenario==='retry'?3:2);assert.equal(h.sent.length,sent)
+ const count=h.requests.length;await h.restart();assert.equal(oldAttempts,scenario==='retry'?3:2);assert.equal(h.requests.length,count)
+})
+
+for(const variant of ['other-tool','wrong-events','stale-source'])test('cold Router keeps '+variant+' unresolved without replay or fabricated success',{timeout:nativeTestTimeout(60000)},async t=>{
+ let cut=true,attempts=0
+ const h=await residentRouterHost(t,body=>{
+  if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+  if(requestTools(body).includes('resident_router_settle')){
+   if(body.messages.at(-1)?.role==='tool')return {text:'Original attempt is unresolved'}
+   const input=router(body)
+   if(variant==='other-tool')return {tool:'resident_router_reply',args:{operationId:'original-reply',sourceId:input.events[0].sourceId,messageVersion:1,text:'Original reply must not be replayed'}}
+   return {tool:'resident_router_settle',args:{operationId:'original-settle',eventIds:variant==='wrong-events'?['foreign-event']:input.events.map(e=>e.id)}}
+  }
+  return {text:'No other work'}
+ },{wrapStore:store=>({...store,command:async command=>{
+  if(command.kind===(variant==='other-tool'?'notification.prepare':'router.settle')){attempts++;if(cut){cut=false;throw Object.assign(Error('Original unresolved attempt'),{code:'TEST_UNRESOLVED'})}}
+  return store.command(command)
+ }})})
+ await h.receive(channelMessage('unresolved'));await h.service.whenIdle().catch(()=>{})
+ const row=(await h.query('router.list'))[0],file=join(h.host.ctx.runtimePaths.state,'sessions',piJournalFilename(row.activeSessionId))
+ if(variant==='stale-source'){
+  const source=(await h.query('source.list',{groupId:row.id}))[0]
+  await h.store.command({id:'fixture-source-replaced',kind:'source.record-direct',args:{source:{...source,sourceId:source.sourceId+'-v2',text:'Changed authenticated request',version:2},conversation:{conversationId:row.id}}})
+  await h.store.command({id:'fixture-revision-triaged',kind:'triage.commit',args:{conversationId:row.id,dispositions:[{sourceId:source.sourceId+'-v2',messageVersion:2,needsHandling:false,reason:'Revision belongs outside the original Router batch'}]}})
+ }
+ await h.close();await h.host.close()
+ const full=await readFile(file);let offset=0,call,cutAt
+ for(const line of full.toString().split(/(?<=\n)/)){
+  if(!line.endsWith('\n'))break
+  offset+=Buffer.byteLength(line);const entry=JSON.parse(line)
+  if(entry.type==='message'&&entry.message.role==='assistant')call??=entry.message.content.find(b=>b.type==='toolCall'&&b.name===(variant==='other-tool'?'resident_router_reply':'resident_router_settle'))
+  if(call&&entry.type==='custom'&&entry.customType==='night.commit'){cutAt=offset;break}
+ }
+ assert(call&&cutAt);const prefix=full.subarray(0,cutAt);await writeFile(file,prefix)
+ const before={attempts,requests:h.requests.length,sent:h.sent.length}
+ await h.restart();await h.service.whenIdle().catch(()=>{})
+ assert.equal(attempts,before.attempts);assert.equal(h.requests.length,before.requests);assert.equal(h.sent.length,before.sent)
+ const stored=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
+ assert.equal(stored.entries.filter(e=>e.type==='message'&&e.message.role==='toolResult'&&e.message.toolCallId===call.id).length,0)
+ assert((await readFile(file)).subarray(0,prefix.length).equals(prefix))
+ assert.equal((await h.query('router.inbox',{conversationId:row.id})).length,1)
 })

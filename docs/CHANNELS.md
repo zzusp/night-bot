@@ -212,13 +212,15 @@ Router 批次已经 `admitted`、随后模型轮失败或正常 `stop` 但事件
 
 原批次身份比较忽略可变的来源观测计时，以及独立首答通知的发送/回读进度（如 prepared→delivered）；通知ID、种类、冻结正文/载荷摘要、来源/版本和撤销状态仍须一致。比较不改写原packet或Pi历史，不把旧packet中的发送状态当作当前送达权威；真实效果仍以Host投递账本和回读为准。
 
-固定 Pi 1.5.0 在生成 `aborted` assistant 后先结束回合，尚未进入工具派发，因此只允许最后中断消息里的生成调用不要求 toolResult；正常 `stop` 不享有此豁免。之前 `toolUse` 的未配对/错误结果、未决 job 或 task effect-intent 仍阻断。不修改历史、不补造工具结果，也不据此宣称外部世界完全无效果。
+固定 Pi 1.5.0 在生成 `aborted` assistant 后先结束回合，尚未进入工具派发，因此只允许最后中断消息里的生成调用不要求 toolResult；正常 `stop` 不享有此豁免。之前 `toolUse` 的未配对/错误结果、未决 job 或 task effect-intent 仍阻断；下述唯一纯账本结清对账除外。不修改历史、不补造工具结果，也不据此宣称外部世界完全无效果。
+
+进程崩溃留下的唯一未配对 `resident_router_settle` 允许 Host 自动对账：必须是原已 `admitted` 输入后的最后 `toolUse`、精确原 `eventIds` 和原 `operationId`，当前 conversation/generation/session/活跃 owner 与渠道目标均仍有效，其它工具已有非错误结果且无未决 job 或 task effect-intent。无原操作收据时，原事件必须仍待处理且当前来源/版本视图与原包一致；已有收据时由原业务幂等事务复核请求摘要，冲突仍拒绝。只调用原生 SQLite 结清事务，实际返回 `dispatchEligible=false` 后才向原 Pi SessionManager 追加对应 `toolResult` 并提交。旧 handle 正常关闭，再由 Pi 重开同一 session 重建上下文；不生成 assistant、不重放回复/执行工具、不伪造外部效果成功。对账失败保留真实错误并正常释放冻结 handle，下一次既有恢复可重新核验；关闭失败仍保留所有权并上报。已提交结清但结果缺失的空闲 Router 在下一事件打开时先对账，不主动加载所有空闲历史。
 
 Host 经公开 Pi 生命周期接口先持久消费原失败 checkpoint 的非业务 claim，复核后接纳较新真实输入，再沿同一历史继续；推理前再次校验完整队列、来源版本和 owner。并发、重复/过期 checkpoint、外来会话及未知效果均拒绝。失败保留 journal 和未结事件，已领取的检查点不自动循环重试；只有联合批次全部事件真正 `settled`，才继续正常排空并清除对应 Router 告警。
 
 普通 `recover()` 的 phase 恢复和已 `published` 交接的旧 owner 清理，也经同一 conversation 的 tail 串行执行；排队后重新读取当前 row/rotation，不把仍在途的交接当作冷中断。不暂停恢复 timer、不因 busy 静默跳过，也不放宽 live owner 守卫。原批次已经 `settled` 时不再调用 `resumeRouterBatch`，只由正式普通恢复推进该 Router 旧部署尚待完成的交接/换代，不重跑原任务或业务输入。
 
-不满足上述中止恢复条件时，冷启动仍将确定的 `ROUTER_BATCH_UNSETTLED` 保留为任务服务 `recover()` 的 `degraded` 结果及现有 `listAlerts` 恢复告警，以保留上述 Host 入口；不代表恢复完成或消息已消费。其它 journal、owner、store 恢复错误仍失败关闭，不能被另一个 conversation 的未结告警遮蔽。正常关闭的结果不证明错误关闭已安全释放全部资源；Host/Application 异常关闭及未证排空时的依赖保留规则见下文。
+不满足上述中止恢复或纯账本对账条件时，冷启动仍将确定的 `ROUTER_BATCH_UNSETTLED` 保留为任务服务 `recover()` 的 `degraded` 结果及现有 `listAlerts` 恢复告警，以保留上述 Host 入口；不代表恢复完成或消息已消费。其它 journal、owner、store 恢复错误仍失败关闭，不能被另一个 conversation 的未结告警遮蔽。正常关闭的结果不证明错误关闭已安全释放全部资源；Host/Application 异常关闭及未证排空时的依赖保留规则见下文。
 
 [第八轮报告](acceptance/resident-conversation-routing/round-8.md)记录了 Host checkpoint 续办及模型前拒绝反例，并在最新 `423a2e97` lifecycle 版本验证 live handoff/普通 recover 的确定性交错、另一 scope 错误传播和原安装已结批次的普通恢复。原安装最后仅一次无工具交接，原任务/执行 session/`run1` 与配置、私有 Skill、其它 journal 保持，重复恢复不重放且正常关闭。各组只绑定报告所列受验指纹，不宣称同版全量通过；第八轮仅使用 loopback 脚本模型，没有新增真实模型或厂商调用。该轮当时仍保留 Windows 进程隐私限制、异常关闭风险及未专项验证的取消路径；历史 Topic/Owner 或此前局部结果不能替代当前专项证据，当前关闭规则见下文。
 

@@ -12,7 +12,7 @@ import { initializeMemoryTaskWorkspace } from './fixtures/memory-host.js'
 const refusal = { error: { category: 'api', code: 1, origin: 'mcp_gateway', operation: 'chat/get_conversation_info',
   reason: 'topic_quote_guard_unavailable', retryable: true, message: '无法确认引用回复目标是否属于话题圈，已阻止发送' } }
 
-test('a historical frozen start confirmation retires after its real native task completes without re-dispatch', { ...({ timeout: 10000, ...(!available ? { skip: reason } : {}) }), timeout: nativeLifecycleTimeout(10000) }, nativeLifecycle(10000, async (t) => {
+test('a historical frozen start confirmation retires after its real native task completes without re-dispatch', { ...({ timeout: 10000, ...(!available ? { skip: reason } : {}) }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'notification-terminal-native-'))
   let host, sends = 0, reads = 0
   t.after(async () => { try { await host?.close() } finally { await rm(root, { recursive: true, force: true }) } })

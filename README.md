@@ -110,6 +110,8 @@ node bin/night-bot-settings.js data/config/config.json model-list --live
 
 分诊运行中追加来源后，不完整提交会返回当前完整批次供一次补齐，尚未保存任何处置；完整提交后残留 steer 的非活动请求不重放已结来源，也不阻止后续溢出批次。每批至多 15 条、常驻 Pi 会话和来源/版本校验保持，见 [CHANNELS](docs/CHANNELS.md#轻量一级分诊)。
 
+崩溃留下的真实空 `contexts.json.lock` 仅由 Host 在取得独占安装租约、确认没有恢复中标记且尚未启动渠道写者时回收；活跃、非空或链接锁不强抢。原 Router 已接纳批次若仅缺 `resident_router_settle` 结果，Host 校验原批次/当前代际后，以原幂等键完成或读取真实 SQLite 结清事务，再将实际结果写回同一 Pi 会话；不运行模型或重放其它工具。已提交结清但缺结果的空闲会话在下一事件打开时先对账，不扫描加载全部历史。
+
 正常停机中止的 Router 生成沿原 Pi 历史安全续轮，较新取消/延期输入先耐久接纳再推理；原输入及已完成效果不重放。未知效果、来源/owner 变化或恢复批次超限仍保留告警；模型 error 或正常 stop 未结批次不自动循环重试，操作者可通过 `node bin/night-bot-router.js CONFIG inspect CONVERSATION_ID` 取得原批次 proposal，再按 [runbook](docs/ops/windows-local-runtime.md#router-模型错误的显式续办) 检查并显式续办。续办控制消息提供准确事件ID及结清工具要求，纯文字回复不代表事件已消费。分诊首答不代表后续任务已完成，恢复合同见 [CHANNELS](docs/CHANNELS.md#已接纳未结批次的安全续办)。
 
 Router 对所属会话的执行 session 拥有完整调度权，创建、启动、停止、解除等待及取消/完成后的重新唤起不要求原消息作者或安装操作者补调度许可；来源保留真实追溯，停止仍实际排空原 owner。已结清的旧未知效果只永久禁止原具体调用重放，不再要求后续独立调用或完成结果匹配专门的新目标授权。尚未结清时也能唤起原会话核验，但不能重放旧效果或宣称成功。工具本身继续遵循当前权限模式、秘密和业务效果边界。[原 new-action 入口](docs/EFFECT-ACTION-AUTHORIZATION.md)保留为可选人工运维方式，不是续办前置。
