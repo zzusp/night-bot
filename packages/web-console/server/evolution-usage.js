@@ -11,6 +11,7 @@ const earliest = (a, b) => !a || b && b < a ? b : a
 const pathKey = path => typeof path === 'string' && isAbsolute(path) ? normalize(path) : null
 const version = (content, provider) => {let body = provider === 'learned' ? content.replace(/^NIGHT_LEARNED_SCOPE=[^\n]*\n?/gm, '') : content; try {body = parseFrontmatter(body).body} catch {} return hash(body.replaceAll('\r\n', '\n').trim())}
 const memoryKey = (scope, id) => JSON.stringify([scope, id])
+const STATS_VERSION = 1
 const defaults = Object.freeze({maxSessions: 128, maxEntriesPerSession: 20000, maxEntries: 100000, maxSessionBytes: 8 * 1024 * 1024, maxPendingCalls: 128})
 const emptyMemory = () => ({readCount: null, searchCount: null, lastUsedAt: null, lastAccess: null, trackingSince: null, entryTrackingSince: null})
 const emptySkills = () => ({modelUseCount: null, userUseCount: null, fileReadCount: null, lastUsedAt: null, lastInvocationAt: null, loadCount: null, trackingSince: null, callTrackingSince: null})
@@ -25,12 +26,15 @@ function mergeStats(target, source) {
 
 /** Request-local, read-only query. Inputs contain only inventory resources the
  * authenticated evolution reader is allowed to inspect. No journal bodies or
- * private resource paths are returned, and no derived state is persisted. */
-export async function queryEvolutionUsage({application, sessionPersistence, allowedScopeTokens = [], memoryResources = [], skillResources = [], channelSessions = [], limits = {}}) {
+ * private resource paths are returned. Optional Web-owned caches hold only statistics. */
+export async function queryEvolutionUsage({application, sessionPersistence, allowedScopeTokens = [], memoryResources = [], skillResources = [], channelSessions = [], limits = {}, usageCache}) {
   const budget = {...defaults, ...limits}
   for (const key of Object.keys(defaults)) if (!Number.isSafeInteger(budget[key]) || budget[key] < 1 || budget[key] > defaults[key]) throw new TypeError('Invalid evolution query budget')
   const allowed = new Set(allowedScopeTokens), memoryMap = new Map(memoryResources.filter(r => allowed.has(r.scopeToken)).map(r => [memoryKey(r.scopeToken, r.storageId), r.itemId]))
   const resources = skillResources.filter(r => typeof r.itemId === 'string' && (!r.scopeToken || allowed.has(r.scopeToken)))
+  const contextHash = hash(JSON.stringify([STATS_VERSION, sessionPersistence?.config?.root ?? null, Boolean(sessionPersistence?.ctx?.get?.('portablePaths')), [...allowed].sort(), memoryResources, resources, budget.maxPendingCalls]))
+  const records = [], accessed = []
+  if (usageCache) await usageCache.check()
   const skillsByName = new Map(), skillsByPath = new Map()
   for (const resource of resources) {
     const key = JSON.stringify([resource.provider, resource.name]), path = pathKey(resource.path)
@@ -38,9 +42,10 @@ export async function queryEvolutionUsage({application, sessionPersistence, allo
     skillsByName.get(key).push(resource)
     if (path) {if (!skillsByPath.has(path)) skillsByPath.set(path, []); skillsByPath.get(path).push(resource)}
   }
-  const items = Object.create(null), reasons = new Set(), seenEvents = new Set()
+  const items = Object.create(null), reasons = new Set()
+  let eventCount = 0
   const memory = emptyMemory(), skills = emptySkills()
-  const coverage = {status: 'unrecorded', source: 'retained-committed-pi-journals', sessionsDiscovered: 0, sessionsRead: 0, entriesRead: 0, oldestObservedAt: null, newestObservedAt: null, limits: budget, reasons: []}
+  const coverage = {status: 'unrecorded', source: 'retained-committed-pi-journals', sessionsDiscovered: 0, sessionsRead: 0, sessionsReused: 0, entriesRead: 0, oldestObservedAt: null, newestObservedAt: null, limits: budget, reasons: []}
   const problem = code => reasons.add(code)
   const count = (object, field) => {object[field] = (object[field] ?? 0) + 1}
   function skillMatch(value) {
@@ -62,10 +67,12 @@ export async function queryEvolutionUsage({application, sessionPersistence, allo
     // Publish one session's observations only after its whole scan succeeds.
     // Failure reasons and read budgets remain global, even when these values are discarded.
     const items = Object.create(null), memory = emptyMemory(), skills = emptySkills(), seenEvents = new Set()
+    const scanReasons = new Set()
+    const recordProblem = code => {scanReasons.add(code); problem(code)}
     let oldestObservedAt = null, newestObservedAt = null
-    function observed(at) {if (!at) {problem('INVALID_EVENT_TIME'); return} oldestObservedAt = earliest(oldestObservedAt, at); newestObservedAt = latest(newestObservedAt, at)}
+    function observed(at) {if (!at) {recordProblem('INVALID_EVENT_TIME'); return} oldestObservedAt = earliest(oldestObservedAt, at); newestObservedAt = latest(newestObservedAt, at)}
     function useSkill(resource, mode, entry, eventId, content) {
-      if (!resource) {problem('UNRESOLVED_SKILL_RESOURCE'); return}
+      if (!resource) {recordProblem('UNRESOLVED_SKILL_RESOURCE'); return}
       if (seenEvents.has(eventId)) return
       seenEvents.add(eventId)
       const field = {model: 'modelUseCount', user: 'userUseCount', file: 'fileReadCount'}[mode], at = stamp(entry)
@@ -89,7 +96,7 @@ export async function queryEvolutionUsage({application, sessionPersistence, allo
       } else if (message?.role === 'toolResult') {
         const paired = pending.get(message.toolCallId); pending = new Map(pending); pending.delete(message.toolCallId)
         if (paired?.call.name === message.toolName && !message.isError) successes.set(entry.id, {entry, call: paired.call})
-        else if (['memory_read', 'memory_search', 'skill', 'read', 'read_window'].includes(message.toolName) && !message.isError) problem('UNPAIRED_TOOL_RESULT')
+        else if (['memory_read', 'memory_search', 'skill', 'read', 'read_window'].includes(message.toolName) && !message.isError) recordProblem('UNPAIRED_TOOL_RESULT')
       }
       if (pending.size > budget.maxPendingCalls) throw new Error('PENDING_CALL_LIMIT')
       states.set(entry.id, pending)
@@ -146,10 +153,10 @@ export async function queryEvolutionUsage({application, sessionPersistence, allo
       const starts = lookup('command-started', data?.id).filter(e => ancestor(ack.id, e.id))
       const packets = lookup('enqueued', data?.id).filter(e => ancestor(ack.id, e.id))
       const internal = lookup('enqueued-internal', data?.id).length > 0
-      if (starts.length !== 1 || packets.length !== 1 || internal || user?.type !== 'message' || user.message?.role !== 'user' || !ancestor(ack.id, user.id) || !ancestor(user.id, starts[0]?.id) || starts[0].data.payload.beforeEntryIds?.includes(user.id) || hash(JSON.stringify(user.message.content)) !== data.bodyDigest || usedPackets.has(data.id) || usedUsers.has(user.id)) {problem('INVALID_SKILL_COMMAND'); continue}
+      if (starts.length !== 1 || packets.length !== 1 || internal || user?.type !== 'message' || user.message?.role !== 'user' || !ancestor(ack.id, user.id) || !ancestor(user.id, starts[0]?.id) || starts[0].data.payload.beforeEntryIds?.includes(user.id) || hash(JSON.stringify(user.message.content)) !== data.bodyDigest || usedPackets.has(data.id) || usedUsers.has(user.id)) {recordProblem('INVALID_SKILL_COMMAND'); continue}
       const name = starts[0].data.payload.name, command = /^\/skill:([^\s]+)(?:\s|$)/.exec(text(packets[0].data.payload.content))
       let parsed; try {parsed = parseSkillBlock(text(user.message.content))} catch {}
-      if (!parsed || command?.[1] !== name || parsed.name !== name) {problem('INVALID_SKILL_COMMAND'); continue}
+      if (!parsed || command?.[1] !== name || parsed.name !== name) {recordProblem('INVALID_SKILL_COMMAND'); continue}
       usedPackets.add(data.id); usedUsers.add(user.id)
       let candidates = (skillsByPath.get(pathKey(parsed.location)) ?? []).filter(r => r.name === name)
       // Learned Pi resources use ephemeral paths; require the embedded scope and
@@ -160,20 +167,21 @@ export async function queryEvolutionUsage({application, sessionPersistence, allo
       const content = prefix && parsed.content.startsWith(prefix) ? parsed.content.slice(prefix.length) : parsed.content
       useSkill(resource, 'user', user, target.sessionId + ':' + user.id, content)
     }
-    return {items, memory, skills, seenEvents, oldestObservedAt, newestObservedAt}
+    return {items, memory, skills, eventCount: seenEvents.size, oldestObservedAt, newestObservedAt, reasons: [...scanReasons].sort()}
   }
   function commitUsage(usage) {
     mergeStats(memory, usage.memory); mergeStats(skills, usage.skills)
     for (const [id, row] of Object.entries(usage.items)) {
       const current = items[id]
-      if (!current) {items[id] = row; continue}
+      if (!current) {items[id] = structuredClone(row); continue}
       if (row.memoryUse) mergeStats(current.memoryUse, row.memoryUse)
       else {
         if (row.lastInvocationAt && (!current.lastInvocationAt || row.lastInvocationAt >= current.lastInvocationAt)) current.updatedSinceUse = row.updatedSinceUse
         mergeStats(current, row)
       }
     }
-    for (const event of usage.seenEvents) seenEvents.add(event)
+    eventCount += usage.eventCount
+    for (const code of usage.reasons) problem(code)
     coverage.oldestObservedAt = earliest(coverage.oldestObservedAt, usage.oldestObservedAt)
     coverage.newestObservedAt = latest(coverage.newestObservedAt, usage.newestObservedAt)
   }
@@ -233,10 +241,23 @@ export async function queryEvolutionUsage({application, sessionPersistence, allo
       // guard plus filesystem metadata instead. This is a size preflight, not
       // an atomic bound against concurrent append by the legitimate writer.
       if (typeof sessionPersistence.checkedFile === 'function' && typeof sessionPersistence.path === 'function') {await sessionPersistence.checkedFile(target.sessionId); const info = await lstat(sessionPersistence.path(target.sessionId)); if (info.size > budget.maxSessionBytes) {problem('SESSION_BYTE_LIMIT'); return null}}
-      return await sessionPersistence.readNative(target.sessionId, {requireComplete: true})} catch {return null}}))
+      const sourceKey = usageCache && typeof sessionPersistence.readNativeDigest === 'function' && typeof sessionPersistence.path === 'function'
+        ? hash(JSON.stringify([sessionPersistence.path(target.sessionId), target])) : null
+      if (sourceKey) {
+        const cached = usageCache.get({sourceKey, contextHash, statsVersion: STATS_VERSION})
+        if (cached && await sessionPersistence.readNativeDigest(target.sessionId) === cached.journalDigest) return {cached, sourceKey}
+      }
+      return {snapshot: await sessionPersistence.readNative(target.sessionId, {requireComplete: true}), sourceKey}
+    } catch (error) {if (error.code?.startsWith('EVOLUTION_USAGE_CACHE_')) throw error; return null}}))
     for (let index = 0; index < batch.length; index++) {
-      const target = batch[index], snapshot = results[index]
-      if (!snapshot) {problem('SESSION_UNAVAILABLE'); continue}
+      const target = batch[index], result = results[index]
+      if (!result) {problem('SESSION_UNAVAILABLE'); continue}
+      const {snapshot, cached, sourceKey} = result
+      if (cached) {
+        if (cached.entryCount > budget.maxEntriesPerSession || cached.entryCount + coverage.entriesRead > budget.maxEntries) {problem('ENTRY_LIMIT'); continue}
+        coverage.entriesRead += cached.entryCount; coverage.sessionsRead++; coverage.sessionsReused++
+        commitUsage(cached.usage); accessed.push(sourceKey); continue
+      }
       const identities = snapshot.audit?.filter(r => r.domain === 'task' && r.kind === 'identity') ?? []
       const channelValid = target.channel && !snapshot.header?.runtimeOwner && snapshot.audit?.some(r => {const source = r.payload?.source; return r.domain === 'admission' && r.kind === 'enqueued' && source?.kind === 'user' && source.channelType === target.channel.type && source.channelId === target.channel.channelId && source.conversationId === target.channel.conversationId && (target.channel.type !== 'chat' || source.senderId === target.channel.senderId) && source.principal === 'channel-actor-' + hash(JSON.stringify([source.channelId, source.senderId]))})
       const valid = snapshot.header?.id === target.sessionId && (target.channel ? channelValid : target.taskId ? identities.length === 1 && identities[0].version === 1 && identities[0].payload?.taskId === target.taskId && identities[0].payload?.sessionId === target.sessionId : snapshot.header.runtimeOwner === 'conversation-router' && snapshot.header.conversationId === target.conversationId && Number.isSafeInteger(target.generation) && target.generation > 0 && snapshot.header.generation === target.generation)
@@ -245,9 +266,11 @@ export async function queryEvolutionUsage({application, sessionPersistence, allo
       coverage.entriesRead += snapshot.entries.length
       let usage
       try {usage = scan(snapshot, target)} catch {problem('SESSION_EVIDENCE_INVALID'); continue}
+      if (sourceKey && typeof snapshot.journalDigest === 'string') records.push({sourceKey, journalDigest: snapshot.journalDigest, contextHash, statsVersion: STATS_VERSION, entryCount: snapshot.entries.length, usage})
       commitUsage(usage); coverage.sessionsRead++
     }
   }
-  coverage.status = reasons.size ? 'partial' : seenEvents.size ? 'ready' : 'unrecorded'; coverage.reasons = [...reasons].sort()
+  if (usageCache) {await usageCache.check(); usageCache.commit({records, accessed})}
+  coverage.status = reasons.size ? 'partial' : eventCount ? 'ready' : 'unrecorded'; coverage.reasons = [...reasons].sort()
   return {items, memory, skills, coverage}
 }

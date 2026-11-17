@@ -2,6 +2,7 @@ import {deploymentView} from './deployment.js'
 import {launchEnvironmentOf} from '../../../src/native-environment.js'
 import {schedulePage} from './schedule-view.js'
 import {openEvolutionCache} from './evolution-cache.js'
+import {openEvolutionUsageCache} from './evolution-usage-cache.js'
 import {bindingSchema} from '../../../src/memory/scope.js'
 import {readEvolutionInventory} from './evolution-inventory.js'
 import {queryEvolutionUsage} from './evolution-usage.js'
@@ -123,7 +124,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
     const value = await application().tasks.boardTasks(options)
     return {...value, items: value.items.map(task => taskView(task, [credential.token]))}
   }
-  let evolutionCache, authorizedEvolutionReader
+  let evolutionCache, evolutionUsageCache, authorizedEvolutionReader
   try {
     const evolutionDirectory = await controlledDirectory(paths.cache, namespace)
     const evolutionReader = () => bindingSchema.parse(channels.identity({type: 'chat', channelId, senderId, conversationId: 'evolution-view', messageId: 'evolution-view', text: 'evolution-view'}).binding)
@@ -139,8 +140,9 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const binding = authorizedEvolutionReader(), app = application(), memory = getMemory()
       if (!memory?.store?.root) fail('BOT_NOT_READY', 503)
       const inventory = await readEvolutionInventory({memory, reflection: getReflection() ?? memory.host?.get?.('reflection'), binding})
+      evolutionUsageCache ??= await openEvolutionUsageCache({directory: evolutionDirectory, identity: evolutionIdentity})
       const usage = await queryEvolutionUsage({application: app, sessionPersistence: getSessionPersistence(), channelSessions: [...(channels.contexts ?? [])].map(([sessionId, row]) => ({sessionId, type: row.type, channelId: row.channelId, conversationId: row.conversationId, senderId: row.type === 'chat' ? Object.values(row.participants ?? {})[0] : undefined})),
-        allowedScopeTokens: inventory.allowedScopeTokens, memoryResources: inventory.memoryResources, skillResources: inventory.skillResources})
+        allowedScopeTokens: inventory.allowedScopeTokens, memoryResources: inventory.memoryResources, skillResources: inventory.skillResources, usageCache: evolutionUsageCache})
       const items = inventory.items.map(item => ({...item, ...usage.items[item.id]}))
         .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || a.id.localeCompare(b.id))
       const memoryStats = {...inventory.memory, ...usage.memory, trackingStatus: usage.coverage.status === 'partial' ? 'degraded' : 'ready'}
@@ -151,7 +153,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       authorizedEvolutionReader()
       return {...value,memory:{...value.memory,...value.memory?.lastAccess?{lastAccess:{...value.memory.lastAccess,provenance:origin(value.memory.lastAccess.provenance)}}:{}},items:value.items.map(item=>({...item,name:visibleText(item.name,[credential.token]).text,...typeof item.summary==='string'?{summary:visibleText(item.summary,[credential.token]).text}:{},provenance:origin(item.provenance),...item.memoryUse?.lastAccess?{memoryUse:{...item.memoryUse,lastAccess:{...item.memoryUse.lastAccess,provenance:origin(item.memoryUse.lastAccess.provenance)}}}:{},origins:(item.origins??[]).map(origin)}))}
     }})
-  } catch (error) {sessions.close(); ledger.close(); throw error}
+  } catch (error) {evolutionUsageCache?.close(); sessions.close(); ledger.close(); throw error}
   async function route(request, response) {
     headers(response)
     requireLocalRequest(request, origin, network)
@@ -608,7 +610,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
     unregisterPlugin = channels.registerPlugin(channelId, {get health() {return {healthy: !!origin && !stopped}}})
     if (listen) await start()
   } catch (error) {
-    await evolutionCache.close(); unregisterPlugin?.(); unregisterTransport?.(); ledger.close(); sessions.close(); throw error
+    await evolutionCache.close(); evolutionUsageCache?.close(); unregisterPlugin?.(); unregisterTransport?.(); ledger.close(); sessions.close(); throw error
   }
   return {
     get origin() {return origin}, credentialPath: credential.path, start,
@@ -616,6 +618,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       return closePromise ??= (async () => {
         stopped = true
         await evolutionCache.close()
+        evolutionUsageCache?.close()
         await startPromise?.catch(() => {})
         if (server.listening) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
         await Promise.allSettled([...inflight])
