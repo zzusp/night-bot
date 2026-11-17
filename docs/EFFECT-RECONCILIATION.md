@@ -107,3 +107,17 @@ node bin/night-bot-jobs.js CONFIG close PROPOSAL.json NOTE.json
 inspect 不运行模型或启动 Host；close 与自检要求停机，自检零写。close 实际持有安装 `.host.lock` 与原 Pi session writer，校验安装、任务/会话、任务版本、完整日志字节、原 registered 身份、当前分支及证据摘要，按哈希冻结操作者报告并追加 `job/reconciled`，保留原日志前缀与登记。重复完全相同请求幂等，不生成 settled、不填写 producerReported、不改 SQLite、drained 或输入 ACK。
 
 收据结论固定为 `closed-with-possible-partial-effects`、`exitStatus:unknown`、`noReplay:true`。正常重启后仍由 Host 冷恢复原任务/原会话；新的输入向模型说明旧作业已人工核验、退出状态未知且禁止重放。后续独立调用按现有权限和业务目标处理，不新增全局授权门。升级须同步支持该 typed receipt 的代码；不能让旧发行读取新收据后继续执行，也不能删除收据回退。实际恢复以原会话的新推理/工具及业务终态为准，不以 CLI committed 或 running 标签当完成。
+
+## 冷丢失 shell 缺少原执行者排空证明
+
+仅对于原生直接 `bash` / `pwsh`，原证明因冷崩溃缺失时，可复用上一节已经完成的离线 `job/reconciled`。不能凭后续执行者的零计数追认旧生产者 join，也不能只凭 `jobs close` 解除效果阻断。
+
+1. 先按上一节离线检查原生产者、保留输出和可能效果，运行 `jobs close --check`，再提交真实冷作业核验。已有合法收据不重复结清。
+2. 正常启动，由原 Router/原任务会话安排只读核验，等待模型、工具、已注册进程和作业真正排空。不得手工追加 `owner-drained`。
+3. 使用既有 `effects inspect`。Host 要求原 intent、admitted input、assistant call、唯一 shell 作业登记与关闭记录在同一分支，精确匹配 owner、工具名、call/rootCall、登记摘要及先后顺序。未决作业、保留资源、调用歧义、错误分支、未知收据和完整提交校验失败仍拒绝。
+4. inspect 返回额外的 `coldJobReconciliation:{entryId,digest}`，明确引用操作者冷作业核验；`ownerDrainEntryId` 仍只引用最新核验执行者的真实排空。其作用域和输入必须匹配，排空切点后不得有新业务内容。
+5. 操作者核对原冻结作业证据及实际效果，按原 schema 保存新的 effects 读回材料，再按原 proposal schema 执行 `effects close`。不要把 inspect 的额外字段直接加入 proposal；Host 重新推导并将其写进原生效果回执。在线与离线闭包验证共享精确关联规则，缺失/篡改冷作业引用都不通过。
+
+关闭结论仍为可能部分效果、未知结果、永久禁重放；不会标记业务测试成功或自动唤醒任务。后续独立调用沿正常权限执行，不新增 task-wide 授权。其他工具及没有合法冷作业收据的 shell 仍必须保留原生产者证明。本路径只描述已注册范围，不能证明任意脱管外部进程或远端操作已结束。
+
+新效果收据含新增 typed 字段，须先完成匹配代码的正常升级，不得把它交给旧发行继续运行或删回执回退。真实 Host/CLI 验证见 `test/pi-native-job-reconciliation.test.js`；精确关联、摘要和分支拒绝见 `test/pi-task-effect-reconciliation.test.js`。
