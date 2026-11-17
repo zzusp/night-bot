@@ -98,6 +98,8 @@ node bin/night-bot-settings.js data/config/config.json model-list --live
 
 官方会话工厂发布前，会按耐久默认选择、显式运行时/记忆模型选择及当前角色模型选择预加载所需 Pi 协议模块，只做本地导入，不读模型凭据、不发探测或推理请求。首次模块加载成本移到启动阶段；无效模型配置仍保留现有延迟诊断。分流性能使用现有 `/state/performance` 查询，按真实 `sessionId` / `groupId` 返回 `runtimeOwner: channel-triage` 及 `phaseMs`（次数、总量、最大值、p50/p95、失败次数），无需创建任务。阶段覆盖会话准备、资源读取/SDK reload、输入接纳、请求准备、提交和收尾；只记录元数据。嵌套及并行阶段不可相加，SDK 模型尝试次数不代表 HTTP 请求数；旧记录缺少分项时返回空集合，不回填推测耗时。
 
+分诊与 Router 的上下文目标均为 500,000 tokens，不超过模型真实窗口；完整轮次在 60% 水位尝试可取消的后台摘要，80% 由 Pi 原生前台压缩兜底。大消息预检包含系统提示、工具和输出余量；无法容纳时返回 `PI_CONTEXT_INPUT_TOO_LARGE`，保留耐久待办而不截断正文。重复输入不触发摘要，Router 续办先检查全部新输入再领取检查点。详见[后台压缩合同](docs/BACKGROUND-COMPACTION.md)。
+
 已有记忆布局升级须先正常停机并执行[离线检查与迁移](docs/MEMORY-MIGRATION.md)，未升级时新版拒绝启动。本地操作者明确不备份时，v3→v4可显式使用 `--no-backup`；保留中断续写与冲突校验，但不提供旧格式回滚。
 
 ## 权限与运行边界

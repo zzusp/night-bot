@@ -14,6 +14,8 @@
 
 新版启动前核对[记忆布局升级](../MEMORY-MIGRATION.md)：遇到 `MEMORY_LAYOUT_MIGRATION_REQUIRED` 时停止，不删除状态或给必需服务加静默兜底。正常排空且进程已退出后，先 `node scripts/migrate-memory.mjs --install-root <安装根> --check`，再显式 `--apply`。明确选择本地不备份、当前为v3时，检查和执行均附 `--no-backup`；核对收据 `backup: null`、数量与正文保持，再让监督器自检、启动，验收实际记忆列表和原业务终态。
 
+常驻分诊与 Router 的[后台压缩](../BACKGROUND-COMPACTION.md)随代码正常更新和重启生效，无新增环境变量、配置开关或数据迁移。目标 500K 受模型真实窗口和输出额度限制；遇到 `PI_CONTEXT_INPUT_TOO_LARGE` 表示输入仍在耐久待办中，不可当作已消费，也不要手工重写 journal 以绕过校验。首次分诊增加一次接纳正文前的提示资源预检，创建期仍延迟加载；压缩阶段耗时与业务模型尝试分别观察。
+
 ## 只读检查
 
 在目标安装目录运行，先确认分支和已有改动：
