@@ -1,6 +1,6 @@
 # 渠道通知与反馈诊断验收 · 2026-11-17
 
-对象：PR #173，初始提交 `731f8dc90bd6ba738955709380c67c72ab835f91`，基线 `b3cdb95a76024e99e9fdc49591ce057171161cd9`。本目录随附修复后的真实运行截图和日志。
+对象：PR #173，初始提交 `731f8dc90bd6ba738955709380c67c72ab835f91`，基线 `b3cdb95a76024e99e9fdc49591ce057171161cd9`。本目录保留验收说明和测试日志；截图已按用户要求移除。
 
 环境：Linux、Node 24.19.0、pnpm 11.25.0、Chromium 154.0.8037.57、Playwright 1.65.0。构建为生产 dist，测试使用 preview.mjs 隔离 fixture 与 Playwright 路由合成响应，不接真实渠道、模型，不发送消息或创建 Issue。无 DOM 视觉伪装。
 
@@ -21,4 +21,3 @@
 
 限制：本轮未重跑 Web 全量（此前报告 338 通过、2 失败、1 跳过），未重跑静态审计（此前报告 0 问题）；真实渠道/真实 AI 集成不属于本地 fixture 证据范围。未合并、未部署。
 
-截图：channels-light-1440.png、channels-dark-1440.png、channels-light-390.png、diagnosis-light-1440.png、diagnosis-dark-1440.png、diagnosis-light-390.png、diagnosis-ready-1440.png。
