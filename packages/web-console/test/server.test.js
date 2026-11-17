@@ -977,15 +977,14 @@ test('evolution HTTP defaults to ten records and serves disjoint current pages f
   assert.equal(skills.body.total,0); assert.deepEqual(skills.body.items,[])
 })
 
-test('feedback HTTP preserves consent, exact preview, owner and CSRF boundaries',async t=>{
+test('feedback HTTP starts explicit diagnosis and preserves publish consent, exact preview, owner and CSRF boundaries',async t=>{
  let collected=0,sent=0
  const feedback=createFeedbackService({model:()=>({provider:'test',model:'model'}),resolveModel:async()=>({}),getToken:async()=>'fake',diagnose:async()=>{collected++;return '诊断摘要'},fetchImpl:async()=>{sent++;return{ok:true,json:async()=>({html_url:'https://github.com/zzusp/night-bot/issues/123'})}}})
  t.after(()=>feedback.close());const f=await fixture(t,{feedback})
- const input={title:'异常',description:'操作步骤',model:'test/model',revision:'default',consent:true}
+ const input={title:'异常',description:'操作步骤',model:'test/model',revision:'default'}
  assert.equal((await f.fetchApi('/api/feedback')).status,401);await f.login()
  assert.equal((await f.fetchApi('/api/feedback')).status,200)
  assert.equal((await f.fetchApi('/api/feedback/collect',{method:'POST',body:input,headers:{'x-csrf-token':'forged'}})).status,403)
- assert.equal((await f.fetchApi('/api/feedback/collect',{method:'POST',body:{...input,consent:false}})).status,403)
  assert.equal(collected,0)
  const created=await f.fetchApi('/api/feedback/collect',{method:'POST',body:input});assert.equal(created.status,202)
  const path='/api/feedback/'+created.body.id;let r

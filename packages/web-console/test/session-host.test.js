@@ -105,6 +105,7 @@ test('task session API reads actual committed Pi source, todos and tool records 
 
 test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 scope/version 授权且读取不触发推理', {timeout: nativeTestTimeout(30000)}, async t => {
   const f = await memoryHost(t, body => {
+    if (JSON.stringify(body.messages).includes('NIGHT_BOT_SKILL_GENERATION')) return
     if (!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')) return {text: '不应执行其他推理'}
     const input = JSON.parse(body.messages.findLast(row => row.role === 'user').content)
     return {text: JSON.stringify({lessons: [{key: 'check-evidence', summary: '核对真实结果并保留可验证来源',
@@ -126,8 +127,12 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
     await reflection.whenIdle()
     const scope = memoryScope({actorId: owner}), stateFile = join(reflection.directory(scope), 'state.json')
     const before = await readFile(stateFile), requestCount = f.requests.length
-    assert.equal(requestCount, 1, 'only actual tool-free retrospective inference is expected')
-    assert.ok(f.requests.every(body => !body.tools?.length))
+    assert.equal(requestCount, 3, 'one tool-free retrospective plus the creator load and drafting response')
+    const retrospective = f.requests.filter(body => JSON.stringify(body.messages).includes('NIGHT_BOT_TASK_REFLECTION'))
+    assert.equal(retrospective.length, 1); assert.ok(retrospective.every(body => !body.tools?.length))
+    const generation = f.requests.filter(body => JSON.stringify(body.messages).includes('NIGHT_BOT_SKILL_GENERATION'))
+    assert.equal(generation.length, 2)
+    assert.ok(generation.every(body => body.tools.length === 1 && body.tools[0].function.name === 'skill'))
     const open = async actor => {
       web = await createWebConsole({channels, paths: f.host.ctx.runtimePaths, config: {channelId, senderId: actor, port: 0},
         getApplication: () => ({tasks: {store}}), getReflection: () => reflection, getMemory: () => f.host.ctx.memory})
@@ -181,7 +186,7 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
     const nextBinding = (await command('claim-next', 'task.claim', {taskId: 'learn-two'})).result.binding
     await command('complete-next', 'task.complete', {binding: nextBinding, summary: '第二份证据已核对'})
     reflection.scan(); await reflection.whenIdle()
-    assert.equal(f.requests.length, requestCount + 1, 'a new committed completion causes exactly one new retrospective')
+    assert.equal(f.requests.length, requestCount + 3, 'a new committed completion causes one retrospective and one creator drafting loop')
     assert.equal((await api(endpoint + '/changes/' + skill.id + '?version=' + skill.version)).status, 409)
     const current = await api(endpoint)
     assert.notEqual(current.body.changes.find(row => row.id === skill.id).version, skill.version)
@@ -190,7 +195,7 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
     const excluded = await foreign('/api/evolution'); assert.equal(excluded.body.memory.acceptedCount, 2); assert.equal(excluded.body.skills.activeCount, 1); assert.equal(excluded.body.memory.readCount, measured.memory.readCount)
     assert.equal(summary.status, 200); assert.ok(summary.body.changes.every(row => row.canRead === true))
     for (const change of summary.body.changes) assert.equal((await foreign(endpoint + '/changes/' + change.id + '?version=' + change.version)).status, 200)
-    assert.equal(f.requests.length, requestCount + 1, 'HTTP reads never schedule retrospective or task inference')
+    assert.equal(f.requests.length, requestCount + 3, 'HTTP reads never schedule retrospective or task inference')
   } finally {await web?.close(); detach?.(); await store.close()}
 })
 
