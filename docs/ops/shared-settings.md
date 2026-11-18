@@ -118,6 +118,10 @@ node bin/night-bot-settings.js CONFIG model-entry --action edit --provider PROVI
 
 `null` 恢复自动识别，`false` 表示不支持推理。对象键为 Pi 级别（`off/minimal/low/medium/high/xhigh/max`），字符串值为服务商实际参数值；`off:null` 允许关闭推理而不发送 effort 参数。未列出的深度不提供选择。可用自定义映射适配网关；Web 编辑保留已有映射值。
 
+### 任务内置执行指令
+
+任务内置执行指令随 Host 代码更新，与实例私有工作原则不同。按运行手册正常更新并重启 Host；不为此重放原任务或真实消息。核验实际任务决定和送达回执，不把进程重启当作任务完成。
+
 ### 执行会话工作原则
 
 安装操作者可通过 Web「设置 → 工作原则」编辑独立的 `data/config/execution/AGENTS.md`。文件位于安装持久数据中，不应进入代码库。仅任务执行会话在 Pi 上下文刷新时读取，无需重启；分诊、Router、普通对话和复盘不加载此文件。已有通用与项目指令文件不变。未创建或正文为空白时不附加指令。
