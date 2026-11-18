@@ -57,10 +57,10 @@ function historyMessages(value,config){
 /** 复用 bridge 已有的暂停、恢复、补拉和 drain；原生 ID 留在插件内部。 */
 export function dingtalkIngressAdapter(adapter,config,{runner,getFromAt=()=>undefined,completeGroupRange,retryDeferredIngress,onRecall,beforeRangeRead=async()=>{}}={}){
   return {...adapter,completeGroupRange,retryDeferredIngress,
-    startGroupSubscription(conversationId,onEvent){
+    startGroupSubscription(conversationId,onEvent,{isCurrent}={}){
       if(conversationId!==config.binding.conversationId)throw failure('DINGTALK_INGRESS_TARGET_MISMATCH')
       const accept=event=>{
-        if(event.conversation_id!==conversationId)return
+        if(event.conversation_id!==conversationId||isCurrent?.()===false)return
         const sender=event.sender_open_dingtalk_id??event.sender_id
         if(config.conversationType==='chat'&&sender!==config.binding.peerId)return
         if(['user_im_message_recall_group','user_im_message_recall_o2o'].includes(event.type)){
@@ -74,10 +74,10 @@ export function dingtalkIngressAdapter(adapter,config,{runner,getFromAt=()=>unde
       }
       return config.conversationType==='chat'?adapter.startPrivateSubscription(config.binding.peerId,accept,{recalls:true}):adapter.startGroupSubscription(conversationId,accept,{recalls:true})
     },
-    async readGroupRange(conversationId,range){
+    async readGroupRange(conversationId,range,{recovering=false}={}){
       if(conversationId!==config.binding.conversationId)throw failure('DINGTALK_INGRESS_TARGET_MISMATCH')
+      const fromAt=getFromAt({recovering})
       await beforeRangeRead()
-      const fromAt=getFromAt()
       if(fromAt!==undefined)range={...range,start:fromAt}
       const value=config.conversationType==='chat'
         ?await dwsReadJson(runner,['chat','+chat-messages','--open-dingtalk-id',config.binding.peerId,'--start',range.start,'--end',range.end,'--order','asc','--page-all'],config.profile)

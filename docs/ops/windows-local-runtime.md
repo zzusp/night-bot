@@ -216,7 +216,7 @@ node docs/acceptance/pi-native-retirement-local/scripts/verify-live-task.mjs . T
 
 ### 历史恢复失败
 
-`recovering` 包含首次历史补拉、Host 接纳和持久消费水位，以及重连或恢复缺口，不只表示网络重连。已经完成恢复后的普通增量拉取保持 `receiving`，不能仅因 `backfill.inProgress` 为真判成恢复中；若历史读取不完整或接纳失败，仍转入错误状态。卡片「历史恢复失败」按固定错误码说明：
+`recovering` 覆盖首次启动、断线重连、取消暂停后的历史补拉和 Host 持久接纳；实时监听已连接也不代表开始接收。补拉范围落盘后才排空实时缓存。缓存满会报告 `DWS_RECOVERY_LIVE_BUFFER_FULL` 并重新建立监听、重扫覆盖区间，不跳过缺口直接切到实时。普通增量拉取期间保持 `receiving`；若历史不完整或接纳失败，报告错误。卡片「历史恢复失败」按固定错误码说明：
 
 - `CHANNEL_MESSAGE_ID_CONFLICT`：旧消息与同 ID、同版本的冻结输入不一致。核对来源及插件去重证据，不直接改 DB、清游标或反复重启。
 - `CHANNEL_HISTORY_INCOMPLETE`：历史页不完整。核对原绑定账号的读取权限与查询完整性；范畴内返回 `complete` 不等于逐条待核对记录已经解除。

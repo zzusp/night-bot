@@ -313,11 +313,20 @@ export async function apply(ctx,config={},dependencies={}){
       return Reflect.get(target,key)
     }})
     const {paused,pausedAt,recoveryFromAt}=ingressStore.snapshot(),ingressState={paused,pausedAt,recoveryFromAt}
-    const ingressFrom=()=>{
+    const ingressFrom=({recovering})=>{
       const state=ingressStore.snapshot()
-      return [state.recoveryFromAt,health.groups?.[0]?.backfill?.recoveryFromAt].filter(value=>value!==undefined).sort((left,right)=>Date.parse(left)-Date.parse(right))[0]
+      const earlier=(left,right)=>left&&(!right||Date.parse(left)<=Date.parse(right))?left:right
+      const from=earlier(state.recoveryFromAt,health.groups?.[0]?.backfill?.recoveryFromAt)
+      if(!recovering)return from
+      const anchor=(state.deferredMessages??[]).reduce((time,row)=>earlier(time,row.occurredAt),state.consumedAt)
+      return earlier(from,anchor&&new Date(Math.max(0,Date.parse(anchor)-30_000)).toISOString())
     }
-    stopBridge=startDwsBridge({privatePeerIds:privatePeers,operatorRepliesEnabled:config.operatorNotifications===true,runtime:facade,adapter:dingtalkIngressAdapter(adapter,config,{runner,getFromAt:ingressFrom,retryDeferredIngress,completeGroupRange:(_id,range)=>writeCursor(ingressStore.completedRange(range)),onRecall:acceptHistoryMessage,beforeRangeRead:recoverRecalls}),logger:{info:()=>{},warn:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED'),error:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED')},humanUserId:config.humanUserId,currentDwsUserName:config.currentUserName,ingressState,saveIngressState:state=>ingressStore.saveBridgeState(state).catch(error=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'};throw error}),onHealthChange:value=>{health={...value,configured:true,state:closed?'stopped':cursorError?'error':value.ingress?.paused?'paused':value.ingress?.recovering?'recovering':'listening',...cursorError?{healthy:false,lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}:{}}}})
+    const completeGroupRange=async(_id,range)=>{
+      await recoverRecalls()
+      await writeCursor(ingressStore.completedRange(range))
+      if(!(Date.parse(ingressStore.snapshot().backfillThroughAt??'')>=Date.parse(range.end)))throw failure('DINGTALK_HISTORY_RECOVERY_FAILED')
+    }
+    stopBridge=startDwsBridge({privatePeerIds:privatePeers,operatorRepliesEnabled:config.operatorNotifications===true,runtime:facade,adapter:dingtalkIngressAdapter(adapter,config,{runner,getFromAt:ingressFrom,retryDeferredIngress,completeGroupRange,onRecall:acceptHistoryMessage,beforeRangeRead:recoverRecalls}),logger:{info:()=>{},warn:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED'),error:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED')},humanUserId:config.humanUserId,currentDwsUserName:config.currentUserName,ingressState,saveIngressState:state=>ingressStore.saveBridgeState(state).catch(error=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'};throw error}),onHealthChange:value=>{health={...value,configured:true,state:closed?'stopped':cursorError?'error':value.ingress?.paused?'paused':value.ingress?.recovering?'recovering':'listening',...cursorError?{healthy:false,lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}:{}}}})
     // Shutdown also writes a paused checkpoint. Only the Host-selected user
     // preference keeps a new process paused; ordinary restarts resume recovery.
     // Explicit operator-approval subscriptions remain a separate control path.

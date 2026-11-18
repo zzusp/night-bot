@@ -82,7 +82,7 @@ test('real DWS runner -> adapter -> bridge -> plugin -> unified application -> d
   const f=await memoryHost(t)
   const streams=new Map(),calls=[]
   const runner={
-    async run(args){calls.push(args);return {exitCode:0,stdout:JSON.stringify(args.includes('+messages-query-send-status')?{result:{sendStatus:'SUCCESS',openConversationId:'private',openMessageId:'sent-private'}}:(args.includes('+messages-send')||args.includes('+messages-reply'))?{sendReceipt:{openTaskId:'send-task'}}:{messages:[],complete:true}),stderr:''}},
+    async run(args){calls.push(args);return {exitCode:0,stdout:JSON.stringify(args.includes('+messages-query-send-status')?{result:{sendStatus:'SUCCESS',openConversationId:'private',openMessageId:'sent-private'}}:(args.includes('+messages-send')||args.includes('+messages-reply'))?{sendReceipt:{openTaskId:'send-task'}}:completeHistory([])),stderr:''}},
     spawn(args,callbacks){const done=Promise.withResolvers(),kind=args.includes('user_im_message_receive_o2o')||args.includes('sender')?'private:'+args[args.indexOf('--open-dingtalk-id')+1]:args[args.indexOf('--kind')+1];streams.set(kind,callbacks);queueMicrotask(()=>callbacks.onStderrLine('[event] ready'));return {done:done.promise,terminate(){done.resolve()}}},
   }
   await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,pluginConfig('dingtalk-dws',{dingtalk_group_id:'room',dingtalk_writes_authorized:true,dingtalk_listen:true}),pluginDependencies(f,runner))})
@@ -497,7 +497,7 @@ for(const quoteMode of ['other-recipient','explicit','default'])test('default ap
 async function defaultDwsEcho(t,statusMode='success'){
   const stages=new Map(),sent=[],triaged=[],historyReads=[],detailReads=[],streams=new Map(),statusGate=Promise.withResolvers(),contentGate=Promise.withResolvers()
   const currentMessages=new Map();let detailFailure=false
-  let app,plugin,otherPlugin,channels,ready=statusMode==='success',contentStarted=false,statusStarted=false,history=[]
+  let app,plugin,otherPlugin,channels,ready=statusMode==='success',contentStarted=false,statusStarted=false,history=[],historyGate
   t.signal.addEventListener('abort',()=>{statusGate.resolve();contentGate.resolve()},{once:true})
   t.after(()=>{statusGate.resolve();contentGate.resolve()})
   const f=await memoryHost(t,body=>{
@@ -538,6 +538,7 @@ async function defaultDwsEcho(t,statusMode='success'){
       }
     }else if(args.includes('+chat-messages')){
       const range={conversationId:flag(args,'--group'),start:flag(args,'--start'),end:flag(args,'--end')};historyReads.push(range)
+      await historyGate?.promise
       value=page(history.filter(message=>message.groupId===range.conversationId&&Date.parse(message.occurredAt)>=Date.parse(range.start)&&Date.parse(message.occurredAt)<=Date.parse(range.end)).map(message=>({...message,conversationId:message.groupId,createTime:message.occurredAt})))
     }else throw Error('Unexpected fixture DWS command: '+args.slice(0,3).join(' '))
     return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
@@ -573,8 +574,8 @@ async function defaultDwsEcho(t,statusMode='success'){
     recall(message,extra={}){streams.get(message.groupId).onStdoutLine(JSON.stringify({type:'user_im_message_recall_group',conversation_id:message.groupId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,recaller_open_dingtalk_id:message.senderOpenDingTalkId,event_time:Date.now(),...extra}))},
     emit(message){streams.get(message.groupId).onStdoutLine(JSON.stringify({conversation_id:message.groupId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,sender_id:message.senderId,content:message.text,quotedMessage:message.quotedMessage,event_time:Date.parse(message.occurredAt)}))},
     release(){ready=true;statusGate.resolve();contentGate.resolve()},
-    async restart(messages,{deferred=[]}={}){
-      history=messages;const paths=f.host.ctx.runtimePaths;await f.close();streams.clear()
+    async restart(messages,{deferred=[],holdHistory}={}){
+      const paths=f.host.ctx.runtimePaths;await f.close();streams.clear();history=messages;historyGate=holdHistory
       if(deferred.length){const ingress=await openDingtalkIngress(paths,'dingtalk-dws');for(const message of deferred)await ingress.deferred(message);await ingress.drain()}
       await f.boot();await mount({recovering:true})
     },
@@ -650,7 +651,7 @@ for(const mode of ['timeout','error'])test('default optional DWS defers unresolv
 })
 
 test('未知外发无 ACK 时同群实时和冷恢复历史仍结清分诊',{timeout:nativeTestTimeout(45000)},async t=>{
-  const h=await defaultDwsEcho(t,'no-ack')
+  const h=await defaultDwsEcho(t,'no-ack'),holdHistory=Promise.withResolvers()
   const checkpoint=()=>readFile(h.ingressFile,'utf8').then(JSON.parse)
   const settled=async message=>{
     const sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.groupId===h.identity.sessionId&&row.messageId===message.messageId)
@@ -675,9 +676,16 @@ test('未知外发无 ACK 时同群实时和冷恢复历史仍结清分诊',{tim
     await h.absent(pending);await h.absent(quote);await h.absent({...ambiguous,senderOpenDingTalkId:ambiguous.senderId})
     const before=await checkpoint()
     assert.deepEqual(before.deferredMessages,[{messageId:pending.messageId,occurredAt:pending.occurredAt},{messageId:quote.messageId,occurredAt:quote.occurredAt,dependsOn:pending.messageId},{messageId:ambiguous.messageId,occurredAt:ambiguous.occurredAt}])
-    const historical={...live,messageId:'independent-history',occurredAt:new Date().toISOString()}
-    await h.restart([live,ambiguous,historical])
-    await eventually(()=>settled(historical),'完整页缺旧候选时同群历史来源仍结清分诊',t.signal)
+    const historical={...live,messageId:'independent-history',occurredAt:pending.occurredAt}
+    assert.ok(Date.parse(historical.occurredAt)<Date.parse(before.consumedAt)-30_000)
+    await h.restart([live,ambiguous,historical],{holdHistory})
+    const heldLive={...live,messageId:'cold-live',occurredAt:new Date().toISOString()}
+    h.emit(heldLive)
+    await new Promise(resolve=>setImmediate(resolve));await h.absent(heldLive)
+    holdHistory.resolve()
+    await eventually(()=>settled(historical),'从更早的暂缓边界补到独立来源，并完成分诊',t.signal)
+    await eventually(()=>settled(heldLive),'补完历史后，实时来源完成分诊',t.signal)
+    assert.ok(h.triaged.indexOf(historical.messageId)<h.triaged.indexOf(heldLive.messageId))
     await eventually(async()=>{const state=await checkpoint();return h.plugin.ingressControl.getStatus().state==='receiving'&&Date.parse(state.backfillThroughAt)>Date.parse(before.backfillThroughAt)&&!state.recoveryFromAt},'完整范围独立推进并恢复接收',t.signal)
     await h.absent(pending);await h.absent(quote)
     assert.deepEqual((await checkpoint()).deferredMessages,before.deferredMessages)
@@ -689,7 +697,7 @@ test('未知外发无 ACK 时同群实时和冷恢复历史仍结清分诊',{tim
     await eventually(()=>settled(ambiguous),'同一来源从可比较身份恢复并只结清一次',t.signal)
     assert.equal(h.plugin.health.deferredCount,2)
     assert.equal(h.sent.length,1);assert.equal((await h.app.tasks.store.query({kind:'notification.get',notificationId:notice.id})).state,'unknown')
-  }finally{h.release();await h.f.close()}
+  }finally{holdHistory.resolve();h.release();await h.f.close()}
 })
 
 const pluginConfig=(channelId,extra={})=>({...validateDingtalkConfig(dingtalkPublic(extra)),enabled:true,channelId})
@@ -1201,7 +1209,7 @@ async function ingressControlFixture(t,{type='chat-room',paused=false,listen=tru
   await state.historyGate?.promise
   return {exitCode:0,stdout:JSON.stringify({...completeHistory(state.messages.filter(message=>Date.parse(message.createTime)>=Date.parse(range.start)&&Date.parse(message.createTime)<=Date.parse(range.end))),...state.partial?{complete:false,partial:true}:{}}),stderr:''}
  },spawn(args,hooks){
-  const done=Promise.withResolvers(),stream={args,hooks,closed:false,ready(){hooks.onStderrLine('[event] ready')}}
+  const done=Promise.withResolvers(),stream={args,hooks,closed:false,ready(){hooks.onStderrLine('[event] ready')},exit(){done.resolve({exitCode:1})}}
   streams.push(stream);if(!state.manualReady)queueMicrotask(()=>stream.ready())
   return {done:done.promise,terminate(){stream.closed=true;done.resolve()}}
  }}
@@ -1209,6 +1217,7 @@ async function ingressControlFixture(t,{type='chat-room',paused=false,listen=tru
   const channels=f.host.ctx.channels
   channels.attachIngress(async input=>{
    const identity=channels.identity(input),prior=channels.groupContext(identity.sessionId)?.messageFacts?.[input.messageId]
+   await state.onReceive?.(input)
    state.receiveEntered?.resolve();await state.receiveGate?.promise
    await channels.registerConversation(input)
    if(!prior)received.push(input.messageId)
@@ -1227,7 +1236,7 @@ async function ingressControlFixture(t,{type='chat-room',paused=false,listen=tru
   get transport(){return f.host.ctx.channels.transports.get(channelId)},
   get file(){return dingtalkChannelPaths(f.host.ctx.runtimePaths,channelId).ingressFile},
   message:(messageId,createTime=new Date().toISOString())=>({messageId,conversationId,senderOpenDingTalkId:'peer',text:messageId,createTime}),
-  emit(message,stream=streams.at(-1)){stream.hooks.onStdoutLine(JSON.stringify({conversation_id:message.conversationId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,content:message.text,event_time:Date.parse(message.createTime)}))},
+  emit(message,stream=streams.at(-1),extra={}){stream.hooks.onStdoutLine(JSON.stringify({conversation_id:message.conversationId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,content:message.text,event_time:Date.parse(message.createTime),...extra}))},
   async pause(value){const result=await plugin.ingressControl.setPaused(value);state.paused=value;return result},
   async restart(){await f.close();await f.boot();await mount()},
   async login(){state.authenticated=true;await onLogin()},
@@ -1266,6 +1275,70 @@ for(const type of ['chat-room','chat'])test('DWS receive pause retains sends, su
  assert.deepEqual(h.received,['during-pause']);assert.equal(JSON.parse(await readFile(h.file,'utf8')).paused,false)
 })
 
+test('DWS 恢复优先接纳历史并提交水位，再按序接纳实时消息',{timeout:nativeTestTimeout(30000)},async t=>{
+ const h=await ingressControlFixture(t,{paused:true}),gate=Promise.withResolvers();t.after(()=>gate.resolve())
+ const old=h.message('history-old','2026-10-01T10:01:00.000+08:00'),next=h.message('history-next','2026-10-01T02:02:00.000Z')
+ h.state.messages=[next,{...old,senderOpenDingTalkId:undefined,senderId:'legacy-id'}];h.state.historyGate=gate;h.state.manualReady=true
+ await h.pause(false)
+ h.streams.at(-1).ready()
+ await eventually(()=>h.reads.length===1,'恢复历史读取已开始',t.signal)
+ h.emit(h.message('live-first'));h.emit(old);h.emit(h.message('live-second'))
+ await new Promise(resolve=>setImmediate(resolve))
+ assert.deepEqual(h.received,[],'历史尚未成功时实时消息不得进入来源接纳')
+ let watermarkAtLive,historySender
+ h.state.onReceive=async input=>{
+  if(input.messageId==='history-old')historySender??=input.senderId
+  if(input.messageId==='live-first')watermarkAtLive=JSON.parse(await readFile(h.file,'utf8')).backfillThroughAt
+ }
+ gate.resolve()
+ await eventually(()=>h.plugin.ingressControl.getStatus().state==='receiving','补完历史再开放实时',t.signal)
+ assert.deepEqual(h.received,['history-old','history-next','live-first','live-second'])
+ assert.equal(watermarkAtLive,h.reads[0].end,'先持久提交历史完成范围再接纳实时')
+ assert.equal(historySender,old.senderOpenDingTalkId,'历史与实时重叠时，采用明确且同消息的认证身份')
+})
+
+test('DWS 重连后旧历史结果与旧监听均不能放行实时',{timeout:nativeTestTimeout(30000)},async t=>{
+ const h=await ingressControlFixture(t,{paused:true}),first=Promise.withResolvers(),second=Promise.withResolvers()
+ t.after(()=>{first.resolve();second.resolve()})
+ h.state.manualReady=true;h.state.historyGate=first
+ await h.pause(false)
+ const old=h.streams[0];old.ready()
+ await eventually(()=>h.reads.length===1,'首代补拉已开始',t.signal)
+ old.exit()
+ await eventually(()=>h.streams.length===2,'重连新监听',t.signal)
+ h.state.historyGate=second;h.streams[1].ready()
+ h.emit(h.message('stale-message'),old)
+ h.emit(h.message('stale-recall'),old,{type:'user_im_message_recall_group',recaller_open_dingtalk_id:'peer'})
+ h.emit(h.message('new-live'))
+ first.resolve()
+ await eventually(()=>h.reads.length===2,'新监听重新补拉',t.signal)
+ assert.deepEqual(h.received,[])
+ h.state.messages=[h.message('historical',h.reads[0].start)]
+ second.resolve()
+ await eventually(()=>h.plugin.ingressControl.getStatus().state==='receiving','新一轮恢复完成',t.signal)
+ assert.deepEqual(h.received,['historical','new-live'])
+})
+
+test('DWS 恢复缓存饱和时重连并补读，不开放实时',{timeout:nativeTestTimeout(30000)},async t=>{
+ const h=await ingressControlFixture(t,{paused:true}),gate=Promise.withResolvers();t.after(()=>gate.resolve())
+ h.state.manualReady=true;h.state.historyGate=gate
+ await h.pause(false)
+ const old=h.streams[0];old.ready()
+ await eventually(()=>h.reads.length===1,'首轮补拉已开始',t.signal)
+ const at=new Date(Date.parse(h.reads[0].end)+1).toISOString(),overlap=h.message('burst-duplicate',at),latest=h.message('burst-last',at)
+ for(let index=0;index<1024;index++)h.emit(overlap,old)
+ h.emit(latest,old)
+ assert.equal(old.closed,true)
+ assert.equal(h.plugin.health.conversations[0].listener.lastError,'DWS_RECOVERY_LIVE_BUFFER_FULL')
+ assert.deepEqual(h.received,[])
+ await eventually(()=>h.streams.length===2,'缓冲饱和后新监听已建立',t.signal)
+ // 模拟历史范围补回断开覆盖的区间，证明不能用被丢弃的实时缓存冒充已接纳。
+ h.state.messages=[overlap,latest];h.streams[1].ready();gate.resolve()
+ await eventually(()=>h.plugin.ingressControl.getStatus().state==='receiving','重扫并提交后恢复实时',t.signal)
+ assert.equal(h.reads.length,2)
+ assert.deepEqual(h.received,['burst-duplicate','burst-last'])
+})
+
 test('DWS ordinary incremental history remains receiving while incomplete history still fails closed',{timeout:nativeTestTimeout(30000)},async t=>{
  const gate=Promise.withResolvers();t.after(()=>gate.resolve())
  const h=await ingressControlFixture(t)
@@ -1294,6 +1367,7 @@ test('DWS pause drains direct and subscribed ingress before serial resume and re
  await new Promise(resolve=>setImmediate(resolve));assert.equal(paused,false);assert.equal(resumed,false)
  await assert.rejects(h.plugin.acceptHistoryMessage(h.message('new-direct')),{code:'CHANNEL_INGRESS_PAUSED'})
  h.emit(h.message('stale-listener'),h.streams[0])
+ h.emit(h.message('stale-recall'),h.streams[0],{type:'user_im_message_recall_group',recaller_open_dingtalk_id:'peer'})
  h.state.receiveGate.resolve();await Promise.all([inFlight,pause,resume]);h.state.receiveGate=undefined
  await eventually(()=>h.plugin.ingressControl.getStatus().state==='receiving','serial resume recovers',t.signal)
  assert.deepEqual(h.received,['in-flight']);assert.equal(h.streams[0].closed,true)
@@ -1301,9 +1375,12 @@ test('DWS pause drains direct and subscribed ingress before serial resume and re
 })
 
 test('DWS recovery failure retains its bound over restart and never reports receiving',{timeout:20000},async t=>{
- const h=await ingressControlFixture(t,{paused:true}),message=h.message('missed','2026-10-01T00:00:00.000Z')
- h.state.messages=[message];h.state.partial=true
+ const h=await ingressControlFixture(t,{paused:true}),message=h.message('missed','2026-10-01T00:00:00.000Z'),gate=Promise.withResolvers()
+ t.after(()=>gate.resolve())
+ h.state.messages=[message];h.state.partial=true;h.state.historyGate=gate
  await h.pause(false)
+ await eventually(()=>h.reads.length===1,'partial history read has started',t.signal)
+ h.emit(h.message('live-during-partial'));gate.resolve()
  await eventually(()=>h.plugin.ingressControl.getStatus().state==='error','partial history is a failed recovery',t.signal)
  assert.equal(h.plugin.ingressControl.getStatus().errorCode,'DINGTALK_HISTORY_RECOVERY_FAILED');assert.deepEqual(h.received,[])
  const checkpoint=JSON.parse(await readFile(h.file,'utf8'));assert.ok(checkpoint.recoveryFromAt);assert.equal(h.plugin.health.ingress.recovering,true)
