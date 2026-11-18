@@ -1443,6 +1443,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   async function recover() {
     if (closed) return { failures: [] }
+    // Inspection must keep recording incidents while a previous recovery waits
+    // on a busy Router. Its cadence guard is claimed before the first await.
+    await inspectTasks()
     if (recovering) return recovering
     ctx.get?.('reflection')?.scan()
     return recovering = (async () => {
@@ -1454,7 +1457,6 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if(archives)for(const taskId of archives.errors.keys())archives.schedule(taskId)
       // A process restart cannot prove detached external operations stopped. Recover only native handles known absent;
       // unfinished operation rows remain unknown and fence execution until explicit readback reconciliation.
-      await inspectTasks()
       const pending = await query('recovery.pending')
       for (const task of pending.tasks) if (task.recovering && !ctx.agents.get(task.sessionId) && !ctx.piAuthority.describe(task.sessionId)){
         if(task.liveSupplements?.some(row=>row.state==='pending'&&row.leaseEpoch===task.leaseEpoch)){

@@ -29,7 +29,9 @@ identity, source provenance, dependency, cancellation and no-replay fences.
 Unknown sends, jobs and mutations require existing readback/reconciliation; neither
 inspection nor drain establishes external success or permits replay.
 
-Router recovery skips conversations already in flight. A failed inbox attempt
+Router recovery skips conversations already in flight. Inspection runs before
+the recovery single-flight join, so a busy Router cannot stop later scans from
+recording other incidents. A failed inbox attempt
 retains its events and persists the batch identity, attempt count and retry time
 on the existing conversation record. Automatic recovery uses 5-second and
 30-second backoff, then a 5-minute cooling period after the third failure before
@@ -64,6 +66,9 @@ No applicable `.agents/skills` directory was present in this checkout/workspace.
   live-tool exclusion, durable retry budget, same-session continuation, Router
   provider outage, and a Router wait decision surviving cold restart without
   another execution.
+- Final busy-Router integration: passed. A second orphaned execution is recorded
+  and fenced while the original Router model request is deliberately held; after
+  release, its durable event is processed without starting the orphan.
 - Original generation handoff crash windows: both passed after preserving legacy
   error propagation. Interrupted original-settle retry: passed. Material preparation
   failure: passed after retaining the existing known-not-started retry path.
