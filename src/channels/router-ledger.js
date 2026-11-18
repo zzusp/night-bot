@@ -141,6 +141,14 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     return result
   }
   function command(kind, a, commandId) {
+    if(kind==='router.recovery-attempt'){
+      const row=read('conversations',a.conversationId)
+      if(row.generation!==a.generation)fail('ROUTER_GENERATION_STALE')
+      const prior=row.recoveryRetry
+      const attempts=prior?.key===a.key&&!prior.exhausted?prior.attempts+1:1
+      row.recoveryRetry={key:required(a.key),attempts,nextAttemptAt:new Date(Date.now()+(attempts>=3?300000:5000*6**(attempts-1))).toISOString(),exhausted:attempts>=3}
+      write('conversations',row);return changed({conversation:row})
+    }
     if (kind === 'source.record-direct') {
       const input={...(a.source ?? a)},prior=read('sources',input.sourceId,true)
       const type=a.conversation?.type
@@ -233,6 +241,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       const result=a.kind==='task.resume'
         ?a.action.humanRequestId!==undefined?resume(task,action,source,a,commandId):reduce('task.control',{...action,control:'active'},commandId,{routerScheduling:true})
         :reduce(a.kind,action,commandId,{routerScheduling:true})
+      if(a.kind==='task.supplement'&&result.result.task.inspection){Object.assign(result.result.task.inspection,{pending:false,resolvedAt:new Date().toISOString(),resolvedOperationId:a.operationId});saveTask(result.result.task)}
       link(result.result.task,source,a.kind,a.quote)
       taskEvent({id:`task-changed:${commandId}`,kind:'task.changed',taskId:task.taskId,operationId:a.operationId,sourceId:source.sourceId,messageVersion:source.version})
       return result

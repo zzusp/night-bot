@@ -32,6 +32,7 @@
     "groups": [],
     "taskSessions": {
       "instanceId": "night-bot-local",
+      "inspectionIntervalMs": 300000,
       "reasoningMode": "inherit",
       "ownerActorId": "REPLACE_WITH_OWNER_ID",
       "webActorId": "REPLACE_WITH_OWNER_ID",

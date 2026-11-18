@@ -518,3 +518,57 @@ test('待分诊只认同会话同消息的最新版本，跨会话高版本不�
  await assert.rejects(f.command('triage.commit',{dispositions:[{sourceId:f.sourceId,messageVersion:1,needsHandling:true,reason:'Stale version'}]}),/ROUTER_SOURCE_STALE/)
  await f.reopen();assert.deepEqual(await f.query('triage.pending',{conversationId:f.conversationId,limit:15}),pending)
 })
+
+test('inspection survives restart, deduplicates drain changes, fences execution and respects Router revisions',async t=>{
+  const {inspectionVersion}=await import('../src/tasks/inspection.js')
+  const f=await fixture(t);await f.plan()
+  const claimed=(await f.command('task.claim',{taskId:'a'})).result
+  await f.reopen()
+  let task=await f.query('task.get',{taskId:'a'})
+  assert.equal(task.recovering,true)
+  await f.command('task.inspect',{taskId:'a',expected:inspectionVersion(task)})
+  await f.command('task.drained',{binding:await f.query('task.binding',{taskId:'a'})})
+  task=await f.query('task.get',{taskId:'a'})
+  await f.command('task.inspect',{taskId:'a',expected:inspectionVersion(task)})
+  await assert.rejects(f.command('task.claim',{taskId:'a'}),/TASK_INSPECTION_ROUTER_REQUIRED/)
+  assert.equal((await f.query('router.inbox',{conversationId:f.conversationId})).filter(e=>e.kind==='task.inspection').length,1)
+  await f.reopen()
+  assert.equal((await f.query('task.get',{taskId:'a'})).inspection.pending,true)
+  await f.command('router.task-action',{conversationId:f.conversationId,generation:f.generation,operationId:'recover-a',kind:'task.resume',
+    action:{taskId:'a',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}})
+  const next=await f.command('task.claim',{taskId:'a'})
+  assert.ok(next.result.binding.leaseEpoch>claimed.binding.leaseEpoch)
+  await assert.rejects(f.command('task.inspect',{taskId:'a',expected:inspectionVersion(task)}),/TASK_INSPECTION_STALE/)
+})
+
+test('inspection never wakes paused or cancelled tasks, or ordinary waits and long running tools',async t=>{
+  const {taskInspectionReason,inspectionVersion}=await import('../src/tasks/inspection.js')
+  const f=await fixture(t);await f.plan()
+  const task=await f.query('task.get',{taskId:'a'})
+  assert.equal(taskInspectionReason({...task,drained:false},{live:true}),undefined)
+  assert.equal(taskInspectionReason({...task,drained:false},{inflight:true}),undefined)
+  assert.equal(taskInspectionReason({...task,drained:false,sessionFailure:{code:'TASK_SESSION_DRAIN_FAILED'}},{live:true}),'drain-failed')
+  assert.equal(taskInspectionReason({...task,lastDecision:{action:'wait',summary:'wait for external event'}}),undefined)
+  for(const control of ['paused','cancelled']){
+    await f.command('task.control',{taskId:'a',control})
+    const current=await f.query('task.get',{taskId:'a'})
+    const result=await f.command('task.inspect',{taskId:'a',expected:inspectionVersion(current)})
+    assert.equal(result.result.inspected,false)
+  }
+  assert.equal((await f.query('router.inbox',{conversationId:f.conversationId})).filter(e=>e.kind==='task.inspection').length,0)
+})
+
+test('Router recovery retry budgets and exponential backoff persist across restart',async t=>{
+  const f=await fixture(t)
+  for(let i=1;i<=3;i++){
+    const before=Date.now()
+    await f.command('router.recovery-attempt',{conversationId:f.conversationId,generation:f.generation,key:'pending-batch'})
+    await f.reopen()
+    const retry=(await f.query('router.get',{conversationId:f.conversationId})).recoveryRetry
+    assert.equal(retry.attempts,i)
+    assert.equal(retry.exhausted,i===3)
+    assert.ok(Date.parse(retry.nextAttemptAt)>=before+(i===3?300000:5000*6**(i-1)))
+  }
+  await f.command('router.recovery-attempt',{conversationId:f.conversationId,generation:f.generation,key:'new-input'})
+  assert.equal((await f.query('router.get',{conversationId:f.conversationId})).recoveryRetry.attempts,1)
+})

@@ -1,3 +1,4 @@
+import {inspectionVersion,taskInspectionReason} from '../../src/tasks/inspection.js'
 import {sourceHistorySchema} from '../../src/channels/source-history.js'
 import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
 import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
@@ -789,7 +790,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         }
         unarchiveTaskRows(db,task.taskId);delete task.archivedAt;delete task.archivedBy
       }
-      if(routerScheduling){task.providerRecovery=null;task.technicalFailure=null}
+      if(routerScheduling){task.providerRecovery=null;task.technicalFailure=null;if(task.inspection)Object.assign(task.inspection,{pending:false,resolvedAt:stamp,resolvedOperationId:a.operationId})}
       const previousRequirementRevision=task.requirementRevision
       let reactivated=false
       if(a.sameGoal===true&&(kind!=='task.reopen'||['objective','title','requirements'].some(key=>a[key]!==undefined&&digest(a[key])!==digest(task[key]))))fail('ROUTER_SAME_GOAL_CONFLICT')
@@ -860,7 +861,27 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       task.lastDecision={action:'wait',summary:'已按操作者证据结清为可能存在部分效果的失败尝试；原调用禁止重放，后续会话由 Router 按当前任务状态调度。',evidence:reconciliation.receipt.payload.evidenceRefs.map(ref=>ref.path),limitations:['partial effects possible','no replay'],effectDisposition:'closed-with-possible-partial-effects'}
       saveTask(task);return changed({task,reconciliation})
     }
+    if(kind==='task.inspect'){
+      const task=get('dynamic_tasks',text(a.taskId,'taskId'))
+      if(digest(inspectionVersion(task))!==digest(a.expected))fail('TASK_INSPECTION_STALE')
+      const reason=taskInspectionReason(task)
+      if(!reason)return changed({task,inspected:false})
+      const key=digest([inspectionVersion(task),reason,task.technicalFailure??null,task.lastDecision??null])
+      if(task.inspection?.key===key)return changed({task,inspected:false})
+      // One unresolved incident per execution lease; drain changes are lifecycle
+      // bookkeeping, not a second incident. A Router action changes the revision.
+      if(task.inspection?.pending&&task.inspection.leaseEpoch===task.leaseEpoch
+        &&task.inspection.requirementRevision===task.requirementRevision&&task.inspection.controlRevision===task.controlRevision)return changed({task,inspected:false})
+      task.inspection={key,pending:true,reason,leaseEpoch:task.leaseEpoch,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,at:stamp}
+      saveTask(task)
+      routerLedger.taskEvent({id:'task-inspection:'+digest([task.taskId,key]),kind:'task.inspection',taskId:task.taskId,
+        reason,expected:inspectionVersion(task),brief:{objective:task.objective?.slice(0,1024),requirements:task.requirements?.slice(0,8).map(item=>String(item).slice(0,256)),progress:task.lastDecision?.summary?.slice(0,1024),
+          limitations:task.lastDecision?.limitations?.slice(0,8),technicalFailure:task.technicalFailure,
+          remaining:'Inspect current task and native execution/effect receipts before deciding continuation, investigation, waiting or user notification. Unknown effects must be reconciled; never replay an old invocation.'}})
+      return changed({task,inspected:true})
+    }
     if (kind === 'task.claim') {
+      if(get('dynamic_tasks',a.taskId).inspection?.pending)fail('TASK_INSPECTION_ROUTER_REQUIRED')
       if(!routerLedger.dependenciesReady(get('dynamic_tasks',a.taskId)))fail('ROUTER_DEPENDENCY_PENDING')
       if(get('dynamic_tasks',a.taskId).archiveRestore?.reviewRequired&&a.restoreReview!==true)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
       const task = get('dynamic_tasks', a.taskId)

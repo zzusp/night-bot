@@ -617,6 +617,7 @@ for(const mode of ['timeout','error'])test('default optional DWS defers unresolv
     const checkpoint=await eventually(async()=>{const state=JSON.parse(await readFile(h.ingressFile,'utf8'));return state.deferredMessages?.length&&state},'原消息身份已持久暂缓',t.signal)
     assert.deepEqual(checkpoint.deferredMessages,[{messageId:deferred.messageId,occurredAt:deferred.occurredAt}])
     assert.ok(Date.parse(deferred.occurredAt)<Date.parse(checkpoint.backfillThroughAt)-30000)
+    await eventually(()=>h.plugin.health.deferredCount===1,'deferred health projection follows its durable receipt',t.signal)
     assert.equal(h.plugin.health.deferredCount,1)
     await h.absent(deferred);assert.equal(h.plugin.health.healthy,true)
     const other={...deferred,groupId:'other-room',messageId:'other-scope-real-message'}

@@ -44,6 +44,7 @@ export function validateConfig(config,path) {
   const residentKeys=new Set(['host','port','groups','taskSessions','maxConcurrentTasks','fakeModel'])
   for(const key of Object.keys(resident))if(!residentKeys.has(key))throw failure('NIGHT_BOT_RESIDENT_CONFIG_UNSUPPORTED:'+key)
   if(resident.port!==undefined&&(!Number.isInteger(resident.port)||resident.port<0||resident.port>65535))throw failure('NIGHT_BOT_HTTP_PORT_INVALID')
+  for(const key of ['inspectionIntervalMs'])if(resident.taskSessions?.[key]!==undefined&&(!Number.isSafeInteger(resident.taskSessions[key])||resident.taskSessions[key]<1000||resident.taskSessions[key]>2147483647))throw failure('NIGHT_BOT_TASK_INTERVAL_INVALID:'+key)
   if (resident.fakeModel) throw new Error('NIGHT_BOT_FAKE_MODEL_IS_TEST_ONLY')
   if (resident.host && !['127.0.0.1','::1','localhost'].includes(resident.host)) throw new Error('NIGHT_BOT_HTTP_REQUIRES_LOOPBACK')
   for (const profile of Object.values(config.providers)) {
