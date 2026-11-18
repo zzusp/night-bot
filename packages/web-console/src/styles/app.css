@@ -283,14 +283,14 @@ html, body, #root { width: 100%; min-width: 0; }
 
 .channel-create-fields { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 16px; margin: 24px 0 0; padding: 0; border: 0; }
 .channel-create-field { min-width: 0; }
-.channel-create-field :is(input, select, textarea) { scroll-margin-block-start: 28px; }
+.channel-create-field :is(input, :is(select,.board-select), textarea) { scroll-margin-block-start: 28px; }
 .channel-create-wide { grid-column: 1 / -1; }
 .channel-create-field label { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 500; }
-.channel-create-field input, .channel-create-field select, .channel-create-field textarea { display: block; width: 100%; min-height: var(--board-control-height); padding: 8px 10px; border: 1px solid var(--board-border-strong); border-radius: var(--board-radius-control); color: var(--board-text); background: var(--board-surface); font: inherit; font-size: 13px; }
+.channel-create-field input, .channel-create-field :is(select,.board-select), .channel-create-field textarea { display: block; width: 100%; min-height: var(--board-control-height); padding: 8px 10px; border: 1px solid var(--board-border-strong); border-radius: var(--board-radius-control); color: var(--board-text); background: var(--board-surface); font: inherit; font-size: 13px; }
 .channel-create-field textarea { min-height: 120px; max-height: 240px; resize: none; overflow-y: auto; }
-.channel-create-field select { cursor: pointer; padding-right: 28px; }
-.channel-create-field :is(input, select, textarea):not(:disabled):not([readonly]):hover { border-color: var(--board-subtle); }
-.channel-create-field :is(input, select, textarea):disabled { cursor: not-allowed; opacity: .6; background-color: var(--board-panel); }
+.channel-create-field :is(select,.board-select) { cursor: pointer; padding-right: 28px; }
+.channel-create-field :is(input, :is(select,.board-select), textarea):not(:disabled):not([readonly]):hover { border-color: var(--board-subtle); }
+.channel-create-field :is(input, :is(select,.board-select), textarea):disabled { cursor: not-allowed; opacity: .6; background-color: var(--board-panel); }
 .channel-create-field input[readonly] { background: var(--board-panel); color: var(--board-muted); }
 .channel-create-field :is(input, textarea)::placeholder { color: var(--board-subtle); }
 .channel-create-field .field-error { min-height: 0; padding: 6px 0 0; }
@@ -315,8 +315,8 @@ html, body, #root { width: 100%; min-width: 0; }
 .settings-card-heading h2 { margin-bottom: 0; }
 .settings-card p { margin: 8px 0; overflow-wrap: anywhere; }
 .settings-card form { display: grid; gap: 10px; min-width: 0; }
-.settings-card input,.settings-card select { width: 100%; min-width: 0; min-height: 38px; padding: 8px 10px; color: var(--board-text); border: 1px solid var(--board-border-strong); background: var(--board-surface); border-radius: var(--board-radius-control); font: inherit; }
-.settings-card input:focus-visible,.settings-card select:focus-visible { outline: 2px solid var(--board-primary); outline-offset: 2px; }
+.settings-card input,.settings-card :is(select,.board-select) { width: 100%; min-width: 0; min-height: 38px; padding: 8px 10px; color: var(--board-text); border: 1px solid var(--board-border-strong); background: var(--board-surface); border-radius: var(--board-radius-control); font: inherit; }
+.settings-card input:focus-visible,.settings-card :is(select,.board-select):focus-visible { outline: 2px solid var(--board-primary); outline-offset: 2px; }
 .settings-card label { margin-top: 6px; font-weight: 500; }
 .settings-card li { margin: 10px 0; overflow-wrap: anywhere; }
 /* Model settings keep the route, connection and catalog on one flat surface. */
@@ -502,7 +502,7 @@ html, body, #root { width: 100%; min-width: 0; }
 .provider-selector-label,.provider-selector-controls { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .provider-selector-label { flex-wrap: wrap; }
 .provider-selector-label label { margin: 0; }
-.provider-selector-controls select { flex: 1; }
+.provider-selector-controls :is(select,.board-select) { flex: 1; }
 .provider-selector-controls > .board-button { flex-shrink: 0; }
 .provider-connection-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; margin: 24px 0; padding: 24px 0; border-block: 1px solid var(--board-border); }
 .provider-api,.provider-secret { min-width: 0; }
@@ -510,7 +510,7 @@ html, body, #root { width: 100%; min-width: 0; }
 .provider-api h3,.provider-secret h3 { font-size: 14px; font-weight: 600; margin: 0 0 16px; }
 .provider-api-form,.secret-form { align-content: start; }
 .provider-api-form label,.secret-form label { margin-top: 0; }
-.provider-api-form :is(input,select) + label { margin-top: 4px; }
+.provider-api-form :is(input,:is(select,.board-select)) + label { margin-top: 4px; }
 .secret-state { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; font-size: 12px; color: var(--board-muted); }
 .provider-form-actions { margin-top: 6px; }
 .provider-api .field-error,.provider-secret .field-error,.secret-settings .field-error,.model-catalog-form .field-error { min-height: 0; }

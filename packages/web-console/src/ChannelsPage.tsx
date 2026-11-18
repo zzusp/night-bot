@@ -1,3 +1,4 @@
+import {BoardSelect} from './components/BoardSelect';
 import {ReadErrorScope, ReadErrorOutlet, ReadErrorVisibility} from './components/ReadErrors';
 import { useEffect, useLayoutEffect, useId, useRef, useState, type FormEvent, type Ref } from 'react';
 import { RiChat3Line, RiGroupLine, RiArrowRightLine, RiGlobalLine, RiAddLine, RiCloseLine, RiCheckboxCircleFill, RiErrorWarningLine, RiQuestionLine } from '@remixicon/react';
@@ -54,7 +55,7 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, onIngress, ingress
   const [saved, setSaved] = useState(false);
   const [unknownSave, setUnknownSave] = useState<PendingSave | null>(null);
   const dialog = useRef<HTMLDialogElement>(null), form = useRef<HTMLFormElement>(null);
-  const typeSelect = useRef<HTMLSelectElement>(null);
+  const typeSelect = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLButtonElement | null>(null), returnFocusPending = useRef(false);
   const live = useRef(true), writing = useRef(false), composing = useRef(false);
   const prefix = useId();
@@ -210,10 +211,10 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, onIngress, ingress
       <div className="channel-create-body"><ReadErrorOutlet/>
         {!editing && <div className="channel-create-field">
           <label htmlFor={`${prefix}-type`}>渠道类型</label>
-          <select ref={typeSelect} id={`${prefix}-type`} value={type} disabled={!!busy || customBusy} onChange={event => setType(event.target.value)}>
+          <BoardSelect ref={typeSelect} id={`${prefix}-type`} value={type} disabled={!!busy || customBusy} onChange={event => setType(event.target.value)}>
             <option value="">选择渠道类型</option><option value="dingtalk-dws">钉钉</option>
             {plugins.data?.items.map(item => <option key={item.type} value={item.type}>{item.name}{item.configurable ? '' : '（未提供网页表单）'}</option>)}
-          </select>
+          </BoardSelect>
 
           {plugins.loading && !plugins.data && <Loading>正在发现渠道插件…</Loading>}
           {plugins.error && <Notice error={plugins.error} onRetry={plugins.refresh} stale={!!plugins.data}/>}
@@ -235,9 +236,9 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, onIngress, ingress
 
               {errors.channelId && <p id={`${prefix}-channelId-error`} className="field-error" role="alert">{errors.channelId}</p>}</div>
             <div className="channel-create-field"><label htmlFor={`${prefix}-conversationType`}>会话类型</label>
-              <select id={`${prefix}-conversationType`} value={draft.conversationType} onChange={event => { setDraft(previous => ({ ...previous, conversationType: event.target.value as DingtalkChannelInput['conversationType'], target: '', writesAuthorized: false })); setErrors(previous => ({ ...previous, target: undefined })); }}><option value="chat-room">群聊</option><option value="chat">私聊</option></select></div>
+              <BoardSelect id={`${prefix}-conversationType`} value={draft.conversationType} onChange={event => { setDraft(previous => ({ ...previous, conversationType: event.target.value as DingtalkChannelInput['conversationType'], target: '', writesAuthorized: false })); setErrors(previous => ({ ...previous, target: undefined })); }}><option value="chat-room">群聊</option><option value="chat">私聊</option></BoardSelect></div>
             <div className="channel-create-field"><label htmlFor={`${prefix}-targetKind`}>目标填写方式</label>
-              <select id={`${prefix}-targetKind`} value={draft.targetKind} onChange={event => { setDraft(previous => ({ ...previous, targetKind: event.target.value as DingtalkChannelInput['targetKind'], target: '', writesAuthorized: false })); setErrors(previous => ({ ...previous, target: undefined })); }}><option value="id">按 ID</option><option value="name">按名称</option></select></div>
+              <BoardSelect id={`${prefix}-targetKind`} value={draft.targetKind} onChange={event => { setDraft(previous => ({ ...previous, targetKind: event.target.value as DingtalkChannelInput['targetKind'], target: '', writesAuthorized: false })); setErrors(previous => ({ ...previous, target: undefined })); }}><option value="id">按 ID</option><option value="name">按名称</option></BoardSelect></div>
             <div className="channel-create-field"><label htmlFor={`${prefix}-target`}>{targetLabel}</label>
               <input {...field('target')} autoComplete="off" value={draft.target} onChange={event => edit('target', event.target.value)} />
 
@@ -251,10 +252,10 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, onIngress, ingress
 
               {errors.prompt && <p id={`${prefix}-prompt-error`} className="field-error" role="alert">{errors.prompt}</p>}</div>
             <div className="channel-create-field channel-create-wide"><label htmlFor={`${prefix}-writesAuthorized`}>外发授权</label>
-              <select {...field('writesAuthorized')} value={draft.writesAuthorized === true ? 'true' : 'false'} disabled={locked || targetEdited}
+              <BoardSelect {...field('writesAuthorized')} value={draft.writesAuthorized === true ? 'true' : 'false'} disabled={locked || targetEdited}
                 onChange={event => setDraft(previous => ({ ...previous, writesAuthorized: event.target.value === 'true' }))}>
                 <option value="false">关闭：仅接收消息</option><option value="true">开启：允许回复和通知</option>
-              </select>
+              </BoardSelect>
               <p id={`${prefix}-writesAuthorized-help`} className="field-help">{targetEdited
                 ? '目标已修改，外发授权已关闭；请先保存目标，再重新编辑授权。'
                 : '允许 Bot 向此会话发送回复、通知和附件，包括已排队未发送的通知。支持在线应用，是否生效以保存结果为准；关闭不会撤回已发送的消息。'}</p></div>

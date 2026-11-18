@@ -1,3 +1,4 @@
+import {selectOption} from './select-control';
 import {test,expect,type Page} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {FIXTURE_TOKEN} from './preview.mjs';
@@ -7,9 +8,9 @@ async function login(page:Page){
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
  await expect(page.getByRole('tab',{name:'模型与 API',exact:true})).toHaveAttribute('aria-selected','true');
 }
-test('设置分类保留草稿、原生选择器与凭据保护',async({page})=>{
+test('设置分类保留草稿、共享选择器与凭据保护',async({page})=>{
  await login(page);
- await page.getByLabel('模型路由',{exact:true}).selectOption('fixture-model');
+ await selectOption(page.getByLabel('模型路由',{exact:true}),'fixture-model');
  await page.getByLabel('API 地址',{exact:true}).fill('https://draft.example.invalid/v1');
  await page.getByRole('tab',{name:'模型分工',exact:true}).click();
  await expect(page.getByLabel('一级分诊模型',{exact:true})).toBeVisible();
@@ -30,7 +31,7 @@ test('设置分类保留草稿、原生选择器与凭据保护',async({page})=>
 });
 test('设置工作台浅深色、窄屏和各分类实拍',async({page})=>{
  await login(page);
- await page.getByLabel('模型路由',{exact:true}).selectOption('fixture-model');
+ await selectOption(page.getByLabel('模型路由',{exact:true}),'fixture-model');
  for(const theme of ['light','dark']){
   await page.evaluate(value=>document.documentElement.dataset.theme=value,theme);
   for(const width of [1440,390]){

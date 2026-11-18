@@ -4,9 +4,10 @@ import AxeBuilder from '@axe-core/playwright';
 import {FIXTURE_TOKEN} from './preview.mjs';
 
 const manager=(page:Page)=>page.getByRole('region',{name:'模型与 API',exact:true});
-async function login(page:Page){await page.goto('/#/settings');await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);await page.getByRole('button',{name:'连接工作空间',exact:true}).click();await expect(page.getByLabel('模型路由',{exact:true})).toBeVisible();await page.getByLabel('模型路由',{exact:true}).selectOption('fixture-model')}
+async function login(page:Page){await page.goto('/#/settings');await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);await page.getByRole('button',{name:'连接工作空间',exact:true}).click();await expect(page.getByLabel('模型路由',{exact:true})).toBeVisible();await selectOption(page.getByLabel('模型路由',{exact:true}),'fixture-model')}
 async function add(page:Page,id:string,name=''){await manager(page).getByRole('button',{name:'添加模型',exact:true}).click();await page.getByLabel('模型 ID',{exact:true}).fill(id);await page.getByLabel('模型显示名称（可选）',{exact:true}).fill(name);await manager(page).getByRole('button',{name:'保存模型',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'确认保存',exact:true}).click();await expect(manager(page).getByText('模型已添加。正常重启后生效，不中断当前执行。',{exact:true})).toBeVisible();await expect(manager(page).getByRole('button',{name:'添加模型',exact:true})).toBeEnabled()}
-async function role(page:Page,label:string,id:string){await page.getByRole('tab',{name:'模型分工',exact:true}).click();await page.getByLabel(label+'模型路由',{exact:true}).selectOption('fixture-model');await page.getByLabel(label+'模型',{exact:true}).selectOption(id);await page.getByRole('button',{name:'保存'+label+'配置',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'确认保存',exact:true}).click();await expect(page.getByRole('button',{name:'保存'+label+'配置',exact:true})).toBeEnabled();await expect(page.getByLabel(label+'模型',{exact:true})).toHaveValue(id);await page.getByRole('tab',{name:'模型与 API',exact:true}).click()}
+async function role(page:Page,label:string,id:string){await page.getByRole('tab',{name:'模型分工',exact:true}).click();await selectOption(page.getByLabel(label+'模型路由',{exact:true}),'fixture-model');await selectOption(page.getByLabel(label+'模型',{exact:true}),id);await page.getByRole('button',{name:'保存'+label+'配置',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'确认保存',exact:true}).click();await expect(page.getByRole('button',{name:'保存'+label+'配置',exact:true})).toBeEnabled();await expect(page.getByLabel(label+'模型',{exact:true})).toHaveAttribute('data-value',id);await page.getByRole('tab',{name:'模型与 API',exact:true}).click()}
+
 async function remove(page:Page,id:string){await manager(page).getByRole('button',{name:'删除模型 '+id,exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'确认删除',exact:true}).click();await expect(manager(page).getByRole('button',{name:'删除模型 '+id,exact:true})).toHaveCount(0);await expect(manager(page).getByRole('button',{name:'添加模型',exact:true})).toBeEnabled()}
 
 test('同一路由模型新增编辑删除、三角色真实保存与引用保护',async({page})=>{
@@ -16,7 +17,7 @@ test('同一路由模型新增编辑删除、三角色真实保存与引用保�
  await expect(manager(page).getByRole('button',{name:'删除模型 catalog-first',exact:true})).toBeDisabled();
  await manager(page).getByRole('button',{name:'编辑模型 catalog-first',exact:true}).click();await expect(page.getByLabel('模型 ID',{exact:true})).toHaveAttribute('readonly','');
  await page.getByLabel('模型显示名称（可选）',{exact:true}).fill('已使用模型的新名称');await manager(page).getByRole('button',{name:'保存模型',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'确认保存',exact:true}).click();await expect(manager(page).getByText('模型已保存。正常重启后生效，不中断当前执行。',{exact:true})).toBeVisible();
- await page.reload();await expect(page.getByLabel('一级分诊模型',{exact:true})).toHaveValue('catalog-first');await expect(manager(page).getByText('已使用模型的新名称',{exact:true})).toBeVisible();
+ await page.reload();await page.getByRole('tab',{name:'模型分工',exact:true}).click();await expect(page.getByLabel('一级分诊模型',{exact:true})).toHaveAttribute('data-value','catalog-first');await page.getByRole('tab',{name:'模型与 API',exact:true}).click();await expect(manager(page).getByText('已使用模型的新名称',{exact:true})).toBeVisible();
  for(const label of ['一级分诊','Router','任务执行'])await role(page,label,'fixture');
  await expect(manager(page).getByRole('button',{name:'删除模型 catalog-first',exact:true})).toBeEnabled();
  await manager(page).getByRole('button',{name:'编辑模型 catalog-second',exact:true}).click();await page.getByLabel('模型 ID',{exact:true}).fill('catalog-renamed');await manager(page).getByRole('button',{name:'保存模型',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'确认保存',exact:true}).click();await expect(manager(page).getByRole('button',{name:'编辑模型 catalog-renamed',exact:true})).toBeEnabled();
@@ -46,8 +47,8 @@ test('图片能力保存回读不一致时保留草稿并禁止自动重写',asy
  await page.route('**/api/settings/model-catalog',async route=>{const response=await route.fetch();if(route.request().method()==='PUT'){committed=true;writes++;return route.fulfill({response})}const data=await response.json();if(committed){const entry=data.providers.find((p:{provider:string})=>p.provider==='fixture-model').models.find((m:{id:string})=>m.id==='image-readback-fixture');if(entry)entry.input=['text']}await route.fulfill({response,json:data})});
  await manager(page).getByRole('button',{name:'添加模型',exact:true}).click();await page.getByLabel('模型 ID',{exact:true}).fill('image-readback-fixture');await selectOption(page.getByLabel('输入能力',{exact:true}),'text,image');
  await manager(page).getByRole('button',{name:'保存模型',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'确认保存',exact:true}).click();
- await expect(page.getByLabel('输入能力',{exact:true})).toHaveValue('text,image');await expect(page.getByLabel('输入能力',{exact:true})).toBeDisabled();await expect(manager(page)).toContainText('草稿已保留');expect(writes).toBe(1);
- await page.unroute('**/api/settings/model-catalog');await manager(page).getByRole('button',{name:'重新读取路由配置并替换草稿',exact:true}).click();await expect(manager(page).getByRole('button',{name:'添加模型',exact:true})).toBeEnabled();await remove(page,'image-readback-fixture');
+ await expect(page.getByLabel('输入能力',{exact:true})).toHaveAttribute('data-value','text,image');await expect(page.getByLabel('输入能力',{exact:true})).toBeDisabled();await expect(manager(page)).toContainText('草稿已保留');expect(writes).toBe(1);
+ await page.unroute('**/api/settings/model-catalog');await manager(page).getByRole('button',{name:'重新读取配置',exact:true}).click();await page.locator('dialog.settings-confirm').getByRole('button',{name:'替换草稿',exact:true}).click();await expect(manager(page).getByRole('button',{name:'添加模型',exact:true})).toBeEnabled();await remove(page,'image-readback-fixture');
 });
 
 test('模型字段校验和输入法不提交，取消及离开保留清晰草稿边界',async({page})=>{
@@ -101,7 +102,7 @@ test('输入与推理能力同次保存、独立恢复默认并保留刷新草�
  await page.getByLabel('模型 ID',{exact:true}).fill('combined-capability-fixture');
  const input=page.getByLabel('输入能力',{exact:true});
  await selectOption(input,'text,image');
- await page.getByRole('radio',{name:'自定义',exact:true}).check();
+ await page.getByRole('radio',{name:'自定义',exact:true}).locator('..').click();
  const save=async()=>{
   await manager(page).getByRole('button',{name:'保存模型',exact:true}).click();
   await page.locator('dialog.settings-confirm').getByRole('button',{name:'确认保存',exact:true}).click();
@@ -111,7 +112,7 @@ test('输入与推理能力同次保存、独立恢复默认并保留刷新草�
  const edit=()=>manager(page).getByRole('button',{name:'编辑模型 combined-capability-fixture',exact:true}).click();
  await save();expect((await read()).configuredInput).toEqual(['text','image']);expect((await read()).configuredReasoningEfforts).toEqual({off:null,low:'low',medium:'medium',high:'high'});
  await edit();await selectOption(input,'model-default');await save();expect((await read()).configuredInput).toBeNull();expect((await read()).reasoningEfforts).toEqual(['off','low','medium','high']);
- await edit();await selectOption(input,'image');await page.getByRole('radio',{name:'跟随默认',exact:true}).check();await save();expect((await read()).configuredInput).toEqual(['image']);expect((await read()).configuredReasoningEfforts).toBeNull();
+ await edit();await selectOption(input,'image');await page.getByRole('radio',{name:'跟随默认',exact:true}).locator('..').click();await save();expect((await read()).configuredInput).toEqual(['image']);expect((await read()).configuredReasoningEfforts).toBeNull();
  await edit();await selectOption(input,'text');await manager(page).getByRole('button',{name:'重新读取配置',exact:true}).click();
  await expect(page.locator('dialog.settings-confirm')).toContainText('未保存的修改');
  await page.locator('dialog.settings-confirm').getByRole('button',{name:'取消',exact:true}).click();await expect(input).toHaveAttribute('data-value','text');

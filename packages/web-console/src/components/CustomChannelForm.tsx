@@ -1,3 +1,4 @@
+import {BoardSelect} from './BoardSelect';
 import {useEffect, useId, useRef, useState, type FormEvent} from 'react';
 import {api, ApiError, operationErrorText, type ChannelSettings} from '../api';
 import {Button} from './BoardPrimitives';
@@ -90,11 +91,11 @@ export function CustomChannelForm({plugin, snapshot, initial, onSaved, onBusyCha
         <div className="channel-create-field channel-create-wide"><label htmlFor={`${prefix}-channelId`}>渠道标识</label><input {...field('channelId')} value={channelId} readOnly={!!initial} maxLength={64} autoComplete="off" onChange={event => setChannelId(event.target.value)}/>{fieldError('channelId')}</div>
         {plugin.fields?.map(declaration => <div className="channel-create-field channel-create-wide" key={declaration.name}>
           <label htmlFor={`${prefix}-${declaration.name}`}>{declaration.label}{declaration.required ? '（必填）' : ''}</label>
-          {declaration.type === 'boolean' ? <select {...field(declaration.name)} value={values[declaration.name] === true ? 'true' : 'false'} onChange={event => setValues({...values, [declaration.name]: event.target.value === 'true'})}><option value="false">关闭</option><option value="true">开启</option></select>
+          {declaration.type === 'boolean' ? <BoardSelect {...field(declaration.name)} value={values[declaration.name] === true ? 'true' : 'false'} onChange={event => setValues({...values, [declaration.name]: event.target.value === 'true'})}><option value="false">关闭</option><option value="true">开启</option></BoardSelect>
             : <input {...field(declaration.name)} value={String(values[declaration.name] ?? '')} maxLength={2048} autoComplete="off" onChange={event => setValues({...values, [declaration.name]: event.target.value})}/>}
           {declaration.type === 'credential-ref' && <p className="field-help" id={`${prefix}-${declaration.name}-help`}>填写凭据引用名，勿填真实密钥。</p>}{fieldError(declaration.name)}
         </div>)}
-        <div className="channel-create-field channel-create-wide"><label htmlFor={`${prefix}-enabled`}>启用渠道</label><select id={`${prefix}-enabled`} value={enabled ? 'true' : 'false'} onChange={event => setEnabled(event.target.value === 'true')}><option value="false">保持停用</option><option value="true">允许插件接入</option></select></div>
+        <div className="channel-create-field channel-create-wide"><label htmlFor={`${prefix}-enabled`}>启用渠道</label><BoardSelect id={`${prefix}-enabled`} value={enabled ? 'true' : 'false'} onChange={event => setEnabled(event.target.value === 'true')}><option value="false">保持停用</option><option value="true">允许插件接入</option></BoardSelect></div>
       </fieldset>
       <div className="channel-create-actions"><Button type="submit" variant="primary" disabled={locked} busy={busy}>保存自定义渠道</Button>
         {unknown && <Button disabled={busy} onClick={() => void read()}>核对保存状态</Button>}

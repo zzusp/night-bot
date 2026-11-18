@@ -191,7 +191,7 @@ Web 是可选可视化入口：关闭页面不停止已接纳任务，禁用插�
 | Capability | Canonical owner | Source of truth | Allowed variants | Verification |
 |---|---|---|---|---|
 | Form | `src/App.tsx` 的 Login、`src/components/BoardPrimitives.tsx` 的 Composer，权限控件与 `src/ChannelsPage.tsx` 的渠道新增与编辑、`src/components/CustomChannelForm.tsx` 的插件字段表单复用共享 Button、原生表单/dialog | 本文与服务端请求契约 | token-login / message-composer / operator-permission / channel-create-edit | `test/browser.spec.ts` 登录、IME、原文输入；`test/channels-create.spec.ts` 新增、编辑与版本核对 |
-| Select/Listbox | 原生 `select`，渠道配置字段样式由 `src/styles/app.css` 统一 | 本文原生选择器规则 | native（操作系统负责弹出选项） | `test/visual-consistency.spec.ts` 键盘与展开态 |
+| Select/Listbox | `components/BoardSelect.tsx` + Radix Select | 本文统一下拉框规则 | authored（共享触发器与浮层） | `test/board-select.spec.ts` 键盘与展开态 |
 | Scrollbar | `src/styles/boardui.css` 全局样式 | 本文 Layout 与运行时 token | 应用纵向区域 / 表格与代码横向区域 | computed style、窄屏、axe |
 | Toast | `ReadErrors.tsx` 读取汇总、`ActionNotification.tsx` 操作回执、局部复制状态 | 本文反馈与恢复规则 | 右下持久读取错误 / 右上操作回执 / 局部复制回执 | `test/channel-ingress.spec.ts`、`test/browser.spec.ts` |
 | CRUD | `src/api.ts`、`src/ChatPage.tsx`、`src/ChannelsPage.tsx` 及认证操作者权限控件 | 本文发送、权限审批、渠道新增与编辑流程及 Host 回执 | 对话发送 / 模式保存 / 单调用审批 / 钉钉配置新增与编辑；任务与渠道消息不提供删除或代发，渠道输入框暂时隐藏 | `test/server.test.js`、`test/host.test.js`、浏览器测试 |
@@ -632,7 +632,7 @@ Tokens弧段圆角（2026-11-14）：圆端帽收进每项真实角度范围，�
 记忆与 Skills 的「使用次数」「最近使用」「最近更新」表头按钮切换升降序，默认最近更新降序，箭头及 aria-sort 同步表达状态；窄屏在列表上保留三个同样的排序按钮。不新增说明性文字。排序条件保存在 URL，翻页及类型切换保留，改变排序回第一页；摘要卡与页面壳不重建。服务端使用 Web 文件缓存的轻量元数据索引对该类型全量排序，再仅读取当页 10 条 DTO；不让浏览器全量加载，不新增 Bot 存储。次数口径与当前单行显示相同，缺失两方向均在末尾，同值按稳定身份排序；时间比较原始时间戳，不比较格式化文案。旧版可重建 Web 缓存首次重新采集，不迁移业务数据。
 
 ### 设置工作台（2026-11-15）
-设置页借鉴 BoardUI 的 settings-modal 导航/分组、Input 与 Tabs 层级，不复制其团队、订阅与存储产品语义。当前入口与容器由下文「设置弹窗与部署信息」取代，保留分类导航与右侧表单结构；760px以下转为横向可滚动分类。分类为模型与 API、模型分工、助手外观、工作日志、访问凭据，默认进入模型与 API。原 API、Key、模型列表仍在同一配置面；三角色以独立配置行卡显示，不改变保存边界。切换分类保留已挂载表单和草稿，不触发保存或丢弃；离开整页仍沿用未保存/保存中保护。分类支持方向键、Home/End及标准tab/tabpanel语义。原生select、共享Button/Confirm/Notice及boardui.css颜色、字体和圆角仍是唯一实现owner；除下文只读部署元数据接口外，不增加设置写接口、模拟业务数据、自动网络验证或凭据持久化。
+设置页借鉴 BoardUI 的 settings-modal 导航/分组、Input 与 Tabs 层级，不复制其团队、订阅与存储产品语义。当前入口与容器由下文「设置弹窗与部署信息」取代，保留分类导航与右侧表单结构；760px以下转为横向可滚动分类。分类为模型与 API、模型分工、助手外观、工作日志、访问凭据，默认进入模型与 API。原 API、Key、模型列表仍在同一配置面；三角色以独立配置行卡显示，不改变保存边界。切换分类保留已挂载表单和草稿，不触发保存或丢弃；离开整页仍沿用未保存/保存中保护。分类支持方向键、Home/End及标准tab/tabpanel语义。共享BoardSelect、共享Button/Confirm/Notice及boardui.css颜色、字体和圆角仍是唯一实现owner；除下文只读部署元数据接口外，不增加设置写接口、模拟业务数据、自动网络验证或凭据持久化。
 ### 定时任务列表（2026-11-15）
 定时任务复用任务页的筛选栏、表格边界、任务图标、字重、行高和分页。桌面四列为任务、状态、执行计划、下次触发；停用分类的时间标为「原定触发」，不暗示成功完成或仍会执行。计划与时间直接来自 native catalog，不计算假下次时间。窄屏转为每项名称与状态在前、计划与时间在后的紧凑行，保留全部内容与字段标签。仅保留现有只读查询、启用/停用筛选、刷新和服务端每页20条分页，不制造详情/编辑/删除入口，不改 Bot 原生调度工具。未知、读取失败、旧快照与撤权沿用既有语义。
 
@@ -663,3 +663,6 @@ AI 排查中用与问题表单同宽、同轴的紧凑白色卡片展示共享 S
 模型配置右上角重读使用低权重刷新图标（可访问名称与 tooltip：重新读取配置）；无草稿直接重读，有未保存草稿或结果未知锁时由共享 Confirm 提醒替换，取消保留草稿。
 
 模型编辑按 ID、名称、输入能力、推理能力排列；两项能力同次保存但独立继承。输入能力复用 BoardSelect（与统一下拉框分支同一实现），仅跟随默认、仅文本、文本与图片、仅图片四项，不显示长驻说明。角色分工只选择实际推理深度；保留草稿保护与保存后重启回执。
+
+### 统一下拉框（2026-11-18）
+所有单选下拉统一使用 BoardSelect / Radix Select，取代原生 select 弹出层。沿用 BoardUI 中性表面、10px 圆角、细边框与右侧小箭头；弹层与触发器同宽、5px 间距，选中项使用勾选标记，悬停与键盘焦点使用浅灰背景。浮层在当前模态 dialog 内 portal，保持模态焦点范围，碰撞时翻转，最多320px并支持滚动；窄屏保留12px边距。保留标签关联、无效/禁用状态、方向键、Home/End、字符定位、Enter/Space、Escape与关闭后焦点恢复。只替换共享展示，不改变选项与保存边界。

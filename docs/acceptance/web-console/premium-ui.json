@@ -28,6 +28,6 @@
     "failurePaths": "packages/web-console/test/server.test.js"
   },
   "ownership": {
-    "Select/Listbox": "native"
+    "Select/Listbox": "BoardSelect / Radix Select"
   }
 }

@@ -1,3 +1,4 @@
+import {selectOption} from './select-control';
 import {test, expect, type Page} from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {FIXTURE_TOKEN} from './preview.mjs'
@@ -30,12 +31,12 @@ for (const theme of ['light', 'dark']) {
     await expect(nav).toHaveCSS('text-decoration-line', 'none')
     await page.getByRole('button', {name: '添加渠道', exact: true}).click()
     const dialog = page.getByRole('dialog', {name: '添加渠道'})
-    await dialog.getByLabel('渠道类型', {exact: true}).selectOption('dingtalk-dws')
+    await selectOption(dialog.getByLabel('渠道类型', {exact: true}),'dingtalk-dws')
     const type = dialog.getByLabel('会话类型', {exact: true})
     await type.focus()
     await type.press('ArrowDown')
     await type.press('Enter')
-    await expect(type).toHaveValue('chat')
+    await expect(type).toHaveAttribute('data-value','chat')
     await type.press('Alt+ArrowDown')
     await page.screenshot({path: test.info().outputPath(`${theme}-native-select-open.png`)})
     await type.press('Escape')

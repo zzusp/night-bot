@@ -1,3 +1,4 @@
+import {selectOption} from './select-control';
 import {test, expect, type Page} from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {FIXTURE_TOKEN} from './preview.mjs'
@@ -12,7 +13,7 @@ async function open(page: Page) {
 }
 async function custom(page: Page, id: string) {
   const dialog = await open(page)
-  await dialog.getByLabel('渠道类型', {exact: true}).selectOption('fixture-custom')
+  await selectOption(dialog.getByLabel('渠道类型', {exact: true}),'fixture-custom')
   const form = dialog.locator('.custom-channel-form:visible')
   await form.getByLabel('渠道标识', {exact: true}).fill(id)
   await form.getByLabel('目标会话（必填）', {exact: true}).fill('generic-test-room')
@@ -27,8 +28,8 @@ test('添加渠道发现真实插件并保存非钉钉配置，保留全局设�
   const {dialog, form} = await custom(page, 'generic-entry-created')
   await expect(page.getByRole('link', {name: '自定义渠道设置', exact: true})).toHaveCount(0)
   await expect(page.locator('.workspace-topbar button[aria-label="设置"]')).toHaveCount(1)
-  await expect(form.getByLabel('启用渠道', {exact: true})).toHaveValue('false')
-  await expect(form.getByLabel('监听（必填）', {exact: true})).toHaveValue('false')
+  await expect(form.getByLabel('启用渠道', {exact: true})).toHaveAttribute('data-value','false')
+  await expect(form.getByLabel('监听（必填）', {exact: true})).toHaveAttribute('data-value','false')
   let dingtalkWrites = 0
   await page.route('**/api/channels/dingtalk', route => { dingtalkWrites++; return route.abort() })
   const request = page.waitForRequest(request => request.url().endsWith('/api/settings/channels') && request.method() === 'POST')
@@ -73,20 +74,20 @@ test('发现慢、失败、空列表和无表单类型不假装支持；重试�
   mode = 'empty'; await dialog.getByRole('button', {name: '重新发现插件', exact: true}).click()
   await expect(dialog).toContainText('暂无自定义插件')
   mode = 'supported'; await dialog.getByRole('button', {name: '重新发现插件', exact: true}).click()
-  await dialog.getByLabel('渠道类型', {exact: true}).selectOption('vendor-chat')
+  await selectOption(dialog.getByLabel('渠道类型', {exact: true}),'vendor-chat')
   await expect(dialog).toContainText('此插件不支持网页配置')
   await expect(dialog.getByRole('button', {name: /^保存/})).toHaveCount(0)
-  await dialog.getByLabel('渠道类型', {exact: true}).selectOption('fixture-custom')
+  await selectOption(dialog.getByLabel('渠道类型', {exact: true}),'fixture-custom')
   await expect(dialog.getByRole('button', {name: '保存自定义渠道', exact: true})).toBeVisible()
 })
 
 test('类型切换与关闭保留草稿，中文IME和校验安全，窄屏深色键盘及axe', async ({page}) => {
   const {dialog, form} = await custom(page, 'generic-draft')
   const type = dialog.getByLabel('渠道类型', {exact: true})
-  await type.selectOption('dingtalk-dws')
+  await selectOption(type,'dingtalk-dws')
   const dingtalkId = dialog.getByLabel('渠道标识', {exact: true}).filter({visible: true})
   await dingtalkId.fill('ding-draft')
-  await type.selectOption('fixture-custom'); await expect(form.getByLabel('渠道标识', {exact: true})).toHaveValue('generic-draft')
+  await selectOption(type,'fixture-custom'); await expect(form.getByLabel('渠道标识', {exact: true})).toHaveValue('generic-draft')
   await form.getByLabel('渠道标识', {exact: true}).dispatchEvent('keydown', {key: 'Enter', isComposing: true, keyCode: 229})
   await expect(page.getByRole('dialog', {name: '保存自定义渠道', exact: true})).toHaveCount(0)
   await form.getByLabel('渠道标识', {exact: true}).fill('BAD ID')
@@ -94,8 +95,8 @@ test('类型切换与关闭保留草稿，中文IME和校验安全，窄屏深�
   await expect(form.getByLabel('渠道标识', {exact: true})).toBeFocused()
   await expect(form.getByLabel('渠道标识', {exact: true})).toHaveAttribute('aria-invalid', 'true')
   await page.keyboard.press('Escape'); await page.getByRole('button', {name: '添加渠道', exact: true}).click()
-  await expect(type).toHaveValue('fixture-custom'); await expect(form.getByLabel('渠道标识', {exact: true})).toHaveValue('BAD ID')
-  await type.selectOption('dingtalk-dws'); await expect(dingtalkId).toHaveValue('ding-draft'); await type.selectOption('fixture-custom')
+  await expect(type).toHaveAttribute('data-value','fixture-custom'); await expect(form.getByLabel('渠道标识', {exact: true})).toHaveValue('BAD ID')
+  await selectOption(type,'dingtalk-dws'); await expect(dingtalkId).toHaveValue('ding-draft'); await selectOption(type,'fixture-custom')
   for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme)
     await page.setViewportSize({width: 390, height: 844})
@@ -109,7 +110,7 @@ test('类型切换与关闭保留草稿，中文IME和校验安全，窄屏深�
 
 test('自定义启用明确确认，保存中关闭被锁定，未知结果只读核对且不重发', async ({page}) => {
   const {dialog, form} = await custom(page, 'generic-unknown')
-  await form.getByLabel('启用渠道', {exact: true}).selectOption('true')
+  await selectOption(form.getByLabel('启用渠道', {exact: true}),'true')
   let writes = 0, release!: () => void
   const gate = new Promise<void>(resolve => {release = resolve})
   await page.route(endpoint, async route => {
