@@ -82,3 +82,9 @@ real single-session completion and reject unreported files and path/link escapes
 
 The task directory is independently sealed/backed up through [TASK-ARCHIVE](TASK-ARCHIVE.md).
 SQLite stays authoritative; restore is paused and cannot authorize effect replay.
+
+### 任务期间面向人的对外输出
+
+执行会话通过 `task:reply-scope` 加载共享自然表达原则及任务侧适用范围。它同时约束过程反馈、最终渠道回复、Issue/PR 描述与评论、代码审查回复，以及通过工具、CLI、API 提交的这些正文；无需额外润色模型。围绕当前读者和线程写具体结论、进度或问题，保留版本、环境、验证证据、风险和未验证边界。仓库模板、必要技术结构、复现步骤与明确要求的详细报告继续保留，机器参数、协议、原始记录和审计不改写。
+
+沟通规则不授予外发权限：草稿和发布分开，发布仍核对目标、可访问范围、秘密和当前授权；未知提交结果先回读，不为了改措辞重复发帖。渠道引用/署名机制不自动扩展到 GitHub 评论。测试验证正式执行请求及后续工具轮次携带规则，并回归既有效果/权限边界；不向真实 Issue/PR 发送测试评论，脚本模型不能证明真实模型每次正文都合规或自然。

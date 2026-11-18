@@ -71,17 +71,25 @@ test('one task preserves its effect through a held missing result and explicit c
   const nextHost=await createHost(nextConfig,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});const next=await serviceFor({host:nextHost,config:nextConfig},false);try{await next.service.recover();await nextHost.ctx.reflection.whenIdle();assert.equal((await next.store.query({kind:'task.get',taskId:task.taskId})).status,'completed');const header=(await nextHost.ctx.sessionPersistence.stat(sessionId)).header;assert.ok(header.cwd.startsWith(relocated));assert.equal(await readFile(join(header.cwd,'work/proof.txt'),'utf8'),'single-session-proof');assert.equal(reviews,1)}finally{await next.close();await nextHost.close()}
 })
 
-test('the official task request keeps execution focused on the objective and limits questions to real blockers',{timeout:nativeTestTimeout(15000)},async t=>{
+for(const output of ['channel reply','Issue comment','PR review reply'])test(`official task ${output} request carries public communication and execution boundaries`,{timeout:nativeTestTimeout(15000)},async t=>{
   t=cleanupContext(t)
   let h;t.after(()=>h?.close())
   const f=await memoryHost(t,body=>requestTools(body).includes('task_result')?result:undefined)
   h=await serviceFor(f)
-  const task=await h.service.createTask({requestId:'investigation-prompt',objective:'Investigate a reported save error'})
+  const task=await h.service.createTask({requestId:'investigation-prompt',objective:`Investigate a reported save error and draft a ${output}; do not publish`})
   await until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.status==='completed'&&row.drained})
   const request=f.requests.find(body=>requestTools(body).includes('task_result'))
   assert.ok(request,'execution must reach the local provider with task_result')
   const prompt=request.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
   assert.match(prompt,/NIGHT_NATURAL_CHANNEL_REPLY/)
+  assert.match(prompt,/NIGHT_TASK_PUBLIC_COMMUNICATION/)
+  assert.match(prompt,/Issue\/PR 描述和评论、代码审查回复/)
+  assert.match(prompt,/经工具、CLI 或 API 提交/)
+  assert.match(prompt,/按仓库模板或审查需要/)
+  assert.match(prompt,/不改机器可读参数、工具协议、原始记录或安全审计/)
+  assert.match(prompt,/写草稿不等于获准发送/)
+  assert.match(prompt,/未知提交结果先回读原效果/)
+  assert.match(prompt,/不授予创建 Issue、发表评论、修改仓库、合并或部署权限/)
   assert.match(prompt,/好，我看看是什么原因/)
   assert.match(prompt,/我正在改，改完再测一下/)
   assert.match(prompt,/失败、风险或影响下一步的限制照实补上/)
@@ -125,6 +133,7 @@ test('execution principles refresh within the same official task without restart
   assert.equal(requests.length,2)
   assert.match(system(requests[0]),/EXECUTION_PRINCIPLES_INITIAL/)
   assert.match(system(requests[1]),/EXECUTION_PRINCIPLES_UPDATED/)
+  for(const request of requests)assert.match(system(request),/NIGHT_TASK_PUBLIC_COMMUNICATION/)
   assert.doesNotMatch(system(requests[1]),/EXECUTION_PRINCIPLES_INITIAL/)
 })
 test('single task cancellation aborts the active turn, drains it and never creates a replacement execution',{timeout:nativeTestTimeout(15000)},async t=>{
