@@ -528,6 +528,9 @@ async function defaultDwsEcho(t,statusMode='success'){
       if(!ready&&statusMode==='timeout')await statusGate.promise
       if(!ready&&statusMode==='error')return {exitCode:1,stdout:'',stderr:'fixture status unavailable'}
       value={contractVersion:'im.message-send-status.v1',success:true,openTaskId:'fixture-send',result:{sendStatus:ready?'SUCCESS':'PROCESSING',...(ready?{openConversationId:'race-room',openMessageId:'race-visible'}:{})},...(ready?{messageRef:{openConversationId:'race-room',openMessageId:'race-visible'}}:{})}
+    }else if(args.includes('list-by-ids')){
+      const messages=flag(args,'--msg-ids').split(',').map(id=>currentMessages.get(id)).filter(Boolean)
+      value={success:true,decryptFailedCount:0,result:{messages:messages.reverse().map(message=>({...message,conversationId:message.groupId,createTime:message.occurredAt}))}}
     }else if(args.includes('+messages-mget')){
       const id=flag(args,'--msg-ids');detailReads.push(id)
       if(id==='race-visible'){contentStarted=true;await contentGate.promise;value=page(sent)}
@@ -699,6 +702,45 @@ test('未知外发无 ACK 时同群实时和冷恢复历史仍结清分诊',{tim
     assert.equal(h.plugin.health.deferredCount,2)
     assert.equal(h.sent.length,1);assert.equal((await h.app.tasks.store.query({kind:'notification.get',notificationId:notice.id})).state,'unknown')
   }finally{holdHistory.resolve();h.release();await h.f.close()}
+})
+
+test('暂停期间只按原边界恢复暂缓项，真实分诊不放行实时或未知外发',{timeout:nativeTestTimeout(70000)},async t=>{
+  const h=await defaultDwsEcho(t,'no-ack')
+  const cursor=()=>readFile(h.ingressFile,'utf8').then(JSON.parse)
+  try{
+    await h.receive(h.raw)
+    const notice=await eventually(async()=>{const [row]=await h.app.tasks.store.query({kind:'notification.list'});return row?.state==='unknown'&&row},'原外发仍未知',t.signal)
+    const candidate=(messageId,delta,extra={})=>({...h.raw,messageId,senderOpenDingTalkId:undefined,senderId:'unqualified',occurredAt:new Date(Date.parse(h.raw.occurredAt)+delta).toISOString(),...extra})
+    const first=candidate('paused-recover-first',-3000),second=candidate('paused-recover-second',-2000,{quotedMessage:{messageId:first.messageId,content:first.text}})
+    const held=candidate('paused-hold-self',-1000),heldQuote=candidate('paused-hold-quote',0,{quotedMessage:{messageId:held.messageId,content:held.text}})
+    const future=candidate('paused-future',3600000)
+    for(const message of [first,second,held,heldQuote,future])assert.equal((await h.receive(message)).processing,'deferred')
+    await h.plugin.ingressControl.setPaused(true)
+    const before=await cursor(),input={pausedAt:before.pausedAt,checkOnly:true}
+    const raw=(message,sender)=>({...message,senderOpenDingTalkId:sender,...message.quotedMessage?{quotedMessage:{openMessageId:message.quotedMessage.messageId,content:message.quotedMessage.content}}:{}})
+    h.current(raw(first,'bob'),{...raw(second,'carol'),groupId:'other-room'},raw(held,'same-account'),raw(heldQuote,'carol'))
+    await assert.rejects(h.plugin.ingressControl.recoverPaused({...input,pausedAt:new Date(Date.parse(input.pausedAt)-1).toISOString()}),{code:'CHANNEL_INGRESS_PAUSE_CONFLICT'})
+    await assert.rejects(h.plugin.ingressControl.recoverPaused({...input,checkOnly:false}),{code:'DINGTALK_DEFERRED_IDENTITY_INVALID'})
+    assert.deepEqual(await cursor(),before)
+    h.current(raw(second,'carol'))
+    assert.deepEqual(await h.plugin.ingressControl.recoverPaused(input),{...input,selected:4,verified:4,sameAccount:1,accepted:0,deduplicated:0,remaining:4})
+    assert.deepEqual(await cursor(),before)
+    const applied=await h.plugin.ingressControl.recoverPaused({...input,checkOnly:false})
+    assert.equal(applied.accepted,2);assert.equal(applied.remaining,2)
+    await eventually(async()=>{
+      const sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(s=>[first.messageId,second.messageId].includes(s.messageId))
+      return sources.length===2&&sources.every(s=>s.routed&&h.triaged.filter(id=>id===s.messageId).length===1)
+    },'两条原消息的分诊确实完成',t.signal)
+    assert.ok(h.triaged.indexOf(first.messageId)<h.triaged.indexOf(second.messageId))
+    for(const message of [held,heldQuote,future])await h.absent({...message,senderOpenDingTalkId:'carol'})
+    assert.deepEqual((await cursor()).deferredMessages.map(row=>row.messageId),[held.messageId,heldQuote.messageId,future.messageId])
+    assert.equal((await cursor()).backfillThroughAt,before.backfillThroughAt)
+    assert.equal(h.plugin.ingressControl.getStatus().state,'paused')
+    await assert.rejects(h.receive({...first,messageId:'attempt-live'}),{code:'CHANNEL_INGRESS_PAUSED'})
+    assert.equal((await h.plugin.ingressControl.recoverPaused({...input,checkOnly:false})).accepted,0)
+    assert.equal(h.sent.length,1)
+    assert.equal((await h.app.tasks.store.query({kind:'notification.get',notificationId:notice.id})).state,'unknown')
+  }finally{h.release();await h.f.close()}
 })
 
 const pluginConfig=(channelId,extra={})=>({...validateDingtalkConfig(dingtalkPublic(extra)),enabled:true,channelId})

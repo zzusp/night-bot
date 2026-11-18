@@ -12,6 +12,7 @@ const spec={
  'channel-list':[],'channel-save':['type','channelId','enabled','config','expectedVersion','createOnly'],
  'channel-enable':['channelId','enabled','expectedVersion'],'channel-remove':['channelId','expectedVersion','confirm'],
  'channel-ingress':['channelId','paused','expectedVersion','confirm'],
+ 'channel-recover-paused':['channelId','pausedAt','expectedVersion','confirm'],
  'dingtalk-get':['channelId'],'dingtalk-add':['channelId','conversationType','targetKind','target','name','prompt','writesAuthorized'],
  'dingtalk-edit':['channelId','expectedVersion','name','prompt','conversationType','targetKind','target','writesAuthorized'],
  'permissions-show':[],'permissions-set':['mode'],'permission-respond':['id','decision'],
@@ -32,7 +33,7 @@ export function createSettingsCommands({settings,channels,permissions,configurat
  return async input=>{
   const {action,body,checkOnly}=validateSettingsCommand(input),options={checkOnly}
   const channel=()=>channels??unavailable(),permission=()=>permissions??unavailable()
-  if(checkOnly&&!['appearance','provider','model','model-entry','role','secret','web','work-log','channel-save','permissions-set'].includes(action))throw failure('SETTINGS_CHECK_UNSUPPORTED')
+  if(checkOnly&&!['appearance','provider','model','model-entry','role','secret','web','work-log','channel-save','permissions-set','channel-recover-paused'].includes(action))throw failure('SETTINGS_CHECK_UNSUPPORTED')
   if(action==='show')return settings.view()
   if(action==='provider'){version(body.expectedVersion);return settings.saveProvider(body,options)}
   if(action==='model-list')return settings.modelCatalog()
@@ -53,6 +54,12 @@ export function createSettingsCommands({settings,channels,permissions,configurat
    if(value.confirm!==true)throw failure('CHANNEL_INGRESS_CONFIRMATION_REQUIRED')
    const result=await (channel().setIngressPaused??unavailable)(id,value)
    return {ok:true,changed:result.changed,restartRequired:result.restartRequired,liveApplied:result.liveApplied,version:result.version,receivePaused:result.receivePaused,ingress:result.ingress}
+  }
+  if(action==='channel-recover-paused'){
+   const {channelId:id,expectedVersion,pausedAt,confirm}=body;channelId(id);version(expectedVersion)
+   if(typeof pausedAt!=='string'||!Number.isFinite(Date.parse(pausedAt))||new Date(pausedAt).toISOString()!==pausedAt)throw failure('CHANNEL_INGRESS_REQUEST_INVALID')
+   if(!checkOnly&&confirm!==true)throw failure('CHANNEL_INGRESS_CONFIRMATION_REQUIRED')
+   return (channel().recoverPausedIngress??unavailable)(id,{expectedVersion,pausedAt,checkOnly})
   }
   if(action==='channel-remove'){
    const {channelId:id,expectedVersion,confirm}=body;channelId(id);version(expectedVersion)

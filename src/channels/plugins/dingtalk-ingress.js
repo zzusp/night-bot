@@ -43,6 +43,30 @@ export function retainedDingtalkDuplicate(identity,prior,source,{quoteSenderIds=
   return flags.some(platformFlags=>resourceVariants.some(resourceRefs=>quotes.some(quotedMessage=>
     dingtalkInputFingerprint({...identity,envelope:{...e,text:source.text,resourceRefs,quotedMessage,platformFlags}})===prior.payloadHash)))
 }
+/** Recover the original IDs using the raw response, which preserves the author namespace. */
+export async function readPausedDeferred(runner,binding,rows,end){
+  const ids=new Set(rows.map(row=>row.messageId)),messages=[]
+  if(ids.size!==rows.length||[...ids].some(id=>!present(id)||/[\s,\u0000-\u001f]/u.test(id)))throw failure('DINGTALK_DEFERRED_IDENTITY_INVALID')
+  const cutoff=Date.parse(end)
+  for(let offset=0;offset<rows.length;offset+=50){
+    const expected=new Map(rows.slice(offset,offset+50).map(row=>[row.messageId,row]))
+    const value=await dwsReadJson(runner,['chat','message','list-by-ids','--msg-ids',[...expected.keys()].join(',')],binding.profile)
+    const page=value.result
+    if(value.success!==true||value.truncated===true||value.decryptFailedCount!==0||!Array.isArray(page?.messages)||page.success===false||page.partial===true||page.complete===false||page.hasMore===true||page.truncated===true||(page.failedCount??0)!==0||page.failures?.length)throw failure('DINGTALK_DEFERRED_HISTORY_INCOMPLETE')
+    for(const row of page.messages){
+      const saved=expected.get(row?.messageId),at=messageTimestamp(row?.createTime),originalAt=Date.parse(saved?.occurredAt)
+      if(!saved||row.conversationId!==binding.conversationId||row.openConversationId!==undefined&&row.openConversationId!==binding.conversationId
+        ||row.openMessageId!==undefined&&row.openMessageId!==row.messageId||!present(row.senderOpenDingTalkId)||row.senderIdentityVerified===false
+        ||!Number.isFinite(at)||at>=cutoff||Math.floor(at/1000)!==Math.floor(originalAt/1000))throw failure('DINGTALK_DEFERRED_IDENTITY_INVALID')
+      const quote=row.quotedMessage
+      if(quote?.messageId&&quote.openMessageId&&quote.messageId!==quote.openMessageId)throw failure('DINGTALK_DEFERRED_IDENTITY_INVALID')
+      messages.push({...row,createTime:saved.occurredAt,...quote?{quotedMessage:{...quote,messageId:quote.messageId??quote.openMessageId}}:{}})
+      expected.delete(row.messageId)
+    }
+    if(expected.size)throw failure('DINGTALK_DEFERRED_HISTORY_INCOMPLETE')
+  }
+  return messages.sort((a,b)=>Date.parse(a.createTime)-Date.parse(b.createTime))
+}
 function historyMessages(value,config){
   if(!Array.isArray(value.messages)||value.complete!==true||value.hasMore!==false||value.partial===true||value.failedCount!==0||!Array.isArray(value.failures)||value.failures.length)throw failure('DINGTALK_HISTORY_INCOMPLETE')
   const binding=config.binding

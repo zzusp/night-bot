@@ -12,7 +12,7 @@ import {prepareSecrets} from '../../runtime/paths.js'
 import {resolveDingtalkBinding,verifyDingtalkBinding} from './dingtalk-binding.js'
 import {dingtalkChannelPaths,openDingtalkIngress,assertDingtalkStoragePath,assertDingtalkTargetSwitch,readDingtalkBinding} from './dingtalk-storage.js'
 import {hash} from '../../memory/format.js'
-import {dingtalkIngressAdapter,dingtalkInputFingerprint,retainedDingtalkDuplicate} from './dingtalk-ingress.js'
+import {dingtalkIngressAdapter,dingtalkInputFingerprint,retainedDingtalkDuplicate,readPausedDeferred} from './dingtalk-ingress.js'
 import {observeDwsLogin} from './dingtalk-auth.js'
 export {validateConfig} from './dingtalk-config.js'
 export const name='night-channel-dingtalk-dws',inject=['channels','runtimePaths']
@@ -115,7 +115,7 @@ export async function apply(ctx,config={},dependencies={}){
   const markCursorError=()=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}}
   const writeCursor=operation=>operation.catch(error=>{markCursorError();throw error})
   const deferredResult=()=>({accepted:false,processing:'deferred',reason:'CHANNEL_NOTIFICATION_IDENTITY_PENDING'})
-  const receiveHistoryMessage=async(raw,{type=config.conversationType,recheck=false}={})=>{
+  const receiveHistoryMessage=async(raw,{type=config.conversationType,recheck=false,preserveRecorded=false}={})=>{
     const message=normalize(raw,raw.groupId??raw.conversationId)
     if(type!==config.conversationType||type==='chat'&&message.senderOpenDingTalkId!==config.binding.peerId)throw failure('DWS_CHAT_NOT_AUTHORIZED')
     if(message?.groupId!==config.binding.conversationId||!message.messageId||!message.senderOpenDingTalkId)throw failure('DWS_PLUGIN_AUTHENTICATED_IDENTITY_REQUIRED')
@@ -147,6 +147,9 @@ export async function apply(ctx,config={},dependencies={}){
           const sender=context.participants[prior.actorId]
           if(!sender||!prior.retraction)throw failure('DINGTALK_RETRACTION_UNSETTLED')
           channelInput={...channelInputFor({...message,senderOpenDingTalkId:sender,occurredAt:prior.occurredAt},prior.retraction),messageVersion:prior.version}
+        }else if(preserveRecorded&&source){
+          if(source.actorId!==identity.principal)throw failure('CHANNEL_MESSAGE_ID_CONFLICT')
+          return retained()
         }else if(prior.payloadHash===payloadHash){
           if(source?.routed===true&&source.actorId===identity.principal)return retained()
         }else{
@@ -247,6 +250,34 @@ export async function apply(ctx,config={},dependencies={}){
       if(health.ingress?.recovering||!groups.length||groups.some(group=>group.listener?.state!=='ready'||group.backfill?.state!=='ok'||group.backfill?.recoveryRequired))return {state:'recovering',errorCode:null}
       return {state:'receiving',errorCode:null}
     },
+    recoverPaused:({pausedAt,checkOnly})=>serialize(async()=>{
+      await preparing
+      const snapshot=()=>{
+        if(closed||!app||!readyBound||!config.enabled||config.conversationType!=='chat-room'||!ingressControl.available)throw failure('CHANNEL_INGRESS_UNAVAILABLE')
+        ctx.channels.assertLifecycle(channelId)
+        const state=ingressStore.snapshot()
+        if(!config.receivePaused||!state.paused||state.pausedAt!==pausedAt||ingressControl.getStatus().state!=='paused')throw failure('CHANNEL_INGRESS_PAUSE_CONFLICT')
+        return state
+      }
+      const state=snapshot(),within=row=>Date.parse(row.occurredAt)<Date.parse(pausedAt)
+      const pending=(state.deferredMessages??[]).filter(within)
+      const recalls=new Set((state.pendingRecalls??[]).map(row=>row.messageId))
+      await verifyDingtalkBinding(config,{runner})
+      const rows=await readPausedDeferred(runner,config.binding,pending.filter(row=>!recalls.has(row.messageId)),pausedAt)
+      snapshot()
+      const report={pausedAt,checkOnly,selected:pending.length,verified:rows.length,sameAccount:rows.filter(row=>row.senderOpenDingTalkId===config.binding.actorId).length,accepted:0,deduplicated:0,remaining:pending.length}
+      if(checkOnly)return report
+      // Only the operator's durable paused candidates may enter the normal ingestion chain.
+      for(const row of rows){
+        const current=snapshot()
+        if(current.pendingRecalls?.some(item=>item.messageId===row.messageId))continue
+        const outcome=await enqueueIngress(row,{recheck:true,preserveRecorded:true})
+        if(outcome?.accepted)report.accepted++
+        else if(outcome?.duplicate||outcome?.reason==='own-notification')report.deduplicated++
+      }
+      report.remaining=(snapshot().deferredMessages??[]).filter(within).length
+      return report
+    }),
     setPaused:paused=>serialize(async()=>{
       if(typeof paused!=='boolean')throw failure('DINGTALK_SETTINGS_INVALID')
       if(!ingressControl.available)throw failure('CHANNEL_INGRESS_CONTROL_UNAVAILABLE')

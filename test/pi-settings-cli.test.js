@@ -93,7 +93,7 @@ test('offline writes respect Host lock, custom creation never imports adapters, 
  // Do not send display-only editable property through the strict transport.
  await writeFile(payload,JSON.stringify({type:current.type,channelId:current.channelId,enabled:current.enabled,config:{room:'different'}}))
  await assert.rejects(f.cli(['channel-save','--json-file',payload]),{code:'SETTINGS_RESIDENT_REQUIRED'})
- for(const action of ['channel-remove','channel-enable','channel-ingress','dingtalk-add','dingtalk-edit','permission-respond'])await assert.rejects(f.cli([action]),{code:'SETTINGS_RESIDENT_REQUIRED'})
+ for(const action of ['channel-remove','channel-enable','channel-ingress','channel-recover-paused','dingtalk-add','dingtalk-edit','permission-respond'])await assert.rejects(f.cli([action]),{code:'SETTINGS_RESIDENT_REQUIRED'})
 })
 
 test('channel-ingress CLI requires live operator auth, typed pause, CAS and confirmation without leaking config',async t=>{
@@ -115,6 +115,21 @@ test('channel-ingress CLI requires live operator auth, typed pause, CAS and conf
  assert.equal(output.includes('DO_NOT_PRINT'),false);assert.equal('channel' in result,false)
  const unauth=await post(server.address().port,{action:'channel-ingress',body:{channelId:'room',paused:false,expectedVersion:'1'.repeat(64),confirm:true}})
  assert.equal(unauth.status,403);assert.equal(calls.length,1)
+})
+
+test('paused recovery CLI binds the cutoff and requires authentication plus explicit apply',async t=>{
+ const f=await fixture(t),auth=await createSettingsOperatorAuth(f.paths),calls=[]
+ const channels={recoverPausedIngress:async(id,input)=>{calls.push({id,...input});return {accepted:0}}}
+ const handler=createSettingsHttp({auth,getSettings:()=>f.settings,getChannels:()=>channels,getPermissions:()=>({})}),server=createServer((req,res)=>handler(req,res))
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)))
+ const config=JSON.parse(await readFile(f.file,'utf8'));config.resident={host:'127.0.0.1',port:server.address().port};await writeFile(f.file,JSON.stringify(config))
+ const version='1'.repeat(64),pausedAt='2026-11-18T09:40:19.118Z',args=['channel-recover-paused','--channel-id','room','--paused-at',pausedAt,'--expected-version',version,'--live']
+ await assert.rejects(f.cli(args),{code:'CHANNEL_INGRESS_CONFIRMATION_REQUIRED'})
+ await assert.rejects(f.cli(args.map(v=>v===pausedAt?'2026-11-18':v).concat('--confirm')),{code:'CHANNEL_INGRESS_REQUEST_INVALID'})
+ const unauthorized=await post(server.address().port,{action:'channel-recover-paused',body:{channelId:'room',expectedVersion:version,pausedAt,confirm:true}})
+ assert.equal(unauthorized.status,403)
+ await f.cli([...args,'--check']);await f.cli([...args,'--confirm'])
+ assert.deepEqual(calls,[true,false].map(checkOnly=>({id:'room',expectedVersion:version,pausedAt,checkOnly})))
 })
 
 test('settings capability is private and cannot be replaced by effect capability',async t=>{
