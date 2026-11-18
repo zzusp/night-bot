@@ -80,3 +80,25 @@ test('revoked model snapshot stays absent through failed retry until new authori
  await page.unroute('**/api/settings/model-catalog');await summary(page).getByRole('button',{name:'重试'}).click();
  await expect(summary(page)).toHaveCount(0);await expect(page.getByLabel('模型路由',{exact:true})).toBeVisible();
 });
+
+for(const width of [1440,390])test(`schedule read error, stale data and revoked snapshot recover ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:960});
+ let mode:'unavailable'|'ready'|'forbidden'='unavailable';
+ await page.route('**/api/schedules?*',route=>mode==='ready'?route.fulfill({json:{items:[{id:'read-recovery',title:'定时读取恢复样例',state:'active',kind:'every',scheduleSummary:'每10分钟',scheduledAt:'2032-11-12T08:00:00.000Z'}],total:1,offset:0,limit:20,nextOffset:null}}):route.fulfill({status:mode==='forbidden'?403:503,json:{error:mode==='forbidden'?'RESOURCE_FORBIDDEN':'SCHEDULES_UNAVAILABLE'}}));
+ await login(page,'/schedules');
+ await expect(summary(page)).toHaveCount(1);
+ await expect(page.locator('.schedule-row')).toHaveCount(0);
+ await expect(page.getByText('暂无启用的定时任务',{exact:true})).toHaveCount(0);
+ mode='ready';await summary(page).getByRole('button',{name:'重试',exact:true}).click();
+ await expect(summary(page)).toHaveCount(0);await expect(page.locator('.schedule-row')).toContainText('定时读取恢复样例');
+ mode='unavailable';await page.getByRole('button',{name:'刷新任务',exact:true}).click();
+ await expect(summary(page)).toHaveCount(1);await expect(page.locator('.schedule-row')).toHaveCount(1);
+ await expect(summary(page).getByRole('heading')).toHaveText('部分内容未更新');
+ mode='forbidden';await summary(page).getByRole('button',{name:'重试',exact:true}).click();
+ await expect(page.locator('.schedule-row')).toHaveCount(0);await expect(summary(page)).toContainText('没有访问权限');
+ mode='unavailable';await summary(page).getByRole('button',{name:'重试',exact:true}).click();
+ await expect(summary(page)).not.toContainText('没有访问权限');await expect(page.locator('.schedule-row')).toHaveCount(0);
+ mode='ready';await summary(page).getByRole('button',{name:'重试',exact:true}).click();
+ await expect(summary(page)).toHaveCount(0);await expect(page.locator('.schedule-row')).toHaveCount(1);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
