@@ -64,7 +64,7 @@ recovery/operator path. External vendor integration and Windows execution
 containment require separate environment validation. All runtime state remains
 under the installation's existing data/state, task workspaces and Pi journals.
 
-## Validation (2026-11-18, Linux / Node 24.19.0)
+## Initial validation checkpoint (2026-11-18, Linux / Node 24.19.0)
 
 Base: `906e1e4685eaf8c8cba00ccd71793b31f931ab3e` (latest main when fetched).
 No local installation, live channel messages, merge, deployment or manual CI run.
@@ -103,3 +103,69 @@ No applicable `.agents/skills` directory was present in this checkout/workspace.
 - Broad `pnpm test:runtime` was launched but had not produced a final cohort result
   at the evidence checkpoint. No full-green claim is made for either broad suite.
   Containment and real Windows/vendor tests were not certified by this change.
+
+
+## Final follow-up acceptance (2026-11-18)
+
+This supersedes the initial checkpoint's unresolved runtime status. The final
+production code is `8eba731`; the subsequent documentation-only commit does not
+change that tested implementation. Base remains the unmodified
+`906e1e4685eaf8c8cba00ccd71793b31f931ab3e` worktree with its own frozen install.
+
+Acceptance required a terminal result for the complete runtime cohort, comparison
+of failures with main, correction of PR regressions, and durable 24-hour waiting
+review evidence without automatic execution or repeated five-minute dispatch.
+
+| Version / check | Result | Duration |
+| --- | --- | --- |
+| Unmodified main `906e1e4`, full runtime | 162 passed, 0 failed, 0 skipped, exit 0 | 266.6 s |
+| Intermediate PR `cb8aef5`, full runtime | 158 passed, 4 failed | 267.0 s |
+| Fixed PR `8eba731`, full runtime | **162 passed, 0 failed, 0 cancelled, 0 skipped, exit 0** | 242.9 s |
+| Fixed PR, Router ledger / task E2E / model-input / business-failure cohort | 63 passed, 0 failed, 0 skipped | 27.5 s |
+| Source/hash/import/native guards and diff check | Passed | — |
+
+The complete runtime command was
+`NIGHT_BOT_TEST_CONCURRENCY=2 pnpm test:runtime`, with an outer 480-second observation
+bound (not reached). Both complete comparison runs used approved executor access
+so the tests' own bubblewrap could operate, as AGENTS.md permits. The application
+sandbox, assertions, retry budgets and lifecycle deadlines were unchanged. The
+restricted executor's shell/job failures and incomplete old mixed-checkpoint
+processes are not treated as final product results; those owned processes were
+stopped before these committed-version runs.
+
+Regression findings and fixes:
+
+- A pending execution inspection incorrectly blocked actual newer authenticated
+  inputs. Inspection now binds requirement/control/context revisions, and a new
+  version invalidates the old hold; stale technical decisions cannot re-hold the
+  new input. The provider and execution-provider recovery scenarios pass in the
+  final full run.
+- Session construction failure had been treated as an execution failure before
+  there was a successfully bound session. Execution-start evidence now comes from
+  the successful native binding callback; known-not-started setup failures retain
+  the existing backoff. Both persistent and recoverable setup scenarios pass.
+- The existing trusted `host.explicit-continuation` wake was incorrectly blocked
+  by the old hold. It now resolves that hold without inventing a new input or
+  replaying an effect; generic wakes still cannot bypass it. The original completed
+  effect is read back once and is not rewritten.
+- Missing registry handles had incorrectly caused inspection to mark an undrained
+  writer drained, losing its conflict alert. Inspection now records the anomaly
+  without fabricating drain; existing restart/drain-proof paths remain authoritative.
+  The live-writer conflict scenario and its original alert survive recovery.
+
+The new waiting tests cover user questions, external events and agreed future
+instants. They verify the 24-hour boundary, pending-event deduplication, Router
+reason/next-check recording, refusal of five-minute rechecks, next-due eligibility,
+cold restart, newer source/context changes, pause/cancellation and stale review
+rejection. Actual Host/Pi tests preserve the original execution lease and wait
+start, do not send another question or execute the task, and restore the recorded
+next check after restart. Legacy waits use the admitted claim context when their
+old decision lacks the newly explicit contextRevision.
+
+Remaining evidence boundaries: the 24-hour threshold uses controlled clock
+advancement plus real cold restart, not a 24-hour wall-clock soak. A live internally
+stuck tool is not declared dead from silence. Unknown external effects and
+unproven drain still require their existing proofs/readback. These runtime results
+do not certify the full default/routing/containment cohorts, Windows or real vendor
+channels. No real channel message, local deployment, merge or manual CI run was
+performed. The PR remains draft.
