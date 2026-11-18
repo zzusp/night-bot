@@ -17,6 +17,7 @@ for (const [name,mutate,code] of [
   ['nested state',c=>{c.stateDir=c.workspaceDir+'/state'},'STATE_MUST_BE_SEPARATE'],
   ['missing model',c=>{delete c.model},'MODEL_REQUIRED'],
   ['missing provider',c=>{c.providers={}},'PROVIDER_PROFILE_REQUIRED'],
+  ['invalid inspection interval',c=>{c.resident={taskSessions:{inspectionIntervalMs:0}}},'NIGHT_BOT_TASK_INTERVAL_INVALID:inspectionIntervalMs'],
   ['public API',c=>{c.resident={host:'0.0.0.0'}},'HTTP_REQUIRES_LOOPBACK'],
   ['inconsistent DWS flags',c=>{c.resident={dws:{enabled:false,writesAuthorized:true}}},'NIGHT_BOT_RESIDENT_CONFIG_UNSUPPORTED:dws'],
   ['inline key',c=>{c.providers.fixture.apiKey='do-not-copy-credentials'},'USE_CREDENTIAL_ENV_REFERENCE'],

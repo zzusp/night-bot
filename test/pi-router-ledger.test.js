@@ -518,3 +518,122 @@ test('待分诊只认同会话同消息的最新版本，跨会话高版本不�
  await assert.rejects(f.command('triage.commit',{dispositions:[{sourceId:f.sourceId,messageVersion:1,needsHandling:true,reason:'Stale version'}]}),/ROUTER_SOURCE_STALE/)
  await f.reopen();assert.deepEqual(await f.query('triage.pending',{conversationId:f.conversationId,limit:15}),pending)
 })
+
+test('inspection survives restart, deduplicates drain changes, fences execution and respects Router revisions',async t=>{
+  const {inspectionVersion}=await import('../src/tasks/inspection.js')
+  const f=await fixture(t);await f.plan()
+  const claimed=(await f.command('task.claim',{taskId:'a'})).result
+  await f.reopen()
+  let task=await f.query('task.get',{taskId:'a'})
+  assert.equal(task.recovering,true)
+  await f.command('task.inspect',{taskId:'a',expected:inspectionVersion(task)})
+  await f.command('task.drained',{binding:await f.query('task.binding',{taskId:'a'})})
+  task=await f.query('task.get',{taskId:'a'})
+  await f.command('task.inspect',{taskId:'a',expected:inspectionVersion(task)})
+  await assert.rejects(f.command('task.claim',{taskId:'a'}),/TASK_INSPECTION_ROUTER_REQUIRED/)
+  assert.equal((await f.query('router.inbox',{conversationId:f.conversationId})).filter(e=>e.kind==='task.inspection').length,1)
+  await f.reopen()
+  assert.equal((await f.query('task.get',{taskId:'a'})).inspection.pending,true)
+  await f.command('router.task-action',{conversationId:f.conversationId,generation:f.generation,operationId:'recover-a',kind:'task.resume',
+    action:{taskId:'a',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}})
+  const next=await f.command('task.claim',{taskId:'a'})
+  assert.ok(next.result.binding.leaseEpoch>claimed.binding.leaseEpoch)
+  await assert.rejects(f.command('task.inspect',{taskId:'a',expected:inspectionVersion(task)}),/TASK_INSPECTION_STALE/)
+})
+
+test('inspection never wakes paused or cancelled tasks, or ordinary waits and long running tools',async t=>{
+  const {taskInspectionReason,inspectionVersion}=await import('../src/tasks/inspection.js')
+  const f=await fixture(t);await f.plan()
+  const task=await f.query('task.get',{taskId:'a'})
+  assert.equal(taskInspectionReason({...task,drained:false},{live:true}),undefined)
+  assert.equal(taskInspectionReason({...task,drained:false},{inflight:true}),undefined)
+  assert.equal(taskInspectionReason({...task,drained:false,sessionFailure:{code:'TASK_SESSION_DRAIN_FAILED'}},{live:true}),'drain-failed')
+  assert.equal(taskInspectionReason({...task,lastDecision:{action:'wait',summary:'wait for external event'}}),undefined)
+  for(const control of ['paused','cancelled']){
+    await f.command('task.control',{taskId:'a',control})
+    const current=await f.query('task.get',{taskId:'a'})
+    const result=await f.command('task.inspect',{taskId:'a',expected:inspectionVersion(current)})
+    assert.equal(result.result.inspected,false)
+  }
+  assert.equal((await f.query('router.inbox',{conversationId:f.conversationId})).filter(e=>e.kind==='task.inspection').length,0)
+})
+
+test('Router recovery retry budgets and exponential backoff persist across restart',async t=>{
+  const f=await fixture(t)
+  for(let i=1;i<=3;i++){
+    const before=Date.now()
+    await f.command('router.recovery-attempt',{conversationId:f.conversationId,generation:f.generation,key:'pending-batch'})
+    await f.reopen()
+    const retry=(await f.query('router.get',{conversationId:f.conversationId})).recoveryRetry
+    assert.equal(retry.attempts,i)
+    assert.equal(retry.exhausted,i===3)
+    assert.ok(Date.parse(retry.nextAttemptAt)>=before+(i===3?300000:5000*6**(i-1)))
+  }
+  await f.command('router.recovery-attempt',{conversationId:f.conversationId,generation:f.generation,key:'new-input'})
+  assert.equal((await f.query('router.get',{conversationId:f.conversationId})).recoveryRetry.attempts,1)
+})
+
+test('new authenticated task revisions invalidate an older inspection execution fence',async t=>{
+  const {inspectionVersion}=await import('../src/tasks/inspection.js')
+  const f=await fixture(t);await f.plan()
+  const claim=(await f.command('task.claim',{taskId:'a'})).result
+  await f.command('task.wait',{binding:claim.binding,action:'wait',summary:'Provider failed',technicalFailure:{code:'TASK_PI_PROVIDER_ERROR',phase:'decision'}})
+  await f.command('wake.ack',{binding:claim.binding,wakeIds:claim.wakeIds});await f.command('task.drained',{binding:claim.binding})
+  let task=await f.query('task.get',{taskId:'a'})
+  await f.command('task.inspect',{taskId:'a',expected:inspectionVersion(task)})
+  await assert.rejects(f.command('task.claim',{taskId:'a'}),/TASK_INSPECTION_ROUTER_REQUIRED/)
+  await f.command('task.revise',{taskId:'a',request:'Actual new instructions with retained original receipts',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision})
+  task=await f.query('task.get',{taskId:'a'})
+  assert.equal(task.inspection.pending,false);assert.equal(task.inspection.resolution,'state-changed')
+  assert.ok((await f.command('task.claim',{taskId:'a'})).result.binding.leaseEpoch>claim.binding.leaseEpoch)
+})
+
+for(const wait of ['user','external-event','future-time'])test('24-hour '+wait+' wait receives a durable Router review without execution or five-minute duplicates',async t=>{
+  const {inspectionVersion,taskInspectionReason,WAIT_REVIEW_INTERVAL_MS}=await import('../src/tasks/inspection.js')
+  t.mock.timers.enable({apis:['Date'],now:Date.now()-2*WAIT_REVIEW_INTERVAL_MS})
+  const f=await fixture(t);await f.plan()
+  const claimed=(await f.command('task.claim',{taskId:'a'})).result
+  const until=new Date(Date.now()+7*WAIT_REVIEW_INTERVAL_MS).toISOString()
+  await f.command('task.wait',{binding:claimed.binding,action:'wait',summary:'Waiting for '+wait,decision:{action:'wait',summary:'Waiting for '+wait,...wait==='future-time'?{until}:{}},
+    ...wait==='user'?{question:'Which target?',humanRequest:{requestId:'wait-user',audience:'requester',reason:'Need target',waitingReason:'Waiting for actual user answer'}}:{}})
+  await f.command('wake.ack',{binding:claimed.binding,wakeIds:claimed.wakeIds});await f.command('task.drained',{binding:claimed.binding})
+  let task=await f.query('task.get',{taskId:'a'})
+  t.mock.timers.tick(WAIT_REVIEW_INTERVAL_MS-1)
+  assert.equal(taskInspectionReason(task),undefined)
+  t.mock.timers.tick(1)
+  assert.equal(taskInspectionReason(task),'wait-overdue')
+  assert.equal(taskInspectionReason({...task,contextRevision:3,claimContextRevision:3,lastDecision:{...task.lastDecision,contextRevision:undefined}}),'wait-overdue','legacy waits use the admitted claim context')
+  assert.equal(taskInspectionReason({...task,contextRevision:4,claimContextRevision:3,lastDecision:{...task.lastDecision,contextRevision:undefined}}),undefined,'unadmitted newer context cannot age an old decision')
+  await f.command('task.inspect',{taskId:'a',expected:inspectionVersion(task)})
+  task=await f.query('task.get',{taskId:'a'})
+  const event=(await f.query('router.inbox',{conversationId:f.conversationId})).find(e=>e.kind==='task.inspection')
+  assert.equal(event.taskEvent.reason,'wait-overdue');assert.equal(task.leaseEpoch,claimed.binding.leaseEpoch)
+  await f.reopen()
+  task=await f.query('task.get',{taskId:'a'})
+  assert.equal(task.inspection.pending,true)
+  for(let i=0;i<3;i++){t.mock.timers.tick(300000);assert.equal((await f.command('task.inspect',{taskId:'a',expected:inspectionVersion(task)})).result.inspected,false)}
+  assert.equal((await f.query('router.inbox',{conversationId:f.conversationId})).filter(e=>e.kind==='task.inspection').length,1)
+  const settle={conversationId:f.conversationId,generation:f.generation,eventIds:[event.id],operationId:'review-'+wait}
+  await assert.rejects(f.command('router.settle',settle),/ROUTER_INSPECTION_REVIEW_REQUIRED/)
+  const nextCheckAt=new Date(Date.now()+WAIT_REVIEW_INTERVAL_MS).toISOString()
+  const review={taskId:'a',inspectionKey:task.inspection.key,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,expectedContextRevision:task.contextRevision??0,decision:'wait',reason:wait==='future-time'?'Original scheduled instant is still in the future':'Original waiting condition remains unresolved',nextCheckAt}
+  await assert.rejects(f.command('router.settle',{...settle,inspectionReviews:[{...review,nextCheckAt:new Date(Date.now()+300000).toISOString()}]}),/ROUTER_INSPECTION_REVIEW_INVALID/)
+  await f.command('router.settle',{...settle,inspectionReviews:[review]})
+  await f.reopen();task=await f.query('task.get',{taskId:'a'})
+  assert.equal(task.inspection.review.decision,'wait');assert.equal(task.inspection.nextCheckAt,nextCheckAt);assert.equal(task.inspection.pending,false)
+  assert.equal(task.leaseEpoch,claimed.binding.leaseEpoch);assert.ok((await f.query('wake.list',{taskId:'a'})).every(w=>w.state==='acked'))
+  assert.equal(taskInspectionReason(task),undefined)
+  t.mock.timers.tick(WAIT_REVIEW_INTERVAL_MS)
+  assert.equal(taskInspectionReason(task),'wait-overdue')
+  await f.command('task.inspect',{taskId:'a',expected:inspectionVersion(task)})
+  task=await f.query('task.get',{taskId:'a'})
+  const latest=(await f.query('router.inbox',{conversationId:f.conversationId})).find(e=>e.kind==='task.inspection')
+  assert.notEqual(latest.id,event.id)
+  await f.command('task.supplement',{taskId:'a',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,messageId:'condition-changed',text:'Actual new evidence for this waiting condition'})
+  const changed=await f.query('task.get',{taskId:'a'})
+  assert.equal(changed.inspection.pending,false);assert.equal(taskInspectionReason(changed),undefined)
+  await assert.rejects(f.command('router.settle',{...settle,operationId:'stale-review',eventIds:[latest.id],inspectionReviews:[{...review,inspectionKey:task.inspection.key}]}),/ROUTER_INSPECTION_REVIEW_STALE/)
+  await f.command('router.settle',{...settle,operationId:'settle-stale-only',eventIds:[latest.id]})
+  assert.equal((await f.query('task.get',{taskId:'a'})).contextRevision,changed.contextRevision)
+  for(const control of ['paused','cancelled']){await f.command('task.control',{taskId:'a',control});t.mock.timers.tick(WAIT_REVIEW_INTERVAL_MS);assert.equal(taskInspectionReason(await f.query('task.get',{taskId:'a'})),undefined)}
+})

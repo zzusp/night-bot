@@ -97,3 +97,90 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
   assert.equal((await h.query('wake.list',{taskId:'b-e2e'})).filter(wake=>wake.kind==='dependency.satisfied').length,1)
   assert.ok(h.results.some(row=>row.name==='resident_task_query'&&!row.result.isError&&row.result.value?.task?.completion?.result?.evidence?.includes('proof:verified')),'Router reads complete current execution evidence through the actual full-detail tool')
 })
+
+for(const continueTask of [true,false,'router-outage','router-busy'])test('an unexpected task turn exit reaches the existing Router once; continuation='+continueTask,{timeout:nativeTestTimeout(60000)},async t=>{
+  let h,turns=0,incidents=0,originalSession,arranged=false,resumed=false,outage=continueTask==='router-outage'
+  const entered=Promise.withResolvers(),release=Promise.withResolvers();let held=false;t.after(()=>release.resolve())
+  h=await residentRouterHost(t,async body=>{
+    if(requestText(body).some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION')))return {text:'{"lessons":[]}'}
+    const names=requestTools(body)
+    if(names.includes('channel_triage_submit')){
+      const input=requestEnvelope(body,'一级分诊请求：')
+      return call('channel_triage_submit',{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'Requested work'}))})
+    }
+    if(names.includes('task_result')){
+      turns++;const task=taskInput(body).task
+      originalSession??=task.sessionId;assert.equal(task.sessionId,originalSession)
+      if(turns===1)return {text:'Turn ended before submitting a decision.'}
+      return call('task_result',{decision:{action:'complete',summary:'Recovered original objective',evidence:['synthetic-proof'],limitations:[]}})
+    }
+    if(names.includes('resident_router_settle')){
+      if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1).result.isError)return {text:'Batch committed'}
+      const input=requestEnvelope(body,'Router 请求：')
+      if(!arranged){arranged=true;const source=input.events.find(event=>event.source).source
+        return call('resident_task_plan',{operationId:'inspection-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'inspect-e2e',title:'Inspect recovery',objective:'Finish synthetic work',requirements:['Verify completion']}],dependencies:[]})}
+      const event=input.events.find(event=>event.kind==='task.inspection')
+      if(event&&continueTask==='router-busy'&&!held){held=true;entered.resolve();await release.promise}
+      if(event&&outage)return {error:'TEST_INSPECTION_ROUTER_UNAVAILABLE'}
+      if(event&&!resumed){resumed=true;incidents++;const task=await h.query('task.get',{taskId:'inspect-e2e'})
+        assert.equal(task.inspection.pending,true)
+        if(continueTask)return call('resident_task_action',{operationId:'inspection-continue',kind:'resume',taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision})}
+      return call('resident_router_settle',{operationId:'settle-'+input.events.map(event=>event.id).join('|'),eventIds:input.events.map(event=>event.id)})
+    }
+    return {text:'Done'}
+  })
+  await h.receive(channelMessage('inspection-work'))
+  if(continueTask==='router-busy'){
+    await entered.promise
+    const original=await h.query('task.get',{taskId:'inspect-e2e'})
+    await h.store.command({id:'orphan-create',kind:'task.create',args:{taskId:'orphan-e2e',request:'Retain this orphan for investigation',groupId:original.groupId,ownerActorId:original.ownerActorId,sourceRefs:original.sourceRefs}})
+    await h.store.command({id:'orphan-claim',kind:'task.claim',args:{taskId:'orphan-e2e'}})
+    await h.service.recover()
+    assert.equal((await h.query('task.get',{taskId:'orphan-e2e'})).inspection.pending,true)
+    assert.equal(resumed,false,'inspection is durable while Router inference is still held')
+    release.resolve()
+  }
+  if(outage){await h.service.whenIdle().catch(()=>{});assert.equal((await h.query('task.get',{taskId:'inspect-e2e'})).inspection.pending,true);outage=false}
+  else await h.service.whenIdle()
+  for(let i=0;i<3;i++){await h.service.recover();await h.service.whenIdle()}
+  const task=await h.query('task.get',{taskId:'inspect-e2e'})
+  assert.equal(task.status,continueTask?'completed':'active');assert.equal(turns,continueTask?2:1);assert.equal(incidents,1)
+  if(!continueTask){assert.equal(task.inspection.pending,true);await h.restart();await h.service.whenIdle();assert.equal(turns,1);assert.equal((await h.query('task.get',{taskId:task.taskId})).inspection.pending,true)}
+  assert.equal(task.sessionId,originalSession)
+  assert.equal((await h.query('task.events')).events.filter(event=>event.kind==='task.inspection').length,continueTask==='router-busy'?2:1)
+})
+
+for(const wait of ['user','external-event','future-time'])test('real Router records a '+wait+' wait review after 24 hours without rerunning the task',{timeout:nativeTestTimeout(60000)},async t=>{
+  const day=24*60*60*1000
+  t.mock.timers.enable({apis:['Date'],now:Date.now()-2*day})
+  let h,planned=false,turns=0,reviews=0
+  h=await residentRouterHost(t,async body=>{
+    if(requestText(body).some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION')))return {text:'{"lessons":[]}'}
+    const names=requestTools(body)
+    if(names.includes('channel_triage_submit')){const input=requestEnvelope(body,'一级分诊请求：');return call('channel_triage_submit',{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'Original task request'}))})}
+    if(names.includes('task_result')){turns++;return call('task_result',{decision:{action:'wait',summary:wait==='future-time'?'Wait until the agreed future instant in seven days':'Wait for '+wait,evidence:[],limitations:[],...wait==='user'?{question:'Which target should be used?',audience:'requester'}:{}}})}
+    if(names.includes('resident_router_settle')){
+      if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1).result.isError)return {text:'Current review committed'}
+      const input=requestEnvelope(body,'Router 请求：')
+      if(!planned){planned=true;const source=input.events.find(e=>e.source).source;return call('resident_task_plan',{operationId:'wait-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'wait-e2e',title:'Wait review',objective:'Preserve the actual waiting condition',requirements:['Retain original task and never restart merely because time passed']}],dependencies:[]})}
+      const inspectionReviews=[]
+      for(const event of input.events.filter(e=>e.taskEvent?.reason==='wait-overdue')){
+        const task=await h.query('task.get',{taskId:event.taskId});reviews++
+        inspectionReviews.push({taskId:task.taskId,inspectionKey:task.inspection.key,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,expectedContextRevision:task.contextRevision??0,decision:'wait',reason:'Checked current '+wait+' condition; it remains unresolved; keep waiting',nextCheckAt:new Date(Date.now()+day).toISOString()})
+      }
+      return call('resident_router_settle',{operationId:'wait-settle:'+input.events.map(e=>e.id).join(','),eventIds:input.events.map(e=>e.id),...inspectionReviews.length?{inspectionReviews}:{}})
+    }
+    return {text:'No additional action'}
+  })
+  await h.receive(channelMessage('wait-review'));await h.service.whenIdle()
+  const original=await h.query('task.get',{taskId:'wait-e2e'}),sent=h.sent.length
+  t.mock.timers.tick(day+1)
+  await h.service.recover();await h.service.whenIdle()
+  let task=await h.query('task.get',{taskId:'wait-e2e'})
+  assert.equal(reviews,1);assert.equal(turns,1);assert.equal(task.inspection.review.decision,'wait')
+  assert.equal(task.leaseEpoch,original.leaseEpoch);assert.equal(task.lastDecision.at,original.lastDecision.at);assert.equal(h.sent.length,sent)
+  for(let i=0;i<3;i++){t.mock.timers.tick(300000);await h.service.recover();await h.service.whenIdle()}
+  await h.restart();await h.service.whenIdle();task=await h.query('task.get',{taskId:'wait-e2e'})
+  assert.equal(reviews,1);assert.equal(turns,1);assert.equal(task.inspection.nextCheckAt,task.inspection.review.nextCheckAt)
+  assert.equal((await h.query('task.events')).events.filter(e=>e.kind==='task.inspection').length,1)
+})

@@ -1,3 +1,4 @@
+import {inspectionVersion,taskInspectionReason,inspectionHoldsExecution} from '../../src/tasks/inspection.js'
 import {cancelNotificationBeforeSend} from './notification-delivery.js'
 import {bindTaskMaterialPaths,resolveTaskMaterialPaths} from '../../src/tasks/material-paths.js'
 import {SessionManager} from '@earendil-works/pi-coding-agent'
@@ -455,7 +456,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const pending = await query('wake.list', { taskId: id }).catch(() => [])
         const task = await query('task.get', { taskId: id }).catch(() => null)
         again = !task?.archivedAt && task?.status === 'active' && task.control === 'active' && task.drained
-          && taskWorkspaceReady(task) && retryReady(id)
+          && !inspectionHoldsExecution(task) && taskWorkspaceReady(task) && retryReady(id)
           && (pendingDialogue(task) || pendingTaskHumanReview(task, pending) || !taskHumanWait(task))
           && pending.some(item => item.state !== 'acked')
       }
@@ -491,7 +492,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         for (const task of await query('task.list')) {
           if(!taskWorkspaceReady(task)||task.effectReconciliations?.some(row=>row.state==='prepared'))continue
           if (closed) return
-          if (task.dependenciesReady===false || task.archivedAt || !retryReady(task.taskId) || inflightTasks.has(task.taskId) || !task.drained || task.recovering || task.status !== 'active' || task.control !== 'active') continue
+          if (inspectionHoldsExecution(task) || task.dependenciesReady===false || task.archivedAt || !retryReady(task.taskId) || inflightTasks.has(task.taskId) || !task.drained || task.recovering || task.status !== 'active' || task.control !== 'active') continue
           const pending = await query('wake.list', { taskId: task.taskId })
           if (!pendingDialogue(task) && !pendingTaskHumanReview(task, pending) && taskHumanWait(task)) continue
           if (!taskSlots.has(task.taskId) && taskSlots.size >= taskLimit()) continue
@@ -1077,6 +1078,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if(task.dependenciesReady===false){taskSlots.delete(taskId);return}
       if(task.effectReconciliations?.some(row=>row.state==='prepared')){taskSlots.delete(taskId);return}
       if (task.archivedAt || task.status !== 'active' || task.control !== 'active') { taskSlots.delete(taskId); return }
+      if(inspectionHoldsExecution(task)){taskSlots.delete(taskId);return}
       if (!task.drained) return
       const pending = await query('wake.list', { taskId })
       const reviewPending = pendingTaskHumanReview(task, pending)
@@ -1088,7 +1090,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const dialogueMessage = wakes.find(item => item.kind === 'task.dialogue')?.payload.messageId
       const dialogue = dialogueMessage ? { ...task.dialogue.find(item => item.id === dialogueMessage),
         history: task.dialogue.filter(item => item.reply && item.id !== dialogueMessage).slice(-20) } : null
-      let drained = true, submitted = false
+      let drained = true, submitted = false, executionStarted=false
       try {
         const sources = (await Promise.all(task.sourceRefs.map(sourceId => query('source.get', { sourceId })))).filter(Boolean)
         const materials = await Promise.all(sources.map(source => materializeSource(taskId, source)))
@@ -1107,7 +1109,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             Object.assign(binding,{contextRevision:nextBinding.contextRevision});task=await requireTask(taskId)
             sources.splice(0,sources.length,...(await Promise.all(task.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean))
           },
-          onSessionBound: async () => { await attachWorkspace(binding.sessionId, await taskWorkspace(root,taskId,task), task.title); return command('task.sessionBound', { binding }, `task-bound:${taskId}:${binding.leaseEpoch}`) },
+          onSessionBound: async () => { await attachWorkspace(binding.sessionId, await taskWorkspace(root,taskId,task), task.title); const receipt=await command('task.sessionBound', { binding }, `task-bound:${taskId}:${binding.leaseEpoch}`);executionStarted=true;return receipt },
           resolveHuman: async args => {
             if (!humanReview) fail('DYNAMIC_HUMAN_REVIEW_NOT_PENDING')
             return (await command('task.human.resolve', { binding, ...args },
@@ -1201,10 +1203,22 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           return
         }
 
+        if(drained&&executionStarted&&task.conversationId&&await currentTask(binding)){
+          await command('task.wait',{binding,action:'blocked',summary:'执行会话异常退出；保留当前任务与效果收据，交 Router 核查。',limitations:['TASK_SESSION_NO_SUBMISSION'],evidence:[]},`task-unexpected-exit:${taskId}:${binding.leaseEpoch}`)
+          await command('wake.ack',{binding,wakeIds},`wake-ack:${taskId}:${binding.leaseEpoch}`)
+        }
         throw error
       }
       finally {
         if (drained) await command('task.drained', { binding }, `task-drained:${taskId}:${binding.leaseEpoch}`)
+        if(!closed){
+          // The turn has stopped and drained; inspect its terminal evidence now.
+          const current=await requireTask(taskId)
+          if(taskInspectionReason(current)){
+            try{await command('task.inspect',{taskId,expected:inspectionVersion(current)})}catch(error){if(error.code!=='TASK_INSPECTION_STALE')throw error}
+            if(current.conversationId)void residentRouter.schedule(current.conversationId).catch(error=>recordRouterFailure(current.conversationId,error))
+          }
+        }
         if (!closed) void deliverNotifications()
         // Slot release and queued-work promotion happen after the tracked turn drains.
       }
@@ -1410,8 +1424,28 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     for(const [id,error]of residentRouter.errors)recordRouterFailure(id,error)
     for(const [id,error]of failures)if(id==='router:'+error.conversationId&&!residentRouter.errors.has(error.conversationId))failures.delete(id)
   }
+  let nextInspectionAt=0
+  async function inspectTasks({force=false}={}){
+    if(closed||!force&&Date.now()<nextInspectionAt)return
+    nextInspectionAt=Date.now()+(config.inspectionIntervalMs??300000)
+    for(const task of await query('task.list')){
+      const live=!!ctx.agents.get(task.sessionId)||!!ctx.piAuthority.describe(task.sessionId)
+      if(!taskInspectionReason(task,{live,inflight:inflightTasks.has(task.taskId)}))continue
+      try{
+        const binding=await query('task.binding',{taskId:task.taskId})
+        if(binding.leaseEpoch!==task.leaseEpoch)continue
+        await command('task.inspect',{taskId:task.taskId,expected:inspectionVersion(task)})
+        // Missing registry handles do not prove a writer or external producer
+        // drained. Inspection records the incident; existing drain proofs own it.
+      }
+      catch(error){if(!['TASK_INSPECTION_STALE','DYNAMIC_TASK_LEASE_STALE'].includes(error.code))throw error}
+    }
+  }
   async function recover() {
     if (closed) return { failures: [] }
+    // Inspection must keep recording incidents while a previous recovery waits
+    // on a busy Router. Its cadence guard is claimed before the first await.
+    await inspectTasks()
     if (recovering) return recovering
     ctx.get?.('reflection')?.scan()
     return recovering = (async () => {

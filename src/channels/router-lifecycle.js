@@ -204,10 +204,12 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
           row=await query('router.get',{conversationId});assertOpen();continue
         }
       }
-      // 正常停机中止的生成沿原历史领取一次；原生 error 仍需显式 Host 续办。
+      // 巡检异常由 Host 在有界恢复队列内续办；仍复用 Pi 原生检查与原批次，
+      // 任何未知工具效果、较新取消和版本冲突都不得绕过。普通来源沿用显式续办合同。
       if(admittedPacket?.source.kind==='conversation-router'&&handle.agent.admission.status(admittedPacket.id)==='admitted'&&admittedPacket.source.eventIds.some(id=>inbox.some(event=>event.id===id))){
         const failed=handle.session.sessionManager.getBranch().findLast(entry=>entry.type==='message')
-        if(failed?.message.role!=='assistant'||failed.message.stopReason!=='aborted')fail('ROUTER_BATCH_UNSETTLED')
+        const inspection=inbox.some(event=>event.kind==='task.inspection')
+        if(failed?.message.role!=='assistant'||failed.message.stopReason!=='aborted'&&!(inspection&&['error','stop'].includes(failed.message.stopReason)))fail('ROUTER_BATCH_UNSETTLED')
         try{await continueBatch(row,handle,admittedPacket,failed.id)}catch(error){
           if(/^(?:PI_ROUTER_RESUME_|ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT)/.test(error.code??''))fail('ROUTER_BATCH_UNSETTLED')
           throw error
@@ -352,10 +354,22 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     async recover(){
       const conversations=new Set((await query('router.list')).map(row=>row.id))
       for(const id of await query('router.pending-conversations'))conversations.add(id)
-      const failures=[]
+      const failures=[],fatal=[]
       for(const id of conversations){
-        try{await schedule(id)}catch(error){if(error.code!=='ROUTER_BATCH_UNSETTLED')throw error;failures.push({conversationId:id,code:error.code})}
+        if(tails.has(id))continue
+        const row=await query('router.get',{conversationId:id}),inbox=await query('router.inbox',{conversationId:id,limit:30})
+        const inspection=inbox.some(event=>event.kind==='task.inspection')
+        const key=hash([row?.generation,inbox.map(event=>event.id)]),retry=row?.recoveryRetry
+        if(inspection&&row?.phase==='active'&&retry?.key===key&&Date.parse(retry.nextAttemptAt)>Date.now()){
+          failures.push({conversationId:id,code:retry.exhausted?'ROUTER_RECOVERY_EXHAUSTED':'ROUTER_RECOVERY_BACKOFF'});continue
+        }
+        try{await schedule(id)}catch(error){
+          failures.push({conversationId:id,code:error.code??error.message})
+          if(error.code!=='ROUTER_BATCH_UNSETTLED')fatal.push(error)
+          if(row&&inspection)await command('router.recovery-attempt',{conversationId:id,generation:row.generation,key})
+        }
       }
+      if(fatal.length)throw fatal[0]
       return {failures}
     },
     close(){

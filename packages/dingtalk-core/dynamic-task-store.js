@@ -1,3 +1,4 @@
+import {inspectionVersion,taskInspectionReason,taskWaitIdentity,inspectionIsCurrent,inspectionHoldsExecution} from '../../src/tasks/inspection.js'
 import {sourceHistorySchema} from '../../src/channels/source-history.js'
 import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
 import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
@@ -188,7 +189,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     if (!archivedTask(taskId)) return all(table, `${where} ${suffix || 'ORDER BY rowid'}`, [taskId])
     return db.prepare(`SELECT body,rowid AS sequence FROM ${table} ${where} UNION ALL SELECT body,sequence FROM ${archiveTable(table)} ${where} ORDER BY sequence`).all(taskId, taskId).map(row => JSON.parse(row.body))
   }
-  const saveTask = task => { task.updatedAt = now(); put('dynamic_tasks', task); return task }
+  const saveTask = task => { if(task.inspection?.pending&&!inspectionIsCurrent(task))Object.assign(task.inspection,{pending:false,resolvedAt:now(),resolution:'state-changed'});task.updatedAt = now(); put('dynamic_tasks', task); return task }
   const execs = taskId => taskRows('dynamic_executions', taskId)
   const ops = taskId => taskId ? taskRows('dynamic_operations', taskId) : all('dynamic_operations', 'ORDER BY rowid')
   const wakes = taskId => taskId ? taskRows('dynamic_wakes', taskId) : all('dynamic_wakes', 'ORDER BY rowid')
@@ -789,7 +790,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         }
         unarchiveTaskRows(db,task.taskId);delete task.archivedAt;delete task.archivedBy
       }
-      if(routerScheduling){task.providerRecovery=null;task.technicalFailure=null}
+      if(routerScheduling){task.providerRecovery=null;task.technicalFailure=null;if(task.inspection)Object.assign(task.inspection,{pending:false,resolvedAt:stamp,resolvedOperationId:a.operationId})}
       const previousRequirementRevision=task.requirementRevision
       let reactivated=false
       if(a.sameGoal===true&&(kind!=='task.reopen'||['objective','title','requirements'].some(key=>a[key]!==undefined&&digest(a[key])!==digest(task[key]))))fail('ROUTER_SAME_GOAL_CONFLICT')
@@ -860,7 +861,28 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       task.lastDecision={action:'wait',summary:'已按操作者证据结清为可能存在部分效果的失败尝试；原调用禁止重放，后续会话由 Router 按当前任务状态调度。',evidence:reconciliation.receipt.payload.evidenceRefs.map(ref=>ref.path),limitations:['partial effects possible','no replay'],effectDisposition:'closed-with-possible-partial-effects'}
       saveTask(task);return changed({task,reconciliation})
     }
+    if(kind==='task.inspect'){
+      const task=get('dynamic_tasks',text(a.taskId,'taskId'))
+      if(digest(inspectionVersion(task))!==digest(a.expected))fail('TASK_INSPECTION_STALE')
+      const reason=taskInspectionReason(task)
+      if(!reason)return changed({task,inspected:false})
+      const key=digest([inspectionVersion(task),reason,task.technicalFailure??null,task.lastDecision??null,...reason==='wait-overdue'?[task.inspection?.nextCheckAt??null]:[]])
+      if(task.inspection?.key===key)return changed({task,inspected:false})
+      // One unresolved incident per execution lease; drain changes are lifecycle
+      // bookkeeping, not a second incident. A Router action changes the revision.
+      if(task.inspection?.pending&&task.inspection.leaseEpoch===task.leaseEpoch
+        &&inspectionIsCurrent(task))return changed({task,inspected:false})
+      const previousReview=task.inspection?.review
+      task.inspection={key,pending:true,reason,leaseEpoch:task.leaseEpoch,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,contextRevision:task.contextRevision??0,at:stamp,...reason==='wait-overdue'?{waitIdentity:taskWaitIdentity(task),waitingSince:task.lastDecision.at}:{}}
+      saveTask(task)
+      routerLedger.taskEvent({id:'task-inspection:'+digest([task.taskId,key]),kind:'task.inspection',taskId:task.taskId,
+        reason,inspectionKey:key,expected:inspectionVersion(task),brief:{objective:task.objective?.slice(0,1024),requirements:task.requirements?.slice(0,8).map(item=>String(item).slice(0,256)),progress:task.lastDecision?.summary?.slice(0,1024),
+          limitations:task.lastDecision?.limitations?.slice(0,8),technicalFailure:task.technicalFailure,...reason==='wait-overdue'?{waitingSince:task.lastDecision.at,question:task.lastDecision.question?.slice(0,512),previousReview}:{},
+          remaining:'Inspect current task and native execution/effect receipts before deciding continuation, investigation, waiting or user notification. Unknown effects must be reconciled; never replay an old invocation.'}})
+      return changed({task,inspected:true})
+    }
     if (kind === 'task.claim') {
+      if(inspectionHoldsExecution(get('dynamic_tasks',a.taskId)))fail('TASK_INSPECTION_ROUTER_REQUIRED')
       if(!routerLedger.dependenciesReady(get('dynamic_tasks',a.taskId)))fail('ROUTER_DEPENDENCY_PENDING')
       if(get('dynamic_tasks',a.taskId).archiveRestore?.reviewRequired&&a.restoreReview!==true)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
       const task = get('dynamic_tasks', a.taskId)
@@ -909,6 +931,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'task.wake' || kind === 'wake.enqueue') {
       const task = get('dynamic_tasks', a.taskId)
+      if(a.kind==='host.explicit-continuation'&&inspectionHoldsExecution(task)){Object.assign(task.inspection,{pending:false,resolvedAt:stamp,resolution:'host-explicit-continuation'});saveTask(task)}
       const wakeId = wake(task.taskId, a.kind ?? 'task.wake', a.payload ?? {}, a.key ?? `wake:${commandId}`)
       return changed({ wakeId })
     }
@@ -1013,7 +1036,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       }
       task.lastDecision = { action: a.action ?? 'wait', summary: text(a.summary, 'summary'), decision: a.decision ?? null, question: a.question ?? a.decision?.question ?? null,
         evidence: a.evidence ?? [], limitations: a.limitations ?? [], ...(a.humanReply ? { replySourceId: a.humanReply.sourceId } : {}),
-        requirementRevision: task.requirementRevision, controlRevision: task.controlRevision, at: stamp }
+        requirementRevision: task.requirementRevision, controlRevision: task.controlRevision, contextRevision:task.contextRevision??0, at: stamp }
       if(a.technicalFailure!==undefined){task.technicalFailure=taskBusinessFailure(a.technicalFailure);task.lastDecision.technicalFailure=task.technicalFailure;task.providerRecovery=null}
       else if(a.reviewFailureCode===undefined&&Object.hasOwn(task,'technicalFailure'))task.technicalFailure=null
       if (a.reviewFailureCode === undefined) task.providerRecovery = null
