@@ -1,3 +1,4 @@
+import {selectOption} from './select-control';
 import {test, expect, type Page, type Locator} from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {FIXTURE_TOKEN} from './preview.mjs'
@@ -16,12 +17,12 @@ async function login(page: Page, initial = true) {
 }
 async function openForm(page: Page) {
   await page.getByRole('button', {name: '添加渠道', exact: true}).click()
-  const dialog = dialogFor(page); await expect(dialog).toBeVisible(); await dialog.getByLabel('渠道类型', {exact: true}).selectOption('dingtalk-dws'); return dialog
+  const dialog = dialogFor(page); await expect(dialog).toBeVisible(); await selectOption(dialog.getByLabel('渠道类型', {exact: true}),'dingtalk-dws'); return dialog
 }
 async function fillRoom(dialog: Locator, id: string) {
   await dialog.getByLabel('渠道标识', {exact: true}).filter({visible: true}).fill(id)
-  await dialog.getByLabel('会话类型', {exact: true}).selectOption('chat-room')
-  await dialog.getByLabel('目标填写方式', {exact: true}).selectOption('id')
+  await selectOption(dialog.getByLabel('会话类型', {exact: true}),'chat-room')
+  await selectOption(dialog.getByLabel('目标填写方式', {exact: true}),'id')
   await dialog.getByLabel('群 ID', {exact: true}).fill('fixture-room-id')
 }
 const waitSave = (page: Page) => page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === endpoint)
@@ -66,15 +67,15 @@ test('新增群聊切换清除旧目标，键盘与中文 IME 不误交，保存
   await expect(dialog).toContainText('Bot 当前登录账号')
   await dialog.getByLabel('渠道标识', {exact: true}).filter({visible: true}).focus(); await page.keyboard.press('Tab')
   await expect(dialog.getByLabel('会话类型', {exact: true})).toBeFocused()
-  await dialog.getByLabel('会话类型', {exact: true}).selectOption('chat')
+  await selectOption(dialog.getByLabel('会话类型', {exact: true}),'chat')
   await expect(dialog.getByLabel('用户 ID', {exact: true})).toHaveValue('')
   await dialog.getByLabel('用户 ID', {exact: true}).fill('must-not-survive')
-  await dialog.getByLabel('目标填写方式', {exact: true}).selectOption('name')
+  await selectOption(dialog.getByLabel('目标填写方式', {exact: true}),'name')
   await expect(dialog.getByLabel('用户名称', {exact: true})).toHaveValue('')
   await dialog.getByLabel('用户名称', {exact: true}).fill('不应带入群聊')
-  await dialog.getByLabel('会话类型', {exact: true}).selectOption('chat-room')
+  await selectOption(dialog.getByLabel('会话类型', {exact: true}),'chat-room')
   await expect(dialog.getByLabel('群名称', {exact: true})).toHaveValue('')
-  await dialog.getByLabel('目标填写方式', {exact: true}).selectOption('id')
+  await selectOption(dialog.getByLabel('目标填写方式', {exact: true}),'id')
   const target = dialog.getByLabel('群 ID', {exact: true}); await expect(target).toHaveValue(''); await target.fill('fixture-room-id')
   await dialog.getByLabel('显示名称（可选）', {exact: true}).fill('浏览器隔离群聊')
   await dialog.getByLabel('渠道职责（可选）', {exact: true}).fill('只保存本地测试配置，不连接真实账号')
@@ -97,38 +98,38 @@ test('外发授权默认关闭，新增显式授权、编辑撤销及目标变�
   const id = 'browser-outbound-authorization', dialog = await openForm(page)
   await fillRoom(dialog, id)
   const authorization = dialog.getByLabel('外发授权', {exact: true})
-  await expect(authorization).toHaveValue('false')
-  await authorization.selectOption('true')
+  await expect(authorization).toHaveAttribute('data-value','false')
+  await selectOption(authorization,'true')
   const created = waitSave(page)
   await dialog.getByRole('button', {name: '保存钉钉渠道', exact: true}).click()
   expect(await (await created).json()).toMatchObject({channel: {writesAuthorized: true}, restartRequired: true, liveApplied: false})
   await expect(dialog).toContainText('保存配置待重启')
   await dialog.getByRole('button', {name: '关闭', exact: true}).click()
   const editing = await openEdit(page, id), control = editing.getByLabel('外发授权', {exact: true})
-  await expect(control).toHaveValue('true')
-  await control.selectOption('false')
+  await expect(control).toHaveAttribute('data-value','true')
+  await selectOption(control,'false')
   const revoked = await saveEdit(page, editing, id)
   expect(await revoked.json()).toMatchObject({detail: {writesAuthorized: false}, channel: {writesAuthorized: false}})
   expect((await readDetail(page, id)).writesAuthorized).toBe(false)
   await editing.getByRole('button', {name: '重新读取并编辑', exact: true}).click()
-  await control.selectOption('true')
+  await selectOption(control,'true')
   expect((await saveEdit(page, editing, id)).status()).toBe(200)
   await editing.getByRole('button', {name: '重新读取并编辑', exact: true}).click()
-  await expect(control).toHaveValue('true')
+  await expect(control).toHaveAttribute('data-value','true')
   await editing.getByLabel('群 ID', {exact: true}).fill('fixture-new-target')
-  await expect(control).toHaveValue('false'); await expect(control).toBeDisabled()
+  await expect(control).toHaveAttribute('data-value','false'); await expect(control).toBeDisabled()
   await expect(editing).toContainText('请先保存目标，再重新编辑授权')
   const changed = await saveEdit(page, editing, id)
   expect(await changed.json()).toMatchObject({detail: {target: 'fixture-new-target', writesAuthorized: false}})
   await editing.getByRole('button', {name: '重新读取并编辑', exact: true}).click()
-  await expect(control).toBeEnabled(); await expect(control).toHaveValue('false')
+  await expect(control).toBeEnabled(); await expect(control).toHaveAttribute('data-value','false')
 })
 
 test('新增私聊按名称提交且当前渠道不被当作已热加载', async ({page}) => {
   await login(page)
   const dialog = await openForm(page); await fillRoom(dialog, 'browser-created-direct')
-  await dialog.getByLabel('会话类型', {exact: true}).selectOption('chat')
-  await dialog.getByLabel('目标填写方式', {exact: true}).selectOption('name')
+  await selectOption(dialog.getByLabel('会话类型', {exact: true}),'chat')
+  await selectOption(dialog.getByLabel('目标填写方式', {exact: true}),'name')
   await dialog.getByLabel('用户名称', {exact: true}).fill('隔离私聊目标')
   const response = waitSave(page); await dialog.getByRole('button', {name: '保存钉钉渠道', exact: true}).click(); const saved = await response
   expect(saved.status()).toBe(200)
@@ -305,10 +306,10 @@ test('编辑回填固定标识与完整字段，同 ID 待重启及无变化或�
   await expect(page.locator('.channel-card--add')).toBeVisible()
   await dialog.getByLabel('渠道标识', {exact: true}).filter({visible: true}).focus(); await page.keyboard.press('Tab')
   await expect(dialog.getByLabel('会话类型', {exact: true})).toBeFocused()
-  await dialog.getByLabel('会话类型', {exact: true}).selectOption('chat')
+  await selectOption(dialog.getByLabel('会话类型', {exact: true}),'chat')
   await expect(dialog.getByLabel('用户 ID', {exact: true})).toHaveValue('')
   await dialog.getByLabel('用户 ID', {exact: true}).fill('不得残留的旧目标')
-  await dialog.getByLabel('目标填写方式', {exact: true}).selectOption('name')
+  await selectOption(dialog.getByLabel('目标填写方式', {exact: true}),'name')
   const target = dialog.getByLabel('用户名称', {exact: true}); await expect(target).toHaveValue('')
   await target.fill('  浏览器隔离私聊目标  ')
   await dialog.getByLabel('显示名称（可选）', {exact: true}).fill('  编辑后的渠道  ')
@@ -393,7 +394,7 @@ test('编辑断线后比较真实保存快照，字段不一致继续锁定，�
   缩进仍是请求的一部分
 `
   await dialog.getByLabel('渠道职责（可选）', {exact: true}).fill(intendedPrompt)
-  await dialog.getByLabel('外发授权', {exact: true}).selectOption('true')
+  await selectOption(dialog.getByLabel('外发授权', {exact: true}),'true')
   let patches = 0, saved = false, reveal = false, reads = 0
   await page.route('**' + editEndpoint(id), async route => {
     if (route.request().method() === 'PATCH') {
@@ -415,7 +416,7 @@ test('编辑断线后比较真实保存快照，字段不一致继续锁定，�
   const other = await context.newPage()
   try {
     await other.goto('/#/channels'); const concurrent = await openEdit(other, id)
-    await concurrent.getByLabel('外发授权', {exact: true}).selectOption('false')
+    await selectOption(concurrent.getByLabel('外发授权', {exact: true}),'false')
     expect((await saveEdit(other, concurrent, id)).status()).toBe(200)
     expect((await readDetail(page, id)).writesAuthorized).toBe(false)
     reveal = true; await check.click()
@@ -425,7 +426,7 @@ test('编辑断线后比较真实保存快照，字段不一致继续锁定，�
     await expect(dialog.getByRole('button', {name: '保存渠道修改', exact: true})).toBeDisabled(); expect(patches).toBe(1)
     await concurrent.getByRole('button', {name: '重新读取并编辑', exact: true}).click()
     await expect(concurrent.getByLabel('渠道职责（可选）', {exact: true})).toBeEnabled()
-    await concurrent.getByLabel('外发授权', {exact: true}).selectOption('true')
+    await selectOption(concurrent.getByLabel('外发授权', {exact: true}),'true')
     expect((await saveEdit(other, concurrent, id)).status()).toBe(200)
     const current = await readDetail(page, id)
     expect(current.prompt).toBe(intendedPrompt); expect(current.version).not.toBe(original.version)

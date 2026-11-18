@@ -1,3 +1,4 @@
+import {selectOption} from './select-control';
 import {test, expect, type Page} from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {FIXTURE_TOKEN} from './preview.mjs'
@@ -9,7 +10,7 @@ test('模型配置、密钥替换清除、拒绝回显和重新读取状态',asy
  await page.getByLabel('API 地址',{exact:true}).fill('https://model.example.invalid/v1')
  await page.getByRole('button',{name:'保存 API 配置',exact:true}).click();await expect(page.locator('dialog.settings-confirm')).toContainText('https://model.example.invalid/v1');await confirm(page)
  await expect(page.getByText('API 配置已保存，正常重启后生效。',{exact:true})).toBeVisible()
- await expect(page.getByLabel('模型路由',{exact:true})).toHaveValue('fixture-model')
+ await expect(page.getByLabel('模型路由',{exact:true})).toHaveAttribute('data-value','fixture-model')
  for(const [kind,label] of [['model','模型 API Key'],['github','GitHub Token']]){
   await page.getByRole('tab',{name:kind==='model'?'模型与 API':'访问凭据',exact:true}).click()
   const input=page.getByLabel('新的'+label,{exact:true});await expect(input).toHaveAttribute('type','password')
@@ -26,9 +27,9 @@ test('模型配置、密钥替换清除、拒绝回显和重新读取状态',asy
 test('名称和内置图标保存、刷新及会话统一展示，窄屏与深色axe',async({page,browser})=>{
  await login(page);await page.getByRole('tab',{name:'助手外观',exact:true}).click()
  try{
-  await page.getByLabel('显示名称',{exact:true}).fill('测试助手');await page.getByLabel('助手图标',{exact:true}).selectOption('robot');await page.getByRole('button',{name:'保存外观',exact:true}).click()
+  await page.getByLabel('显示名称',{exact:true}).fill('测试助手');await selectOption(page.getByLabel('助手图标',{exact:true}),'robot');await page.getByRole('button',{name:'保存外观',exact:true}).click()
   await expect(page.locator('.desktop-sidebar .board-logo')).toContainText('测试助手');await expect(page.locator('.desktop-sidebar .board-logo-mark')).toHaveText('🤖')
-  await page.reload();await page.getByRole('tab',{name:'助手外观',exact:true}).click();await expect(page.getByLabel('显示名称',{exact:true})).toHaveValue('测试助手');await expect(page.getByLabel('助手图标',{exact:true})).toHaveValue('robot')
+  await page.reload();await page.getByRole('tab',{name:'助手外观',exact:true}).click();await expect(page.getByLabel('显示名称',{exact:true})).toHaveValue('测试助手');await expect(page.getByLabel('助手图标',{exact:true})).toHaveAttribute('data-value','robot')
   const origin=new URL(page.url()).origin,anonymous=await browser.newContext();try{const loginPage=await anonymous.newPage();await loginPage.goto(origin+'/');await expect(loginPage.locator('.login-brand .board-logo')).toContainText('测试助手');await expect(loginPage.getByRole('heading',{name:'欢迎回到 测试助手',exact:true})).toBeVisible();expect((await loginPage.request.get(origin+'/api/settings')).status()).toBe(401)}finally{await anonymous.close()}
   await page.goto('/#/channels/room-product');await expect(page.locator('.message-assistant .message-meta strong').first()).toHaveText('测试助手');await expect(page.locator('.message-assistant .bot-avatar').first()).toHaveText('🤖')
   await page.goto('/#/chat');await expect(page.getByLabel('消息内容',{exact:true})).toHaveAttribute('placeholder','给 测试助手 发消息…')
@@ -109,11 +110,11 @@ test('角色模型独立保存、原生选项、取消焦点、确认重启与�
  await login(page);await page.getByRole('tab',{name:'模型分工',exact:true}).click()
  for(const label of ['一级分诊','Router','任务执行']){
   await expect(page.getByRole('heading',{name:label,exact:true})).toBeVisible()
-  await page.getByLabel(label+'模型路由',{exact:true}).selectOption('fixture-model')
-  await page.getByLabel(label+'模型',{exact:true}).selectOption('reasoning-fixture')
+  await selectOption(page.getByLabel(label+'模型路由',{exact:true}),'fixture-model')
+  await selectOption(page.getByLabel(label+'模型',{exact:true}),'reasoning-fixture')
   const effort=page.getByLabel(label+'推理深度',{exact:true})
-  await expect(effort.locator('option')).toHaveText(['模型默认','关闭 (off)','低 (low)','高 (high)'])
-  await effort.selectOption(label==='Router'?'high':'low')
+  await effort.click();await expect(page.getByRole('option')).toHaveText(['模型默认','关闭 (off)','低 (low)','高 (high)']);await page.keyboard.press('Escape')
+  await selectOption(effort,label==='Router'?'high':'low')
   const button=page.getByRole('button',{name:'保存'+label+'配置',exact:true})
   await button.click();await expect(page.locator('dialog.settings-confirm').getByRole('button',{name:'取消',exact:true})).toBeFocused()
   await page.keyboard.press('Escape');await expect(button).toBeFocused()
@@ -122,9 +123,9 @@ test('角色模型独立保存、原生选项、取消焦点、确认重启与�
   await expect(button).toBeEnabled()
  }
  await page.reload();await page.getByRole('tab',{name:'模型分工',exact:true}).click()
- for(const label of ['一级分诊','Router','任务执行']){await expect(page.getByLabel(label+'模型',{exact:true})).toHaveValue('reasoning-fixture');await expect(page.getByLabel(label+'推理深度',{exact:true})).toHaveValue(label==='Router'?'high':'low')}
- await page.getByLabel('任务执行模型',{exact:true}).selectOption('fixture');await expect(page.getByLabel('任务执行推理深度',{exact:true})).toHaveValue('model-default')
- await expect(page.getByLabel('任务执行推理深度',{exact:true}).locator('option')).toHaveText(['模型默认','关闭 (off)'])
+ for(const label of ['一级分诊','Router','任务执行']){await expect(page.getByLabel(label+'模型',{exact:true})).toHaveAttribute('data-value','reasoning-fixture');await expect(page.getByLabel(label+'推理深度',{exact:true})).toHaveAttribute('data-value',label==='Router'?'high':'low')}
+ await selectOption(page.getByLabel('任务执行模型',{exact:true}),'fixture');await expect(page.getByLabel('任务执行推理深度',{exact:true})).toHaveAttribute('data-value','model-default')
+ await page.getByLabel('任务执行推理深度',{exact:true}).click();await expect(page.getByRole('option')).toHaveText(['模型默认','关闭 (off)']);await page.keyboard.press('Escape')
  await page.getByRole('button',{name:'保存任务执行配置',exact:true}).click();await confirm(page);await expect(page.getByText('任务执行配置已保存，正常重启后生效。',{exact:true})).toBeVisible()
  const settings=await page.request.get('/api/settings').then(r=>r.json())
  expect(settings.roleModels.roles.find((row:{role:string})=>row.role==='task').saved.reasoningEffort).toBeUndefined()
@@ -137,9 +138,9 @@ test('角色保存失败、未知回执和版本冲突保留草稿且禁止重�
  for(const mode of ['network','receipt','conflict']){
   let writes=0
   await page.route('**/api/settings/role-model',route=>{writes++;return mode==='network'?route.abort():route.fulfill({status:mode==='conflict'?409:200,json:mode==='conflict'?{error:'SETTINGS_VERSION_CONFLICT'}:{ok:true}})})
-  await page.getByLabel('Router模型路由',{exact:true}).selectOption('fixture-model');await page.getByLabel('Router模型',{exact:true}).selectOption('reasoning-fixture');await page.getByLabel('Router推理深度',{exact:true}).selectOption('high')
+  await selectOption(page.getByLabel('Router模型路由',{exact:true}),'fixture-model');await selectOption(page.getByLabel('Router模型',{exact:true}),'reasoning-fixture');await selectOption(page.getByLabel('Router推理深度',{exact:true}),'high')
   await page.getByRole('button',{name:'保存Router配置',exact:true}).click();await confirm(page)
-  await expect(page.getByRole('button',{name:'保存Router配置',exact:true})).toBeDisabled();await expect(page.getByLabel('Router推理深度',{exact:true})).toHaveValue('high');await expect(page.getByText(/草稿已保留/).last()).toBeVisible();expect(writes).toBe(1)
+  await expect(page.getByRole('button',{name:'保存Router配置',exact:true})).toBeDisabled();await expect(page.getByLabel('Router推理深度',{exact:true})).toHaveAttribute('data-value','high');await expect(page.getByText(/草稿已保留/).last()).toBeVisible();expect(writes).toBe(1)
   await expect(page.getByText('Router配置已保存，正常重启后生效。',{exact:true})).toHaveCount(0)
   await page.unroute('**/api/settings/role-model');await page.getByRole('button',{name:'重新读取设置并替换草稿',exact:true}).click();await expect(page.getByRole('button',{name:'保存Router配置',exact:true})).toBeEnabled()
  }

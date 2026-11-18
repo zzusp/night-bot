@@ -1,3 +1,4 @@
+import {BoardSelect} from './BoardSelect';
 import {useEffect, useRef, useState} from 'react';
 import {api, ApiError, errorText, type OperatorSettings, type WorkLogSelection, type WorkLogState} from '../api';
 import {Badge, Button} from './BoardPrimitives';
@@ -34,7 +35,7 @@ export function WorkLogEditor({state,version,onSaved,onReload,reloading,onStateC
   {state.restartRequired&&<Badge tone="warning">待重启</Badge>}
   {state.environmentOverrides.length>0&&<div className="role-model-environment"><p>环境变量优先于保存配置，重启仍会覆盖对应字段。</p>{state.nextStart?<p>按当前环境重启：{describe(state.nextStart)}</p>:<p role="alert">当前环境变量无效，请修改或移除后再重启。</p>}<ul>{state.environmentOverrides.map(item=><li key={item.name}>{item.name}</li>)}</ul></div>}
   <form noValidate onKeyDown={event=>{if(event.key==='Enter'&&(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229))event.preventDefault()}} onSubmit={event=>{event.preventDefault();void save()}}>
-   <label htmlFor="work-log-enabled">自动记录</label><select id="work-log-enabled" disabled={disabled} value={String(draft.enabled)} onChange={event=>change({enabled:event.target.value==='true'})}><option value="true">开启</option><option value="false">关闭</option></select>
+   <label htmlFor="work-log-enabled">自动记录</label><BoardSelect id="work-log-enabled" disabled={disabled} value={String(draft.enabled)} onChange={event=>change({enabled:event.target.value==='true'})}><option value="true">开启</option><option value="false">关闭</option></BoardSelect>
    <label htmlFor="work-log-time">每天执行时间（24 小时制）</label><input id="work-log-time" value={draft.time} maxLength={5} placeholder="23:59" disabled={disabled} onChange={event=>change({time:event.target.value})} aria-invalid={!!error&&invalidTime} aria-describedby={error ? "work-log-error" : undefined}/>
    <label htmlFor="work-log-timezone">执行时区（local = 服务器时区）</label><input id="work-log-timezone" value={draft.timezone} maxLength={128} placeholder="local / Asia/Shanghai" disabled={disabled} onChange={event=>change({timezone:event.target.value})} aria-invalid={!!error&&invalidZone} aria-describedby={error ? "work-log-error" : undefined}/>
 

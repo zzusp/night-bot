@@ -1,3 +1,4 @@
+import {selectOption} from './select-control';
 import {test, expect, type Page, type Locator} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {FIXTURE_TOKEN} from './preview.mjs';
@@ -68,7 +69,7 @@ for (const width of [1440, 390]) test(`表单与弹窗保留安全边界、错�
   const add = page.getByRole('button', {name: '添加渠道', exact: true});
   await add.click();
   const dialog = page.getByRole('dialog', {name: '添加渠道', exact: true});
-  await dialog.getByLabel('渠道类型', {exact: true}).selectOption('dingtalk-dws');
+  await selectOption(dialog.getByLabel('渠道类型', {exact: true}),'dingtalk-dws');
   await expect(dialog.locator('.channel-account')).toContainText('Bot 当前登录账号');
   await expect(dialog.locator('.channel-create-boundary')).toHaveCount(0);
   await expect(dialog.locator('.field-help:visible')).toHaveCount(1);

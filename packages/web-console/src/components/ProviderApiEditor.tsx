@@ -1,3 +1,4 @@
+import {BoardSelect} from './BoardSelect';
 import {useEffect, useRef, useState} from 'react';
 import {api, ApiError, errorText, type ModelCatalog, type ModelCatalogSaved, type ModelProvider} from '../api';
 import {Button} from './BoardPrimitives';
@@ -39,7 +40,7 @@ export function ProviderApiEditor({provider,version,onSaved,onStateChange,disabl
   <h3>{creating?'添加路由':'模型 API'}</h3>
   <form noValidate className="provider-api-form" onKeyDown={event=>{if(event.key==='Enter'&&(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229))event.preventDefault()}} onSubmit={event=>{event.preventDefault();submit()}}>
    {creating&&<><label htmlFor="provider-id">路由标识</label><input id="provider-id" value={draft.provider} maxLength={64} disabled={blocked} onChange={event=>change('provider',event.target.value)} aria-invalid={field==='provider-id'} aria-describedby={error?'provider-api-error':undefined}/></>}
-   <label htmlFor="provider-api">API 协议</label><select id="provider-api" value={draft.api} disabled={blocked} onChange={event=>change('api',event.target.value)} aria-describedby={error?'provider-api-error':undefined}>{!creating&&<option value="">沿用服务商默认</option>}{draft.api&&!protocols[draft.api]&&<option value={draft.api}>{draft.api}（保留已有协议）</option>}{Object.entries(protocols).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
+   <label htmlFor="provider-api">API 协议</label><BoardSelect id="provider-api" value={draft.api} disabled={blocked} onChange={event=>change('api',event.target.value)} aria-describedby={error?'provider-api-error':undefined}>{!creating&&<option value="">沿用服务商默认</option>}{draft.api&&!protocols[draft.api]&&<option value={draft.api}>{draft.api}（保留已有协议）</option>}{Object.entries(protocols).map(([value,label])=><option key={value} value={value}>{label}</option>)}</BoardSelect>
    <label htmlFor="provider-endpoint">API 地址</label><input id="provider-endpoint" type="url" value={draft.baseURL} maxLength={1024} disabled={blocked} onChange={event=>change('baseURL',event.target.value)} placeholder={provider?.baseURLConfigured&&!provider.baseURL?'已有地址包含私密参数，不回显':'https://api.example.com/v1'} aria-invalid={field==='provider-endpoint'} aria-describedby={error?'provider-api-error':undefined}/>
    {creating&&<><label htmlFor="provider-first-model">首个模型 ID</label><input id="provider-first-model" value={draft.model} maxLength={256} disabled={blocked} onChange={event=>change('model',event.target.value)} aria-invalid={field==='provider-first-model'} aria-describedby={error?'provider-api-error':undefined}/></>}
    {stale&&!locked&&<p role="alert">设置已变化，草稿未被覆盖。请重新读取路由配置后再编辑。</p>}

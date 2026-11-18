@@ -1,3 +1,4 @@
+import {selectOption} from './select-control';
 import {test,expect,type Page} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {FIXTURE_TOKEN} from './preview.mjs';
@@ -8,7 +9,7 @@ async function login(page:Page){
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
  await expect(page.getByLabel('模型路由',{exact:true})).toBeVisible();
- await page.getByLabel('模型路由',{exact:true}).selectOption('fixture-model');
+ await selectOption(page.getByLabel('模型路由',{exact:true}),'fixture-model');
 }
 
 test('模型配置紧凑布局：路由同行、空反馈无占位、响应式与浅深色',async({page})=>{

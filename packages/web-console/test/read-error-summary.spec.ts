@@ -1,3 +1,4 @@
+import {selectOption} from './select-control';
 import {test,expect,type Page} from '@playwright/test';
 import {FIXTURE_TOKEN} from './preview.mjs';
 const renderErrors=new WeakMap<Page,string[]>();
@@ -42,7 +43,7 @@ test('chat and activity independent endpoints remain separate in one region',asy
  await page.route('**/api/schedules?*',r=>r.fulfill({json:{items:[],total:0,offset:0,limit:20,nextOffset:null}}));await page.goto('/#/schedules');await expect(summary(page)).toHaveCount(0);
 });
 test('hidden settings read errors yield ownership; draft and operation error survive read recovery',async({page})=>{
- await login(page,'/settings');await page.getByLabel('模型路由',{exact:true}).selectOption('fixture-model');
+ await login(page,'/settings');await selectOption(page.getByLabel('模型路由',{exact:true}),'fixture-model');
  await page.getByLabel('API 地址',{exact:true}).fill('https://draft.example.invalid/v1');
  await page.route('**/api/settings/model-catalog',fail);await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await expect(summary(page)).toHaveCount(1);
@@ -70,7 +71,7 @@ test('evolution and feedback first-read errors do not become fake empty or start
  await page.screenshot({path:test.info().outputPath('feedback-read-failure.png')});
 });
 test('revoked model snapshot stays absent through failed retry until new authorized read',async({page})=>{
- await login(page,'/settings');await page.getByLabel('模型路由',{exact:true}).selectOption('fixture-model');
+ await login(page,'/settings');await selectOption(page.getByLabel('模型路由',{exact:true}),'fixture-model');
  await expect(page.getByLabel('API 地址',{exact:true})).toBeVisible();
  await page.route('**/api/settings/model-catalog',r=>r.fulfill({status:403,json:{error:'ACCESS_DENIED'}}));await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await expect(summary(page)).toContainText('没有访问权限');await expect(page.getByLabel('API 地址',{exact:true})).toHaveCount(0);

@@ -1,3 +1,4 @@
+import {selectOption} from './select-control';
 import {test, expect, type Page} from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {FIXTURE_TOKEN} from './preview.mjs'
@@ -66,7 +67,7 @@ test('空渠道列表保留同一张添加卡片，轮询新增卡片不丢失�
   const add = page.getByRole('button', {name: '添加渠道', exact: true})
   await add.click()
   const dialog = page.getByRole('dialog', {name: '添加渠道', exact: true})
-  await dialog.getByLabel('渠道类型', {exact: true}).selectOption('dingtalk-dws')
+  await selectOption(dialog.getByLabel('渠道类型', {exact: true}),'dingtalk-dws')
   const id = dialog.getByLabel('渠道标识', {exact: true}).filter({visible: true})
   await id.fill('preserve-add-card-draft')
   items = [{channelId: 'new-list-row', type: 'web-console', enabled: true, connected: true}]

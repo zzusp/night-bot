@@ -1,3 +1,4 @@
+import {BoardSelect} from './BoardSelect';
 import {useEffect, useRef, useState} from 'react';
 import {api, ApiError, errorText, type RoleModelCatalog, type RoleModelSelection, type RoleModelState, type RoleModelSaved} from '../api';
 import {Badge, Button} from './BoardPrimitives';
@@ -47,21 +48,21 @@ export function RoleModelEditor({state,catalog,version,onSaved,onReload,reloadin
   {state.environmentOverrides.length>0&&<div className="role-model-environment"><p>环境变量优先于保存配置，重启仍会覆盖对应字段。请修改或移除环境变量后再重启。</p>{state.nextStart?<p>按当前环境重启：{describe(state.nextStart)}</p>:<p role="alert">当前环境变量与保存配置不兼容，需修改或移除后才能正常启动。</p>}<ul>{state.environmentOverrides.map(item=><li key={item.name}>{item.name} · {sourceLabels[item.source]??'启动环境'}</li>)}</ul></div>}
   <form noValidate onKeyDown={event=>{if(event.key==='Enter'&&(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229))event.preventDefault()}} onSubmit={event=>{event.preventDefault();if(disabled)return;if(invalid){setError('请选择此路由支持的模型与推理深度。');document.getElementById(`${prefix}-model`)?.focus();return}setConfirm(true)}}>
    <div className="settings-role-fields"><div className="settings-field"><label htmlFor={`${prefix}-provider`}>{label}模型路由</label>
-   <select id={`${prefix}-provider`} value={draft.provider} disabled={disabled} aria-describedby={error ? `${prefix}-error` : undefined} onChange={event=>{const next=catalog.find(row=>row.provider===event.target.value);change({provider:event.target.value,model:next?.models[0]?.id??''})}}>
+   <BoardSelect id={`${prefix}-provider`} value={draft.provider} disabled={disabled} aria-describedby={error ? `${prefix}-error` : undefined} onChange={event=>{const next=catalog.find(row=>row.provider===event.target.value);change({provider:event.target.value,model:next?.models[0]?.id??''})}}>
     {!provider&&<option value={draft.provider} disabled>{draft.provider}（不可用）</option>}
     {catalog.map(row=><option key={row.provider} value={row.provider} disabled={!row.models.length}>{row.name===row.provider?row.provider:`${row.name} (${row.provider})`}{!row.models.length?'（无可用模型）':''}</option>)}
-   </select>
+   </BoardSelect>
    </div><div className="settings-field"><label htmlFor={`${prefix}-model`}>{label}模型</label>
-   <select id={`${prefix}-model`} value={draft.model} disabled={disabled||!provider?.models.length} aria-invalid={!!error&&invalid} aria-describedby={error ? `${prefix}-error` : undefined} onChange={event=>change({provider:draft.provider,model:event.target.value})}>
+   <BoardSelect id={`${prefix}-model`} value={draft.model} disabled={disabled||!provider?.models.length} aria-invalid={!!error&&invalid} aria-describedby={error ? `${prefix}-error` : undefined} onChange={event=>change({provider:draft.provider,model:event.target.value})}>
     {!model&&<option value={draft.model} disabled>{draft.model||'未选择模型'}（不可用）</option>}
     {provider?.models.map(row=><option key={row.id} value={row.id}>{row.name===row.id?row.id:`${row.name} (${row.id})`}</option>)}
-   </select>
+   </BoardSelect>
    </div><div className="settings-field"><label htmlFor={`${prefix}-effort`}>{label}推理深度</label>
-   <select id={`${prefix}-effort`} value={effort} disabled={disabled||!model} aria-invalid={!!error&&invalid} aria-describedby={error ? `${prefix}-error` : undefined} onChange={event=>change({provider:draft.provider,model:draft.model,...event.target.value==='model-default'?{}:{reasoningEffort:event.target.value}})}>
+   <BoardSelect id={`${prefix}-effort`} value={effort} disabled={disabled||!model} aria-invalid={!!error&&invalid} aria-describedby={error ? `${prefix}-error` : undefined} onChange={event=>change({provider:draft.provider,model:draft.model,...event.target.value==='model-default'?{}:{reasoningEffort:event.target.value}})}>
     <option value="model-default">模型默认</option>
     {effort!=='model-default'&&!model?.reasoningEfforts.includes(effort)&&<option value={effort} disabled>{effortLabels[effort]??effort}（不支持）</option>}
     {model?.reasoningEfforts.map(value=><option key={value} value={value}>{effortLabels[value]??value} ({value})</option>)}
-   </select>
+   </BoardSelect>
 
    </div></div>
    {stale&&!locked&&<p role="alert">设置已变化，当前草稿未被覆盖。请重新读取设置后再编辑。</p>}
