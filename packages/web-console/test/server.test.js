@@ -1,3 +1,5 @@
+import {createOperatorSettings} from '../../../src/settings/operator.js'
+import {runtimePaths,prepareRuntimePaths} from '../../../src/runtime/paths.js'
 import {createFeedbackService} from '../../../src/feedback/service.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -108,6 +110,49 @@ test('model catalog HTTP uses authenticated reads and same-origin strict mutatio
  assert.equal((await f.fetchApi(path,{method:'PUT',body})).status,200);assert.deepEqual(calls,[body])
  const rejected=await f.fetchApi(path,{method:'PUT',body:{action:'remove',provider:'fixture',id:'used',expectedVersion:view.version,confirm:true}})
  assert.equal(rejected.status,409);assert.deepEqual(rejected.body,{error:'SETTINGS_MODEL_IN_USE'})
+})
+
+test('execution principles HTTP protects the fixed file and rejects overriding newer versions',async t=>{
+ const settings={},f=await fixture(t,{settings}),paths=runtimePaths({installRoot:f.root,dataDir:'data'}),file=join(paths.config,'execution','AGENTS.md')
+ await prepareRuntimePaths(paths);Object.assign(settings,createOperatorSettings({paths,getCredentials:()=>undefined}))
+ const path='/api/settings/execution-principles'
+ assert.equal((await f.fetchApi(path)).status,401);await f.login()
+ const current=await f.fetchApi(path);assert.equal(current.status,200);assert.equal(current.body.text,'')
+ await assert.rejects(readFile(file),{code:'ENOENT'})
+ const body={text:'# 工作原则\n完成后核验。',expectedVersion:current.body.version}
+ const put=(payload,headers)=>f.fetchApi(path,{method:'PUT',body:payload,headers})
+ assert.equal((await put(body,{'x-csrf-token':'forged'})).status,403)
+ assert.equal((await put(body,{origin:'https://untrusted.invalid'})).status,403)
+ assert.equal((await put({...body,path:'invalid'})).status,400)
+ assert.equal((await put({...body,text:'验'.repeat(22_000)})).status,400)
+ const results=await Promise.all([put(body),put({...body,text:'other tab'})]);assert.deepEqual(results.map(row=>row.status).sort(),[200,409])
+ const saved=results.find(row=>row.status===200).body
+ assert.deepEqual((await f.fetchApi(path)).body,saved);assert.equal(await readFile(file,'utf8'),saved.text)
+ const outside=join(f.root,'unrelated.md');await writeFile(outside,'untouched');await rm(file);await link(outside,file)
+ assert.notEqual((await f.fetchApi(path)).status,200)
+ assert.notEqual((await put({...body,expectedVersion:saved.version})).status,200)
+ assert.equal(await readFile(outside,'utf8'),'untouched')
+})
+
+test('execution principles HTTP writes remain usable during continuous context reads',async t=>{
+ const settings={},f=await fixture(t,{settings}),paths=runtimePaths({installRoot:f.root,dataDir:'data'});
+ await prepareRuntimePaths(paths);Object.assign(settings,createOperatorSettings({paths,getCredentials:()=>undefined}));await f.login();
+ const path='/api/settings/execution-principles',texts=Array.from({length:13},(_,i)=>'# Revision '+i+'\n'+String(i).repeat(10_000));
+ const put=(text,expectedVersion)=>f.fetchApi(path,{method:'PUT',body:{text,expectedVersion}});
+ let snapshot=(await f.fetchApi(path)).body;
+ const initial=await put(texts[0],snapshot.version);assert.equal(initial.status,200);snapshot=initial.body;
+ const seen=new Map([[snapshot.version,snapshot.text]]),writes=new Map(seen);
+ let done=false,reads=0;const failures=[];
+ const readers=Array.from({length:6},async()=>{while(!done){
+  try{const {text,version}=await settings.executionPrinciples();reads++;seen.set(version,text)}catch(error){failures.push(error.code??error.message)}
+ }});
+ try{for(const text of texts.slice(1)){
+  const result=await put(text,snapshot.version);assert.equal(result.status,200,JSON.stringify(result.body));
+  snapshot=result.body;assert.equal(snapshot.text,text);writes.set(snapshot.version,text);
+ }}finally{done=true;await Promise.all(readers)}
+ assert(reads>0);assert.deepEqual(failures,[]);
+ for(const [version,text] of seen)assert.equal(text,writes.get(version));
+ assert.deepEqual(await settings.executionPrinciples(),snapshot);
 })
 
 test('real HTTP requires token login, same-origin mutation and CSRF; logout revokes the session', async t => {

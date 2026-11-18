@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto'
 import {isAbsolute,join,dirname,resolve} from 'node:path'
 import {lstat,realpath} from 'node:fs/promises'
 import {officialInstructionFiles} from './native-agent-instructions.js'
+import {readExecutionPrinciples} from './settings/execution-principles.js'
 import {officialSkillResources} from './native-tool-skill.js'
 import {memoryWriteAuthorization} from './memory/tools.js'
 import {scopeOf} from './native-scope.js'
@@ -123,7 +124,11 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
   }
   const context={systemPrompt,
    currentDirectory:async current=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();return scopedService('workingDirectory').get(actor)},
-   instructions:async current=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();if(!isAbsolute(paths?.agentsHome??'')||!isAbsolute(paths?.harnessHome??''))fail('PI_OFFICIAL_INSTRUCTION_ROOTS_REQUIRED');const currentCwd=scopedService('workingDirectory').get(actor),discoveredPaths=scopedService('nativeAgentInstructions')?.officialDiscoveredPaths?.(actor)??[];const result=await withActor(()=>officialInstructionFiles({...instructionsConfig,discoveredPaths,maxBytes:instructionsConfig.maxBytes??65536,cwd:currentCwd,projectRoot:cwd,agentsHome:paths.agentsHome,instructionHome:paths.harnessHome,signal},fs));assertCurrent();return result},
+   instructions:async current=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();if(!isAbsolute(paths?.agentsHome??'')||!isAbsolute(paths?.harnessHome??''))fail('PI_OFFICIAL_INSTRUCTION_ROOTS_REQUIRED');const currentCwd=scopedService('workingDirectory').get(actor),discoveredPaths=scopedService('nativeAgentInstructions')?.officialDiscoveredPaths?.(actor)??[];const result=await withActor(()=>officialInstructionFiles({...instructionsConfig,discoveredPaths,maxBytes:instructionsConfig.maxBytes??65536,cwd:currentCwd,projectRoot:cwd,agentsHome:paths.agentsHome,instructionHome:paths.harnessHome,signal},fs));
+    if(paths.mode==='portable'&&header.agentPreset==='night-bot-task'){
+     const {text}=await readExecutionPrinciples(paths);if(text.trim())result.push({path:'night-bot://execution/AGENTS.md',content:text})
+    }
+    assertCurrent();return result},
    skills:skillResources,
    ...memory?{memory:memory.official({authorizeWrite:memoryWriteAuthorization(actorCtx),isLive:current=>current===actor&&isLive(actor),resolveExtractionModel:async(current,{signal:extractionSignal}={})=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();return provider.resolve({...extraction,...extractionSignal?{signal:extractionSignal}:{}},{credentials})}})}:{},
   }

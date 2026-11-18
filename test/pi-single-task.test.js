@@ -93,6 +93,28 @@ test('the official task request keeps execution focused on the objective and lim
   assert.match(tool.description,/not already supplied and cannot be obtained through authorized sources/)
   assert.match(tool.description,/record what you checked and the step that is blocked/)
 })
+test('execution principles refresh within the same official task without restart',{timeout:nativeTestTimeout(30000)},async t=>{
+  t=cleanupContext(t)
+  let h,settings,first;t.after(()=>h?.close())
+  const requests=[]
+  const f=await memoryHost(t,async body=>{
+    if(!requestTools(body).includes('task_result'))return
+    requests.push(body)
+    if(requests.length!==1)return result
+    await settings.saveExecutionPrinciples({text:'EXECUTION_PRINCIPLES_UPDATED',expectedVersion:first.version})
+    return {tool:'read',args:{path:'work/absent-proof.txt'}}
+  })
+  settings=f.host.ctx.get('operatorSettings')
+  first=await settings.saveExecutionPrinciples({text:'EXECUTION_PRINCIPLES_INITIAL',expectedVersion:(await settings.executionPrinciples()).version})
+  h=await serviceFor(f)
+  const task=await h.service.createTask({requestId:'principles-refresh',objective:'Read isolated proof'})
+  await until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.status==='completed'&&row.drained})
+  const system=request=>JSON.stringify(request.messages.filter(message=>['system','developer'].includes(message.role)))
+  assert.equal(requests.length,2)
+  assert.match(system(requests[0]),/EXECUTION_PRINCIPLES_INITIAL/)
+  assert.match(system(requests[1]),/EXECUTION_PRINCIPLES_UPDATED/)
+  assert.doesNotMatch(system(requests[1]),/EXECUTION_PRINCIPLES_INITIAL/)
+})
 test('single task cancellation aborts the active turn, drains it and never creates a replacement execution',{timeout:nativeTestTimeout(15000)},async t=>{
   t=cleanupContext(t)
   let h;t.after(()=>h?.close())
@@ -265,9 +287,15 @@ test('Router room unknown effect drains and inspects with distinct conversation 
   }
  })
  f.host.ctx.tools.register({name:'room_partial_effect',description:'Write one isolated proof then lose its response',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){effects++;await writeFile(join(exec.agent.metadata.cwd,'work/unknown.txt'),'one bounded partial effect');throw Error('response lost after local write')}})
+ const settings=f.host.ctx.get('operatorSettings')
+ await settings.saveExecutionPrinciples({text:'EXECUTION_ROOM_SCOPE_MARKER',expectedVersion:(await settings.executionPrinciples()).version})
  await f.receive(channelMessage('scope-request',{text:'Perform the bounded local scope verification'}))
  const row=await eventually(async()=>{const row=await f.query('task.get',{taskId:'room-effect-scope'});return row?.drained&&row.lastDecision?.limitations?.includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY')&&row},'room unknown effect drain')
  await f.service.whenIdle();const stored=await f.host.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true}),intent=stored.auditEntries.find(e=>e.data.domain==='task'&&e.data.kind==='effect-intent')
+ for(const [tool,loaded] of [['channel_triage_submit',false],['resident_router_settle',false],['task_result',true]]){
+  const requests=f.requests.filter(body=>requestTools(body).includes(tool));assert.ok(requests.length,tool)
+  for(const request of requests)assert.equal(JSON.stringify(request.messages).includes('EXECUTION_ROOM_SCOPE_MARKER'),loaded,tool)
+ }
  const binding=f.host.ctx.memory.bindings.get(row.sessionId);assert.equal(binding.actorId,row.ownerActorId);assert.equal(binding.groupId,row.metadata.memoryGroupId);assert.notEqual(binding.groupId,row.groupId)
  assert.equal(effects,1);assert.equal(stored.audit.filter(r=>r.domain==='task'&&r.kind==='owner-drained').length,1)
  const inspection=await f.service.inspectTaskEffect({taskId:row.taskId,intentEntryId:intent.entryId});assert.equal(inspection.scope.groupId,row.groupId)
