@@ -162,18 +162,21 @@ for (const kind of ['text', 'file', 'image']) test(`queued ${kind} echo identity
 })
 
 
-test('observer shutdown retains original failed probe and never starts a replacement query', async () => {
-  const response = Promise.withResolvers(), error = new Error('query failed'), outbox = []
+test('observer shutdown retains original failed probe and never starts a replacement query', { timeout: 2000 }, async () => {
+  const response = Promise.withResolvers(), started = Promise.withResolvers(), error = new Error('query failed'), outbox = []
   const original = { id: 'send-op', taskId: 'task', state: 'succeeded', result: observation(send(), ack) }
   let queries = 0
   const observer = createNativeDwsObserver({ operations: new Map([[original.id, original]]), ingressWaitMs: 1, probeWaitMs: 1,
     residentStore: { getGroup: () => ({ outbox }), projectTaskNotification: async ({ outbound }) => outbox.push(outbound) },
-    querySendStatus: () => { queries++; return response.promise } })
-  await observer.beforeIngress('group')
+    querySendStatus: () => { queries++; started.resolve(); return response.promise } })
+  // 先确认原查询实际启动，不用 1ms 入站预算推断探针已运行。
+  const observing = observer.observe(original)
+  await started.promise
   const closing = observer.close(); assert.equal(observer.close(), closing)
   await observer.beforeIngress('group'); await observer.observe(original)
   response.reject(error)
   await assert.rejects(closing, reason => reason.errors.includes(error))
+  await observing
   await assert.rejects(observer.close(), /DWS_OBSERVER_DRAIN_FAILED/)
   assert.equal(queries, 1); assert.deepEqual(outbox, [])
 })

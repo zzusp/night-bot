@@ -1,0 +1,13 @@
+case,description,round-1,round-2
+I1,无ACK时独立实时与历史来源完成分诊且无重复,PASS,PASS
+I2,身份未明及直接引用逐条暂缓并经精确回读恢复,PASS,PASS
+I3,原通知精确回声过滤与未知发送不重发,PASS,PASS
+I4,补拉水位与暂缓分离且失败保留记录,PASS,PASS
+I5,暂停恢复修订与撤回保护,PASS,PASS
+G1,最终工作树源码与生产依赖守卫,PASS,PASS
+R1,五文件相关套件,FAIL_BASELINE_REPRODUCED,PASS_AFTER_TARGETED_RETEST
+R2,显式引用原拒发后的受控恢复,NOT_RUN,PASS
+R3,文本与附件父说明默认引用及旧冻结不变,NOT_RUN,PASS
+R4,其他受众不隐式通知及附件子件不引用,NOT_RUN,PASS
+R5,观察器排空原失败且不替换查询,PASS,PASS_AFTER_FIXTURE_RETEST
+V1,真实DWS和UAT验证,NOT_RUN,NOT_RUN

@@ -61,6 +61,7 @@ function normalizeEvent(event) {
     ...(Array.isArray(event.at_open_dingtalk_ids ?? event.atOpenDingTalkIds) ? { mentions: event.at_open_dingtalk_ids ?? event.atOpenDingTalkIds } : {}),
     senderName: meaningful(event.sender) ? event.sender : undefined,
     senderOpenDingTalkId: event.sender_open_dingtalk_id ?? event.sender_id ?? undefined,
+    ...(event.sender_open_dingtalk_id == null ? { senderIdentityVerified: false } : {}),
     ...(resourceRefs.length > 0 ? { resourceRefs } : {}),
     ...(quoted ? { quotedMessage: { ...(quoted.senderOpenDingTalkId ?? quoted.sender_open_dingtalk_id ?? quoted.senderId ?? quoted.sender_id ? { senderOpenDingTalkId: quoted.senderOpenDingTalkId ?? quoted.sender_open_dingtalk_id ?? quoted.senderId ?? quoted.sender_id } : {}), ...(quoted.messageId ?? quoted.message_id ? { messageId: quoted.messageId ?? quoted.message_id } : {}), ...(meaningful(quoted.sender ?? quoted.senderName) ? { senderName: quoted.sender ?? quoted.senderName } : {}), occurredAt: quoted.createTime ?? quoted.create_time, content: quoted.content ?? quoted.text ?? '' } } : {}),
   }
@@ -80,6 +81,7 @@ export function normalizeHistoryMessage(message, fallbackGroupId) {
     ...(Array.isArray(message.mentions ?? message.atOpenDingTalkIds) ? { mentions: message.mentions ?? message.atOpenDingTalkIds } : {}),
     senderName: meaningful(message.sender ?? message.senderName) ? message.sender ?? message.senderName : undefined,
     senderOpenDingTalkId: message.senderOpenDingTalkId ?? message.sender_open_dingtalk_id ?? message.senderId ?? undefined,
+    ...(message.senderIdentityVerified === false || (message.senderOpenDingTalkId ?? message.sender_open_dingtalk_id) == null ? { senderIdentityVerified: false } : {}),
     ...(resourceRefs.length > 0 ? { resourceRefs } : {}),
     ...(quoted ? { quotedMessage: { ...(quoted.senderOpenDingTalkId ?? quoted.sender_open_dingtalk_id ?? quoted.senderId ?? quoted.sender_id ? { senderOpenDingTalkId: quoted.senderOpenDingTalkId ?? quoted.sender_open_dingtalk_id ?? quoted.senderId ?? quoted.sender_id } : {}), ...(quoted.messageId ?? quoted.message_id ? { messageId: quoted.messageId ?? quoted.message_id } : {}), ...(meaningful(quoted.sender ?? quoted.senderName) ? { senderName: quoted.sender ?? quoted.senderName } : {}), occurredAt: quoted.createTime, content: quoted.content ?? quoted.text ?? '' } } : {}),
   }
@@ -318,9 +320,18 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     if (typeof onHealthChange !== 'function') return
     try { onHealthChange(healthSnapshot()) } catch (error) { logger.warn(error) }
   }
+  const retryDeferredIngress = entry => {
+    if (!adapter.retryDeferredIngress || entry.deferredRetry) return
+    const epoch = entry.recoveryEpoch
+    const current = () => !stopping && !ingress.paused && bridgeEntries.get(entry.groupId) === entry && entry.recoveryEpoch === epoch
+    entry.deferredRetry = Promise.resolve().then(() => {
+      if (current()) return adapter.retryDeferredIngress(entry.groupId, current)
+    }).catch(error => logger.warn(error)).finally(() => { delete entry.deferredRetry })
+  }
   const queueGroupBackfill = (groupId, { queueAfterActive = false, recovery = false } = {}) => {
     const entry = entryFor(groupId)
     if (ingress.paused || stopping) return entry.backfillPromise
+    retryDeferredIngress(entry)
     if (typeof adapter.readGroupRange !== 'function') {
       entry.backfillState = 'unavailable'
       publishHealth()
@@ -352,6 +363,11 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
           if (stopping || ingress.paused || entry.recoveryEpoch !== recoveryEpoch || currentGroup(groupId) === undefined) return
           entry.activeBackfillMessageId = message.messageId
           await processMessage(normalizeHistoryMessage(message, groupId))
+        }
+        if (stopping || ingress.paused || entry.recoveryEpoch !== recoveryEpoch || currentGroup(groupId) === undefined) return
+        if (adapter.completeGroupRange) {
+          await adapter.completeGroupRange(groupId, { end })
+          if (stopping || ingress.paused || entry.recoveryEpoch !== recoveryEpoch) return
         }
         entry.backfillState = 'ok'
         entry.lastBackfillAt = now()
@@ -919,6 +935,8 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
         for (const group of runtime.listGroups()) {
           const entry = entryFor(group.groupId)
           if (entry.subscription) closing.push(entry.subscription.done)
+          if (entry.deferredRetry) closing.push(entry.deferredRetry)
+          if (adapter.completeGroupRange) closing.push(entry.backfillPromise)
           stopEntry(group.groupId)
           entry.listenerState = 'paused'
           entry.backfillState = 'paused'
@@ -1001,7 +1019,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     await Promise.allSettled([...inflightMessages.values()])
     await controlTail
     await humanPollTail
-    await Promise.allSettled(entries.map((entry) => entry.backfillPromise))
+    await Promise.allSettled(entries.flatMap(entry => [entry.backfillPromise, entry.deferredRetry]))
     await outboxRetryTail
     await Promise.allSettled(outboundTails.values())
     subscriptions.clear()

@@ -219,10 +219,10 @@ node docs/acceptance/pi-native-retirement-local/scripts/verify-live-task.mjs . T
 `recovering` 包含首次历史补拉、Host 接纳和持久消费水位，以及重连或恢复缺口，不只表示网络重连。已经完成恢复后的普通增量拉取保持 `receiving`，不能仅因 `backfill.inProgress` 为真判成恢复中；若历史读取不完整或接纳失败，仍转入错误状态。卡片「历史恢复失败」按固定错误码说明：
 
 - `CHANNEL_MESSAGE_ID_CONFLICT`：旧消息与同 ID、同版本的冻结输入不一致。核对来源及插件去重证据，不直接改 DB、清游标或反复重启。
-- `CHANNEL_HISTORY_INCOMPLETE`：历史页不完整或已知暂缓消息仍缺失。核对原绑定账号的读取权限与查询完整性，不因供应商返回 `complete` 就丢弃暂缓来源。
+- `CHANNEL_HISTORY_INCOMPLETE`：历史页不完整。核对原绑定账号的读取权限与查询完整性；范畴内返回 `complete` 不等于逐条待核对记录已经解除。
 - `CHANNEL_HISTORY_RECOVERY_FAILED`：其他补拉/接纳错误。服务日志可能只有安全错误分类；当前 Web 不暴露任意原始异常、账号或消息 ID，不能用空错误码证明恢复成功。
 
-已处理重复项只在原作者/会话/版本及资源稳定身份一致、冻结 payloadHash 能完整重建时消费，兼容已观察到的 DWS 标记富化、文件提示/字段顺序和引用作者省略；未处理来源仍走原接纳，真实修订经绑定账号精确详情回读后接纳为更高版本，身份不符或回读不完整仍失败关闭。恢复后核对实际插件健康、补拉成功、无遗留 deferred/pendingRecalls 和耐久水位，不仅检查子进程存在或端口可用。若更新修复代码，仍按正常停机、已合并版本发布及启动流程操作，不以手工注入旧消息代替验收。
+已处理重复项只在原作者/会话/版本及资源稳定身份一致、冻结 payloadHash 能完整重建时消费，兼容已观察到的 DWS 标记富化、文件提示/字段顺序和引用作者省略；未处理来源仍走原接纳，真实修订经绑定账号精确详情回读后接纳为更高版本，身份不符或回读不完整仍失败关闭。恢复后分别核对接收状态、补拉水位、独立来源已完成分诊，以及 `deferredMessages` / `pendingRecalls` 是否仍有待核对项；收信恢复不等于这些项或原通知已结清。若更新修复代码，仍按正常停机、已合并版本发布及启动流程操作，不以手工注入旧消息代替验收。
 
 升级编辑/撤回修复必须保留原 `data/state/channels/.../ingress.json`、绑定身份、来源账本和 Pi 历史。明确 recall 可解除对应已知缺项；未收到 recall 的空页不能据此清除接收记录。暂停、恢复和升级均不手动删除 `deferredMessages` / `pendingRecalls`。真实渠道验收与重启按授权范围执行，本地 fake DWS 回归不能替代实际恢复结果。
 
@@ -264,10 +264,10 @@ node bin/night-bot-dingtalk.js $config list
 1. 由授权执行者核实 DWS/profile 实际身份和唯一目标；只记录脱敏证据，不转储账号配置。正常停机后，经专用 CLI `set --check` 核对再保存 `dingtalk_listen:true`，仅获发送授权时设 `dingtalk_writes_authorized:true`；实例的 `enable --check` 通过后再离线保存，按 `restartRequired` 重启。名称解析必须得到唯一、完整候选，实际绑定保存于该安装，不手工猜造 `dingtalk_binding`。缺登录时渠道为 `waiting-auth`，其它 Host/Web 能力仍可运行；获准完成官方登录后由元数据观察重新解析接入，不能把等待态当在线，也不将普通权限/歧义错误当未登录重试。登录或切账号仍需相应授权。
 2. 在指定群实际发送有限、明确授权的验收请求，注明需要群内说明和附件。验证来源确为订阅事件或真实历史补读，保留消息身份/版本与渠道、群、真实作者的对应证据；不能用 `acceptHistoryMessage`、SDK/HTTP 注入、fake 或仅启动 ready 替代。同账号在单成员群中的消息是否进入订阅/补读，必须单独实测；没有收到不能宣称已承接，也不改账号绕过。
 3. 从本机 `GET /state/groups?summary=true` 找到内部 conversation ID，再按 `GET /state/groups/:groupId/messages`、`/outbox` 分页读原消息处理及通知状态；任务看 `GET /state/tasks/:taskId/detail`。外部原生 ID 与内部 conversation ID 不混用。受信 Host 可读 `ctx.channels.plugins.get(channelId).health` 的监听与补拉状态；可选 Web 的认证 `/api/channels` 只给白名单阶段及真实健康布尔，不透原始错误、路径或登录资料。配置启用、`ready`、`listening`、`recovering`、健康正常和真正送达分别核实，不能从 `/health` 兼容布尔值推断。停用、恢复和重启沿该渠道耐久 ingress 水位补拉，检查原消息去重且停用消息未丢；不删除水位、重初始化或倒退业务 `ingressEpoch`。群聊与单对端私聊复用此机制，真实私聊仍需另行授权验收。
-4. 观察同任务唯一执行 session、正式 `task_result`、`completed` 且排空，以及实际冻结文件 descriptor/字节哈希。Router 必须选用本任务当前完成版本的 `taskDelivery`，说明父通知送达后再发文件子件；原请求明确要求原生引用时，可组合仅接受 `true` 的 `replyToSource`，由 Host 从本次 `sourceId` / `messageVersion` 绑定原消息/作者，且 `recipientActorIds` 须显式含原作者。省略该选项时默认行为不变；引用仅作用于父说明，文件子件不继承原生 quote/@。核对指定群内实际可见消息、附件原名/内容与持久 readback/receipt。`unknown` 只回读，不重授发送；检查回声命中本实例精确收据，不重新进入业务或造新任务。不能把同账号消息一律当回声过滤。
+4. 观察同任务唯一执行 session、正式 `task_result`、`completed` 且排空，以及实际冻结文件 descriptor/字节哈希。Router 必须选用本任务当前完成版本的 `taskDelivery`，说明父通知送达后再发文件子件；Host 从本次 `sourceId` / `messageVersion` 默认绑定原消息与作者；若显式受众不含原作者，父说明不引用。仅父说明带引用，文件子件不继承原生 quote/@。验收需分别核对首答、进展和结果父说明的实际原生引用，以及受众和附件。核对指定群内实际可见消息、附件原名/内容与持久 readback/receipt。`unknown` 只回读，不重授发送；检查回声命中本实例精确收据，不重新进入业务或造新任务。不能把同账号消息一律当回声过滤。
 5. 独立核对带原完成事件引用的持久复盘报告及该群范围内的经验目的地；合法空经验可为 `skipped`，不能仅以已调度或任务完成代替报告。复盘无工具、保持原记忆范围，不能依据 `task.completed` 声称附件已送达。最后正常停止并冷恢复，核同一任务/会话/产物和发送收据没有重放；未核或阻断的环节逐项报告。
 
-当前登记前回声 guard 仅覆盖 Router/任务队列通知：即使关闭 `dingtalk_operator_notifications`，也用该插件自身 adapter 和原生/内部会话映射精确查身份，在消息事实/来源登记前过滤自身消息。同会话 `starting` / `unknown` 通知身份未决时，typed 入站以 `CHANNEL_NOTIFICATION_IDENTITY_PENDING` 暂缓，沿既有持久补读水位恢复；不把暂缓记为已接纳或已完成，也不靠绕过沙箱、注入或重发旧事项继续。原 native operation 的 send/status 尚未统一 typed 接线，不能外推 shell 原生发送的通用回声已修复或已验收；完整合同见 [CHANNELS](../CHANNELS.md)。
+登记前回声保护覆盖 Router/任务队列通知，与 `dingtalk_operator_notifications` 开关无关。若原发送身份未知，明确是其他发送者的消息照常入站；仅同账号或身份命名空间不明的候选及其已知直接引用单独暂缓。查看该渠道现有 `data/state/channels/.../ingress.json`：`backfillThroughAt` 是完整历史水位，`deferredMessages` 是未接纳的单条记录；精确读取失败会记录 `DINGTALK_DEFERRED_READ_FAILED`，不会清记录、推断未发送或触发重发。不要手工删记录、补写回执或注入旧消息。原生 shell 外发回声能力不在本次范围，见 [渠道合同](../CHANNELS.md)。
 
 ## 停机中断后的 Router 恢复
 

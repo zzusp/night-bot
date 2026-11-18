@@ -163,9 +163,15 @@ export function createNativeDwsObserver({ operations, residentStore, notificatio
   const receiptMessageId = value => value?.messageId ?? value?.messageRef?.openMessageId ?? value?.sendReceipt?.messageId ?? value?.result?.messageId ?? value?.result?.openMessageId
   const notificationIdentityKnown = notification => [notification.receipt, notification.ack].some(value => { const id = receiptMessageId(value); return typeof id === 'string' && id.length > 0 })
     || residentStore.getGroup(notification.payload?.conversationId)?.outbox.some(item => item.outboundId === notification.id && item.deliveredMessageId)
-  const unresolvedNotifications = groupId => [...notificationCache.values()].filter(notification => notification.payload?.conversationId === groupId
-    && notification.payload.audience !== 'operator' && ['starting', 'unknown'].includes(notification.state)
-    && resolveNotificationScope(notification) && !notificationIdentityKnown(notification))
+  const unresolvedNotifications = (groupId, ingress) => [...notificationCache.values()].filter(notification => {
+    if (notification.payload?.conversationId !== groupId || notification.payload.audience === 'operator'
+      || !['starting', 'unknown'].includes(notification.state) || notificationIdentityKnown(notification)) return false
+    const scope = resolveNotificationScope(notification)
+    if (!scope) return false
+    // 仅可比较同绑定、同命名空间的认证身份；缺失时仍是候选。
+    return !(ingress?.senderId && scope.senderId && ingress.channelId === scope.channelId
+      && ingress.conversationId === scope.conversationId && ingress.senderId !== scope.senderId)
+  })
   async function probeNotification(notification) {
     const scope = resolveNotificationScope(notification)
     if (!scope || !['starting', 'unknown'].includes(notification.state) || notification.payload?.audience === 'operator' || notificationIdentityKnown(notification)) return
@@ -197,7 +203,7 @@ export function createNativeDwsObserver({ operations, residentStore, notificatio
     notificationChanged(notification) {
       const key = `notification:${notification.id}`
       if (notification.state === 'starting' && !notification.ack && !notification.receipt && notification.payload.audience !== 'operator' && resolveNotificationScope(notification)) {
-        if (!pending.has(key)) pending.set(key, { groupId: notification.payload.conversationId, ...Promise.withResolvers() })
+        if (!pending.has(key)) pending.set(key, { groupId: notification.payload.conversationId, notification: true, ...Promise.withResolvers() })
       } else { pending.get(key)?.resolve(); pending.delete(key) }
     },
     async observe(operation) {
@@ -205,19 +211,20 @@ export function createNativeDwsObserver({ operations, residentStore, notificatio
       await observeStatuses(operation)
       await probe(operation)
     },
-    async beforeIngress(groupId) {
+    async beforeIngress(groupId, ingress) {
       const startedAt = Date.now()
-      await bounded(Promise.all([...pending.values()].filter(item => item.groupId === groupId).map(item => item.promise)), ingressWaitMs)
+      await bounded(Promise.all([...pending.values()].filter(item => item.groupId === groupId && (!ingress || !item.notification)).map(item => item.promise)), ingressWaitMs)
       if (closed) return
       const remaining = ingressWaitMs - (Date.now() - startedAt)
       const results = remaining > 0 ? await bounded(Promise.all([
         ...[...operations.values()].filter(item => sendOf(item)?.conversationId === groupId).map(probe),
-        ...unresolvedNotifications(groupId).map(probeNotification),
+        ...(!ingress ? unresolvedNotifications(groupId).map(probeNotification) : []),
       ]), remaining) : undefined
       if (closed) return
-      // 有界探针未得身份不等于真人；按当前缓存重新判定，交给原补读恢复。
-      const unresolved = unresolvedNotifications(groupId)
+      // 探针由原观察器持有和排空，不占用 typed 接入的串行队列。
+      const unresolved = unresolvedNotifications(groupId, ingress)
       if (unresolved.length) {
+        if (ingress) for (const notification of unresolved) probeNotification(notification).catch(warn)
         const cause = results?.find(result => result?.error)?.error
         const reason = cause ? 'status-error' : Date.now() - startedAt >= ingressWaitMs ? 'status-timeout'
           : unresolved.some(item => !notificationOpenTaskId(item.ack ?? item.receipt)) ? 'send-pending' : 'status-unconfirmed'

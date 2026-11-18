@@ -220,6 +220,38 @@ test('Router sends a natural scoped answer through its existing reply receipt wi
  assert.ok(h.requests.every(body=>requestTools(body).includes('channel_triage_submit')||requestTools(body).includes('resident_router_reply')),'only existing triage and Router model turns run');
 });
 
+test('Router progress quotes the original source without changing an old frozen plain reply',{timeout:nativeTestTimeout(30000)},async t=>{
+ let step=0,oldReply
+ const h=await residentRouterHost(t,async body=>{
+  const tools=requestTools(body)
+  if(tools.includes('channel_triage_submit'))return triageReply(triageInput(body),()=>({needsHandling:true}))
+  if(!tools.includes('resident_router_reply'))return {text:'No additional work'}
+  const events=requestEnvelope(body,'Router 请求：').events,source=events.find(event=>event.source).source
+  const args={sourceId:source.sourceId,messageVersion:source.version,recipientActorIds:[source.actorId]}
+  switch(step++){
+   case 0:return {tool:'resident_router_reply',args:{...args,operationId:'old-progress',text:'已读取材料。'}}
+   case 1:
+    oldReply=(await h.query('notification.list')).find(row=>row.payload.text==='已读取材料。')
+    assert.ok(oldReply);assert.equal(oldReply.payload.sourceMessageId,undefined)
+    h.host.ctx.channels.transports.get('resident-fixture').capabilities={quotedReplies:['chat-room']}
+    return {tool:'resident_router_reply',args:{...args,operationId:'old-progress',text:'已读取材料。'}}
+   case 2:case 3:return {tool:'resident_router_reply',args:{...args,operationId:'new-progress',text:'已完成数据核对。'}}
+   case 4:return {tool:'resident_router_settle',args:{operationId:'progress-settle',eventIds:events.map(event=>event.id),noTaskDispositions:events.filter(event=>event.source).map(event=>({eventId:event.id,outcome:'handled-inline',reason:'Answered the original progress request',sourceQuote:event.source.text}))}}
+   default:return {text:'No additional work'}
+  }
+ })
+ const original=channelMessage('progress-origin',{text:'请说一下实际核对进度。'})
+ await h.receive(original);await h.service.whenIdle()
+ const delivered=await h.query('notification.list')
+ assert.equal(delivered.length,2);assert.ok(delivered.every(row=>row.state==='delivered'&&row.sendAttemptCount===1))
+ const retained=delivered.find(row=>row.id===oldReply.id)
+ assert.deepEqual(retained.payload,oldReply.payload);assert.equal(retained.payloadDigest,oldReply.payloadDigest)
+ assert.equal(h.results.filter(row=>row.name==='resident_router_reply'&&!row.result.isError).length,4)
+ assert.deepEqual(h.sent.map(row=>[row.text,row.replyToMessageId,row.replyToParticipantId,row.recipientIds]),[
+  ['已读取材料。',undefined,undefined,['alice']],['已完成数据核对。',original.messageId,'alice',['alice']],
+ ])
+})
+
 test('triage reads the indexed document only on demand through a bounded native tool',{timeout:nativeTestTimeout(30000)},async t=>{
  let reads=0;
  const h=await residentRouterHost(t,body=>{
