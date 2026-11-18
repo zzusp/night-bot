@@ -43,6 +43,32 @@ test('safe model catalog edits preserve API, credentials, metadata, and running 
  assert.equal((await f.read()).providers.fixture.models.length,2)
 })
 
+test('model input capabilities persist per entry, inherit defaults and preserve running selections',async t=>{
+ const f=await fixture(t),original=structuredClone(f.config),view=modelCatalogView(original).providers[0].models
+ assert.deepEqual(view[0].input,['text']);assert.equal(view[0].configuredInput,null)
+ assert.deepEqual(view[1].input,['text','image']);assert.deepEqual(view[1].configuredInput,['text','image'])
+ const body={action:'edit',id:'initial',model:'initial',input:['image','text']},before=await readFile(f.file,'utf8')
+ await f.save({...body,checkOnly:true});assert.equal(await readFile(f.file,'utf8'),before)
+ const result=await f.save(body);assert.equal(result.restartRequired,true)
+ let saved=await f.read();assert.deepEqual(saved.model,original.model)
+ assert.deepEqual(saved.providers.fixture,{...original.providers.fixture,models:[{id:'initial',input:['text','image']},original.providers.fixture.models[1]]})
+ assert.deepEqual(resolvePiProfiles(saved.providers).get('fixture').models[0].input,['text','image'])
+ assert.deepEqual(resolvePiProfiles(original.providers).get('fixture').models[0].input,['text'])
+ await assert.rejects(f.save({...body,input:['text'],expectedVersion:configVersion(original)}),{code:'SETTINGS_VERSION_CONFLICT'})
+ await f.save({...body,input:null});saved=await f.read();assert.equal(Object.hasOwn(saved.providers.fixture.models[0],'input'),false)
+ assert.deepEqual(modelCatalogView(saved).providers[0].models[0].input,['text'])
+ saved.providers.fixture.defaultInput=['text','image'];await writeFile(f.file,JSON.stringify(saved))
+ await f.save({...body,input:['text']});assert.deepEqual(modelCatalogView(await f.read()).providers[0].models[0].input,['text'])
+ await f.save({...body,input:null});assert.deepEqual(modelCatalogView(await f.read()).providers[0].models[0].input,['text','image'])
+})
+
+test('model input capability rejects malformed external values without changing configuration',async t=>{
+ const f=await fixture(t),before=await readFile(f.file,'utf8')
+ for(const input of [[],['audio'],['text','text'],['text',null],'text',{},false])await assert.rejects(f.save({action:'edit',id:'initial',model:'initial',input}),{code:'SETTINGS_INPUT_INVALID'})
+ await assert.rejects(f.save({action:'remove',id:'second',confirm:true,input:null}),{code:'SETTINGS_INPUT_INVALID'})
+ assert.equal(await readFile(f.file,'utf8'),before)
+})
+
 test('strict CAS, malformed IDs, duplicate IDs, confirmation and check-only never overwrite',async t=>{
  const f=await fixture(t),before=await readFile(f.file,'utf8')
  for(const model of ['', ' ', ' padded', 'x\ny'])await assert.rejects(f.save({action:'add',model}),{code:'SETTINGS_INPUT_INVALID'})
@@ -103,6 +129,10 @@ test('builtin catalogs retain all models and overrides when materialized as expl
  const cleared=modelCatalogView(await f.read()).providers[0].models[1]
  assert.equal(cleared.configuredName,null);assert.equal(cleared.name,second.name)
  assert.deepEqual(after[0],before[0]);assert.equal(saved.providers.openai.modelOverrides,undefined)
+ await f.save({provider:'openai',action:'edit',id:second.id,model:second.id,input:['text']})
+ assert.deepEqual(modelCatalogView(await f.read()).providers[0].models[1].input,['text'])
+ await f.save({provider:'openai',action:'edit',id:second.id,model:second.id,input:null})
+ assert.deepEqual(modelCatalogView(await f.read()).providers[0].models[1].input,second.input)
  await f.save({provider:'openai',action:'add',model:'fixture-custom-model'})
  saved=await f.read();assert.equal(saved.providers.openai.models.length,before.length+1)
  await f.save({provider:'openai',action:'remove',id:second.id,confirm:true})

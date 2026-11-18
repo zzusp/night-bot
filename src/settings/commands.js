@@ -4,7 +4,7 @@ const spec={
  show:[],plugins:[],appearance:['name','icon','expectedVersion'],
  model:['provider','model','api','baseURL','apiKeyEnv','reasoningEffort','expectedVersion'],
  provider:['action','provider','api','baseURL','model','expectedVersion'],
- 'model-list':[],'model-entry':['action','provider','id','model','name','expectedVersion','confirm'],
+ 'model-list':[],'model-entry':['action','provider','id','model','name','input','expectedVersion','confirm'],
  role:['role','provider','model','reasoningEffort','expectedVersion'],
  secret:['provider','kind','action','value','confirm','expectedVersion'],
  'work-log':['enabled','time','timezone','expectedVersion'],

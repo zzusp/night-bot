@@ -60,13 +60,13 @@ Web「模型与 API」和 `night-bot-settings model-list/model-entry` 共用同�
 
 ```sh
 node bin/night-bot-settings.js CONFIG model-list --live
-node bin/night-bot-settings.js CONFIG model-entry --action add --provider PROVIDER --model MODEL_ID --name '显示名称' --live --check
-node bin/night-bot-settings.js CONFIG model-entry --action add --provider PROVIDER --model MODEL_ID --name '显示名称' --live
+node bin/night-bot-settings.js CONFIG model-entry --action add --provider PROVIDER --model MODEL_ID --name '显示名称' --input text,image --live --check
+node bin/night-bot-settings.js CONFIG model-entry --action add --provider PROVIDER --model MODEL_ID --name '显示名称' --input text,image --live
 node bin/night-bot-settings.js CONFIG model-entry --action edit --provider PROVIDER --id MODEL_ID --model NEW_MODEL_ID --name '新显示名称' --live
 node bin/night-bot-settings.js CONFIG model-entry --action remove --provider PROVIDER --id MODEL_ID --confirm --live
 ```
 
-`--name ''` 清除显式别名；ID/显示名称以外的能力、上下文、兼容字段保留。官方 provider 没有显式模型列表时，首次编辑保留完整有效内置目录及已有 overrides，再持久化为显式列表，不因添加一项丢掉其余模型。已有显式列表按当前白名单维护，不自动扩为完整官方目录。删除须确认且至少保留一个模型。
+`--name ''` 清除显式别名。`--input text`、`--input text,image` 或 `--input image` 声明该模型的输入能力；`--input model-default` 移除显式 input，重新继承 Pi 内置模型或 provider.defaultInput，自定义模型两者都未声明时仅支持文本。JSON 请求使用 `input: ["text", "image"]`，`input: null` 恢复默认，省略保留原值；空数组、重复值与其它模态拒绝保存。`model-list` 同时返回解析后的 `input` 与显式 `configuredInput`（跟随默认为 null），仅包含非秘密元数据，不代表已对厂商视觉能力实测。ID/显示名称/输入能力以外的上下文、推理、兼容字段保留。官方 provider 没有显式模型列表时，首次编辑保留完整有效内置目录及已有 overrides，再持久化为显式列表，不因添加一项丢掉其余模型。已有显式列表按当前白名单维护，不自动扩为完整官方目录。删除须确认且至少保留一个模型。
 
 默认、显式角色、legacy 任务配置和环境角色引用均受保护；有效持久任务默认选择也由现有 Host 核验。保存目录不会改变当前运行的会话，需按原流程正常重启。角色仍使用既有 `role` 命令及 `NIGHT_BOT_{TRIAGE,ROUTER,TASK}_{PROVIDER,MODEL,REASONING_EFFORT}`，不增加平行的环境配置源。`--check` 不写文件，API/CLI 均沿用 CAS、配置锁及结果未知不重试规则。
 

@@ -27,6 +27,7 @@ Secret: --kind model|github --action replace|clear --confirm (hidden prompt or o
 Provider API: provider --provider ID --api PROTOCOL --base-url URL; add --action create --model ID for a new route.
 Secret --provider ID targets that model route; omitted retains the default route.
 Model entries: --action add|edit|remove --provider ID --id OLD_ID --model NEW_ID --name LABEL.
+Input capability: --input text|image|text,image|model-default (inherit catalog/provider defaults).
 Removal requires --confirm. Use model-list to inspect IDs and references; saved changes need restart.
 Resident model removal/ID changes require an explicit task role (role --role task) or task ENV override.
 Lifecycle commands require --live: the existing resident service, with or without Web.
@@ -38,7 +39,7 @@ const optionsByAction={
  show:[],plugins:[],appearance:['name','icon','expected-version'],model:['provider','model','api','base-url','key-env','reasoning-effort','expected-version'],
  role:['role','provider','model','reasoning-effort','expected-version'],secret:['provider','kind','action','expected-version'],
  provider:['action','provider','api','base-url','model','expected-version'],
- 'model-list':[],'model-entry':['action','provider','id','model','name','expected-version'],
+ 'model-list':[],'model-entry':['action','provider','id','model','name','input','expected-version'],
  'work-log':['enabled','time','timezone','expected-version'],
  web:['enabled','host','port','public-origin','channel-id','sender-id','operator-name','expected-version'],
  'channel-list':[],'channel-save':[],'channel-enable':['channel-id','enabled','expected-version'],'channel-remove':['channel-id','expected-version'],
@@ -118,6 +119,7 @@ export async function runSettingsCli(argv,{environment=process.env,write=value=>
  const body=values['json-file']?await jsonFile(values['json-file']):{}
  for(const key of optionsByAction[action])if(values[key]!==undefined){const name=mapping[key]??key;if(Object.hasOwn(body,name))throw failure('SETTINGS_COMMAND_INVALID');body[name]=values[key]}
  if(values.confirm!==undefined)body.confirm=values.confirm
+ if(values.input!==undefined)body.input=values.input==='model-default'?null:values.input.split(',')
  for(const key of ['enabled','paused'])if(typeof body[key]==='string'){if(!['true','false'].includes(body[key]))throw failure('SETTINGS_COMMAND_INVALID');body[key]=body[key]==='true'}
  if(typeof body.port==='string'){if(!/^\d+$/.test(body.port))throw failure('SETTINGS_COMMAND_INVALID');body.port=Number(body.port)}
  const input={action,body,checkOnly:values.check===true};validateSettingsCommand(input)
