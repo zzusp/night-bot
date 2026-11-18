@@ -58,7 +58,6 @@ export async function collectWorkLogEvidence({store,persistence,schedule,day,tim
  result.active=result.messages.length>0||result.progress.length>0
  return result
 }
-const names={scheduled:'提醒触发',arranged:'已调整安排',changed:'事项已更新',created:'新建',completed:'完成',complete:'完成',continue:'继续处理',wait:'等待',blocked:'受阻',failed:'失败',reply:'回复',activity:'执行活动',recorded:'进展'}
 export function renderWorkLog({day,timezone,cutoff,evidence,secrets=[]}){
  const stamp=localStamp(cutoff,timezone),clean=value=>workLogText(value,secrets),lines=[`# ${day} 工作日志`,'',`时区：${clean(timezone)}。汇总截至当地时间 ${stamp.day} ${stamp.time}（UTC：${new Date(cutoff).toISOString()}）。`,'','## 当天工作进展','',`收到 ${evidence.messages.length} 条消息，记录 ${evidence.progress.length} 条工作进展。`,'']
  if(evidence.summary){
@@ -72,16 +71,23 @@ export function renderWorkLog({day,timezone,cutoff,evidence,secrets=[]}){
     if(!summary.sections[key].length)section.push('未从本次证据中归纳出可核实内容。')
     section.push('')
    }
-   section.push('### 总结证据索引','',...summary.facts.map(row=>'- '+row.id+'：'+clean(row.title)+' '+clean(row.text)+'（来源：'+clean(row.source)+'）'), '')
+   section.push('### 总结证据索引','',...summary.facts.map(row=>'- '+row.id+'：'+clean(row.kind)+'（来源：'+clean(row.source)+'；时间：'+clean(row.at)+'）'), '')
    if(summary.omitted)section.push('另有 '+summary.omitted+' 条事实未送入模型，本次语义总结范围有限。','')
   }
   lines.splice(position,0,...section)
  }
- const write=(rows,format,empty)=>{if(!rows.length)lines.push(empty);else{for(const row of rows.slice(0,500))lines.push('- '+format(row));if(rows.length>500)lines.push(`- 另有 ${rows.length-500} 条记录，未在本日志逐项展开。`)}lines.push('')}
- write(evidence.messages,row=>`收到消息：${clean(row.text)||'（无文本）'}（来源：${clean(row.id)}）`,'当天没有新增消息。')
- write(evidence.progress,row=>`${clean(row.title)||'事项'}：${names[row.kind]??'已记录'}${row.text?'；'+clean(row.text):''}（记录：${clean(row.id)}）`,'当天没有已记录的工作进展。')
- lines.push('## 次日工作安排','');write(evidence.plans,row=>`${localStamp(row.at,timezone).time}：${clean(row.text)}（排期：${clean(row.id)}）`,'暂无可核实的次日排期；未将未完成事项推断为次日承诺。')
- lines.push('## 遇到的问题或阻塞','');write(evidence.blockers,row=>`${clean(row.title)||'事项'}：${clean(row.text)||'已记录待处理问题'}（当时记录，不代表当前仍受阻）`,'没有已记录的问题或阻塞。')
+ // Keep evidence in its authoritative stores. Derived diaries retain pointers,
+ // including when semantic summarization is unavailable, never transcript copies.
+ const write=(rows,label)=>{if(!rows.length)lines.push('没有已记录的'+label+'。');else{
+  const seen=new Set();for(const row of rows.slice(0,500)){
+   const pointer=clean(row.id??'');if(!pointer||seen.has(pointer))continue;seen.add(pointer);
+   lines.push('- '+label+'来源：'+pointer+(row.at?'（当时记录：'+clean(String(row.at))+'）':''));
+  }
+  if(rows.length>500)lines.push('另有 '+(rows.length-500)+' 条来源未展开。');
+ }lines.push('')}
+ write(evidence.messages,'消息');write(evidence.progress,'进展');
+ lines.push('## 次日工作安排','');write(evidence.plans,'排期');
+ lines.push('## 遇到的问题或阻塞','','仅列当时来源，不代表当前仍受阻；未验证问题须回查核验。','');write(evidence.blockers,'阻塞');
  if(evidence.notes.length)lines.push('## 记录范围','',...evidence.notes.map(note=>'- '+clean(note)),'')
  lines.push('本日志是执行时刻的事实快照；截止时间后的活动不追加到本文件，已有日期文件不重写。','本日志由已保存的业务记录直接汇总；任务完成与消息送达分别以各自收据为准。','')
  return lines.join('\n')
