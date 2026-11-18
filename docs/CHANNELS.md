@@ -202,7 +202,7 @@ Router 另附现有任务表/归档表的只读轻量索引：本会话非终态
 
 `resident_task_query(detail=progress,taskId,cursor,limit)` 读取同会话原任务的严格已提交 Pi journal，核对 task identity audit 和当前需求/控制/租约边界，通过 Pi 官方 projection 返回最近活动（默认 10 条，最多 100 条，文本预览 1200 字符，明确截断）。模型陈述与记录的工具结果分别标记，不把意图当证据；读取期间版本变化拒绝返回旧结果。无持久记录或没有当前执行边界返回明确 unavailable；严格 journal 错误保持失败，不宽松解析物理尾部。查询不唤醒、重开或恢复任务。
 
-`resident_reply_query` 的 sourceId/taskId/notificationId 恰选一个，Host 固定本 conversation；source/task 查询默认最近 10 条、最多 100 条，正文预览 400 字符，以 rowid cursor 向前翻页，notificationId 读取单条完整冻结正文。每次从同一个 SQLite 通知账本取当前状态，查询不创建通知或触发重试。任务进度和回复都没有第二份状态库；外部报告优先保留原引用，摘要不替代权威查询。
+`resident_reply_query` 的 sourceId/taskId/notificationId 恰选一个，Host 固定本 conversation；source/task 查询默认最近 10 条、最多 100 条，正文预览 400 字符，以 rowid cursor 向前翻页，notificationId 读取单条完整冻结正文。索引包括本会话的分诊、Router、平台回复，以及任务向需求提出者发出的 `question` 和任务 `status` 回复；操作者私信不进入业务会话索引。任务等待事件到来时，先查已有问题通知及其状态，不因换措辞再提同一问题。每次从同一个 SQLite 通知账本取当前状态，查询不创建通知或触发重试。任务进度和回复都没有第二份状态库；外部报告优先保留原引用，摘要不替代权威查询。
 
 ### 已接纳未结批次的安全续办
 
