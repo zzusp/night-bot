@@ -1,3 +1,4 @@
+import {MemoryMaintenance} from './maintenance.js'
 import {learningCoverage} from './learning-coverage.js'
 import {contentSnapshot} from './previous.js'
 import {learnedSkillSupported} from './evolution.js'
@@ -10,7 +11,7 @@ import {Service} from '@deepseek-ai/cordis'
 import {join} from 'node:path'
 import {rm} from 'node:fs/promises'
 import {bindingSchema,memoryScope,readableScopes} from './scope.js'
-import {checkedText,hash,renderMemoryContent} from './format.js'
+import {checkedText,checkedTextWithLimit,hash,renderMemoryContent} from './format.js'
 import {atomicWrite,readRegular,withLock,failure,privateDirectory} from '../runtime/files.js'
 const validKey=value=>typeof value==='string'&&/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)&&value.length<=60
 const brief=value=>checkedText(String(value??'').slice(0,1800))
@@ -19,8 +20,9 @@ export default class Reflection extends Service {
   static inject=['memory','skills','agents','nativePiProvider','runtimePaths']
   constructor(ctx,config={}){
     super(ctx,'reflection');this.host=ctx;this.config=config;this.jobs=new Set();this.sources=new Set();this.abort=new AbortController();this.closed=false;this.lastError=null
+    this.maintenance=new MemoryMaintenance(this,config.maintenance??{},config.maintenanceModel)
     ctx.skills.registerProvider(()=>({name:'learned',list:async options=>({candidates:await this.catalog(options?.scope),complete:!!options?.scope||!this.host.agents.currentInitiator()}),get:async(candidate,options)=>this.skill(candidate,options?.scope,{resourceOnly:options?.resourceOnly===true})}))
-    ctx.effect(()=>async()=>{this.closed=true;this.abort.abort();await this.whenIdle()},'reflection drain')
+    ctx.effect(()=>async()=>{this.closed=true;this.abort.abort();await this.maintenance.stop();await this.whenIdle()},'reflection drain')
   }
   async [Service.init](){
     await this.host.memory.bindingReady
@@ -48,7 +50,7 @@ export default class Reflection extends Service {
     }).catch(error=>{this.lastError=error.code??'REFLECTION_SCAN_FAILED';this.host.logger.warn('reflection: '+this.lastError)}).finally(()=>{source.scanning=undefined;this.jobs.delete(job);if(source.scanRequested&&!this.closed&&this.sources.has(source))void this.scanSource(source)})
     source.scanning=job;this.jobs.add(job);return job
   }
-  async state(scope){return JSON.parse(await readRegular(join(this.directory(scope),'state.json'))??'{"version":1,"reviews":{},"skills":{}}')}
+  async state(scope){return this.host.memory.store.locked(scope,async()=>JSON.parse(await readRegular(join(this.directory(scope),'state.json'))??'{"version":1,"reviews":{},"skills":{}}'))}
   directory(scope){return join(this.host.memory.store.directory(scope),'evolution')}
   async review(source,event){
     const task=await source.store.query({kind:'task.get',taskId:event.taskId})
@@ -83,7 +85,10 @@ export default class Reflection extends Service {
             if(!validKey(lesson.key)||!Array.isArray(lesson.evidenceIds)||!lesson.evidenceIds.length||lesson.evidenceIds.some(e=>!known.has(e)))throw failure('REFLECTION_EVIDENCE_INVALID')
             if(keys.has(lesson.key))throw failure('REFLECTION_DUPLICATE_KEY');keys.add(lesson.key)
             const value={key:lesson.key,summary:checkedText(lesson.summary),why:checkedText(lesson.why),howToApply:checkedText(lesson.howToApply),evidenceIds:lesson.evidenceIds}
-            if(lesson.skill){if(!Array.isArray(lesson.skill.steps)||!lesson.skill.steps.length||lesson.skill.steps.length>8)throw failure('REFLECTION_SKILL_INVALID');value.skill={steps:lesson.skill.steps.map(brief),reason:brief(lesson.skill.reason),applicability:brief(lesson.skill.applicability??'Not established'),evidenceBacked:lesson.skill.evidenceBacked===true}}return value
+            if(lesson.skill?.evidenceBacked===true&&typeof lesson.skill.applicability==='string'&&lesson.skill.applicability.trim()&&lesson.skill.applicability!=='Not established'){
+              const guidance=lesson.skill.guidance??(Array.isArray(lesson.skill.steps)?lesson.skill.steps.join(String.fromCharCode(10)):undefined)
+              value.skill={guidance:checkedTextWithLimit(guidance,12000),reason:brief(lesson.skill.reason),applicability:brief(lesson.skill.applicability),evidenceBacked:true}
+            }return value
           })
         }
         for(const lesson of lessons){
@@ -132,12 +137,12 @@ export default class Reflection extends Service {
           const saved=(await this.host.memory.store.read(scope,{topic:'experience',key:memoryKey})).entries[0]
           if(saved?.source?.messageId!==event.id||saved.source.sessionId!==(task.sessionId??task.taskId))continue
           if(lesson.skill){
-            const signature=hash(JSON.stringify(lesson.skill.steps)),prior=state.skills[lesson.key]
+            const signature=hash(JSON.stringify(lesson.skill.guidance??lesson.skill.steps)),prior=state.skills[lesson.key]
             const observations=prior?.signature===signature?[...new Set([...prior.taskIds,task.taskId])]:[task.taskId]
             // Repeated completions/versions of the same task do not count twice.
             const active=lesson.skill.evidenceBacked&&lesson.skill.applicability!=='Not established'&&(prior?.active||Object.values(state.skills).filter(s=>s.active).length<20)
             const supports=[...(prior?.supports??[]).filter(row=>row.memoryKey!==memoryKey),{taskId:task.taskId,memoryKey}].slice(-40)
-            const skill={signature,supports,taskIds:observations.slice(-20),memoryKeys:[...new Set([...(prior?.memoryKeys??[]),memoryKey])],active,steps:lesson.skill.steps,reason:lesson.skill.reason,applicability:lesson.generated.description,body:lesson.generated.body,generation:lesson.generated.generation,revision:Math.max(prior?.revision??0,state.skillRevisions?.[lesson.key]??0)+1,updatedAt:new Date().toISOString()}
+            const skill={signature,supports,taskIds:observations.slice(-20),memoryKeys:[...new Set([...(prior?.memoryKeys??[]),memoryKey])],active,...lesson.skill.guidance?{guidance:lesson.skill.guidance}:{steps:lesson.skill.steps},reason:lesson.skill.reason,applicability:lesson.generated.description,body:lesson.generated.body,generation:lesson.generated.generation,revision:Math.max(prior?.revision??0,state.skillRevisions?.[lesson.key]??0)+1,updatedAt:new Date().toISOString()}
             if(prior)skill.previous=contentSnapshot(this.renderSkill(scope,lesson.key,prior,scopeRevision).replace(/^NIGHT_LEARNED_SCOPE=[^\n]*\n?/gm,''),prior.revision,prior.updatedAt)
             state.skills[lesson.key]=skill;state.skillRevisions??={};state.skillRevisions[lesson.key]=skill.revision
           }
@@ -153,6 +158,7 @@ export default class Reflection extends Service {
       const report={...state.reviews[id],destinations:(state.reviews[id].lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:reflectionMemoryKey(lesson)},...state.skills[lesson.key]?.active?{skill:{scope,key:lesson.key,revision:state.skills[lesson.key].revision}}:{}}))};state.reviews[id]=report;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(report,null,2)+'\n');await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');return report
       })
       if(!report)return false
+      if(report.status==='done')this.maintenance.notify({topic:'experience'})
       const archived=await this.archiveReview(source,task.taskId,report,scope)
       return archived&&(report.status==='done'||report.status==='skipped'||report.attempts>=3)
     })
@@ -174,12 +180,12 @@ export default class Reflection extends Service {
     return ['---','name: learned-'+key,'description: '+JSON.stringify(value.applicability),'---',
       this.skillMarker(scope,key,value),'',
       ...value.origin==='router'?['Source message: '+value.source.messageId]:[],'',
-      ...value.body!==undefined?[value.body]:value.steps.map((step,i)=>(i+1)+'. '+step),''].join('\n')
+      ...value.body!==undefined?[value.body]:value.guidance!==undefined?[value.guidance]:value.steps.map((step,i)=>(i+1)+'. '+step),''].join('\n')
   }
   skillMarker(scope,key,value){
     // Shared memory revisions change for unrelated tasks. Bind history to this
     // skill's own version AND rendered content instead, including its identity.
-    const fingerprint=hash(JSON.stringify([scope.kind,scope.id,key,value.revision,value.applicability,value.origin??null,value.source??null,value.body??null,value.steps??null]))
+    const fingerprint=hash(JSON.stringify([scope.kind,scope.id,key,value.revision,value.applicability,value.origin??null,value.source??null,value.body??value.guidance??null,value.steps??null]))
     return 'NIGHT_LEARNED_SCOPE='+scope.kind+'/'+scope.id+';revision='+value.revision+';key='+key+';fingerprint='+fingerprint
   }
   async authorizesSkillHistory(scope,marker){
@@ -191,7 +197,7 @@ export default class Reflection extends Service {
   async readSkills(scope,{key}={}){
     if(key!==undefined&&!validKey(key))throw failure('REFLECTION_SKILL_INVALID')
     const state=await this.state(scope),entries=await this.supportEntries(scope,state)
-    return {...key!==undefined?{revision:state.skills[key]?.revision??state.skillRevisions?.[key]??0}:{},entries:Object.entries(state.skills).filter(([name])=>key===undefined||name===key).map(([name,value])=>({key:name,name:'learned-'+name,revision:value.revision,active:value.active&&learnedSkillSupported(value,entries),origin:value.origin??'task-reflection',source:value.source??null,applicability:value.applicability,...key!==undefined?{steps:value.steps,reason:value.reason,...value.body!==undefined?{body:value.body}:{},...value.generation?{generation:value.generation}:{}}:{}}))}
+    return {...key!==undefined?{revision:state.skills[key]?.revision??state.skillRevisions?.[key]??0}:{},entries:Object.entries(state.skills).filter(([name])=>key===undefined||name===key).map(([name,value])=>({key:name,name:'learned-'+name,revision:value.revision,active:value.active&&learnedSkillSupported(value,entries),origin:value.origin??'task-reflection',source:value.source??null,applicability:value.applicability,...key!==undefined?{steps:value.steps,...value.guidance?{guidance:value.guidance}:{},reason:value.reason,...value.body!==undefined?{body:value.body}:{},...value.generation?{generation:value.generation}:{}}:{}}))}
   }
   async publishSkill(scope,key,state){
     const directory=this.directory(scope),value=state.skills[key],generation=(await this.host.memory.store.index(scope)).revision

@@ -17,7 +17,7 @@ async function fixture(reply){
 test('official reflection uses one native tool-free request with explicit route options',async()=>{
  const f=await fixture(async()=>({})),input={taskId:'task',eventId:'event',facts:[{id:'event',summary:'verified'}]}
  assert.equal(await officialReflectionText(f.resolved,input),'{"lessons":[]}');assert.equal(f.requests.length,1)
- const {context,options}=f.requests[0];assert.equal(context.tools,undefined);assert.equal(context.messages.length,2);assert.equal(context.messages[0].role,'system');assert.deepEqual(JSON.parse(context.messages[1].content),input);assert.equal(options.maxTokens,17);assert.equal(options.reasoning,undefined);assert.equal(options.maxRetries,0)
+ const {context,options}=f.requests[0];assert.match(context.messages[0].content,/长期记忆筛选规则/);assert.match(context.messages[0].content,/正向.*反向/);assert.match(context.messages[0].content,/未经验证/);assert.equal(context.tools,undefined);assert.equal(context.messages.length,2);assert.equal(context.messages[0].role,'system');assert.deepEqual(JSON.parse(context.messages[1].content),input);assert.equal(options.maxTokens,17);assert.equal(options.reasoning,undefined);assert.equal(options.maxRetries,0)
 })
 test('official reflection rejects nonfinal, tool calls and oversized final/delta output',async t=>{
  for(const stopReason of ['error','aborted','length','toolUse'])await t.test(stopReason,async()=>{const f=await fixture(async()=>({stopReason}));await assert.rejects(officialReflectionText(f.resolved,{}),{code:'REFLECTION_INCOMPLETE'});assert.equal(f.requests.length,1)})
