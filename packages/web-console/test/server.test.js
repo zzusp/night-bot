@@ -98,7 +98,7 @@ test('optional plugin disabled does not register lifecycle or open storage', asy
 test('model catalog HTTP uses authenticated reads and same-origin strict mutations with safe errors',async t=>{
  const calls=[],view={version:'1'.repeat(64),providers:[{provider:'fixture',name:'Fixture',models:[{id:'initial',name:'Initial',reasoningEfforts:['off'],references:['default']}]}]}
  const settings={modelCatalog:async()=>view,saveModelEntry:async body=>{calls.push(body);if(body.id==='used')throw Object.assign(Error('PRIVATE_MODEL_FAILURE'),{code:'SETTINGS_MODEL_IN_USE'});return {ok:true,changed:true,version:'2'.repeat(64),restartRequired:true,liveApplied:false}}}
- const f=await fixture(t,{settings}),path='/api/settings/model-catalog',body={action:'add',provider:'fixture',model:'second',expectedVersion:view.version}
+ const f=await fixture(t,{settings}),path='/api/settings/model-catalog',body={action:'add',provider:'fixture',model:'second',input:['text','image'],expectedVersion:view.version}
  assert.equal((await f.fetchApi(path)).status,401)
  assert.equal((await f.fetchApi(path,{method:'PUT',body})).status,401)
  await f.login();assert.deepEqual((await f.fetchApi(path)).body,view)
