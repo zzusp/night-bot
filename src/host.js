@@ -274,7 +274,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./native-session-controller.js', import.meta.url).href },
       { name: new URL('./native-schedule.js', import.meta.url).href, config: config.schedule ?? {} },
       { name: new URL('./memory/service.js', import.meta.url).href, config: {...config.memory,skillDirs:config.skillDirs??[]} },
-      { name: new URL('./memory/reflection.js', import.meta.url).href, config: config.reflection ?? {} },
+      { name: new URL('./memory/reflection.js', import.meta.url).href, config: {...config.reflection,maintenanceModel:config.memory?.model} },
       { name: new URL('./work-log/service.js', import.meta.url).href, config },
       { name: new URL('./channels/service.js', import.meta.url).href },
       ...(config.plugins ?? []), ...extraPlugins,
@@ -326,6 +326,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     } })
     const preset = await ctx.agentPresets.resolve('night-bot')
     if (preset.broken) throw new Error('NIGHT_BOT_PRESET_BROKEN:' + JSON.stringify(preset.broken))
+    await ctx.reflection.maintenance.start()
     if (!deferScheduledDelivery) ctx.schedule.start()
     return { ctx, close }
   } catch (error) {

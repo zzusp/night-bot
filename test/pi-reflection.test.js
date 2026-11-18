@@ -201,3 +201,26 @@ test('default Host skill catalog checks support descriptors once without reading
  assert.equal((await f.host.ctx.reflection.catalog(actor.agent)).length,1);assert.deepEqual(reads,[])
  f.host.ctx.reflection.state=original
 })
+
+test('任务 Skill 保留完整指引，经实际 creator 生成；缺证据判断或适用范围不发布技能',async t=>{
+ for(const scenario of ['guidance','unverified','unbounded'])await t.test(scenario,async t=>{
+  const cleanups=[];let store
+  t.after(async()=>{await store?.close();for(const cleanup of cleanups.reverse())await cleanup()})
+  const guidance='事项：对照当前材料核实结果。目标：结论和证据一致。环节：识别目标、查找信息、按场景核对。信息来源：当前源文件、执行回执与可读回的产物。正例：材料更新后调整核对方式。反例：机械执行旧命令。\n'+'适用场景的必要说明。'.repeat(260)
+  const f=await memoryHost({after:cleanup=>cleanups.push(cleanup)},body=>{
+   if(!JSON.stringify(body.messages).includes('NIGHT_BOT_TASK_REFLECTION'))return
+   const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content),value=JSON.parse(lesson(input).text)
+   value.lessons[0].skill={guidance,reason:'已提供证据支持方法与场景',applicability:scenario==='unbounded'?'Not established':'核对当前材料与执行结果',evidenceBacked:scenario!=='unverified'}
+   return {text:JSON.stringify(value)}
+  })
+  store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'guidance.sqlite'),instanceId:'guidance',initialize:true})
+  await completed(store,f.host.ctx.runtimePaths.workspaces,'one')
+  const r=f.host.ctx.reflection,detach=r.attachStore(store,{ownerActorId:'owner',model:f.config.model});t.after(detach);await r.whenIdle()
+  const state=await r.state(memoryScope({actorId:'owner'})),report=Object.values(state.reviews)[0]
+  assert.equal(report.status,'done',r.lastError)
+  if(scenario==='guidance'){
+   const value=state.skills['inspect-first'];assert.equal(value.guidance,guidance);assert.equal(value.body,guidance);assert.ok(value.body.length>2048);assert.ok(value.generation.creator.callId)
+   assert.match(f.requests.find(body=>JSON.stringify(body.messages).includes('NIGHT_BOT_TASK_REFLECTION')).messages[0].content,/正向.*反向/)
+  }else{assert.deepEqual(state.skills,{});assert.equal(report.lessons[0].skill,undefined);assert.equal(f.requests.filter(body=>JSON.stringify(body.messages).includes('NIGHT_BOT_SKILL_GENERATION')).length,0)}
+ })
+})
