@@ -811,6 +811,82 @@ test('operator recovery binds the entire inbox and includes a newer cancellation
   assert.equal(h.sent.length,0)
 })
 
+test('operator resumes a committed Router query result without repeating the prior delivery',{timeout:nativeTestTimeout(60000)},async t=>{
+  let initialStep=0,recovering=false,combined
+  const h=await residentRouterHost(t,body=>{
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(!requestTools(body).includes('resident_router_settle'))return {text:'No other work'}
+    const input=router(body)
+    if(!recovering){
+      const source=input.events[0].source
+      if(initialStep++===0)return {tool:'resident_router_reply',args:{operationId:'already-delivered',sourceId:source.sourceId,messageVersion:source.version,text:'Original delivery'}}
+      if(initialStep===2)return {tool:'resident_task_query',args:{detail:'index'}}
+      return {text:'No settlement before interruption'}
+    }
+    const checkpoint=requestEnvelope(body,'Router 续办检查点：')
+    if(body.messages.at(-1)?.role==='tool')return {text:'Committed disposition'}
+    if(input.events.some(event=>event.source?.messageId==='next-after-query-resume'))return settle(body,input)
+    const packets=requestText(body).flatMap(text=>text.split('\n')).filter(line=>line.startsWith('Router 请求：')).map(line=>JSON.parse(line.slice('Router 请求：'.length)))
+    combined=[...new Map(packets.flatMap(packet=>packet.events).map(event=>[event.id,event])).values()]
+    assert.deepEqual(checkpoint,{eventIds:combined.map(event=>event.id)})
+    return settle(body,{events:combined})
+  })
+  const original=channelMessage('committed-query-original'),conversationId=h.host.ctx.channels.identity(original).sessionId
+  await h.receive(original);await assert.rejects(h.service.whenIdle(),{code:'ROUTER_BATCH_UNSETTLED'})
+  const row=await h.query('router.get',{conversationId}),file=join(h.host.ctx.runtimePaths.state,'sessions',piJournalFilename(row.activeSessionId))
+  assert.equal(h.sent.length,1)
+  await h.close();await h.host.close()
+  const lines=(await readFile(file,'utf8')).trimEnd().split('\n'),entries=lines.slice(1).map(line=>JSON.parse(line))
+  const queryIndex=entries.findIndex(entry=>entry.type==='message'&&entry.message.role==='toolResult'&&entry.message.toolName==='resident_task_query'&&!entry.message.isError)
+  assert.ok(queryIndex>=0,'the real SDK and tool must have produced the successful result')
+  const commitIndex=entries.findIndex((entry,i)=>i>queryIndex&&entry.type==='custom'&&entry.customType==='night.commit')
+  assert.ok(commitIndex>=0)
+  const prefix=lines.slice(0,commitIndex+2).join('\n')+'\n',before=decodePiJournal(Buffer.from(prefix),row.activeSessionId,{requireComplete:true})
+  const checkpoint=before.entries.findLast(entry=>entry.type==='message')
+  assert.equal(checkpoint.id,entries[queryIndex].id)
+  const unpairedCommit=entries.findLastIndex((entry,i)=>i<queryIndex&&entry.type==='custom'&&entry.customType==='night.commit')
+  const unpaired=lines.slice(0,unpairedCommit+2).join('\n')+'\n'
+  assert.ok(decodePiJournal(Buffer.from(unpaired),row.activeSessionId,{requireComplete:true}).entries.findLast(e=>e.type==='message').message.content.some(block=>block.type==='toolCall'&&block.id===checkpoint.message.toolCallId))
+  const requests=h.requests.length
+  await writeFile(file,unpaired)
+  await h.restart()
+  await assert.rejects(h.service.inspectRouterBatch({conversationId}),{code:'PI_ROUTER_RESUME_CHECKPOINT_INVALID'})
+  assert.equal(h.requests.length,requests);assert.equal(await readFile(file,'utf8'),unpaired)
+  await h.close();await h.host.close()
+  await writeFile(file,prefix)
+  await h.restart();await h.service.whenIdle().catch(error=>{if(error.code!=='ROUTER_BATCH_UNSETTLED')throw error})
+  assert.equal(h.requests.length,requests,'cold recovery does not invoke the model')
+  assert.ok(h.service.listAlerts().some(alert=>alert.detail==='ROUTER_BATCH_UNSETTLED'))
+  const first=await h.service.inspectRouterBatch({conversationId})
+  assert.equal(first.proposal.failedEntryId,checkpoint.id)
+  const inbox=await h.query('router.inbox',{conversationId}),source=await h.query('source.get',{sourceId:inbox[0].sourceId})
+  await h.store.command({id:'fixture-query-later-source',kind:'source.record-direct',args:{source:{sourceId:'query-later-source',groupId:conversationId,messageId:'query-later-message',actorId:source.actorId,channel:source.channel,version:1,text:'Cancel the remaining operation.',resources:[]},conversation:{conversationId}}})
+  await h.store.command({id:'fixture-query-later-triage',kind:'triage.commit',args:{conversationId,dispositions:[{sourceId:'query-later-source',messageVersion:1,needsHandling:true,reason:'Later cancellation'}]}})
+  await assert.rejects(h.service.resumeRouterBatch(first.proposal),{code:'ROUTER_RESUME_STALE'})
+  const {proposal,pendingCount}=await h.service.inspectRouterBatch({conversationId})
+  assert.equal(pendingCount,2);assert.equal((await h.service.checkRouterBatch(proposal)).checkOnly,true)
+  assert.equal(h.requests.length,requests);assert.equal(await readFile(file,'utf8'),prefix)
+  recovering=true
+  assert.equal((await h.service.resumeRouterBatch(proposal)).settled,true)
+  assert.deepEqual(combined.map(event=>event.source?.messageId),[original.messageId,'query-later-message'])
+  assert.equal(await h.query('router.inbox-count',{conversationId}),0)
+  assert.ok(!h.service.listAlerts().some(alert=>alert.detail==='ROUTER_BATCH_UNSETTLED'))
+  const after=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
+  assert.deepEqual(after.entries.slice(0,before.entries.length),before.entries)
+  assert.equal(after.entries.filter(entry=>entry.customType==='night.router-resume-claim'&&entry.details?.failedEntryId===checkpoint.id).length,1)
+  for(const kind of ['enqueued','admitted'])assert.equal(after.audit.filter(entry=>entry.domain==='admission'&&entry.kind===kind&&entry.payload.id===proposal.packetId).length,1)
+  for(const toolName of ['resident_router_reply','resident_task_query'])assert.equal(after.entries.filter(entry=>entry.message?.role==='toolResult'&&entry.message.toolName===toolName).length,1)
+  const finishedRequests=h.requests.length
+  await h.restart();await h.service.whenIdle()
+  await assert.rejects(h.service.resumeRouterBatch(proposal),{code:'ROUTER_RESUME_BATCH_STALE'})
+  assert.equal(h.requests.length,finishedRequests)
+  await h.receive(channelMessage('next-after-query-resume'));await h.service.whenIdle()
+  assert.equal(await h.query('router.inbox-count',{conversationId}),0)
+  const current=await h.query('router.get',{conversationId})
+  assert.equal(current.activeSessionId,row.activeSessionId);assert.equal(current.generation,row.generation)
+  assert.equal(h.sent.length,1)
+})
+
 // 等待真实模型请求，关停必须先取消 SDK；放行模型夹具不能成为关闭条件。
 test('Router close interrupts an active official Pi request before joining its tail without replaying the settled tool',{timeout:nativeTestTimeout(40000)},async t=>{
   const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
