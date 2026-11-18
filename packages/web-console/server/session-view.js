@@ -155,6 +155,18 @@ function toolInput(name, args) {
   if (name === 'resident_router_reply' && Array.isArray(args?.taskDelivery?.artifactIds)) value.deliveryFileCount = args.taskDelivery.artifactIds.length
   return {toolName: name, text: JSON.stringify(value, null, 2), redacted: state.hidden}
 }
+// The input has already passed the tool field allowlist. Receipts decide whether
+// this text becomes a message; raw journal arguments are never used here.
+function businessResultText(name, input) {
+  if (name !== 'task_result' && name !== 'resident_router_reply') return null
+  const value = JSON.parse(input)
+  if (name === 'resident_router_reply') return value.text?.trim() || null
+  const decision = value.decision
+  if (!decision || !['complete', 'wait', 'blocked'].includes(decision.action) || !decision.summary?.trim()) return null
+  const summary = decision.summary.trim(), question = decision.question?.trim()
+  return [summary, question !== summary ? question : ''].filter(Boolean).join('\n\n')
+}
+
 const taskTextTools = new Set(['read', 'read_window', 'read_image', 'write', 'edit', 'find', 'grep', 'bash', 'pwsh',
   'job_output', 'job_list', 'job_kill', 'working_directory', 'todo_write', 'web_search', 'web_fetch'])
 
@@ -240,7 +252,7 @@ function scheduledPrompts(content, source) {
   return null
 }
 
-async function projectEntries(snapshot, identity, secrets, calls = new Map()) {
+async function projectEntries(snapshot, identity, secrets, calls = new Map(), resultMessages = true) {
   const {taskId, sessionId, conversationId, generation, triage} = identity
   const items = [], sources = new Set()
   let processed = 0
@@ -281,8 +293,9 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map()) {
           if (block.type !== 'toolCall' || typeof block.name !== 'string') continue
           const callId = opaque(entry.id, index, blockIndex)
           // 厂商 ID 可跨轮重用；未配对的重复 ID 不能猜测归属。
-          if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name})
           const selected = toolInput(block.name, block.arguments)
+          const resultText = businessResultText(block.name, selected.text)
+          if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(resultText ? {resultText} : {})})
           add(entry, 'call-' + index + '-' + blockIndex, 'tool', selected.text, {kind: 'tool-call', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), callId, status: 'pending'}, message)
         }
       } else if (message.role === 'toolResult') {
@@ -292,6 +305,15 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map()) {
         calls.delete(nativeId)
         const selected = toolOutput(call, message, identity)
         add(entry, 'result-' + index, 'tool', selected.text, {kind: 'tool-result', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), callId, isError: message.isError === true, status: message.isError ? 'error' : 'completed'}, message)
+        // Only a committed, uniquely paired successful Host receipt presents a result.
+        // Keep the original tool records and derive a separately pageable message.
+        if (resultMessages && call?.resultText && !message.isError) {
+          let receipt
+          try { receipt = JSON.parse(selected.text) } catch { /* no successful receipt */ }
+          const taskResult = taskId && call.name === 'task_result' && receipt?.received === true && receipt.accepted !== false
+          const routerReply = !taskId && !triage && call.name === 'resident_router_reply' && receipt?.accepted !== false
+          if (taskResult || routerReply) add(entry, 'business-result-' + index, 'assistant', call.resultText, {kind: taskResult ? 'task-result' : 'router-reply', callId}, message)
+        }
       } else if (message.role === 'user') {
         add(entry, 'user-' + index, 'user', texts(message.content), {kind: 'source'}, message)
       } else if (message.role === 'custom' && message.customType === 'night.business-input') {
@@ -429,7 +451,7 @@ async function projectLive(snapshot, identity, secrets, raw, calls) {
   }
   const liveEntryIds = new Set(extra.map(row=>digest(JSON.stringify([identity.sessionId,row.sourceEntry.id]))))
   const combined={...snapshot,context:{...snapshot.context,projection:{...snapshot.context.projection,entries:extra}}}
-  return {active:true,revision:raw.revision,...(['waiting','thinking','text','tool'].includes(raw.phase)?{phase:raw.phase}:{}),...(typeof raw.phaseStartedAt==='string'&&Number.isFinite(Date.parse(raw.phaseStartedAt))?{phaseStartedAt:raw.phaseStartedAt}:{}),items:(await projectEntries(combined,identity,secrets,new Map(calls))).filter(row=>liveEntryIds.has(row.source.entryId)).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
+  return {active:true,revision:raw.revision,...(['waiting','thinking','text','tool'].includes(raw.phase)?{phase:raw.phase}:{}),...(typeof raw.phaseStartedAt==='string'&&Number.isFinite(Date.parse(raw.phaseStartedAt))?{phaseStartedAt:raw.phaseStartedAt}:{}),items:(await projectEntries(combined,identity,secrets,new Map(calls),false)).filter(row=>liveEntryIds.has(row.source.entryId)).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
 }
 
 // No public history is cached: only short-lived committed identity/pending calls.

@@ -637,3 +637,38 @@ test('旧 Router 交接 JSON 可读化但不误标为定时输入，保留意图
   assert.doesNotMatch(page.items[0].text, /internal-id|cutoff|evidenceRefs/)
   assert.equal(page.items[1].kind, 'message'); assert.match(page.items[1].text, /其他业务字段/)
 })
+
+test('每轮成功 task_result 独立保留相同正文、问题及分页，失败/孤立/歧义回执不生成消息', async () => {
+ const value = snapshot();
+ const call = (id, summary = '相同结果', question = '') => project('call-' + id, {role:'assistant', content:[{type:'toolCall', id:'reused', name:'task_result', arguments:{decision:{action:'wait', summary, question, evidence:['PRIVATE_EVIDENCE'], limitations:[]}}}]});
+ const result = (id, extra = {}, isError = false) => project('result-' + id, {role:'toolResult', toolName:'task_result', toolCallId:'reused', isError, content:[{type:'text', text:JSON.stringify({received:true, ...extra})}]});
+ const long = '分页结果'.repeat(5000) + ' apiKey=PRIVATE_RESULT_KEY';
+ value.context.projection.entries = [call('one'),result('one'),call('two'),result('two'),call('long',long,'继续核对？'),result('long'),call('error'),result('error',{},true),call('rejected'),result('rejected',{accepted:false}),result('orphan'),call('ambiguous-one'),call('ambiguous-two'),result('ambiguous'),call('pending')];
+ const options = {task, persistence:{readNative:async()=>value}};
+ const page = await taskSessionView({...options, limit:50});
+ const rows = page.items.filter(row=>row.kind==='task-result');
+ assert.equal(rows.length,3);assert.equal(rows[0].text,rows[1].text);assert.notEqual(rows[0].id,rows[1].id);assert.notEqual(rows[0].callId,rows[1].callId);
+ assert.ok(rows[2].truncated);
+ const tail = await taskSessionMessageView({...options,messageId:rows[2].id,revision:page.revision,offset:rows[2].textNextOffset});
+ assert.equal(rows[2].text+tail.text,long.replace('PRIVATE_RESULT_KEY','[已隐藏]')+'\n\n继续核对？');
+ assert.doesNotMatch(rows.map(row=>row.text).join('')+tail.text,/PRIVATE_|evidence|limitations/);
+ let stream = await taskSessionView({...options,stream:true,limit:1}), collected=[...stream.items];
+ const checkpoint=stream.checkpoint;
+ while(stream.before){stream=await taskSessionView({...options,stream:true,limit:1,checkpoint,before:stream.before});collected.unshift(...stream.items)}
+ assert.deepEqual(collected.map(row=>row.id),page.items.map(row=>row.id));
+ assert.equal(new Set(collected.map(row=>row.id)).size,collected.length);
+ value.entries.push({id:'next'});
+ await assert.rejects(taskSessionMessageView({...options,messageId:rows[2].id,revision:page.revision,offset:16000}),{code:'SESSION_PAGE_STALE'});
+});
+
+test('Router 多轮回复正文独立、顺序稳定、不按正文去重，错误回执不冒充回复', async () => {
+ const router={id:'conversation-one',activeSessionId:'pi-router',generation:2,phase:'active'};
+ const call=id=>project('call-'+id,{role:'assistant',content:[{type:'toolCall',id,name:'resident_router_reply',arguments:{text:'同样回复 apiKey=PRIVATE_REPLY_KEY',operationId:'PRIVATE_OPERATION',sourceId:'PRIVATE_SOURCE'}}]});
+ const result=(id,isError=false,receipt={notification:{id:'PRIVATE_NOTIFICATION'}})=>project('result-'+id,{role:'toolResult',toolName:'resident_router_reply',toolCallId:id,isError,content:[{type:'text',text:JSON.stringify(receipt)}]});
+ const value={header:{id:'pi-router',runtimeOwner:'conversation-router',conversationId:router.id,generation:2},entries:[{id:'commit'}],context:{projection:{entries:[call('one'),result('one'),call('two'),result('two'),call('failed'),result('failed',true),call('rejected'),result('rejected',false,{accepted:false}),call('pending')]}}};
+ const page=await routerSessionView({readRouter:async()=>router,conversationId:router.id,persistence:{readNative:async()=>value}});
+ const rows=page.items.filter(row=>row.kind==='router-reply');
+ assert.equal(rows.length,2);assert.equal(rows[0].text,'同样回复 apiKey=[已隐藏]');assert.equal(rows[1].text,rows[0].text);assert.notEqual(rows[0].id,rows[1].id);
+ assert.deepEqual(page.items.filter(row=>row.kind==='tool-call').slice(0,2).map(row=>row.callId),rows.map(row=>row.callId));
+ assert.doesNotMatch(JSON.stringify(rows),/PRIVATE_|notification|已送达/);
+});

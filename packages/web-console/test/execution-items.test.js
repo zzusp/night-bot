@@ -116,3 +116,21 @@ test('later conversation-separated receipt supplies current status without dupli
   assert.equal(items[0].results.length, 1);
   assert.equal(items.at(-1).results[0], later);
 });
+
+for (const [toolName, kind] of [['task_result', 'task-result'], ['resident_router_reply', 'router-reply']]) {
+  test(`${toolName} messages split tool runs, retain identical results and suppress only exact paired tool rows`, () => {
+    const report = id => [...done(id).map(row => ({...row, toolName})), {id: id + '-message', role: 'assistant', kind, text: '同样正文', callId: id, source: {sessionId: 'session'}}];
+    const rows = [...done('a'), ...done('b'), ...report('one'), ...done('c'), ...done('d'), ...report('two'), ...done('e'), ...done('f')];
+    const items = executionItems(rows);
+    assert.deepEqual(items.map(row => row.kind), ['tool-group', 'message', 'tool-group', 'message', 'tool-group']);
+    assert.deepEqual(items.filter(row => row.kind === 'message').map(row => row.message.id), ['one-message', 'two-message']);
+    assert.deepEqual(items.filter(row => row.kind === 'tool-group').map(row => row.tools.map(tool => tool.id)), [['a', 'b'], ['c', 'd'], ['e', 'f']]);
+    const foreign = {...rows[6], source: {sessionId: 'foreign'}};
+    const unmatched = executionItems([...done('one').map(row => ({...row, toolName})), foreign]);
+    assert.equal(unmatched[0].kind, 'tool');
+    for (const state of ['error', 'pending', 'completed']) {
+      const raw = executionItems([...done('a'), ...done('b'), ...[call('report'), result('report', state)].map(row => ({...row, toolName})), ...done('c'), ...done('d')]);
+      assert.deepEqual(raw.map(row => row.kind), ['tool-group', 'tool', 'tool-group']);
+    }
+  });
+}
