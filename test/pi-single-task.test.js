@@ -70,6 +70,26 @@ test('one task preserves its effect through a held missing result and explicit c
   const relocated=await mkdtemp(join(tmpdir(),'night-single-restored-'));t.after(()=>rm(relocated,{recursive:true,force:true}));const nextConfig={...f.config,installRoot:relocated};await restoreData(nextConfig,backup)
   const nextHost=await createHost(nextConfig,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});const next=await serviceFor({host:nextHost,config:nextConfig},false);try{await next.service.recover();await nextHost.ctx.reflection.whenIdle();assert.equal((await next.store.query({kind:'task.get',taskId:task.taskId})).status,'completed');const header=(await nextHost.ctx.sessionPersistence.stat(sessionId)).header;assert.ok(header.cwd.startsWith(relocated));assert.equal(await readFile(join(header.cwd,'work/proof.txt'),'utf8'),'single-session-proof');assert.equal(reviews,1)}finally{await next.close();await nextHost.close()}
 })
+
+test('the official task request gives execution ownership of investigation and limits questions to real blockers',{timeout:nativeTestTimeout(15000)},async t=>{
+  t=cleanupContext(t)
+  let h;t.after(()=>h?.close())
+  const f=await memoryHost(t,body=>requestTools(body).includes('task_result')?result:undefined)
+  h=await serviceFor(f)
+  const task=await h.service.createTask({requestId:'investigation-prompt',objective:'Investigate a reported save error'})
+  await until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.status==='completed'&&row.drained})
+  const request=f.requests.find(body=>requestTools(body).includes('task_result'))
+  assert.ok(request,'execution must reach the local provider with task_result')
+  const prompt=request.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
+  assert.match(prompt,/Do not rely on the Router to direct the investigation or decide when to ask for help/)
+  assert.match(prompt,/start from the original report and supplied materials/)
+  assert.match(prompt,/Keep unverified hypotheses separate from findings/)
+  assert.match(prompt,/continue authorized work that does not depend on the missing information/)
+  const tool=request.tools.find(tool=>tool.function.name==='task_result').function
+  assert.match(tool.description,/only if a necessary next step is blocked/)
+  assert.match(tool.description,/not already supplied and cannot be obtained through authorized sources/)
+  assert.match(tool.description,/record what you checked and the step that is blocked/)
+})
 test('single task cancellation aborts the active turn, drains it and never creates a replacement execution',{timeout:nativeTestTimeout(15000)},async t=>{
   t=cleanupContext(t)
   let h;t.after(()=>h?.close())

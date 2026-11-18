@@ -10,6 +10,14 @@ role is an additional task execution session. Topic is no longer an active routi
 entity. A retrospective is a separate tool-free
 model request after completion, not another execution session.
 
+## 排查和补问
+
+执行会话负责取证、验证假设和决定是否补问。排查先读原始反馈与已有材料，沿最具体的现象或报错核对现场环境、版本和调用路径；区分已证事实、待验证假设和取证限制。某个工具或访问路径失败不代表用户漏报，也不应中断其他可继续的授权工作。
+
+只有信息或决定尚未提供、无法通过受权入口自行取得，且确实阻断必要步骤时，执行才用 `task_result` 的 `wait` / `blocked` 提出具体问题，并记录已核对的证据和被阻断的步骤。确需协助的技术运行问题面向操作者；只有必须由反馈人补充的业务问题才面向反馈人。Router 安排任务、评估结果，并按既有规则判断收到的补充是否足以恢复；不逐次审核等待理由、不指挥具体排查或替执行补证。这是执行模型的提示约束，不改变等待、权限或交付协议。
+
+## 执行生命周期
+
 The authoritative task ledger owns creation, requirement/control versions,
 claim/drain, cancellation, waiting and terminal completion. `createTask` starts the
 single session when its execution conditions permit; a trusted typed `channel`
