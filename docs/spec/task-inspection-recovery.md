@@ -24,7 +24,9 @@ No extra database, log directory or model decision entry point is introduced.
 The current task, journal and effect receipts remain authoritative.
 
 An execution incident holds automatic task claim until an explicit, current-version
-Router scheduling action or actual new input invalidates that older version. A
+Router scheduling action, an existing trusted Host explicit-continuation wake,
+or actual new input invalidates that older version. Generic inspection and
+ordinary wakes do not grant continuation. A
 24-hour waiting review is advisory and never holds legitimate source/schedule
 admission. Settling an execution incident can mean continuing to wait and does not clear
 its execution hold. A current `wait-overdue` event requires an `inspectionReviews`
@@ -54,7 +56,10 @@ continuation path. Ordinary message batches retain explicit Host recovery.
 Legacy committed generation handoffs keep their existing recovery/error contract.
 
 Boundaries: inspection cannot prove a live but internally stuck tool is dead and
-does not terminate it. Legacy tasks without a conversation retain their existing
+does not terminate it. Absence from the in-memory registry also does not prove a
+writer or external producer drained: inspection never fabricates drain. Existing
+restart/drain-proof paths retain that authority. Session creation that fails
+before successful binding retains the existing known-not-started backoff path. Legacy tasks without a conversation retain their existing
 recovery/operator path. External vendor integration and Windows execution
 containment require separate environment validation. All runtime state remains
 under the installation's existing data/state, task workspaces and Pi journals.

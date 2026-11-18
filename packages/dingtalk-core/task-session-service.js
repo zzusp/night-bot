@@ -1098,7 +1098,6 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const executions = await query('execution.list',{taskId})
         if(executions.length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
         await ctx.get?.('memory')?.bindSession(binding.sessionId,{actorId:task.ownerActorId??config.ownerActorId,...task.groupId&&task.metadata?.channelType!=='chat'?{groupId:task.metadata?.memoryGroupId??task.groupId,groupWrite:true}:{}})
-        executionStarted=true
         const runResult = await taskSessions.run({ binding, input: { task:await taskInputWithDependencies(task), artifactScope: await resolveTaskArtifactScope({ root, task, query }), sources, ...(dialogue ? { dialogue } : {}), ...(humanReview ? { humanReview } : {}), materials: materials.map(({ resources, ...value }) => ({ ...value, resources: resources.map(({ value: body, ...resource }) => ({ ...resource, ...(body?.file ? { file: body.file } : {}) })) })), wakes, executions,
           operations,
           operationCounts: Object.fromEntries(Object.entries(Object.groupBy(operations, operation => operation.state)).map(([state, items]) => [state, items.length])),
@@ -1110,7 +1109,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             Object.assign(binding,{contextRevision:nextBinding.contextRevision});task=await requireTask(taskId)
             sources.splice(0,sources.length,...(await Promise.all(task.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean))
           },
-          onSessionBound: async () => { await attachWorkspace(binding.sessionId, await taskWorkspace(root,taskId,task), task.title); return command('task.sessionBound', { binding }, `task-bound:${taskId}:${binding.leaseEpoch}`) },
+          onSessionBound: async () => { await attachWorkspace(binding.sessionId, await taskWorkspace(root,taskId,task), task.title); const receipt=await command('task.sessionBound', { binding }, `task-bound:${taskId}:${binding.leaseEpoch}`);executionStarted=true;return receipt },
           resolveHuman: async args => {
             if (!humanReview) fail('DYNAMIC_HUMAN_REVIEW_NOT_PENDING')
             return (await command('task.human.resolve', { binding, ...args },
@@ -1436,7 +1435,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const binding=await query('task.binding',{taskId:task.taskId})
         if(binding.leaseEpoch!==task.leaseEpoch)continue
         await command('task.inspect',{taskId:task.taskId,expected:inspectionVersion(task)})
-        if(!live&&!inflightTasks.has(task.taskId)&&!task.drained&&!task.recovering)await command('task.drained',{binding})
+        // Missing registry handles do not prove a writer or external producer
+        // drained. Inspection records the incident; existing drain proofs own it.
       }
       catch(error){if(!['TASK_INSPECTION_STALE','DYNAMIC_TASK_LEASE_STALE'].includes(error.code))throw error}
     }

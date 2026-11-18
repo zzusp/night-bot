@@ -931,6 +931,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'task.wake' || kind === 'wake.enqueue') {
       const task = get('dynamic_tasks', a.taskId)
+      if(a.kind==='host.explicit-continuation'&&inspectionHoldsExecution(task)){Object.assign(task.inspection,{pending:false,resolvedAt:stamp,resolution:'host-explicit-continuation'});saveTask(task)}
       const wakeId = wake(task.taskId, a.kind ?? 'task.wake', a.payload ?? {}, a.key ?? `wake:${commandId}`)
       return changed({ wakeId })
     }
