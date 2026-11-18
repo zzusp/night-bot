@@ -56,7 +56,7 @@ git diff --check
 - 不声称模型语义质量或真实模型正反场景泛化已测；Host 的引用校验不能证明事实真实。未跑全仓默认/runtime/routing/containment 全套；本轮执行上述与变更直接相关的实际链路，不宣称全仓或跨平台验收通过。
 - 自动维护仍须安装操作者显式启用；首次只建水位不等于完整历史复盘。无新增渠道手动维护 API，不自动修改真实安装配置，也没有执行 UAT/生产历史整理。
 - 原检出其他会话的修改未动；本 worktree 未复制环境文件、node_modules 链接、账号、凭据或私有 Skill。只修改已准入的通用 skill-creator 适配段并同步 UPSTREAM 修改声明；许可与附属脚本保持不变。
-- git check-ignore 确认 data/memory、data/skills、data/config 为忽略路径；git ls-files data 无输出。提交前还须独立核对 staged diff，不能把工具成功回执当敏感信息检查。
+- git check-ignore 确认 data/memory、data/skills、data/config 为忽略路径；git ls-files data 无输出。提交前已独立核对 staged diff：运行数据没有暂存，Skill 仅为既有通用 creator 适配/修改声明；无私有技能或凭据。
 - 测试自己的 Host、SQLite、本地端点及临时目录均由 fixture 清理。未生成仓库内业务原始日志或大 binary；必要最终文字证据集中于本文，round-1 历史结果保留。
 
 ## 受验改动字节指纹
@@ -85,3 +85,11 @@ git diff --check
   "test/pi-reflection.test.js": "56d60496e2a083e0daa83710f0117049051b4d612a4eb92d2f066347c4bc5359"
 }
 ```
+
+## 交付事实
+
+- 功能提交 c0920e0d6007d2c4e08758c3c3bc78dd1ae15cf0；PR 证据文档提交 c2865927da25a1d9df03e269fc3f2219335edeed，后者未改运行时代码或测试。
+- [PR #180](https://github.com/zzusp/night-bot/pull/180)：main ← worktree-memory-skill-periodic-review；gh 回查 state=MERGED，mergedAt=2026-11-18T02:12:38Z，mergeCommit=e893bf33e2835e41a0b280a94acf0cec3322060f。
+- 创建后 mergeable=MERGEABLE、statusCheckRollup=[]。远程 main 无 required checks，规则只限制删除和非快进；唯一 website workflow 不匹配本轮路径，未手动触发 CI。
+- git fetch 后核实 origin/main 为 e893bf3，且 c286592 为其祖先。受验代码字节仍与本文聚合指纹一致；本次后续仅同步已发生的交付事实/goal，不重新声称运行时代码有新变更。
+- 未部署、未重启实例、未清理真实 Bot 历史。已向等待本规则的部署会话同步真实合并 SHA 和完整历史复盘仍需另行验收的边界，不接管其操作。
