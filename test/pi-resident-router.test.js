@@ -19,7 +19,7 @@ test('default first tier keeps silent and reply-only messages out of Router and 
     batches.push(input)
     toolSets.push(requestTools(body))
     const system=body.messages.filter(message=>message.role==='system').map(message=>message.content).join(String.fromCharCode(10))
-    assert.match(system,/NIGHT_NATURAL_CHANNEL_REPLY/);assert.match(system,/场景事实是假设，不是当前证据/);assert.match(system,/先区分真正受话对象/);assert.match(system,/不承诺代其合并、发布、部署或外部写入/)
+    assert.match(system,/NIGHT_NATURAL_CHANNEL_REPLY/);assert.match(system,/好，我查一下/);assert.match(system,/不把简短写成空泛确认/);assert.match(system,/场景事实是假设，不是当前证据/);assert.match(system,/先区分真正受话对象/);assert.match(system,/不承诺代其合并、发布、部署或外部写入/)
     return triageReply(input,message=>({needsHandling:false,...message.text==='你好'?{reply:'你好。'}:{}}))
   })
   const quiet=channelMessage('quiet',{text:'No action and no reply are needed'}),hello=channelMessage('hello',{text:'你好'})
@@ -205,7 +205,7 @@ test('Router sends a natural scoped answer through its existing reply receipt wi
   if(tools.includes('channel_triage_submit'))return triageReply(input,()=>({needsHandling:true}));
   if(!tools.includes('resident_router_reply'))return {text:'Settled'};
   const prompt=body.messages.filter(row=>row.role==='system').map(row=>row.content).join('\n');
-  assert.match(prompt,/NIGHT_NATURAL_CHANNEL_REPLY/);assert.match(prompt,/内部结构化汇报/);assert.match(prompt,/群聊围绕被问事项/);assert.match(prompt,/已有交办和授权范围清楚时直接推进/);assert.match(prompt,/本次事件根因分开/);
+  assert.match(prompt,/NIGHT_NATURAL_CHANNEL_REPLY/);assert.match(prompt,/内部结构化汇报/);assert.match(prompt,/群聊围绕被问事项/);assert.match(prompt,/已有交办和授权范围清楚时直接推进/);assert.match(prompt,/本次事件根因分开/);assert.match(prompt,/代码改好了，正在跑测试/);assert.match(prompt,/还不能确定这次就是它/);assert.match(prompt,/要我顺手修掉吗/);assert.match(prompt,/若原交办已包含该修复且权限允许，就直接继续/);
   const events=requestEnvelope(body,'Router 请求：').events,source=events.find(event=>event.source)?.source;
   if(step++===0)return {tool:'resident_router_reply',args:{operationId:'natural-answer',sourceId:source.sourceId,messageVersion:source.version,text:answer}};
   if(step===2)return {tool:'resident_router_settle',args:{operationId:'natural-settle',eventIds:events.map(event=>event.id),noTaskDispositions:events.filter(event=>event.source).map(event=>({eventId:event.id,outcome:'handled-inline',reason:'Answered the current evidence boundary without claiming repair',sourceQuote:event.source.text}))}};
