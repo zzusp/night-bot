@@ -71,7 +71,7 @@ test('factual report includes exact-day progress, registered next-day plans and 
  const schedule={catalog:async()=>[{id:'plan',status:'active',scheduledAt:'2026-11-11T09:00Z',title:'检查核验结果',prompt:'private internal framing'},{id:'later',status:'active',scheduledAt:'2026-11-12T09:00Z',title:'not tomorrow'}]}
  const evidence=await collectWorkLogEvidence({store,schedule,day,timezone:'UTC',cutoff})
  assert.equal(evidence.messages.length,1);assert.equal(evidence.plans.length,1);assert.equal(evidence.blockers.length,1)
- const body=renderWorkLog({day,timezone:'UTC',cutoff,evidence});assert.match(body,/核验已开始/);assert.match(body,/09:00：检查核验结果/);assert.doesNotMatch(body,/not tomorrow|tomorrow/)
+ const body=renderWorkLog({day,timezone:'UTC',cutoff,evidence});assert.match(body,/进展来源：decision/);assert.match(body,/排期来源：plan/);assert.doesNotMatch(body,/核验已开始|检查核验结果|private internal framing/);assert.doesNotMatch(body,/not tomorrow|tomorrow/)
  const historical=await collectWorkLogEvidence({store,schedule,day,timezone:'UTC',cutoff:Date.parse('2026-11-12T12:00Z')});assert.equal(historical.plans.length,0);assert.equal(historical.blockers[0].historical,true)
 })
 test('redaction removes known credentials, secret fields, private keys and executable Markdown',async()=>{
@@ -87,7 +87,7 @@ test('default Host service summarizes committed ordinary Pi conversation with on
  await service.attach({tasks:{store:storeFixture()}})
  assert.equal(service.runner.lastError,null);assert.equal(f.requests.length,calls+1)
  const day=localStamp(Date.now(),'UTC').day,path=join(f.host.ctx.runtimePaths.workLogs,day.slice(0,4),day.slice(5,7),day+'.md')
- const body=await readFile(path,'utf8');assert.match(body,/请核对测试范围/);assert.match(body,/已核对测试范围/);assert.doesNotMatch(body,/local-fixture/);assert.match(body,/未完成语义总结/)
+ const body=await readFile(path,'utf8');assert.doesNotMatch(body,/请核对测试范围|已核对测试范围/);assert.match(body,/来源：/);assert.doesNotMatch(body,/local-fixture/);assert.match(body,/未完成语义总结/)
  await service.close();assert.equal(service.runner.timer,undefined)
 })
 
@@ -113,7 +113,7 @@ test('arrangement and change events are never reported as completed work',async(
  const events=['task.arranged','task.changed','task.completed'].map((kind,index)=>({id:'event-'+index,kind,taskId:'t',recordedAt:'2026-11-10T12:00Z',result:{summary:kind}}))
  const evidence=await collectWorkLogEvidence({store:storeFixture({events}),day:'2026-11-10',timezone:'UTC',cutoff:Date.parse('2026-11-10T23:59Z')})
  assert.deepEqual(evidence.progress.map(row=>row.kind),['arranged','changed','completed'])
- const body=renderWorkLog({day:'2026-11-10',timezone:'UTC',cutoff:Date.parse('2026-11-10T23:59Z'),evidence});assert.match(body,/已调整安排/);assert.match(body,/事项已更新/)
+ const body=renderWorkLog({day:'2026-11-10',timezone:'UTC',cutoff:Date.parse('2026-11-10T23:59Z'),evidence});assert.match(body,/进展来源：/);assert.doesNotMatch(body,/已调整安排|事项已更新/)
 })
 test('captured environment and unreferenced saved credential refs are scrubbed without exporting them',async()=>{
  const env=createLaunchEnvironmentSnapshot([{source:'process',values:{GITHUB_TOKEN:'opaque-env-no-prefix',SESSION_COOKIE:'opaque-cookie',AUTHORIZATION:'opaque-auth',PRIVATE_KEY:'opaque-private-key',PASSWD:'opaque-passwd',NORMAL_VALUE:'normal'}}])
@@ -148,7 +148,7 @@ test('rendered diary states local cutoff, immutable snapshot and historical bloc
  const evidence=await collectWorkLogEvidence({store:storeFixture({sources:[{sourceId:'on-time',receivedAt:'2026-11-10T15:58:00Z',text:'核验部署'},{sourceId:'after-cutoff',receivedAt:'2026-11-10T15:59:30Z',text:'不应入本次快照'}],tasks:[{taskId:'task',title:'部署核验',createdAt:'2026-11-10T12:00Z'}],decisions:[{taskId:'task',id:'decision',recordedAt:'2026-11-10T13:00Z',decision:{action:'wait',summary:'测试已通过，等待批准部署',question:'等待发布批准'}}]}),day,timezone,cutoff})
  const body=renderWorkLog({day,timezone,cutoff,evidence})
  assert.match(body,/当地时间 2026-11-10 23:59/);assert.match(body,/UTC：2026-11-10T15:59:00.000Z/)
- assert.match(body,/测试已通过，等待批准部署/);assert.match(body,/当时记录，不代表当前仍受阻/);assert.match(body,/截止时间后的活动不追加/)
+ assert.doesNotMatch(body,/测试已通过，等待批准部署|等待发布批准/);assert.match(body,/不代表当前仍受阻/);assert.match(body,/截止时间后的活动不追加/)
  assert.doesNotMatch(body,/不应入本次快照/)
 })
 
@@ -160,7 +160,7 @@ test('tool-free semantic recap covers explicit chat plans and issues, redacts bo
  assert.equal(f.requests.length,calls+1)
  const request=f.requests.at(-1);assert.ok(!request.tools?.length);assert.ok(!JSON.stringify(request).includes('local-fixture'))
  const day=localStamp(Date.now(),'UTC').day,file=join(f.host.ctx.runtimePaths.workLogs,day.slice(0,4),day.slice(5,7),day+'.md'),body=await readFile(file,'utf8')
- assert.match(body,/用户提出明天复查登录/);assert.match(body,/【推断，待核实】/);assert.match(body,/工作复盘总结/);assert.doesNotMatch(body,/local-fixture/)
+ assert.match(body,/用户提出明天复查登录/);assert.match(body,/【推断，待核实】/);assert.match(JSON.stringify(request),/NIGHT_CONTEXT_RETENTION/);assert.doesNotMatch(body,/登录测试已通过；明天复查登录/);assert.match(body,/工作复盘总结/);assert.doesNotMatch(body,/local-fixture/)
  await service.runner.tick();assert.equal(f.requests.length,calls+1)
  await service.close();const restart=new DailyWorkLog({paths:f.host.ctx.runtimePaths,config:{enabled:true,time:'00:00',timezone:'UTC'},collect:async()=>{throw Error('must not resummarize')}});await restart.tick();assert.equal(restart.lastError,null);await restart.close()
 })
@@ -195,3 +195,17 @@ test('semantic input uses a serialized byte budget and preserves category opport
  assert.ok(Buffer.byteLength(JSON.stringify(small))<4000);assert.ok(small.omitted>0);assert.ok(small.facts.some(row=>row.kind==='plans'));assert.ok(small.facts.some(row=>row.kind==='blockers'))
  assert.equal(fitSummaryInput(full,0).facts.length,0)
 })
+
+test('derived diary retains evidence pointers without raw copies in success or fallback and leaves evidence intact',()=>{
+ const evidence={...active(),messages:[{id:'source-pointer',at:'2026-11-10T12:00Z',text:'PRIVATE_RAW_CHAT'}],progress:[{id:'receipt-pointer',at:'2026-11-10T12:01Z',text:'TEMPORARY_TOOL_OUTPUT',title:'PRIVATE_TITLE'}]};
+ const before=JSON.stringify(evidence),input=summaryInput(evidence);
+ for(const summary of [{status:'fallback',reason:'未完成语义总结'},{status:'summarized',sections:{progress:[{text:'已核验的接续决定',basis:'recorded',evidenceIds:['e0']}],plans:[],blockers:[]},facts:input.facts,omitted:0}]){
+  const body=renderWorkLog({day:'2026-11-10',timezone:'UTC',cutoff:Date.parse('2026-11-10T23:59Z'),evidence:{...evidence,summary}});
+  assert.match(body,/source-pointer/);assert.match(body,/receipt-pointer/);
+  assert.doesNotMatch(body,/PRIVATE_RAW_CHAT|TEMPORARY_TOOL_OUTPUT|PRIVATE_TITLE/);
+  if(summary.status==='summarized')assert.match(body,/已核验的接续决定/);
+ }
+ assert.equal(JSON.stringify(evidence),before,'derived publication never rewrites source evidence');
+ for(const kind of ['progress','plans'])assert.throws(()=>parseSummary(JSON.stringify({progress:[],plans:[],blockers:[],[kind]:[{text:'unsupported inference',basis:'inferred',evidenceIds:['e0']}]}),input),{code:'WORK_LOG_SUMMARY_INVALID'});
+ assert.equal(parseSummary(JSON.stringify({progress:[],plans:[],blockers:[{text:'未验证：需回查原来源再确认阻塞是否解除',basis:'inferred',evidenceIds:['e0']}]}),input).blockers.length,1);
+});
