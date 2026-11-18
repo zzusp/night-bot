@@ -213,9 +213,21 @@ export class OfficialAgentFactory {
     const {entries,branch,messages,input}=routerInputCheckpoint(packet)
     const failure=branch.find(entry=>entry.id===failedEntryId),claims=entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.router-resume-claim'&&entry.details?.failedEntryId===failedEntryId)
     if(claim===undefined&&claims.length)throw fail('PI_ROUTER_RESUME_CHECKPOINT_USED')
-    if(claim!==undefined&&(claims.length!==1||!isDeepStrictEqual(claims[0].details,claim)||messages.at(-1)?.id!==claims[0].id||entries.length!==store.snapshot().nativeEntryCount))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
-    // 正常 stop 不保证批次已结清；操作者可沿同一检查点继续，默认恢复仍不重放。
-    if(failure?.type!=='message'||failure.message.role!=='assistant'||!['error','aborted','stop'].includes(failure.message.stopReason)||messages.at(claim===undefined?-1:-2)?.id!==failedEntryId||branch.indexOf(input)>=branch.indexOf(failure))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+    const snapshot=store.snapshot(),tail=claim===undefined?-1:-2
+    if(claim!==undefined&&(claims.length!==1||!isDeepStrictEqual(claims[0].details,claim)||messages.at(-1)?.id!==claims[0].id||entries.length!==snapshot.nativeEntryCount))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+    if(failure?.type!=='message'||messages.at(tail)?.id!==failedEntryId||branch.indexOf(input)>=branch.indexOf(failure))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+    const terminal=failure.message
+    if(terminal.role==='toolResult'){
+     // 只在已提交的只读调用批次之后开启新轮；内存尾部不能成为检查点。
+     if(entries.length!==snapshot.nativeEntryCount||branch.at(-1)?.id!==entries.at(-1)?.id)throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+     const through=messages.slice(0,claim===undefined?messages.length:-1)
+     const callerIndex=through.findLastIndex(entry=>entry.type!=='message'||entry.message.role!=='toolResult')
+     const caller=through[callerIndex],results=through.slice(callerIndex+1)
+     if(caller?.message?.role!=='assistant'||caller.message.stopReason!=='toolUse')throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+     const queries=caller.message.content.filter(block=>block.type==='toolCall')
+     const queryIds=new Set(queries.map(call=>call.id)),resultIds=new Set(results.map(entry=>entry.message.toolCallId))
+     if(queries.length!==results.length||queryIds.size!==queries.length||resultIds.size!==results.length||queries.some(call=>call.name!=='resident_task_query'||!resultIds.has(call.id))||results.some(({message})=>message.toolName!=='resident_task_query'||message.isError))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
+    }else if(terminal.role!=='assistant'||!['error','aborted','stop'].includes(terminal.stopReason))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
     // 未配对或错误工具结果不能凭 idle 推断外部效果已结算。
     const suffix=branch.slice(branch.indexOf(input)+1),calls=new Map()
     for(const entry of suffix){
