@@ -39,7 +39,7 @@ test('real AgentSession settled hook extracts using official native runtime, kee
  const f=await fixture(t,{extract:context=>candidate(context)})
  await f.session.prompt('ordinary model prompt');await f.service.whenIdle()
  assert.equal(f.auxiliary.length,1);assert.equal(f.auxiliary[0].options.maxTokens,31)
- assert.equal(f.auxiliary[0].context.messages.length,2);assert.ok(!JSON.stringify(f.auxiliary[0].context).includes('PRIVATE_PRINCIPAL'))
+ assert.match(f.auxiliary[0].context.messages[0].content,/能从当前代码.*未经验证.*一次性要求/s);assert.match(JSON.stringify(f.main),/长期记忆筛选规则/);assert.equal(f.auxiliary[0].context.messages.length,2);assert.ok(!JSON.stringify(f.auxiliary[0].context).includes('PRIVATE_PRINCIPAL'))
  assert.equal((await f.service.read(f.actor,{topic:'preferences'})).entries.length,0)
  const pending=await f.service.read(f.actor,{candidates:true});assert.equal(pending.entries.length,1);assert.equal(pending.entries[0].source.messageId,'message-one');assert.equal(pending.entries[0].source.sessionId,f.actor.id)
  f.admitted={...f.admitted,id:'run-two'};await f.session.prompt('same admitted provenance again');await f.service.whenIdle()

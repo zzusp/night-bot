@@ -1,0 +1,26 @@
+id,case,round_1,round_2,evidence
+MEM-01,共享六类准入要求进入主请求和辅助请求,PASS,PASS,test/pi-memory-wire.test.js; test/pi-memory-official-extraction.test.js; test/pi-reflection-official.test.js; round-1.md; round-2.md
+MEM-02,复盘 hypothesis 不进入新经验或 state,PASS,PASS,test/pi-reflection.test.js; round-1.md; round-2.md
+SKL-01,目标环节来源正反例及长 guidance 全文读取,PASS,PASS,test/pi-reflection.test.js; round-1.md; round-2.md
+SKL-02,证据或范围不足的技能不保存且允许空结果,PASS,PASS,test/pi-reflection.test.js; round-1.md; round-2.md
+SKL-03,已有 key 更新与旧 steps 历史保留,PASS,PASS,test/pi-reflection.test.js; test/pi-shared-memory-migration.test.js; round-1.md; round-2.md
+MNT-01,默认 Host 事件接线先索引后正文且无工具,PASS,PASS,test/pi-memory-maintenance.test.js; round-1.md; round-2.md
+MNT-02,记忆与技能清理合并拆分更新保留来源,PASS,PASS,test/pi-memory-maintenance.test.js; round-1.md; round-2.md
+MNT-03,候选不晋升及六种非法计划整批拒绝,PASS,PASS,test/pi-memory-maintenance.test.js; round-1.md; round-2.md
+MNT-04,journal 中断恢复与冷启动无重放,PASS,PASS,test/pi-memory-maintenance.test.js; round-1.md; round-2.md
+MNT-05,真实定时器冷恢复空复盘不增版本,PASS,PASS,test/pi-memory-maintenance.test.js; round-1.md; round-2.md
+MNT-06,经验撤销派生失效且旧技能文件仍保留,PASS,PASS,test/pi-memory-maintenance.test.js; round-1.md; round-2.md
+MNT-07,安装显式启用和只读写入保护,PASS,PASS,test/pi-memory-maintenance.test.js; round-1.md; round-2.md
+MNT-08,凭据与过期项本地清理及依赖不回灌,PASS,PASS,test/pi-memory-maintenance.test.js; round-1.md; round-2.md
+MNT-09,访问来源身份不随 usage 发给模型,PASS,PASS,test/pi-memory-maintenance.test.js; round-1.md; round-2.md
+MNT-10,停机取消排空且未提交计划不应用,PASS,PASS,test/pi-memory-maintenance.test.js; round-1.md; round-2.md
+REG-01,授权来源隐私遗忘及并发持久化回归,PASS,PASS,test/pi-memory-store.test.js; test/pi-memory-official-source.test.js; test/pi-official-memory-privacy.test.js; test/pi-reflection-forget.test.js; round-1.md; round-2.md
+REG-02,历史共享迁移与 Windows 链接拒绝,PASS,PASS,test/pi-shared-memory-migration.test.js; round-1.md; round-2.md
+REG-03,任务档案附件会话恢复决策时序与禁止重放,PASS,PASS,test/pi-task-archive.test.js; round-1.md; round-2.md
+CHK-01,源码哈希归属生产导入和 runtime guard,PASS,PASS,pnpm check; round-1.md; round-2.md
+CHK-02,diff 无空白错误及暂存私有路径核对,PASS,PASS,git diff --check; git diff --cached; git ls-files; round-1.md; round-2.md
+MNT-11,Router独立来源及旧操作幂等与单调墓碑,N/A,PASS,test/pi-memory-maintenance.test.js; round-2.md
+MNT-12,慢维护无共享锁且并发Router提交使旧计划拒绝,N/A,PASS,test/pi-memory-maintenance.test.js; round-2.md
+MNT-13,结构化主体来源previous保持和长期指令边界,N/A,PASS,test/pi-memory-maintenance.test.js; round-2.md
+MNT-14,档案失败进入archivePending并在后续scan成功补齐,N/A,PASS,test/pi-memory-maintenance.test.js; round-2.md
+MNT-15,未启用技能不晋升且候选落盘事件接入,N/A,PASS,test/pi-memory-maintenance.test.js; round-2.md

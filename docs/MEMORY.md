@@ -140,6 +140,19 @@ discards an extraction racing a correction/forget; forget fingerprints also supp
 stale candidates. `memory_status` and the next prompt expose maintenance error codes.
 No automatic external notification is sent on a background error.
 
+## 长期记忆准入
+
+候选提取、主对话、Router、任务复盘与周期维护共用同一筛选规则：
+
+- 能从当前代码、文档、配置、业务系统或任务记录查到的信息，按需查询，不复制为长期记忆。
+- 未验证的猜想、猜测、推断和结论不保存；标注“可能”“待确认”也不例外。线索留在当前任务。
+- 临时状态、进度、原始输出、一次性报错与执行流水不保存；只提炼有证据的非显然可复用经验。
+- 重复、过期、被纠正或替代的信息不新增为有效结论；在授权范围内修订或撤销。
+- 凭据与不必要的敏感原文不保存，不复制整段聊天、文档或身份信息。
+- 一次性要求不升级为长期偏好，一次批准不升级为持续授权。明确的长期要求保留完整条件与主体范围。
+
+这些是模型的语义筛选责任；Host 仍验证来源、同意、秘密、版本和路径，合法 evidenceIds 或 evidenceBacked 并不证明内容真实。候选不能由维护自动晋升。安装操作者可按[事件与周期维护](SELF-EVOLUTION.md#事件与周期维护)启用清理、合并、拆分、更新；保留原始来源、主体、长期指令作用域和安全 previous，不把维护推理变成新授权。
+
 ## 渠道长期偏好
 
 已认证渠道中，Router 依据完整语境判断哪些事实、偏好或方法值得保留、需要纠正或应当删除。一级分诊将这类需处理的消息交 Router；Host 不再通过固定句首、授权关键词或临时性词表重复判定 Router 的语义决定。背景之后才出现“请你记住”、没有特定请求句式的可复用事实，均可由 Router 决定保存。临时要求是否应保留、用户说法是否已验证、引用指令是否适用由 Router 判断；引用、任务结果和交接不能冒充当前认证人类来源。

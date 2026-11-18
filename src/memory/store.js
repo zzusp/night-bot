@@ -68,7 +68,9 @@ export async function readV3Snapshot(directory,scope){
   const candidateText=await safeRead(directory,'candidates.md')
   return {meta,topics,candidates:candidateText?scopedTopic(candidateText,scope).entries:[],files}
 }
+const evolutionWrite=name=>['evolution/state.json','evolution/maintenance.json'].includes(name)||/^evolution\/reviews\/[a-f0-9]{64}\.json$/.test(name)||/^evolution\/maintenance\/[a-f0-9-]{36}\.json$/.test(name)||/^evolution\/skills\/[a-z0-9]+(?:-[a-z0-9]+)*\/SKILL\.md$/.test(name)
 function allowedWrite(name){
+  if(evolutionWrite(name))return true
   if(['candidates.md','index.md','scope.json'].includes(name)||/^topics\/[a-f0-9]{64}\.md$/.test(name)||/^sources\/[a-f0-9-]{36}\.md$/.test(name))return true
   const match=/^categories\/([^/]+)\/(?:index\.md|entries\/([^/]+)\.md)$/.exec(name)
   if(!match)return false
@@ -140,7 +142,9 @@ export class MarkdownMemoryStore {
   }
   async transaction(scope,work){return this.locked(scope,async(dir,meta)=>{
     const snapshot=await this.snapshot(dir,scope,meta);let changed=false
-    const state={...snapshot,mark:()=>changed=true},result=await work(state)
+    const state={...snapshot,writes:[],mark:()=>changed=true},result=await work(state)
+    if(state.writes.some(row=>!Array.isArray(row)||row.length!==2||!evolutionWrite(row[0])||typeof row[1]!=='string'))throw failure('MEMORY_JOURNAL_INVALID')
+    const writes=[]
     if(changed){
       state.meta.revision++;state.meta.seen=state.meta.seen.slice(-1024);state.meta.forgotten=state.meta.forgotten.slice(-2048)
       let files
@@ -151,9 +155,12 @@ export class MarkdownMemoryStore {
         files.set('scope.json',JSON.stringify(state.meta,null,2)+'\n');files.set('index.md','# Memory index\n')
         snapshot.files=new Set(['index.md','scope.json','candidates.md',...(await readdir(join(dir,'topics')).catch(error=>{if(error.code==='ENOENT')return [];throw error})).map(name=>'topics/'+name)])
       }
-      const writes=[...files].filter(([name])=>name!=='scope.json')
+      writes.push(...[...files].filter(([name])=>name!=='scope.json'))
       for(const name of snapshot.files??[])if(!files.has(name))writes.push([name,null])
       writes.push(['scope.json',files.get('scope.json')])
+    }
+    writes.push(...state.writes)
+    if(writes.length){
       const journal=JSON.stringify({version:1,writes});if(Buffer.byteLength(journal)>FILE_LIMIT||writes.some(([,text])=>text!==null&&Buffer.byteLength(text)>FILE_LIMIT))throw failure('MEMORY_FILE_TOO_LARGE')
       await atomicWrite(join(dir,'pending.json'),journal)
       try{await this.beforeApply?.();await this.recover(dir)}catch(cause){throw Object.assign(failure('MEMORY_COMMIT_UNCERTAIN'),{cause,committed:'uncertain'})}

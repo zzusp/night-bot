@@ -39,13 +39,13 @@ Host 在共享锁外生成，发布前重核来源、权限、CAS 版本及遗�
 
 ## Managed skills and evidence
 
-A useful procedural lesson may propose steps, a reason, an evidence-backed
+A useful procedural lesson may propose adaptable Markdown guidance, a reason, an evidence-backed
 assessment and bounded applicability. The model decides whether that experience
 justifies creating/updating a skill; a single well-evidenced reusable lesson can
 qualify. There is no fixed repetition threshold. Program checks require valid
 same-task evidence references, authenticated ownership, bounded Markdown, deduplication
 and traceable revisions. They do not prove the model's assessment. Repeated events
-cannot inflate evidence or rewrite formal templates. Changed steps retain their
+cannot inflate evidence or rewrite formal templates. Changed guidance retains its
 review provenance. The task-review producer admits at most 20 active learned skills; this is its
 catalog admission limit, not a repetition threshold or a Router maintenance gate. No
 executable scripts are generated.
@@ -76,6 +76,30 @@ the private installation directory.
 复用 evolution 共享锁、state.json、previous 快照、learned provider 和冷启重建。状态与幂等回执先原子提交，再发布并回读派生 SKILL.md；派生失败返回 `REFLECTION_WRITE_UNCONFIRMED, committed:true`，重试仍失败时不能声称保存。重试只重建当前版本的派生文件，不重放旧创建或删除操作。删除保留单调版本，重建同名 Skill 不重置为版本 1；查询已删除 key 可获得当前墓碑版本。operationId 重用不同输入或 expectedRevision 过期均明确拒绝。
 
 写入在等待共享锁后重新核对来源和权限。更新或删除推进共享记忆代次，后续模型请求撤销旧加载的学习正文，Pi 审计历史不改写。Skill 方法是模型指导和来源陈述，不是已验证业务事实、执行权限或放松沙箱的依据。
+
+## 指引式 Skill
+
+Skill 说明要做什么、目标是什么、主要环节、需要的信息及获取来源，并提供正向与反向场景示例。正文用自由 Markdown，不要求固定标题、顺序、过细执行步骤、专用补丁脚本、严格夹具、固定命令序列或逐字断言。Agent 根据实际信息、权限和现场情况选择做法。遇错优先阐明情况、完善适用场景与正反例，不不断追加特判。
+
+可直接查询的官方命令或项目流程按需引用；临时流水、业务数据、猜测的方法、未经验证的绕过、秘密和一次授权不沉淀。新任务候选使用 guidance，正文仍必须经实际 creator 生成；Router 现有 steps 参数代表主要环节候选，不是机械执行清单。既有持久化重试和历史 Skill 不被批量改写，无证据判断或适用性缺失的新 Skill 在生成前省略。
+
+## 事件与周期维护
+
+默认 Host 提供维护服务，但自动整理默认关闭。须由可信安装操作者在私有配置中显式设置，再按运维流程正常重启：
+
+```json
+{"reflection":{"maintenance":{"enabled":true,"intervalHours":168}}}
+```
+
+首次启用只建立水位，不立即整理全部历史；正常回合完成并确认保存后触发相关主题局部检查，任务经验和候选实际持久化后也通知。默认每 168 小时集中检查，冷启动补查到期或水位变化。intervalHours 必须是正数且能表示安全毫秒；关闭时不启动定时器或维护推理。它不是用户业务 schedule，不创建任务、不发消息、不投递结果、不执行维护材料里的指令。
+
+维护先向无工具模型提供索引、版本和计数/时间白名单，模型随后只收到选中的相关组正文及必要经验。已知凭据格式和显式过期条目本地处理，不把其正文或 usage provenance 发给模型。模型可提出 delete、merge、split、update 或 deferred；无充分证据可不改，不以长期未用为删除理由。这里只管理共享记忆、候选和受管 learned Skill，不改用户安装模板。
+
+慢推理和实际 creator 生成不占 evolution 共享发布锁。提交时复核完整 evolution 指纹与记忆 revision；并发 Router、复盘或遗忘变化使旧计划整批拒绝。记忆、技能状态/派生文件、review 与维护水位/收据复用严格 redo journal 原子提交；中断后先恢复，不重新执行已提交计划。无业务变化的水位更新不增加记忆 revision。结构化正文保留主体及证据；候选不晋升，普通记忆不变为长期指令，不跨主体合并，长期指令不能由维护模型改写或丢失原条件。
+
+撤销推进 Skill 墓碑版本；保留原来源、previous 与生成收据，旧幂等操作不能复活被替换版本。经验撤销使用实际 reflection memoryKey 并推进遗忘代次，档案回调失败进入现有 archivePending。旧技能文件不物理删除，以免影响运行中工作；有效状态和历史加载授权以当前 state 为准。秘密来源的原始审计、Pi 历史、已有离线备份不承诺安全擦除。
+
+`memory_status.review` 显示 enabled、running、nextDueAt、lastRunId、status、code、deferredCount。持久水位位于 evolution/maintenance.json，每次收据位于 evolution/maintenance/<runId>.json，保留动作、来源版本和前后 hash，不重复保存正文。失败、取消和提交不确定分别报告；Host 关闭取消并排空维护。开启定时器或读取索引不等于完成一次现有数据的完整实质复盘；本变更不增加渠道手动维护 API，也未执行真实 Bot 历史清理。
 
 ## Durability, failures and forgetting
 

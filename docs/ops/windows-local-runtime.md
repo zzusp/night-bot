@@ -331,3 +331,9 @@ if ($LASTEXITCODE -ne 0) { throw '升级后检查失败，不启动服务。' }
 - 目录 junction 可用于真实 reparse-point 边界验证；普通文件 symlink 在没有权限时不能声称已覆盖。
 - POSIX `chmod` 位不能证明 Windows DACL 隐私。Linux `/proc/self/fd` 启动协议、POSIX 权限和内核隔离结果不移作 Windows 认证。
 - DWS 是可选渠道，本机核心验收不加载它。真实渠道验收单独授权，钉钉仅使用约定测试群。
+
+## 记忆与 Skill 周期维护
+
+代码升级不授权自动清理历史，默认 reflection.maintenance.enabled 为 false。需要启用时，由安装操作者在私有 data/config/config.json 设置 {"reflection":{"maintenance":{"enabled":true,"intervalHours":168}}}，保留其他字段，按本页正常排空与重启流程操作；不新建业务 schedule，不覆盖记忆或用户正式 Skill。未设置 memory.model 时使用当前默认 Pi 模型，生成阶段仍须实际加载内置 skill-creator。
+
+首次开启建立水位；后续普通完成回合、候选和任务经验落盘触发局部检查，默认每周集中检查，冷启动补查到期/水位变化。通过 memory_status.review 及 data/memory/v2/bot/evolution/maintenance.json 和 maintenance/<runId>.json 核对实际 status、code 和变化 hash；enabled 或 nextDueAt 不是已清理证明。failed 应查具体来源/版本冲突或模型错误，uncertain 先由正常存储恢复处理，不删除 pending journal、不手工重放动作。关闭配置后正常重启停止自动维护；停机仍须排空，不能强删在用文件。完整行为与不支持范围见[自进化](../SELF-EVOLUTION.md#事件与周期维护)。本 PR 未改真实安装配置、未清理真实数据、未部署或做真实模型质量评估。
