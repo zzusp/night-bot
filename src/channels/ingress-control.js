@@ -67,6 +67,15 @@ export function createChannelIngressConfiguration({file,run,getChannels,getLifec
       if(!row)throw failure('DINGTALK_CHANNEL_NOT_FOUND')
       return project(row)
     }),
+    recoverPausedIngress:(id,{expectedVersion,pausedAt,checkOnly})=>run(async()=>{
+      const result=await updateConfig(file,value=>value,{checkOnly:true}),row=result.config.channelPlugins?.find(row=>idOf(row)===id)
+      if(!row)throw failure('DINGTALK_CHANNEL_NOT_FOUND')
+      if(hash(JSON.stringify(row))!==expectedVersion)throw failure('DINGTALK_CHANNEL_VERSION_CONFLICT')
+      const channels=getChannels(),plugin=channels?.plugins.get(id),control=declaredPlugins.has(plugin)?ingressController(plugin):null
+      if(row.type!=='dingtalk-dws'||!row.enabled||row.receivePaused!==true||typeof control?.recoverPaused!=='function')throw failure('CHANNEL_INGRESS_CONTROL_UNSUPPORTED')
+      if(channels.configurationErrors?.has(id))throw failure('CHANNEL_CONFIGURATION_COMMIT_UNCERTAIN')
+      return control.recoverPaused({pausedAt,checkOnly})
+    }),
     setIngressPaused:(id,input)=>run(async()=>{
       if(typeof id!=='string'||!id||id!==id.trim()||id.length>128||id.includes('\0')||!input||Object.keys(input).some(key=>!['expectedVersion','paused','confirm'].includes(key))||typeof input.paused!=='boolean'||typeof input.expectedVersion!=='string'||!/^[a-f0-9]{64}$/.test(input.expectedVersion))throw failure('CHANNEL_INGRESS_REQUEST_INVALID')
       if(input.confirm!==true)throw failure('CHANNEL_INGRESS_CONFIRMATION_REQUIRED')

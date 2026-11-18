@@ -214,6 +214,17 @@ node docs/acceptance/pi-native-retirement-local/scripts/verify-live-task.mjs . T
 
 复用上述独立安装、空闲 loopback 端口和私有 `data/config/config.json`，不启动第二个进程争用同一实例。具体群、profile、账号和凭据只进私有运行配置，不写进 Git 或公开证据。以下是可操作流程，不是本轮真实渠道验收通过声明；当前结果见 [唯一验收入口](../acceptance/resident-conversation-routing/goal.md)。
 
+### 暂停期间补投原暂缓消息
+
+仅限已暂停的钉钉群，且本机驻留 Host 仍运行。先用 `night-bot-settings CONFIG channel-list --live` 核对渠道 ID、配置版本和运行状态，从该绑定的耐久 `ingress.json` 只读取本次实际 `pausedAt`（完整 UTC ISO 字符串），不要自行选取新截止。使用同一配置版本及暂停时刻运行：
+
+```powershell
+night-bot-settings CONFIG channel-recover-paused --channel-id CHANNEL --expected-version VERSION --paused-at PAUSED_AT --live --check
+night-bot-settings CONFIG channel-recover-paused --channel-id CHANNEL --expected-version VERSION --paused-at PAUSED_AT --live --confirm
+```
+
+先确认自检的边界与数量，再执行。此操作只读原始厂商消息，通过 Host 原接纳链补投截止前的耐久暂缓项，不扫未登记历史，不重发旧通知，不启动监听或推进完整范围水位。待撤回和无法结清的身份及引用保留。`accepted` 是本次接纳回执计数；原来源、实际分诊提交和是否仍暂停需独立回查，不能从返回成功推断模型处理完毕。重复执行沿真实账本去重，不手改暂缓状态。
+
 ### 历史恢复失败
 
 `recovering` 覆盖首次启动、断线重连、取消暂停后的历史补拉和 Host 持久接纳；实时监听已连接也不代表开始接收。补拉范围落盘后才排空实时缓存。缓存满会报告 `DWS_RECOVERY_LIVE_BUFFER_FULL` 并重新建立监听、重扫覆盖区间，不跳过缺口直接切到实时。普通增量拉取期间保持 `receiving`；若历史不完整或接纳失败，报告错误。卡片「历史恢复失败」按固定错误码说明：
