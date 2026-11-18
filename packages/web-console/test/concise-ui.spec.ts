@@ -27,14 +27,20 @@ for (const width of [1440, 390]) test(`页面精简文案后无空段落或横�
     ['chat', '/#/chat', '.board-composer'],
     ['tasks', '/#/tasks', '.task-table'],
     ['task', '/#/tasks/task-research', '.task-info-title'],
-    ['review', '/#/tasks/task-research?view=review', '.learning-page .detail-section'],
-    ['learning', '/#/tasks/task-research?view=learning', '.learning-page .detail-section'],
+    ['review-learning', '/#/tasks/task-research', '.task-learning-summary'],
     ['channels', '/#/channels', '.channel-cards'],
     ['channel-empty', '/#/channels/room-empty', '.board-empty'],
     ['evolution', '/#/evolution', '.evolution-table'],
   ]) {
     await page.goto(route);
     await expect(page.locator(ready).first()).toBeVisible();
+    if (name === 'review-learning') {
+      const review = page.getByRole('region', {name: '任务复盘', exact: true});
+      await expect(review).toBeVisible();
+      await expect(review.getByText('记忆', {exact: true})).toBeVisible();
+      await expect(review.getByText('技能', {exact: true})).toBeVisible();
+      await layout(page, review);
+    }
     await expect(page.locator('.main-panel')).not.toContainText('复盘完成与学习变更分别记录');
     await expect(page.locator('.main-panel .board-empty > p')).toHaveCount(0);
     await layout(page, page.locator('.main-panel'));
@@ -112,8 +118,13 @@ test('设置卡不为已删除说明和空反馈留白，角色保存确认保�
   await expect(workLog.locator('#work-log-help')).toHaveCount(0);
   for (const width of [1440, 390]) {
     await page.setViewportSize({width, height: 844});
-    for (const surface of [appearance, role, workLog]) await layout(page, surface);
+    for (const [tab, surface] of [['助手外观', appearance], ['模型分工', role], ['工作日志', workLog]] as const) {
+      await page.getByRole('tab', {name: tab, exact: true}).click();
+      await expect(surface).toBeVisible();
+      await layout(page, surface);
+    }
   }
+  await page.getByRole('tab', {name: '模型分工', exact: true}).click();
   await role.getByRole('button', {name: '保存一级分诊配置', exact: true}).click();
   const confirm = page.getByRole('dialog', {name: '保存一级分诊配置', exact: true});
   await expect(confirm).toContainText('正常重启后生效');
