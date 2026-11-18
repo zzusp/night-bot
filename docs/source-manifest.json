@@ -165,8 +165,8 @@
       "source": "dws-bridge.js",
       "sourceSha256": "8c203c1720b160d1e6db2eb2bca1922e95d111921a96aa49917ace97b610da19",
       "status": "adapted",
-      "sha256": "b64fc93123af957ae58d77ceed813c6f8553f2b16abffc19af8a5dd52a095401",
-      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation. Private ingress requires explicit peer IDs; use per-peer o2o events, disable default listener/polling and reject foreign group/sender scopes. DWS身份暂缓沿原controlTail/ingress recoveryFromAt持久保留更早补读下界；epoch保护并发补读，pause排空移到状态队列外，stop等待消息与持久水位。"
+      "sha256": "c609dffaf1f823e4748630e637d8405168499f091adbf794ded62e6c4e5abb1c",
+      "adaptation": " Channel plugins: neutral source scope and metadata persistence, full DWS quote identity normalization, optional direct receive/send, compatible historical Topic field translation. Private ingress requires explicit peer IDs; use per-peer o2o events, disable default listener/polling and reject foreign group/sender scopes. DWS身份暂缓沿原controlTail/ingress recoveryFromAt持久保留更早补读下界；epoch保护并发补读，pause排空移到状态队列外，stop等待消息与持久水位。 首次/重连/恢复先耐久接纳有序历史，再放行有界实时缓存；拒绝旧代回调并保留失败恢复界。"
     },
     {
       "source": "dws-runner.js",

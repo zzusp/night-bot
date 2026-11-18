@@ -1,5 +1,7 @@
 import { dispatchOutbox, matchesOutbound } from './dws-adapter.js'
 
+const MAX_RECOVERY_LIVE_MESSAGES = 1024
+
 const meaningful = (value) => typeof value === 'string' && value.trim() !== '' && value.trim().toLowerCase() !== 'null'
 
 export function parseDingtalkDocUrl(value) {
@@ -105,6 +107,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
   const privatePeers=new Set(privatePeerIds)
   const subscriptions = new Map()
   const bridgeEntries = new Map()
+  const hasDurableHistory = typeof adapter.completeGroupRange === 'function'
   const inflightMessages = new Map()
   const inflightHumanReplies = new Map()
   const humanReplyEntry = {
@@ -216,7 +219,8 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
       backfillRunning: false,
       recoveryQueued: false,
       recoveryEpoch: 0,
-      recoveryRequired: !!ingress.recoveryFromAt,
+      recoveryRequired: hasDurableHistory || !!ingress.recoveryFromAt,
+      ...(hasDurableHistory ? { liveOpen: false, bufferedLive: [], liveAuthors: new Map() } : {}),
       recoveryFromAt: ingress.recoveryFromAt,
       backfillPromise: Promise.resolve(),
       carrierIssueTail: Promise.resolve(),
@@ -331,7 +335,9 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
   const queueGroupBackfill = (groupId, { queueAfterActive = false, recovery = false } = {}) => {
     const entry = entryFor(groupId)
     if (ingress.paused || stopping) return entry.backfillPromise
-    retryDeferredIngress(entry)
+    // 先接纳有序历史，独立暂缓队列不得抢在首次/恢复补拉前投递。
+    if (hasDurableHistory && entry.listenerState !== 'ready') return entry.backfillPromise
+    if (!hasDurableHistory || entry.liveOpen) retryDeferredIngress(entry)
     if (typeof adapter.readGroupRange !== 'function') {
       entry.backfillState = 'unavailable'
       publishHealth()
@@ -343,31 +349,51 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     }
     const isRecovery = recovery || entry.recoveryRequired
     const recoveryEpoch = entry.recoveryEpoch
+    const isCurrent = () => !stopping && !ingress.paused && entry.recoveryEpoch === recoveryEpoch
+      && bridgeEntries.get(groupId) === entry
     const hadSuccessfulBackfill = entry.lastBackfillAt !== undefined
     entry.backfillRunning = true
     if (isRecovery || (entry.lastBackfillAt === undefined && entry.backfillState !== 'failed')) entry.backfillState = 'running'
     publishHealth()
     entry.backfillPromise = (async () => {
-      if (stopping || ingress.paused || currentGroup(groupId) === undefined) return
-      entry.lastBackfillStartedAt = now()
-      publishHealth()
       try {
+        if (!isCurrent() || currentGroup(groupId) === undefined) return
+        entry.lastBackfillStartedAt = now()
+        publishHealth()
         const end = new Date().toISOString()
         const start = earlierIso(defaultBackfillStart(groupId), isRecovery ? entry.recoveryFromAt : undefined)
         entry.activeBackfillStartAt = start
-        const history = await adapter.readGroupRange(groupId, { start, end })
-        if (stopping || ingress.paused || entry.recoveryEpoch !== recoveryEpoch || currentGroup(groupId) === undefined) return
+        const history = await adapter.readGroupRange(groupId, { start, end }, { recovering: isRecovery })
+        if (!isCurrent()) return
         if (!Array.isArray(history.messages) || history.complete !== true || history.hasMore === true || (history.failedCount ?? 0) !== 0) throw new Error(`dws_backfill_partial:${groupId}`)
-        const ordered = [...history.messages].sort((left, right) => String(left.createTime ?? '').localeCompare(String(right.createTime ?? '')))
+        const ordered = [...history.messages].sort((left, right) => asTimestamp(left.createTime) - asTimestamp(right.createTime))
         for (const message of ordered) {
-          if (stopping || ingress.paused || entry.recoveryEpoch !== recoveryEpoch || currentGroup(groupId) === undefined) return
+          if (!isCurrent() || currentGroup(groupId) === undefined) return
           entry.activeBackfillMessageId = message.messageId
-          await processMessage(normalizeHistoryMessage(message, groupId))
+          const historyMessage = normalizeHistoryMessage(message, groupId)
+          // 同会话同原生 ID 的已认证实时作者可补齐历史投影，正文仍取历史详情。
+          const author = entry.liveAuthors?.get(message.messageId)
+          if (historyMessage.groupId === groupId && historyMessage.senderIdentityVerified === false && author) {
+            Object.assign(historyMessage, { senderOpenDingTalkId: author, senderIdentityVerified: true })
+          }
+          await processMessage(historyMessage)
         }
-        if (stopping || ingress.paused || entry.recoveryEpoch !== recoveryEpoch || currentGroup(groupId) === undefined) return
+        if (!isCurrent()) return
         if (adapter.completeGroupRange) {
           await adapter.completeGroupRange(groupId, { end })
-          if (stopping || ingress.paused || entry.recoveryEpoch !== recoveryEpoch) return
+          if (!isCurrent()) return
+        }
+        // 先提交历史范围，再按实时到达顺序排空缓存；异常保留队首供恢复重试。
+        if (hasDurableHistory && !entry.liveOpen) {
+          while (entry.bufferedLive.length) {
+            entry.activeBackfillMessageId = entry.bufferedLive[0].messageId
+            await processMessage(entry.bufferedLive[0])
+            if (!isCurrent()) return
+            entry.bufferedLive.shift()
+          }
+          entry.liveOpen = true
+          entry.liveAuthors.clear()
+          retryDeferredIngress(entry)
         }
         entry.backfillState = 'ok'
         entry.lastBackfillAt = now()
@@ -393,7 +419,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
             .catch((error) => logger.warn(error))
         }
       } catch (error) {
-        if (ingress.paused || stopping || entry.recoveryEpoch !== recoveryEpoch) return
+        if (!isCurrent()) return
         entry.backfillState = 'failed'
         entry.lastBackfillError = describeError(error)
         entry.lastBackfillErrorAt = now()
@@ -718,6 +744,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     if (subscription !== undefined) subscriptions.delete(entry.groupId)
     entry.subscription = undefined
     entry.listenerState = 'reconnecting'
+    entry.liveOpen = false
     entry.lastListenerExitAt = now()
     entry.lastListenerError = error ? describeError(error) : `dws_consumer_exit:${result?.exitCode ?? 'null'}:${result?.signal ?? 'none'}`
     entry.recoveryRequired = true
@@ -750,22 +777,39 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     delete entry.lastListenerError
     publishHealth()
     let subscription
+    const isCurrent = () => !stopping && !ingress.paused && bridgeEntries.get(group.groupId) === entry
+      && entry.generation === generation && entry.subscription === subscription
     try {
       subscription = adapter.startGroupSubscription(group.groupId, async (event) => {
-        if (stopping || bridgeEntries.get(group.groupId) !== entry || entry.generation !== generation || entry.subscription !== subscription) return
+        if (!isCurrent()) return
         try {
           if(event.conversation_id!==group.groupId)return
           const message = normalizeEvent(event)
           entry.lastEventAt = now()
           delete entry.lastEventError
           publishHealth()
-          await processMessage(message)
+          if (!hasDurableHistory || entry.liveOpen) return await processMessage(message)
+          if (entry.bufferedLive.length === MAX_RECOVERY_LIVE_MESSAGES) {
+            // 缓存满时重新建立覆盖并重扫，不开放实时或继续无界保留正文。
+            const from = entry.bufferedLive.reduce((earliest, row) => earlierIso(earliest, row.occurredAt), message.occurredAt)
+            entry.recoveryFromAt = earlierIso(entry.recoveryFromAt, beforeOverlap(from))
+            entry.bufferedLive.length = 0
+            entry.liveAuthors.clear()
+            listenerFailed(entry, generation, subscription, { error: new Error('DWS_RECOVERY_LIVE_BUFFER_FULL') })
+            subscription.stop()
+            return
+          }
+          entry.bufferedLive.push(message)
+          if (event.message_id === message.messageId && message.senderIdentityVerified !== false && meaningful(message.senderOpenDingTalkId)) {
+            const author = message.senderOpenDingTalkId, prior = entry.liveAuthors.get(message.messageId)
+            entry.liveAuthors.set(message.messageId, prior === undefined || prior === author ? author : null)
+          }
         } catch (error) {
           entry.lastEventError = describeError(error)
           publishHealth()
           logger.warn(error)
         }
-      })
+      }, { isCurrent })
     } catch (error) {
       listenerFailed(entry, generation, undefined, { error })
       return
@@ -899,6 +943,7 @@ export function startDwsBridge({ runtime, adapter, logger, humanUserId, currentD
     const subscription = entry.subscription
     entry.subscription = undefined
     entry.listenerState = 'stopped'
+    entry.liveOpen = false
     subscriptions.delete(groupId)
     if (remove) bridgeEntries.delete(groupId)
     try { subscription?.stop() } catch (error) { logger.warn(error) }
