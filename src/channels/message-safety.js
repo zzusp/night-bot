@@ -15,6 +15,14 @@ const naturalReplyGuidance = [
 export const conversationReplyScopeInstructions = replyScope + '\n' + naturalReplyGuidance
 
 
+/** Task-authored public text, including payloads submitted via tools/commands. */
+export const taskPublicCommunicationInstructions = conversationReplyScopeInstructions + '\n' + [
+ 'NIGHT_TASK_PUBLIC_COMMUNICATION：上述沟通原则适用于任务执行期间所有面向人的对外正文，不限于渠道最终回复，也包括过程反馈、Issue/PR 描述和评论、代码审查回复，以及经工具、CLI 或 API 提交的这些文本。提交前按实际读者、当前线程和问题选择信息；先给具体发现、改动或待决定事项，保留必要版本、环境、测试证据、风险和未验证边界，不把内部过程流水原样贴出。',
+ 'Issue 和 PR 可按仓库模板或审查需要保留标题、段落、清单、代码与复现步骤；用户要求的报告照常完整交付。自然表达不是删技术证据或改业务结论，不改机器可读参数、工具协议、原始记录或安全审计。不要把群聊的称呼、引用、署名约定自动搬到外部评论。',
+ '这些规则只规范已经获准撰写或发布的内容，不授予创建 Issue、发表评论、修改仓库、合并或部署权限。写草稿不等于获准发送；发布前仍核对目标仓库/线程、接收者可访问范围、敏感信息与当前动作授权。未知提交结果先回读原效果，不为调整措辞重复发帖；不增加润色模型、自动评论或发送后改写。',
+].join('\n')
+
+
 export const conversationReplyInstructions = `依据当前原始消息、真实作者和会话职责说明实际业务结果与限制，不编造业务名称、数据、链接或已执行动作。${conversationReplyScopeInstructions}引用和提及使用受信消息身份；仅 Host 实际选择渠道原生引用时由发送通道处理引用，正文直接写答复，不再以 Markdown 引文或其他方式复述被引用消息。只分享接收者可访问的交付结果。公开正文不包含内部任务、会话、调度、诊断编号或凭据。需要用户决定或补充时具体说明缺口，已有材料与可取得事实先自主核对。个人姓名、语气偏好和业务流程以当前工作区规则与所属会话职责为准；署名由Host按显式Agent配置在完整最终正文末尾统一附加一次，模型正文和中间内容不生成署名，不从旧报告推断默认身份。通知仅按当前任务授权及Host唯一出口处理，不自行补发或重放未知效果。`
 
 /** 格式兜底不猜测合法业务 URL 内的同形编号；已知内部身份仍由正文全范围校验。 */
@@ -62,4 +70,10 @@ export function conversationSource(value){
   const {groupId,quote,...source}=value
   return {...source,...groupId!==undefined?{conversationId:source.conversationId??groupId}:{},
     ...quote!==undefined?{quote:conversationQuote(quote)}:{}}
+}
+
+
+export const communicationGuidanceIndex = '沟通规范索引：撰写渠道首答、进度、结论或 Issue/PR 正文、评论前，按需调用 communication_guidance_read 读取 communication/v1；本索引不授予发布或其他动作权限。'
+export function communicationGuidanceReadTool(){
+ return {name:'communication_guidance_read',description:'只读 communication/v1 沟通规范；准备面向人的正文时按需读取，不访问文件、网络或业务数据。',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object',properties:{id:{type:'string'},content:{type:'string'}},required:['id','content']},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},async execute(){return {id:'communication/v1',content:taskPublicCommunicationInstructions}}}
 }
