@@ -37,6 +37,13 @@ test('actual official AgentSession owns sections, resources, history and updates
  assert.match(text(f.requests[0]),/FIRST_POLICY/);assert.match(text(f.requests[0]),/AUTHORIZED_INSTRUCTIONS/);assert.match(text(f.requests[0]),/MEMORY_POLICY/)
  value='SECOND_POLICY';files=[];await f.session.prompt('ordinary second')
  assert.match(text(f.requests[1]),/SECOND_POLICY/)
+ for(const request of f.requests){
+  assert.match(text(request),/NIGHT_CONTEXT_RETENTION/)
+  assert.match(text(request),/当前任务执行所需的原始输入/)
+  assert.match(text(request),/跨轮压缩摘要、接续笔记及长期文档沉淀必须重新筛选/)
+  assert.match(text(request),/受控凭据引用/)
+  assert.match(text(request),/一次要求或批准不得变为长期偏好或持续授权/)
+ }
  const system=f.manager.buildSessionProjection().messages.filter(m=>m.role==='system').at(-1)
  assert.match(system.sections['night_task'],/SECOND_POLICY/);assert.ok(!JSON.stringify(system).includes('AUTHORIZED_INSTRUCTIONS'))
  assert.ok(f.manager.buildSessionProjection().messages.some(m=>m.role==='assistant'))

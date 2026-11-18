@@ -1,3 +1,4 @@
+import {CONTEXT_RETENTION_POLICY} from './context-retention-policy.js'
 import {roleCompactionExtension} from './pi-role-compaction.js'
 import {DefaultResourceLoader,SettingsManager,estimateTokens} from '@earendil-works/pi-coding-agent'
 import {createPiProjectionRequest} from './pi-request-context.js'
@@ -32,6 +33,7 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
    const sections=await measurePhase('system-prompt',()=>systemPrompt?.officialSections(current)??{});assertActive(current)
    for(const key of Object.keys(event.systemPromptOptions.sections))if(key.startsWith('night_'))delete event.systemPromptOptions.sections[key]
    Object.assign(event.systemPromptOptions.sections,sections)
+   event.systemPromptOptions.sections['night_context_retention']=CONTEXT_RETENTION_POLICY
    const policy=await measurePhase('memory-prompt',()=>memory?.prompt?.(current));assertActive(current)
    if(policy)event.systemPromptOptions.sections['night_memory_index']=policy
    runPromptOptions=event.systemPromptOptions

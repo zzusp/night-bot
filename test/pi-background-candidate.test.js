@@ -63,10 +63,14 @@ test('already cancelled candidate does not dispatch or copy a changed live tail'
  assert.deepEqual(snapshotPiCompaction(f.manager),changed)
 })
 
-for(const [role,marker] of [['channel-triage','triage'],['conversation-router','router']])test(`detached ${role} uses native role instructions without live journal mutation`,async t=>{
+for(const [role,marker] of [['channel-triage','triage'],['conversation-router','router'],['task','task']])test(`detached ${role} uses native role instructions without live journal mutation`,async t=>{
  const f=await fixture(t,{onStream:({stream,message,context})=>{
   assert.match(JSON.stringify(context),new RegExp('NIGHT_ROLE_SUMMARY='+marker))
   assert.match(JSON.stringify(context),/standingInstructions/)
+  assert.match(JSON.stringify(context),/NIGHT_CONTEXT_RETENTION/)
+  assert.match(JSON.stringify(context),/未验证/)
+  assert.match(JSON.stringify(context),/不删除或改写Pi原始会话/)
+  assert.match(JSON.stringify(context),/一次要求或批准不得变为长期偏好或持续授权/)
   if(role==='conversation-router'){assert.match(JSON.stringify(context),/可选项待确认或已获用户同意/);assert.match(JSON.stringify(context),/既往明确要求的来源\/版本引用/)}
   queueMicrotask(()=>{stream.push({type:'done',reason:'stop',message});stream.end(message)})
  }}),snapshot=snapshotPiCompaction(f.manager)
