@@ -17,6 +17,8 @@ description: Create new skills, modify and improve existing skills, and measure 
 - `run_eval`、`run_loop`、`improve_description` 依赖 Claude CLI 及其认证，不是 Night Bot 的默认模型链路。当前会话不据此启动嵌套 Claude 会话；触发率优化可先人工整理正反例并检查描述，未实测就注明未验证。用户另行要求外部 CLI 测量时，须走现有外部执行、费用与权限流程。
 - 产出草稿或 `.skill` 包不等于已经安装、发布或获得新权限。启用私有技能走现有受信任安装/学习入口，保持同意、证据与去重合同；不伪造学习收据。只有明确获准公开的通用技能才可进入仓库，不提交业务材料、凭据或其他私有技能。
 
+- 技能写清事项、目标、主要环节、所需信息和获取来源，提供正向与反向场景示例；正文可用自由 Markdown，环节允许按现场调整。不要以过细步骤、严格夹具、专用补丁脚本、固定命令序列或逐字输出断言替代目标。遇错优先阐明情况、完善场景与正反例，不持续追加特判。只保留已验证且非显然可复用的方法；能从当前代码、文档或工具查到的内容按需引用，不复制为长期知识。未经验证的猜测、临时流水、敏感原文和一次授权不进入 Skill。
+
 ## 上游方法与资源
 
 A skill for creating new skills and iteratively improving them.

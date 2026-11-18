@@ -24,7 +24,7 @@ export function queryTaskIndex(db,{conversationId,sourceIds=[],taskIds=[],...pag
 export function queryReplyHistory(db,{conversationId,sourceId,taskId,notificationId,cursor,limit=10}){
  if([sourceId,taskId,notificationId].filter(value=>value!==undefined).length!==1)fail('ROUTER_REPLY_SELECTOR_REQUIRED')
  if(!Number.isSafeInteger(limit)||limit<1||limit>100||cursor!==undefined&&(!Number.isSafeInteger(cursor)||cursor<1))fail('ROUTER_CONTEXT_PAGE_INVALID')
- const clauses=["json_extract(n.body,'$.payload.conversationId')=?","json_extract(n.body,'$.kind') IN ('triage-reply','router-reply','platform-reply','fixed-topic-reply')"],args=[conversationId]
+ const clauses=["json_extract(n.body,'$.payload.conversationId')=?","json_extract(n.body,'$.kind') IN ('triage-reply','router-reply','platform-reply','fixed-topic-reply','question','status')"],args=[conversationId]
  if(sourceId!==undefined){clauses.push("json_extract(n.body,'$.payload.sourceId')=?");args.push(sourceId)}
  if(taskId!==undefined){clauses.push("(json_extract(n.body,'$.taskId')=? OR EXISTS (SELECT 1 FROM json_each(n.body,'$.payload.taskIds') WHERE value=?))");args.push(taskId,taskId)}
  if(notificationId!==undefined){clauses.push('n.id=?');args.push(notificationId)}
@@ -49,5 +49,5 @@ export async function conversationContext(query,conversationId,{sources=[],taskI
  return {asOf:new Date().toISOString(),historicalReferenceOnly:true,...router?{taskIndex:await query('router.task-index',{conversationId,sourceIds:[...sourceIds],taskIds:[...tasks]})}:{},replyIndex:replies}
 }
 
-export const currentContextPolicy='Host 当前账本投影（不是新交办或授权）：prepared仅表示已冻结，unknown需查询原通知，delivered才表示已确认送达。同一承接不重复发送；实际进度追问应回答新事实或具体阻断。状态以本轮索引或只读查询为准，不以旧摘要推断；分页剩余内容按需查询，通知预览不是完整正文。'
+export const currentContextPolicy='Host 当前账本投影（不是新交办或授权）：prepared仅表示已冻结，unknown需查询原通知，delivered才表示已确认送达。任务向需求提出者发出的提问和任务状态回复也纳入回复索引；同一问题已有通知时查原通知状态，不换措辞重复提问。同一承接不重复发送；实际进度追问应回答新事实或具体阻断。状态以本轮索引或只读查询为准，不以旧摘要推断；分页剩余内容按需查询，通知预览不是完整正文。'
 export const progressTaskView=task=>({task:routerTaskSummary(task),asOf:new Date().toISOString(),...Object.fromEntries(['requirements','request','completion','humanRequests'].filter(key=>task[key]!==undefined).map(key=>[key,task[key]]))})

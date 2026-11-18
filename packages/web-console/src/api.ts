@@ -60,6 +60,7 @@ export interface MessageBodyPage { messageId: string; text: string; offset: numb
 export interface HistoryReader { endpoint: string; revision: string; onRecover?: () => void }
 export interface Message {
   messageVersion?: number;
+  triageVersion?: { groupId: string; number: number };
   transient?: boolean;
   id: string; role: 'user' | 'assistant' | 'tool'; text: string; createdAt?: string;
   status?: string; senderName?: string; requestId?: string; taskIds?: string[];
@@ -242,7 +243,9 @@ export interface RoleModelState {
 }
 export interface RoleModelCatalog {provider:string;name:string;models:{id:string;name:string;reasoningEfforts:string[]}[]}
 export interface RoleModelSaved {ok:true;changed:boolean;version:string;role:RoleModelState;restartRequired:boolean}
-export interface ModelCatalogEntry {id:string;name:string;configuredName:string|null;reasoningEfforts:string[];references:string[]}
+export type ModelReasoningCapabilities = false | Record<string,string|null> | null;
+export type ModelInput = 'text'|'image';
+export interface ModelCatalogEntry {id:string;name:string;configuredName:string|null;configuredReasoningEfforts?:ModelReasoningCapabilities;input:ModelInput[];configuredInput:ModelInput[]|null;reasoningEfforts:string[];references:string[]}
 export interface SecretState {configured:boolean;writable:boolean;source:string;sharedWith?:string[]}
 export interface ModelProvider {provider:string;name:string;api:string;baseURL:string;baseURLConfigured:boolean;secret:SecretState;models:ModelCatalogEntry[]}
 export interface ModelCatalog {version:string;providers:ModelProvider[]}

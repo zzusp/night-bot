@@ -24,8 +24,8 @@ for(const width of [1440,390])for(const theme of ['light','dark'])test(`统一�
  await expect(page.getByRole('dialog',{name:'设置',exact:true})).toBeVisible();
  await page.getByRole('tab',{name:'助手外观',exact:true}).click();
  const icon=page.getByLabel('助手图标',{exact:true});
- await icon.focus();await page.keyboard.press('Space');await page.keyboard.press('End');await page.keyboard.press('Enter');
+ await icon.focus();await page.keyboard.press('Space');await expect(popup).toBeVisible();await page.keyboard.press('End');await expect(page.getByRole('option').last()).toBeFocused();await page.keyboard.press('Enter');
  await expect(icon).toHaveAttribute('data-value','leaf');await expect(icon).toBeFocused();
- await icon.click();await page.keyboard.press('Home');await page.keyboard.press('Enter');await expect(icon).toHaveAttribute('data-value','moon');
+ await icon.focus();await page.keyboard.press('Space');await expect(popup).toBeVisible();await page.keyboard.press('Home');await expect(page.getByRole('option').first()).toBeFocused();await page.keyboard.press('Enter');await expect(icon).toHaveAttribute('data-value','moon');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

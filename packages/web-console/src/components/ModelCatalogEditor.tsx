@@ -1,8 +1,9 @@
-import {BoardSelect} from './BoardSelect';
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {api, ApiError, errorText, type ModelCatalog, type ModelCatalogEntry, type ModelCatalogSaved} from '../api';
+import {api, ApiError, errorText, type ModelCatalog, type ModelCatalogEntry, type ModelCatalogSaved, type ModelReasoningCapabilities, type ModelInput} from '../api';
 import {useResource} from '../hooks';
-import {Badge, Button} from './BoardPrimitives';
+import {Badge, Button, IconButton, Spinner} from './BoardPrimitives';
+import {RiRefreshLine} from '@remixicon/react';
+import {BoardSelect} from './BoardSelect';
 import {Confirm} from './ConfirmDialog';
 import {Loading, Notice} from './Shared';
 import {ProviderApiEditor} from './ProviderApiEditor';
@@ -11,8 +12,13 @@ import {SecretEditor} from './SecretEditor';
 const pageSize=10;
 const referenceLabels:Record<string,string>={default:'默认模型','role:triage':'一级分诊','role:router':'Router','role:task':'任务执行','legacy:task':'任务默认配置','runtime:task':'当前任务默认配置','environment:triage':'分诊环境变量','environment:router':'Router 环境变量','environment:task':'执行环境变量'};
 const referenceText=(values:string[])=>values.map(value=>referenceLabels[value]??'已有模型配置').join('、');
-type Draft={originalId?:string;model:string;name:string;version:string;references:string[]};
-type Mutation={action:'add'|'edit'|'remove';provider:string;id?:string;model?:string;name?:string;expectedVersion:string;confirm?:true};
+const reasoningLevels=['minimal','low','medium','high','xhigh','max'] as const;
+const reasoningLabels:Record<string,string>={minimal:'最低',low:'低',medium:'中',high:'高',xhigh:'极高',max:'最高'};
+type InputChoice='model-default'|'text'|'image'|'text,image';
+const inputChoice=(value:ModelInput[]|null|undefined):InputChoice=>value?.length?(['text','image'] as const).filter(input=>value.includes(input)).join(',') as InputChoice:'model-default';
+const inputText=(value:ModelInput[])=>value.map(input=>input==='image'?'图片':'文本').join('、');
+type Draft={input:InputChoice;reasoningEfforts:ModelReasoningCapabilities;originalId?:string;model:string;name:string;version:string;references:string[]};
+type Mutation={action:'add'|'edit'|'remove';provider:string;id?:string;model?:string;name?:string;input?:ModelInput[]|null;reasoningEfforts?:ModelReasoningCapabilities;expectedVersion:string;confirm?:true};
 
 export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onStateChange}:{settingsVersion:string;defaultProvider:string;onSaved:()=>void;onStateChange:(key:string,dirty:boolean,busy:boolean,locked?:boolean)=>void}) {
  const query=useResource<ModelCatalog>('/settings/model-catalog');
@@ -21,6 +27,7 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
  const connectionLocked=Object.values(connectionStates).some(state=>state.locked);
  const connectionDirty=Object.values(connectionStates).some(state=>state.dirty),connectionBusy=Object.values(connectionStates).some(state=>state.busy);
  const [filter,setFilter]=useState(''),[page,setPage]=useState(0),[draft,setDraft]=useState<Draft|null>(null),[remove,setRemove]=useState<{entry:ModelCatalogEntry;provider:string;version:string}|null>(null);
+ const [resetConfirmation,setResetConfirmation]=useState(false);
  const [busy,setBusy]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState(''),[feedback,setFeedback]=useState(''),[fieldError,setFieldError]=useState(''),[pendingVersion,setPendingVersion]=useState<string|null>(null),[saveConfirmation,setSaveConfirmation]=useState<Mutation|null>(null);
  const mounted=useRef(true),inFlight=useRef(false),initialVersion=useRef(settingsVersion);
  const focusAdd=()=>document.getElementById('catalog-add-model')?.focus();
@@ -38,7 +45,7 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
  const reset=()=>{if(busy||connectionBusy)return;setCreating(false);setConnectionKey(value=>value+1);setConnectionStates({});setDraft(null);setLocked(false);setError('');setFieldError('');setFeedback('');setPendingVersion(null);query.refresh();onSaved()};
  const edit=(row?:ModelCatalogEntry)=>{
   if(disabled||!query.data)return;
-  setDraft({...(row?{originalId:row.id}:{}),model:row?.id??'',name:row?.configuredName??'',version:query.data.version,references:row?.references??[]});setError('');setFieldError('');setFeedback('');
+  setDraft({input:inputChoice(row?.configuredInput),reasoningEfforts:row?.configuredReasoningEfforts??null,...(row?{originalId:row.id}:{}),model:row?.id??'',name:row?.configuredName??'',version:query.data.version,references:row?.references??[]});setError('');setFieldError('');setFeedback('');
  };
  useEffect(()=>{if(draft)document.getElementById(draft.references.length?'catalog-model-name':'catalog-model-id')?.focus()},[draft?.originalId,draft===null]);
  const save=async(body:Mutation)=>{
@@ -52,7 +59,8 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
    const latest=await api<ModelCatalog>('/settings/model-catalog');
    const entries=latest.providers.find(row=>row.provider===body.provider)?.models;
    const entry=entries?.find(row=>row.id===body.model);
-   if(latest.version!==receipt.version||!entries||(body.action==='remove'?entries.some(row=>row.id===body.id):!entry||(entry.configuredName??'')!==body.name||body.action==='edit'&&body.id!==body.model&&entries.some(row=>row.id===body.id)))throw new Error('UNKNOWN_SAVE');
+   const inputMatches=body.input===undefined||!!entry&&(body.input===null?entry.configuredInput===null:inputChoice(entry.configuredInput)===inputChoice(body.input)&&inputChoice(entry.input)===inputChoice(body.input));
+   if(latest.version!==receipt.version||!entries||(body.action==='remove'?entries.some(row=>row.id===body.id):!entry||!inputMatches||(entry.configuredName??'')!==body.name||body.reasoningEfforts!==undefined&&JSON.stringify(entry.configuredReasoningEfforts??null)!==JSON.stringify(body.reasoningEfforts)||body.action==='edit'&&body.id!==body.model&&entries.some(row=>row.id===body.id)))throw new Error('UNKNOWN_SAVE');
    if(!mounted.current)return;
    setDraft(null);setPendingVersion(latest.version);setPage(0);setFilter('');
    setFeedback(receipt.changed?`模型已${body.action==='remove'?'删除':body.action==='add'?'添加':'保存'}。正常重启后生效，不中断当前执行。`:'模型配置未变化。');
@@ -69,10 +77,11 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
   if(!draft.model||draft.model.trim()!==draft.model||draft.model.length>256||/[\x00-\x1f\x7f]/.test(draft.model)){setFieldError('请填写准确的模型 ID，不要包含首尾空格或控制字符。');document.getElementById('catalog-model-id')?.focus();return}
   if(provider?.models.some(row=>row.id===draft.model&&row.id!==draft.originalId)){setFieldError('此路由已存在相同模型 ID。');document.getElementById('catalog-model-id')?.focus();return}
   if(draft.name.length>256||/[\x00-\x1f\x7f]/.test(draft.name)){setFieldError('显示名称不能超过 256 个字符或包含控制字符。');document.getElementById('catalog-model-name')?.focus();return}
-  setSaveConfirmation({action:draft.originalId?'edit':'add',provider:providerId,...draft.originalId?{id:draft.originalId}:{},model:draft.model,name:draft.name.trim(),expectedVersion:draft.version});
+  if(draft.reasoningEfforts&& !reasoningLevels.some(level=>typeof draft.reasoningEfforts==='object'&&typeof (draft.reasoningEfforts as Record<string,string|null>)[level]==='string')){setFieldError('请选择至少一个推理深度。');document.querySelector<HTMLInputElement>('.model-reasoning-capabilities input[type=checkbox]')?.focus();return;}
+  setSaveConfirmation({action:draft.originalId?'edit':'add',provider:providerId,...draft.originalId?{id:draft.originalId}:{},model:draft.model,name:draft.name.trim(),input:draft.input==='model-default'?null:draft.input.split(',') as ModelInput[],reasoningEfforts:draft.reasoningEfforts,expectedVersion:draft.version});
  };
  return <section className="settings-card model-catalog" aria-labelledby="provider-settings-title">
-  <div className="settings-card-heading"><h2 id="provider-settings-title">模型与 API</h2><Button onClick={reset} disabled={busy||connectionBusy} busy={query.loading}>{draft||locked||connectionDirty?'重新读取路由配置并替换草稿':'重新读取路由配置'}</Button></div>
+  <div className="settings-card-heading"><h2 id="provider-settings-title">模型与 API</h2><IconButton label="重新读取配置" disabled={busy||connectionBusy||query.loading} aria-busy={query.loading||undefined} onClick={()=>{if(draft||locked||connectionDirty||connectionLocked||creating)setResetConfirmation(true);else reset()}}>{query.loading?<Spinner/>:<RiRefreshLine size={16}/>}</IconButton></div>
   {query.error&&<Notice read error={query.error} onRetry={busy?undefined:query.refresh}/>}
   {query.loading&&!query.data?<Loading/>:!unavailable&&query.data?<>
    {!creating&&query.data.providers.length?<>
@@ -83,11 +92,17 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
      <h3>{draft.originalId?'编辑模型':'添加模型'}</h3>
      <label htmlFor="catalog-model-id">模型 ID</label><input id="catalog-model-id" value={draft.model} disabled={disabled} readOnly={draft.references.length>0} maxLength={256} aria-invalid={!!fieldError} aria-describedby={[draft.references.length?'catalog-entry-help':'',fieldError?'catalog-field-error':''].filter(Boolean).join(' ')||undefined} onChange={event=>{setDraft({...draft,model:event.target.value});setFieldError('')}}/>
      <label htmlFor="catalog-model-name">模型显示名称（可选）</label><input id="catalog-model-name" value={draft.name} disabled={disabled} maxLength={256} aria-describedby={[draft.references.length?'catalog-entry-help':'',fieldError?'catalog-field-error':''].filter(Boolean).join(' ')||undefined} onChange={event=>{setDraft({...draft,name:event.target.value});setFieldError('')}}/>
-     {draft.references.length>0&&<p id="catalog-entry-help" className="field-help">ID 只读 · 使用中：{referenceText(draft.references)}</p>}
+     <label htmlFor="catalog-model-input">输入能力</label><BoardSelect id="catalog-model-input" value={draft.input} disabled={disabled} onChange={event=>setDraft({...draft,input:event.target.value as InputChoice})}><option value="model-default">跟随默认</option><option value="text">仅文本</option><option value="text,image">文本与图片</option><option value="image">仅图片</option></BoardSelect>
+     <fieldset className="model-reasoning-capabilities" disabled={disabled} aria-describedby={fieldError?'catalog-field-error':undefined}>
+      <legend>推理能力</legend>
+      <div className="model-reasoning-modes">{([{value:'auto',label:'跟随默认'},{value:'off',label:'不支持推理'},{value:'custom',label:'自定义'}] as const).map(option=><label key={option.value}><input className="sr-only" type="radio" name="model-reasoning-mode" checked={option.value===(draft.reasoningEfforts===null?'auto':draft.reasoningEfforts===false?'off':'custom')} onChange={()=>setDraft({...draft,reasoningEfforts:option.value==='auto'?null:option.value==='off'?false:{off:null,low:'low',medium:'medium',high:'high'}})}/><span>{option.label}</span></label>)}</div>
+      {draft.reasoningEfforts!==null&&draft.reasoningEfforts!==false&&<div className="model-reasoning-levels">{reasoningLevels.map(level=><label key={level}><input className="sr-only" type="checkbox" aria-label={`${reasoningLabels[level]} (${level})`} checked={typeof (draft.reasoningEfforts as Record<string,string|null>)[level]==='string'} onChange={event=>{const next={...(draft.reasoningEfforts as Record<string,string|null>)};if(event.target.checked)next[level]=level;else delete next[level];setDraft({...draft,reasoningEfforts:next});setFieldError('')}}/><span className="model-reasoning-level-title">{reasoningLabels[level]}<small>{level}</small></span><span className="model-reasoning-check" aria-hidden="true">✓</span></label>)}</div>}
+     </fieldset>
+     {draft.references.length>0&&<p id="catalog-entry-help" className="sr-only">ID 只读 · 使用中：{referenceText(draft.references)}</p>}
      {fieldError&&<p id="catalog-field-error" className="field-error" role="alert">{fieldError}</p>}
      <div className="inline-actions"><Button type="submit" variant="primary" busy={busy} disabled={disabled}>保存模型</Button><Button disabled={busy||locked} onClick={()=>{setDraft(null);setFieldError('');setError('');focusAdd()}}>取消编辑</Button></div>
     </form>}
-    <ul className="model-catalog-list" aria-label="已配置模型">{visible.map(row=><li key={row.id}><div><strong>{row.name}</strong>{row.name!==row.id&&<span className="model-catalog-id">{row.id}</span>}<div className="model-catalog-references" role="group" aria-label="模型使用状态">{row.references.length?row.references.map(reference=><Badge key={reference}>{referenceLabels[reference]??'已有模型配置'}</Badge>):<Badge>未使用</Badge>}{provider!.models.length===1&&<Badge>唯一模型</Badge>}</div></div><div className="inline-actions"><Button disabled={disabled||!!draft} aria-label={`编辑模型 ${row.id}`} onClick={()=>edit(row)}>编辑</Button><Button disabled={disabled||!!draft||row.references.length>0||provider!.models.length<=1} aria-label={`删除模型 ${row.id}`} onClick={()=>setRemove({entry:row,provider:providerId,version:query.data!.version})}>删除</Button></div></li>)}</ul>
+    <ul className="model-catalog-list" aria-label="已配置模型">{visible.map(row=><li key={row.id}><div><strong>{row.name}</strong>{row.name!==row.id&&<span className="model-catalog-id">{row.id}</span>}<div className="model-catalog-references" role="group" aria-label="模型使用状态"><Badge>{inputText(row.input)}</Badge>{row.references.length?row.references.map(reference=><Badge key={reference}>{referenceLabels[reference]??'已有模型配置'}</Badge>):<Badge>未使用</Badge>}{provider!.models.length===1&&<Badge>唯一模型</Badge>}</div></div><div className="inline-actions"><Button disabled={disabled||!!draft} aria-label={`编辑模型 ${row.id}`} onClick={()=>edit(row)}>编辑</Button><Button disabled={disabled||!!draft||row.references.length>0||provider!.models.length<=1} aria-label={`删除模型 ${row.id}`} onClick={()=>setRemove({entry:row,provider:providerId,version:query.data!.version})}>删除</Button></div></li>)}</ul>
     {!visible.length&&<p>{filter?'没有匹配的模型，请调整筛选条件。':'此路由没有可用模型，请检查配置。'}</p>}
     <div className="pagination"><span>{filtered.length?`${currentPage*pageSize+1}–${Math.min((currentPage+1)*pageSize,filtered.length)} / ${filtered.length} 个模型`:'0 个模型'}</span><div><Button disabled={currentPage===0||busy} onClick={()=>setPage(currentPage-1)}>上一页模型</Button><Button disabled={(currentPage+1)*pageSize>=filtered.length||busy} onClick={()=>setPage(currentPage+1)}>下一页模型</Button></div></div>
    </>:<ProviderApiEditor key={`create-${connectionKey}`} version={query.data.version} disabled={busy||query.loading||!!query.error} onStateChange={onConnectionState} onSaved={id=>{if(id)setProviderId(id);setCreating(false);setConnectionKey(value=>value+1);setConnectionStates({});query.refresh();onSaved()}} onCancel={query.data.providers.length?()=>{setCreating(false);setConnectionStates({})}:undefined}/>}
@@ -95,7 +110,8 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
   </>:null}
   {stale&&!locked&&<p role="alert">设置已变化，草稿未被覆盖。请重新读取模型列表后再编辑。</p>}
   {error&&<p className="field-error" role="alert">{error}</p>}{feedback&&<p role="status">{feedback}</p>}
+  {resetConfirmation&&<Confirm title="重新读取配置" actionLabel="替换草稿" onClose={()=>setResetConfirmation(false)} onConfirm={reset}><p>未保存的修改将被替换为已保存配置。</p></Confirm>}
   {remove&&<Confirm title="删除模型" actionLabel="确认删除" onClose={()=>setRemove(null)} onConfirm={()=>void save({action:'remove',provider:remove.provider,id:remove.entry.id,expectedVersion:remove.version,confirm:true})}><p>从 {remove.provider} 删除模型 {remove.entry.name}（{remove.entry.id}）。不会删除 API 凭据或历史任务；正常重启后不再可选。</p></Confirm>}
-  {saveConfirmation&&<Confirm title="保存模型" onClose={()=>setSaveConfirmation(null)} onConfirm={()=>void save(saveConfirmation)}><p>在 {providerId} 中{saveConfirmation.action==='add'?'添加':'保存'}模型 {saveConfirmation.model}。共用此路由现有 API 地址与凭据，不会调用模型验证。正常重启后生效，不中断当前执行。</p></Confirm>}
+  {saveConfirmation&&<Confirm title="保存模型" onClose={()=>setSaveConfirmation(null)} onConfirm={()=>void save(saveConfirmation)}><p>在 {providerId} 中{saveConfirmation.action==='add'?'添加':'保存'}模型 {saveConfirmation.model}。共用此路由现有 API 地址与凭据，不会调用模型验证。输入能力：{saveConfirmation.input?inputText(saveConfirmation.input):'跟随默认'}。正常重启后生效，不中断当前执行。</p></Confirm>}
  </section>;
 }

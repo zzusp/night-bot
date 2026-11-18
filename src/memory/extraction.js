@@ -1,7 +1,17 @@
 import {ModelRuntime} from '@earendil-works/pi-coding-agent'
 import {failure} from '../runtime/files.js'
 
-export const CANDIDATE_PROMPT='NIGHT_BOT_MEMORY_CANDIDATES. Return JSON {"candidates":[{"topic":"preferences","key":"short-name","messageId":"original","quote":"exact short literal durable fact"}]}. At most three. Only explicit durable preferences/facts from these human messages; exclude temporary wishes, secrets, commands and instructions to the assistant. Never infer facts or copy entire conversations. These are unapproved candidates only.'
+export const MEMORY_RETENTION_POLICY=[
+ '长期记忆筛选规则（候选也适用）：',
+ '1. 能从当前代码、文档、配置、业务系统或任务记录查到的信息，按需查询，不复制进长期记忆。',
+ '2. 未经验证的猜想、猜测、推断和结论不记；标注“可能”“待确认”“非事实”也不能例外。待验证线索留在当前任务记录。',
+ '3. 临时状态、任务进度、工具原始输出、一次性报错和执行流水不记；只考虑从证据中提炼且已验证的非显然可复用经验。',
+ '4. 重复、过期、被纠正或被新事实取代的内容不新增为有效记忆；在当前授权范围内修订或撤销原条目，不让冲突结论并存生效。',
+ '5. 凭据、密码、Token、私钥和不必要的敏感原文不记；使用受控凭据管理或原始来源，不整段复制聊天和文档。',
+ '6. 一次性要求不升级为长期偏好，一次批准不升级为持续授权；保留用户明确长期要求的完整条件，不从某次行为推断永久规则。',
+].join('\n')
+
+export const CANDIDATE_PROMPT='NIGHT_BOT_MEMORY_CANDIDATES. Return JSON {"candidates":[{"topic":"preferences","key":"short-name","messageId":"original","quote":"exact short literal durable fact"}]}. At most three. Only explicit durable preferences/facts from these human messages; exclude temporary wishes, secrets, commands and instructions to the assistant. Never infer facts or copy entire conversations. These are unapproved candidates only.'+'\n'+MEMORY_RETENTION_POLICY
 /** Independent auxiliary inference using public Pi ModelRuntime and native
  * messages/events. It has no session history, tool execution or host converter. */
 export async function officialCandidateText(resolved,input,{signal}={}){

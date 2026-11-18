@@ -38,7 +38,7 @@ export function modelCatalogView(config,environment={},fallbacks){
     api:profile.api??'',baseURL:safeEndpoint(profile.baseURL),baseURLConfigured:profile.baseURL!==undefined,
     models:profile.models.map(model=>{
       const source=config.providers[profile.provider],entry=source.models?.length?source.models.find(row=>row.id===model.id):source.modelOverrides?.[model.id]
-      return {id:model.id,name:model.name,configuredName:entry?.name??null,reasoningEfforts:roleReasoningLevels(model),references:references.get(JSON.stringify([profile.provider,model.id]))??[]}
+      return {id:model.id,name:model.name,configuredName:entry?.name??null,input:[...model.input],configuredInput:entry?.input?.length?[...entry.input]:null,configuredReasoningEfforts:entry?.reasoningEfforts??null,reasoningEfforts:roleReasoningLevels(model),references:references.get(JSON.stringify([profile.provider,model.id]))??[]}
     })}))}
 }
 
@@ -70,9 +70,10 @@ export async function saveProviderConfiguration(file,{action,provider,api,baseUR
 /** Mutate one entry on an existing API route, without changing credentials or
  * session state. Materialize builtin IDs (not resolved secrets/transport data)
  * when switching to an explicit whitelist, retaining per-model overrides. */
-export async function saveModelCatalogEntry(file,{action,provider,id,model,name,expectedVersion,confirm,checkOnly=false}={},environment={},getFallbackRoleModels=()=>undefined){
+export async function saveModelCatalogEntry(file,{action,provider,id,model,name,input,reasoningEfforts,expectedVersion,confirm,checkOnly=false}={},environment={},getFallbackRoleModels=()=>undefined){
   if(!['add','edit','remove'].includes(action)||!nonempty(provider)||typeof expectedVersion!=='string'||!/^[a-f0-9]{64}$/.test(expectedVersion))throw failure('SETTINGS_INPUT_INVALID')
   if(action!=='add'&&!nonempty(id)||action!=='remove'&&!nonempty(model)||name!==undefined&&name!==''&&!nonempty(name))throw failure('SETTINGS_INPUT_INVALID')
+  if(input!==undefined&&(action==='remove'||input!==null&&(!Array.isArray(input)||!input.length||input.some(value=>!['text','image'].includes(value))||new Set(input).size!==input.length)))throw failure('SETTINGS_INPUT_INVALID')
   if(action==='remove'&&confirm!==true)throw failure('SETTINGS_MODEL_DELETE_CONFIRMATION_REQUIRED')
   return resultWithVersion(await updateConfig(file,config=>{
     checkVersion(config,expectedVersion)
@@ -95,10 +96,21 @@ export async function saveModelCatalogEntry(file,{action,provider,id,model,name,
     }else{
       const entry=action==='add'?{id:model}:{...entries[index],id:model}
       if(name!==undefined){if(name==='')delete entry.name;else entry.name=name}
+      if(reasoningEfforts!==undefined){if(reasoningEfforts===null)delete entry.reasoningEfforts;else entry.reasoningEfforts=structuredClone(reasoningEfforts)}
+      if(input!==undefined){if(input===null)delete entry.input;else entry.input=['text','image'].filter(value=>input.includes(value))}
       if(action==='add')entries.push(entry);else entries[index]=entry
     }
     profile.models=entries
     delete profile.modelOverrides
+    if(reasoningEfforts!==undefined&&action==='edit'){
+      const next=resolvePiProfiles(config.providers).get(provider),before=resolved.models.find(row=>row.id===id),after=next.models.find(row=>row.id===model)
+      const selections=[config.model,...config.resident?.taskSessions?[legacyRoleModelSelection(config,'task')]:[],...Object.values(resolveRoleModels(config,environment)),fallbacks?.task]
+      for(const selection of selections){
+        if(selection?.provider!==provider||selection.model!==model)continue
+        const effort=selection.reasoningEffort??next.reasoning
+        if(effort!==undefined&&roleReasoningLevels(before).includes(effort)&&!roleReasoningLevels(after).includes(effort))throw failure('UNSUPPORTED_REASONING_EFFORT')
+      }
+    }
     catalogState(config,environment,fallbacks)
     return config
   },{checkOnly}))

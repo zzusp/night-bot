@@ -256,7 +256,10 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map()) {
     const key = JSON.stringify([row.sourceId, row.version, row.text])
     if (sources.has(key)) return
     sources.add(key)
-    add(entry, suffix, 'user', row.text, {kind: 'source'})
+    // Keep every version's row and cursor stable; expose only a session-scoped group key.
+    const triageVersion = triage && typeof row.messageId === 'string' && row.messageId && Number.isSafeInteger(row.version) && row.version > 0
+      ? {groupId: opaque('triage-message', row.messageId), number: row.version} : null
+    add(entry, suffix, 'user', row.text, {kind: 'source', ...(triageVersion ? {triageVersion} : {})})
   }
   for (const projected of snapshot.context.projection.entries) {
     // Long journals must not monopolize the shared HTTP event loop.

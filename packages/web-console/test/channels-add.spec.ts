@@ -28,8 +28,8 @@ test('添加渠道发现真实插件并保存非钉钉配置，保留全局设�
   const {dialog, form} = await custom(page, 'generic-entry-created')
   await expect(page.getByRole('link', {name: '自定义渠道设置', exact: true})).toHaveCount(0)
   await expect(page.locator('.workspace-topbar button[aria-label="设置"]')).toHaveCount(1)
-  await expect(form.getByLabel('启用渠道', {exact: true})).toHaveValue('false')
-  await expect(form.getByLabel('监听（必填）', {exact: true})).toHaveValue('false')
+  await expect(form.getByLabel('启用渠道', {exact: true})).toHaveAttribute('data-value','false')
+  await expect(form.getByLabel('监听（必填）', {exact: true})).toHaveAttribute('data-value','false')
   let dingtalkWrites = 0
   await page.route('**/api/channels/dingtalk', route => { dingtalkWrites++; return route.abort() })
   const request = page.waitForRequest(request => request.url().endsWith('/api/settings/channels') && request.method() === 'POST')
