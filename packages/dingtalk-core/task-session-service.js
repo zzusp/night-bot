@@ -1,4 +1,4 @@
-import {inspectionVersion,taskInspectionReason} from '../../src/tasks/inspection.js'
+import {inspectionVersion,taskInspectionReason,inspectionHoldsExecution} from '../../src/tasks/inspection.js'
 import {cancelNotificationBeforeSend} from './notification-delivery.js'
 import {bindTaskMaterialPaths,resolveTaskMaterialPaths} from '../../src/tasks/material-paths.js'
 import {SessionManager} from '@earendil-works/pi-coding-agent'
@@ -456,7 +456,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const pending = await query('wake.list', { taskId: id }).catch(() => [])
         const task = await query('task.get', { taskId: id }).catch(() => null)
         again = !task?.archivedAt && task?.status === 'active' && task.control === 'active' && task.drained
-          && !task.inspection?.pending && taskWorkspaceReady(task) && retryReady(id)
+          && !inspectionHoldsExecution(task) && taskWorkspaceReady(task) && retryReady(id)
           && (pendingDialogue(task) || pendingTaskHumanReview(task, pending) || !taskHumanWait(task))
           && pending.some(item => item.state !== 'acked')
       }
@@ -492,7 +492,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         for (const task of await query('task.list')) {
           if(!taskWorkspaceReady(task)||task.effectReconciliations?.some(row=>row.state==='prepared'))continue
           if (closed) return
-          if (task.inspection?.pending || task.dependenciesReady===false || task.archivedAt || !retryReady(task.taskId) || inflightTasks.has(task.taskId) || !task.drained || task.recovering || task.status !== 'active' || task.control !== 'active') continue
+          if (inspectionHoldsExecution(task) || task.dependenciesReady===false || task.archivedAt || !retryReady(task.taskId) || inflightTasks.has(task.taskId) || !task.drained || task.recovering || task.status !== 'active' || task.control !== 'active') continue
           const pending = await query('wake.list', { taskId: task.taskId })
           if (!pendingDialogue(task) && !pendingTaskHumanReview(task, pending) && taskHumanWait(task)) continue
           if (!taskSlots.has(task.taskId) && taskSlots.size >= taskLimit()) continue
@@ -1078,7 +1078,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if(task.dependenciesReady===false){taskSlots.delete(taskId);return}
       if(task.effectReconciliations?.some(row=>row.state==='prepared')){taskSlots.delete(taskId);return}
       if (task.archivedAt || task.status !== 'active' || task.control !== 'active') { taskSlots.delete(taskId); return }
-      if(task.inspection?.pending){taskSlots.delete(taskId);return}
+      if(inspectionHoldsExecution(task)){taskSlots.delete(taskId);return}
       if (!task.drained) return
       const pending = await query('wake.list', { taskId })
       const reviewPending = pendingTaskHumanReview(task, pending)

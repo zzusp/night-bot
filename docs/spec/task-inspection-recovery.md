@@ -10,9 +10,10 @@ Inspection acts only on positive evidence: an absent execution owner, process
 restart, failed drain, technical failure or an unresolved native-effect hold.
 A live agent, Pi authority owner or tracked execution is never considered stalled
 because of its age or lack of output. A recorded drain failure can be sent to
-Router for investigation while retaining the actual owner and its execution fence. Human, external-event and scheduled waits
-remain on existing source/dependency/native schedule admission paths. Unchanged
-normal waits do not generate events.
+Router for investigation while retaining the actual owner and its execution fence. Human, external-event and scheduled waits remain on existing source/dependency/
+native schedule admission paths. A current wait/blocked decision becomes eligible
+for an advisory Router review after 24 hours, including unresolved user questions
+and agreed instants still in the future. Age never creates an execution wake.
 
 `task.inspect` checks requirement/control/context revisions and the execution
 lease in the SQLite transaction. One pending incident per lease and requirement /
@@ -22,9 +23,19 @@ and remaining work; task archives use their existing ledger snapshot machinery.
 No extra database, log directory or model decision entry point is introduced.
 The current task, journal and effect receipts remain authoritative.
 
-An incident holds automatic task claim until an explicit, current-version Router
-scheduling action. Settling its inbox event can mean continuing to wait; it does
-not clear the execution hold. A later Router action uses the existing task/session
+An execution incident holds automatic task claim until an explicit, current-version
+Router scheduling action or actual new input invalidates that older version. A
+24-hour waiting review is advisory and never holds legitimate source/schedule
+admission. Settling an execution incident can mean continuing to wait and does not clear
+its execution hold. A current `wait-overdue` event requires an `inspectionReviews`
+disposition in the existing `resident_router_settle` tool: inspection key, current
+requirement/control/context revisions, decision, concrete reason and nextCheckAt.
+The next check must be at least one hour away; normally it is a day later or an
+appropriate agreed time. This records a decision but never starts execution or
+sends a message. A pending review is not re-enqueued every five minutes. Its
+identity, decision and next check survive restart; a new wait identity or actual
+input/control change invalidates the old review. Stale events can be consumed
+without overwriting the new state. A later Router action uses the existing task/session
 identity, source provenance, dependency, cancellation and no-replay fences.
 Unknown sends, jobs and mutations require existing readback/reconciliation; neither
 inspection nor drain establishes external success or permits replay.

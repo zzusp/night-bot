@@ -1,3 +1,4 @@
+import {inspectionIsCurrent,taskWaitIdentity,MIN_WAIT_RECHECK_MS} from '../tasks/inspection.js'
 import {queryTaskIndex,queryReplyHistory} from './conversation-context.js'
 import {createHash} from 'node:crypto'
 import {querySourceHistory,queryCurrentSource,sourceHistorySchema} from './source-history.js'
@@ -271,6 +272,24 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         const row=rows('router_inbox').find(item=>item.conversationId===a.conversationId&&(item.id===eventId||item.eventId===eventId))
         if(!row)fail('ROUTER_EVENT_SCOPE')
         if(row.state==='consumed')continue
+        const event=row.taskEventId?readEvent(row.taskEventId):null
+        if(event?.kind==='task.inspection'&&event.reason==='wait-overdue'){
+          const task=read('tasks',row.taskId),inspection=task.inspection
+          const reviews=(a.inspectionReviews??[]).filter(review=>review.taskId===task.taskId&&review.inspectionKey===event.inspectionKey)
+          const current=inspection?.key===event.inspectionKey&&inspection.pending&&inspectionIsCurrent(task)
+            &&task.status==='active'&&task.control==='active'&&task.drained&&inspection.waitIdentity===taskWaitIdentity(task)
+          if(reviews.length>1)fail('ROUTER_INSPECTION_REVIEW_INVALID')
+          if(!current){if(reviews.length)fail('ROUTER_INSPECTION_REVIEW_STALE');row.inspectionDisposition='state-changed'}
+          else{
+            const review=reviews[0],at=new Date().toISOString()
+            if(!review)fail('ROUTER_INSPECTION_REVIEW_REQUIRED')
+            if(review.expectedRequirementRevision!==task.requirementRevision||review.expectedControlRevision!==task.controlRevision||review.expectedContextRevision!==(task.contextRevision??0))fail('ROUTER_INSPECTION_REVIEW_STALE')
+            if(!['wait','investigate','continue','notify'].includes(review.decision)||typeof review.reason!=='string'||!review.reason.trim()||review.reason.length>2000||!Number.isFinite(Date.parse(review.nextCheckAt))||Date.parse(review.nextCheckAt)<Date.parse(at)+MIN_WAIT_RECHECK_MS)fail('ROUTER_INSPECTION_REVIEW_INVALID')
+            inspection.pending=false;inspection.nextCheckAt=new Date(review.nextCheckAt).toISOString()
+            inspection.review={decision:review.decision,reason:review.reason.trim(),at,nextCheckAt:inspection.nextCheckAt,operationId:a.operationId,generation:a.generation}
+            saveTask(task);row.inspectionDisposition=inspection.review
+          }
+        }
         // A frozen first reply is feedback, not proof of task arrangement or
         // authority. Require an explicit source-grounded no-task decision when
         // an acknowledged source has no durable task action. Never infer intent

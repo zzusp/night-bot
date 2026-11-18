@@ -149,3 +149,38 @@ for(const continueTask of [true,false,'router-outage','router-busy'])test('an un
   assert.equal(task.sessionId,originalSession)
   assert.equal((await h.query('task.events')).events.filter(event=>event.kind==='task.inspection').length,continueTask==='router-busy'?2:1)
 })
+
+for(const wait of ['user','external-event','future-time'])test('real Router records a '+wait+' wait review after 24 hours without rerunning the task',{timeout:nativeTestTimeout(60000)},async t=>{
+  const day=24*60*60*1000
+  t.mock.timers.enable({apis:['Date'],now:Date.now()-2*day})
+  let h,planned=false,turns=0,reviews=0
+  h=await residentRouterHost(t,async body=>{
+    if(requestText(body).some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION')))return {text:'{"lessons":[]}'}
+    const names=requestTools(body)
+    if(names.includes('channel_triage_submit')){const input=requestEnvelope(body,'一级分诊请求：');return call('channel_triage_submit',{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'Original task request'}))})}
+    if(names.includes('task_result')){turns++;return call('task_result',{decision:{action:'wait',summary:wait==='future-time'?'Wait until the agreed future instant in seven days':'Wait for '+wait,evidence:[],limitations:[],...wait==='user'?{question:'Which target should be used?',audience:'requester'}:{}}})}
+    if(names.includes('resident_router_settle')){
+      if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1).result.isError)return {text:'Current review committed'}
+      const input=requestEnvelope(body,'Router 请求：')
+      if(!planned){planned=true;const source=input.events.find(e=>e.source).source;return call('resident_task_plan',{operationId:'wait-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'wait-e2e',title:'Wait review',objective:'Preserve the actual waiting condition',requirements:['Retain original task and never restart merely because time passed']}],dependencies:[]})}
+      const inspectionReviews=[]
+      for(const event of input.events.filter(e=>e.taskEvent?.reason==='wait-overdue')){
+        const task=await h.query('task.get',{taskId:event.taskId});reviews++
+        inspectionReviews.push({taskId:task.taskId,inspectionKey:task.inspection.key,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,expectedContextRevision:task.contextRevision??0,decision:'wait',reason:'Checked current '+wait+' condition; it remains unresolved; keep waiting',nextCheckAt:new Date(Date.now()+day).toISOString()})
+      }
+      return call('resident_router_settle',{operationId:'wait-settle:'+input.events.map(e=>e.id).join(','),eventIds:input.events.map(e=>e.id),...inspectionReviews.length?{inspectionReviews}:{}})
+    }
+    return {text:'No additional action'}
+  })
+  await h.receive(channelMessage('wait-review'));await h.service.whenIdle()
+  const original=await h.query('task.get',{taskId:'wait-e2e'}),sent=h.sent.length
+  t.mock.timers.tick(day+1)
+  await h.service.recover();await h.service.whenIdle()
+  let task=await h.query('task.get',{taskId:'wait-e2e'})
+  assert.equal(reviews,1);assert.equal(turns,1);assert.equal(task.inspection.review.decision,'wait')
+  assert.equal(task.leaseEpoch,original.leaseEpoch);assert.equal(task.lastDecision.at,original.lastDecision.at);assert.equal(h.sent.length,sent)
+  for(let i=0;i<3;i++){t.mock.timers.tick(300000);await h.service.recover();await h.service.whenIdle()}
+  await h.restart();await h.service.whenIdle();task=await h.query('task.get',{taskId:'wait-e2e'})
+  assert.equal(reviews,1);assert.equal(turns,1);assert.equal(task.inspection.nextCheckAt,task.inspection.review.nextCheckAt)
+  assert.equal((await h.query('task.events')).events.filter(e=>e.kind==='task.inspection').length,1)
+})
