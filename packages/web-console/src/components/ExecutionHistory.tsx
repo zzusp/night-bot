@@ -41,8 +41,9 @@ export function ExecutionHistory({ endpoint, router = false, sessionKind, status
       <div>{query.data?.status === 'ready' && <span>已载入 {query.data.items.length} / {query.data.total} 条记录</span>}{status && <Status value={status} />}{query.updatedAt && <time dateTime={new Date(query.updatedAt).toISOString()}>获取于 {dateTime(query.updatedAt)}</time>}<Button variant="ghost" disabled={query.loading} onClick={latest}>获取最新记录</Button></div>
     </div>;
   const lastMessage = query.data?.items.at(-1);
-  // An identical final assistant bubble is already the required bottom message.
-  const duplicateConclusion = lastMessage?.role === 'assistant' && lastMessage.kind !== 'thinking'
+  // Result messages already carry each committed conclusion, including long paged bodies.
+  // Keep the footer only as a fallback for older histories without result messages.
+  const duplicateConclusion = query.data?.items.some(message => message.kind === 'task-result') || lastMessage?.role === 'assistant' && lastMessage.kind !== 'thinking'
     && !lastMessage.truncated && lastMessage.text.trim() === conclusion?.trim();
   return <div className={`execution-history${router && (!query.data?.items.length || blocked) ? ' execution-history-empty' : ''}${sessionEmpty || readFailed ? ' session-records-empty' : ''}${readFailed ? ' execution-read-failed' : ''}`}>
     {tokenTarget && createPortal(<TaskTokenUsage usage={!blocked && query.data?.status === 'ready' ? query.data.tokenUsage : undefined} error={query.error || taskError} stale={!blocked && !!query.data?.tokenUsage} onRetry={query.error ? latest : taskRetry ?? latest} />, tokenTarget)}

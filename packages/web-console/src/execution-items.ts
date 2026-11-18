@@ -17,6 +17,8 @@ export function transcriptItems(messages: Message[]): TranscriptItem[] {
   const calls = new Map<string, ToolItem>();
   const callSegments = new WeakMap<ToolItem, number>();
   let segment = 0;
+  const resultCalls = new Set(messages.filter(message => ['task-result', 'router-reply'].includes(message.kind || '') && !message.transient && message.callId)
+    .map(message => JSON.stringify([message.source?.sessionId || '', message.callId, message.kind === 'task-result' ? 'task_result' : 'resident_router_reply'])));
   for (const message of messages) {
     if (message.role !== 'tool') {
       segment++;
@@ -24,6 +26,7 @@ export function transcriptItems(messages: Message[]): TranscriptItem[] {
       continue;
     }
     const key = message.callId ? JSON.stringify([message.source?.sessionId || '', message.callId]) : undefined;
+    if (['task_result', 'resident_router_reply'].includes(message.toolName || '') && key && resultCalls.has(JSON.stringify([message.source?.sessionId || '', message.callId, message.toolName]))) continue;
     if (message.kind === 'tool-call') {
       const item: ToolItem = { kind: 'tool', id: message.id, call: message, results: [] };
       items.push(item);
@@ -55,7 +58,7 @@ export function executionItems(messages: Message[]): ExecutionItem[] {
   for (const item of transcriptItems(messages)) {
     // Missing output is not evidence of completion or of currently executing.
     // Every pending/running/unknown activity stays individually visible.
-    if (item.kind !== 'tool' || !item.results.length || !settled.has(toolState(item))) {
+    if (item.kind !== 'tool' || ['task_result', 'resident_router_reply'].includes((item.call || item.results[0])?.toolName || '') || !item.results.length || !settled.has(toolState(item))) {
       flush();
       items.push(item);
       continue;
