@@ -97,10 +97,15 @@ test('自定义推理能力可编辑、取消、校验并保留服务商映射',
  await expect(card).toContainText('请选择至少一个推理深度');
  await page.getByRole('checkbox',{name:'高 (high)',exact:true}).check();
  await page.getByRole('checkbox',{name:'最高 (max)',exact:true}).check();
- for(const width of [1440,390]){
+ for(const width of [1440,500,390]){
   await page.setViewportSize({width,height:1000});
   await card.locator('.model-reasoning-capabilities').scrollIntoViewIfNeeded();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  const choices=card.locator('.model-reasoning-capabilities');
+  const box=await choices.boundingBox();expect(box!.height).toBeLessThan(260);
+  for(const input of await choices.locator('input').all()){
+   const bounds=await input.boundingBox();expect(bounds!.height).toBe(16);expect(bounds!.width).toBe(16);
+  }
   await card.locator('.model-catalog-form').screenshot({path:test.info().outputPath(`model-reasoning-${width}.png`)});
  }
  await card.getByRole('button',{name:'保存模型',exact:true}).click();
