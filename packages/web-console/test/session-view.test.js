@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {visibleText, taskSessionView, taskSessionMessageView, routerSessionView} from '../server/session-view.js'
+import {visibleText, taskSessionView, taskSessionMessageView, routerSessionView, triageSessionView, triageSessionMessageView} from '../server/session-view.js'
+import {triageSessionId} from '../../../src/channels/triage.js'
 
 const task = {taskId: 'task-one', session: {sessionId: 'pi-one', sessionBound: true}}
 const project = (id, message) => ({sourceEntry: {id, type: 'message', timestamp: '2026-11-07T02:00:00Z'}, messages: [message]})
@@ -117,6 +118,35 @@ test('Router 执行记录绑定真实会话与 generation，异步读取中换�
   await assert.rejects(routerSessionView({...options, persistence: {readNative: async () => foreign}}), {code: 'SESSION_IDENTITY_INVALID'})
   value.context.projection.entries[0].messages[0].details.source.conversationId = 'foreign-conversation'
   await assert.rejects(routerSessionView(options), {code: 'SESSION_SOURCE_IDENTITY_INVALID'})
+})
+
+test('分诊来源版本按原消息关联，保留旧正文、独立消息和追加游标', async () => {
+  const conversationId = 'fixture-triage-room', sessionId = triageSessionId(conversationId)
+  const old = {sourceId:'private-source-1', messageId:'private-channel-msg-a', version:1, conversationId, text:'相同正文'}
+  const latest = {...old, sourceId:'private-source-2', version:2}
+  const distinct = {...old, sourceId:'private-source-3', messageId:'private-channel-msg-b'}
+  const legacy = {sourceId:'private-source-4', version:1, conversationId, text:'旧格式正文'}
+  const packet = (id, messages) => project(id, {role:'custom', customType:'night.business-input', details:{source:{kind:'channel-triage', conversationId}},
+    content:[{type:'text', text:'一级分诊请求：'+JSON.stringify({conversationId, messages})}]})
+  const entries = [packet('first', [old, distinct, legacy])]
+  const persistence = {readNative:async () => ({header:{id:sessionId, runtimeOwner:'channel-triage', conversationId},
+    entries:entries.map(row=>row.sourceEntry), context:{projection:{entries}}})}
+  const options = {conversationId, persistence, stream:true}
+  const first = await triageSessionView(options)
+  entries.push(packet('next', [old, latest]))
+  const delta = await triageSessionView({...options, checkpoint:first.checkpoint})
+  const older = await triageSessionView({...options, before:delta.items[0].id, checkpoint:delta.checkpoint})
+  assert.equal(delta.items.length, 1, '旧来源重复进入批次仍只投影一次')
+  assert.deepEqual(older.items, first.items, '追加版本不改变已读历史前缀')
+  const [v1, unrelated, legacyRow] = older.items, [v2] = delta.items
+  assert.equal(v1.triageVersion.number, 1)
+  assert.deepEqual(v2.triageVersion, {groupId:v1.triageVersion.groupId, number:2})
+  assert.notEqual(unrelated.triageVersion.groupId, v1.triageVersion.groupId)
+  assert.match(v1.triageVersion.groupId, /^[a-f0-9]{64}$/)
+  assert.equal(legacyRow.triageVersion, undefined)
+  assert.doesNotMatch(JSON.stringify([older,delta]), /private-(?:source|channel-msg)/)
+  const body = await triageSessionMessageView({conversationId, persistence, messageId:v1.id, revision:delta.revision})
+  assert.equal(body.text, old.text); assert.deepEqual(body.source, v1.source)
 })
 
 test('全部工具名称可见，业务命令和结果公开，未知字段、秘密与孤立结果不泄漏',async()=>{
