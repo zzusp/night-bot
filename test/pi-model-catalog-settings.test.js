@@ -189,3 +189,36 @@ test('native builtin protocol is retained when changing only provider endpoint',
  const saved=await f.read();assert.equal(saved.providers.google.api,undefined);assert.equal(saved.providers.google.models,undefined)
  assert.equal(resolvePiProfiles(saved.providers).get('google').models[0].api,'google-generative-ai')
 })
+
+test('model capability edits roundtrip through the shared CLI command and Pi for all roles',async t=>{
+ const f=await fixture(t)
+ // Exercise the transport-neutral command used by both CLI and Web.
+ const dispatch=createSettingsCommands({settings:{saveModelEntry:body=>f.save(body)}})
+ const efforts={off:null,low:'low',medium:'medium',high:'high',xhigh:'high'}
+ await dispatch({action:'model-entry',body:{action:'edit',provider:'fixture',id:'initial',model:'initial',reasoningEfforts:efforts,expectedVersion:configVersion(await f.read())}})
+ let config=await f.read()
+ assert.deepEqual(modelCatalogView(config).providers[0].models[0].configuredReasoningEfforts,efforts)
+ assert.deepEqual(modelCatalogView(config).providers[0].models[0].reasoningEfforts,['off','low','medium','high','xhigh'])
+ const {saveRoleModelConfiguration}=await import('../src/settings/model-configuration.js')
+ for(const role of ['triage','router','task'])await saveRoleModelConfiguration(f.file,{role,provider:'fixture',model:'initial',reasoningEffort:'high'})
+ config=await f.read()
+ for(const role of ['triage','router','task'])assert.equal(resolveRoleModels(config)[role].reasoningEffort,'high')
+ const before=await readFile(f.file,'utf8')
+ await assert.rejects(f.save({action:'edit',id:'initial',model:'initial',reasoningEfforts:false}),{code:'UNSUPPORTED_REASONING_EFFORT'})
+ assert.equal(await readFile(f.file,'utf8'),before)
+ await f.save({action:'edit',id:'second',model:'second',reasoningEfforts:false})
+ assert.deepEqual(modelCatalogView(await f.read()).providers[0].models[1].reasoningEfforts,['off'])
+ await f.save({action:'edit',id:'second',model:'second',reasoningEfforts:null})
+ assert.equal(Object.hasOwn((await f.read()).providers.fixture.models[1],'reasoningEfforts'),false)
+})
+
+test('invalid capabilities do not overwrite saved config; omission preserves custom wire mapping',async t=>{
+ const f=await fixture(t),before=await readFile(f.file,'utf8')
+ for(const reasoningEfforts of [{},{high:''},{bad:'high'},{off:null},[],true]){
+  await assert.rejects(f.save({action:'edit',id:'second',model:'second',reasoningEfforts}),{code:'INVALID_CONFIG'})
+  assert.equal(await readFile(f.file,'utf8'),before)
+ }
+ await f.save({action:'edit',id:'second',model:'second',reasoningEfforts:{high:'custom-high',max:'custom-max'}})
+ await f.save({action:'edit',id:'second',model:'second',name:'Renamed'})
+ assert.deepEqual((await f.read()).providers.fixture.models[1].reasoningEfforts,{high:'custom-high',max:'custom-max'})
+})

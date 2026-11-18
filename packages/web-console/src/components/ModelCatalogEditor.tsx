@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {api, ApiError, errorText, type ModelCatalog, type ModelCatalogEntry, type ModelCatalogSaved} from '../api';
+import {api, ApiError, errorText, type ModelCatalog, type ModelCatalogEntry, type ModelCatalogSaved, type ModelReasoningCapabilities} from '../api';
 import {useResource} from '../hooks';
 import {Badge, Button} from './BoardPrimitives';
 import {Confirm} from './ConfirmDialog';
@@ -10,8 +10,10 @@ import {SecretEditor} from './SecretEditor';
 const pageSize=10;
 const referenceLabels:Record<string,string>={default:'默认模型','role:triage':'一级分诊','role:router':'Router','role:task':'任务执行','legacy:task':'任务默认配置','runtime:task':'当前任务默认配置','environment:triage':'分诊环境变量','environment:router':'Router 环境变量','environment:task':'执行环境变量'};
 const referenceText=(values:string[])=>values.map(value=>referenceLabels[value]??'已有模型配置').join('、');
-type Draft={originalId?:string;model:string;name:string;version:string;references:string[]};
-type Mutation={action:'add'|'edit'|'remove';provider:string;id?:string;model?:string;name?:string;expectedVersion:string;confirm?:true};
+const reasoningLevels=['minimal','low','medium','high','xhigh','max'] as const;
+const reasoningLabels:Record<string,string>={minimal:'最低',low:'低',medium:'中',high:'高',xhigh:'极高',max:'最高'};
+type Draft={reasoningEfforts:ModelReasoningCapabilities;originalId?:string;model:string;name:string;version:string;references:string[]};
+type Mutation={action:'add'|'edit'|'remove';provider:string;id?:string;model?:string;name?:string;reasoningEfforts?:ModelReasoningCapabilities;expectedVersion:string;confirm?:true};
 
 export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onStateChange}:{settingsVersion:string;defaultProvider:string;onSaved:()=>void;onStateChange:(key:string,dirty:boolean,busy:boolean,locked?:boolean)=>void}) {
  const query=useResource<ModelCatalog>('/settings/model-catalog');
@@ -37,7 +39,7 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
  const reset=()=>{if(busy||connectionBusy)return;setCreating(false);setConnectionKey(value=>value+1);setConnectionStates({});setDraft(null);setLocked(false);setError('');setFieldError('');setFeedback('');setPendingVersion(null);query.refresh();onSaved()};
  const edit=(row?:ModelCatalogEntry)=>{
   if(disabled||!query.data)return;
-  setDraft({...(row?{originalId:row.id}:{}),model:row?.id??'',name:row?.configuredName??'',version:query.data.version,references:row?.references??[]});setError('');setFieldError('');setFeedback('');
+  setDraft({reasoningEfforts:row?.configuredReasoningEfforts??null,...(row?{originalId:row.id}:{}),model:row?.id??'',name:row?.configuredName??'',version:query.data.version,references:row?.references??[]});setError('');setFieldError('');setFeedback('');
  };
  useEffect(()=>{if(draft)document.getElementById(draft.references.length?'catalog-model-name':'catalog-model-id')?.focus()},[draft?.originalId,draft===null]);
  const save=async(body:Mutation)=>{
@@ -51,7 +53,7 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
    const latest=await api<ModelCatalog>('/settings/model-catalog');
    const entries=latest.providers.find(row=>row.provider===body.provider)?.models;
    const entry=entries?.find(row=>row.id===body.model);
-   if(latest.version!==receipt.version||!entries||(body.action==='remove'?entries.some(row=>row.id===body.id):!entry||(entry.configuredName??'')!==body.name||body.action==='edit'&&body.id!==body.model&&entries.some(row=>row.id===body.id)))throw new Error('UNKNOWN_SAVE');
+   if(latest.version!==receipt.version||!entries||(body.action==='remove'?entries.some(row=>row.id===body.id):!entry||(entry.configuredName??'')!==body.name||body.reasoningEfforts!==undefined&&JSON.stringify(entry.configuredReasoningEfforts??null)!==JSON.stringify(body.reasoningEfforts)||body.action==='edit'&&body.id!==body.model&&entries.some(row=>row.id===body.id)))throw new Error('UNKNOWN_SAVE');
    if(!mounted.current)return;
    setDraft(null);setPendingVersion(latest.version);setPage(0);setFilter('');
    setFeedback(receipt.changed?`模型已${body.action==='remove'?'删除':body.action==='add'?'添加':'保存'}。正常重启后生效，不中断当前执行。`:'模型配置未变化。');
@@ -68,7 +70,8 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
   if(!draft.model||draft.model.trim()!==draft.model||draft.model.length>256||/[\x00-\x1f\x7f]/.test(draft.model)){setFieldError('请填写准确的模型 ID，不要包含首尾空格或控制字符。');document.getElementById('catalog-model-id')?.focus();return}
   if(provider?.models.some(row=>row.id===draft.model&&row.id!==draft.originalId)){setFieldError('此路由已存在相同模型 ID。');document.getElementById('catalog-model-id')?.focus();return}
   if(draft.name.length>256||/[\x00-\x1f\x7f]/.test(draft.name)){setFieldError('显示名称不能超过 256 个字符或包含控制字符。');document.getElementById('catalog-model-name')?.focus();return}
-  setSaveConfirmation({action:draft.originalId?'edit':'add',provider:providerId,...draft.originalId?{id:draft.originalId}:{},model:draft.model,name:draft.name.trim(),expectedVersion:draft.version});
+  if(draft.reasoningEfforts&& !reasoningLevels.some(level=>typeof draft.reasoningEfforts==='object'&&typeof (draft.reasoningEfforts as Record<string,string|null>)[level]==='string')){setFieldError('请选择至少一个推理深度。');document.querySelector<HTMLInputElement>('.model-reasoning-capabilities input[type=checkbox]')?.focus();return;}
+  setSaveConfirmation({action:draft.originalId?'edit':'add',provider:providerId,...draft.originalId?{id:draft.originalId}:{},model:draft.model,name:draft.name.trim(),reasoningEfforts:draft.reasoningEfforts,expectedVersion:draft.version});
  };
  return <section className="settings-card model-catalog" aria-labelledby="provider-settings-title">
   <div className="settings-card-heading"><h2 id="provider-settings-title">模型与 API</h2><Button onClick={reset} disabled={busy||connectionBusy} busy={query.loading}>{draft||locked||connectionDirty?'重新读取路由配置并替换草稿':'重新读取路由配置'}</Button></div>
@@ -82,6 +85,11 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
      <h3>{draft.originalId?'编辑模型':'添加模型'}</h3>
      <label htmlFor="catalog-model-id">模型 ID</label><input id="catalog-model-id" value={draft.model} disabled={disabled} readOnly={draft.references.length>0} maxLength={256} aria-invalid={!!fieldError} aria-describedby={[draft.references.length?'catalog-entry-help':'',fieldError?'catalog-field-error':''].filter(Boolean).join(' ')||undefined} onChange={event=>{setDraft({...draft,model:event.target.value});setFieldError('')}}/>
      <label htmlFor="catalog-model-name">模型显示名称（可选）</label><input id="catalog-model-name" value={draft.name} disabled={disabled} maxLength={256} aria-describedby={[draft.references.length?'catalog-entry-help':'',fieldError?'catalog-field-error':''].filter(Boolean).join(' ')||undefined} onChange={event=>{setDraft({...draft,name:event.target.value});setFieldError('')}}/>
+     <fieldset className="model-reasoning-capabilities" disabled={disabled} aria-describedby={fieldError?'catalog-field-error':undefined}>
+      <legend>模型推理能力</legend>
+      <div className="inline-actions">{([{value:'auto',label:'自动识别'},{value:'off',label:'不支持推理'},{value:'custom',label:'自定义'}] as const).map(option=><label key={option.value}><input type="radio" name="model-reasoning-mode" checked={option.value===(draft.reasoningEfforts===null?'auto':draft.reasoningEfforts===false?'off':'custom')} onChange={()=>setDraft({...draft,reasoningEfforts:option.value==='auto'?null:option.value==='off'?false:{off:null,low:'low',medium:'medium',high:'high'}})}/>{option.label}</label>)}</div>
+      {draft.reasoningEfforts!==null&&draft.reasoningEfforts!==false&&<div className="inline-actions">{reasoningLevels.map(level=><label key={level}><input type="checkbox" checked={typeof (draft.reasoningEfforts as Record<string,string|null>)[level]==='string'} onChange={event=>{const next={...(draft.reasoningEfforts as Record<string,string|null>)};if(event.target.checked)next[level]=level;else delete next[level];setDraft({...draft,reasoningEfforts:next});setFieldError('')}}/>{reasoningLabels[level]} ({level})</label>)}</div>}
+     </fieldset>
      {draft.references.length>0&&<p id="catalog-entry-help" className="field-help">ID 只读 · 使用中：{referenceText(draft.references)}</p>}
      {fieldError&&<p id="catalog-field-error" className="field-error" role="alert">{fieldError}</p>}
      <div className="inline-actions"><Button type="submit" variant="primary" busy={busy} disabled={disabled}>保存模型</Button><Button disabled={busy||locked} onClick={()=>{setDraft(null);setFieldError('');setError('');focusAdd()}}>取消编辑</Button></div>

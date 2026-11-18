@@ -702,3 +702,9 @@ html, body, #root { width: 100%; min-width: 0; }
 @keyframes action-notification-enter { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
 @media(prefers-reduced-motion:reduce) { .action-notification { animation:none; } }
 @media(max-width:520px) { .action-notification { top:68px; left:16px; right:16px; width:auto; max-width:none; } }
+
+.model-reasoning-capabilities { border: 0; padding: 0; margin: 0; min-width: 0; }
+.model-reasoning-capabilities legend { margin-bottom: 8px; }
+.model-reasoning-capabilities .inline-actions { flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
+.model-reasoning-capabilities label { display: inline-flex; align-items: center; gap: 6px; }
+.model-reasoning-capabilities input { width: 16px; height: 16px; min-height: 16px; padding: 0; margin: 0; accent-color: var(--board-focus); }

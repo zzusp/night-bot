@@ -209,3 +209,16 @@ test('provider CLI shares create, scoped update, check-only, secret targeting an
  const saved=await loadConfig(f.file);assert.deepEqual(saved.model,f.config.model);assert.deepEqual(saved.providers.fixture,f.config.providers.fixture)
  await assert.rejects(dispatch({action:'provider',body:{provider:'second',apiKeyEnv:'UNEXPECTED',expectedVersion:view.version}}),{code:'SETTINGS_COMMAND_INVALID'})
 })
+
+test('model reasoning capabilities CLI JSON option and file use the same catalog',async t=>{
+ const f=await fixture(t),before=await readFile(f.file,'utf8'),efforts={off:null,low:'low',high:'high'}
+ const args=['model-entry','--action','edit','--provider','fixture','--id','initial','--model','initial','--reasoning-efforts',JSON.stringify(efforts)]
+ await f.cli([...args,'--check']);assert.equal(await readFile(f.file,'utf8'),before)
+ await f.cli(args)
+ assert.deepEqual((await f.cli(['model-list'])).providers[0].models[0].reasoningEfforts,['off','low','high'])
+ const payload=join(f.root,'capabilities.json')
+ await writeFile(payload,JSON.stringify({action:'edit',provider:'fixture',id:'initial',model:'initial',reasoningEfforts:null}))
+ await f.cli(['model-entry','--json-file',payload])
+ assert.equal(Object.hasOwn(JSON.parse(await readFile(f.file,'utf8')).providers.fixture.models[0],'reasoningEfforts'),false)
+ await assert.rejects(f.cli([...args.slice(0,-1),'bad-json']),{code:'SETTINGS_JSON_INVALID'})
+})

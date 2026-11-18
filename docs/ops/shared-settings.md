@@ -103,3 +103,17 @@ node bin/night-bot-settings.js CONFIG model-entry --action remove --provider PRO
 ## 本轮验证
 
 2026-11-10，本地 Node 测试：`node --test test/pi-settings-cli.test.js test/pi-effect-operator-http.test.js test/pi-channel-edit.test.js test/pi-channel-live.test.js` 共 36 项通过，0 失败、0 跳过。包括实际无 Web resident 接线、无模型请求、凭据脱敏、CAS、全目录零写检查、独立 capability、离线 Host 锁、历史标识/恢复标记拒绝，以及未知交付经 headless HTTP 删除/换目标时仍被原生命周期服务阻止。`check-coverage`、`check-production-imports`、`check-native-runtime` 和 `git diff --check` 通过。此处不代表全量运行时、真实厂商账户、视觉浏览器或 Windows 验证。
+
+### 自定义模型的推理能力
+
+在「模型与 API → 编辑模型 → 模型推理能力」设置可选深度。默认「自动识别」保留 Pi 官方模型能力；自定义网关别名无法自动推断后端能力，需要选择「自定义」并勾选服务商确实支持的级别。不会因为配置成功就证明 API 支持这些级别。
+
+模型能力保存在原有 `providers.<provider>.models[].reasoningEfforts`，一级分诊、Router、任务执行共用 Pi 解析后的目录。未修改能力的旧配置保持不变；已被角色选中的深度不能被移除。保存后正常重启生效。
+
+CLI 使用同一入口（也支持 `--json-file`）：
+
+```sh
+node bin/night-bot-settings.js CONFIG model-entry --action edit --provider PROVIDER --id MODEL_ID --model MODEL_ID --reasoning-efforts '{"off":null,"low":"low","medium":"medium","high":"high"}' --live
+```
+
+`null` 恢复自动识别，`false` 表示不支持推理。对象键为 Pi 级别（`off/minimal/low/medium/high/xhigh/max`），字符串值为服务商实际参数值；`off:null` 允许关闭推理而不发送 effort 参数。未列出的深度不提供选择。可用自定义映射适配网关；Web 编辑保留已有映射值。
