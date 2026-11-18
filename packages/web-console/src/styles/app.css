@@ -703,11 +703,23 @@ html, body, #root { width: 100%; min-width: 0; }
 @media(prefers-reduced-motion:reduce) { .action-notification { animation:none; } }
 @media(max-width:520px) { .action-notification { top:68px; left:16px; right:16px; width:auto; max-width:none; } }
 
-/* Keep capability choices outside the modal's two-column label/control grid. */
-.settings-card .model-reasoning-capabilities { grid-column: 1 / -1; border: 0; padding: 12px 0 4px; margin: 0; min-width: 0; width: 100%; }
-.settings-card .model-reasoning-capabilities legend { padding: 0; font-size: 12px; font-weight: 500; }
-.model-reasoning-modes { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 4px 18px; }
-.model-reasoning-levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; margin-top: 8px; }
-.settings-card .model-reasoning-capabilities label { display: flex; align-items: center; justify-content: flex-start; gap: 7px; min-height: 32px; margin: 0; padding: 0; white-space: nowrap; }
-.settings-card .model-reasoning-capabilities input:is([type="radio"],[type="checkbox"]) { flex: 0 0 16px; width: 16px; height: 16px; min-height: 16px; padding: 0; margin: 0; accent-color: var(--board-focus); }
+/* Capability choices use the settings surface instead of a bank of native boxes. */
+.settings-card .model-reasoning-capabilities { grid-column: 1 / -1; border: 0; padding: 8px 0 6px; margin: 8px 0 0; min-width: 0; width: 100%; }
+.settings-card .model-reasoning-capabilities legend { padding: 0; font-size: 12px; font-weight: 500; color: var(--board-text); }
+.model-reasoning-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 3px; border-radius: 9px; background: var(--board-hover); }
+.model-reasoning-levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.settings-card .model-reasoning-capabilities label { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 34px; margin: 0; padding: 7px 10px; border-radius: 7px; white-space: nowrap; cursor: pointer; }
+.settings-card .model-reasoning-modes label { justify-content: center; color: var(--board-muted); }
+.settings-card .model-reasoning-modes label:has(input:checked) { color: var(--board-text); background: var(--board-surface); box-shadow: 0 1px 3px #0000000d; }
+.settings-card .model-reasoning-levels label { justify-content: space-between; border: 1px solid var(--board-border); background: var(--board-surface); color: var(--board-muted); }
+.settings-card .model-reasoning-levels label:has(input:checked) { border-color: var(--board-primary); color: var(--board-primary); }
+.model-reasoning-level-title { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.model-reasoning-level-title small { font-size: 11px; font-weight: 400; }
+.model-reasoning-check { font-size: 12px; visibility: hidden; }
+label:has(input:checked) > .model-reasoning-check { visibility: visible; }
+.settings-card .model-reasoning-capabilities label:hover { background: var(--board-hover); }
+.settings-card .model-reasoning-capabilities label:has(input:focus-visible) { outline: 2px solid var(--board-focus); outline-offset: 2px; }
+.settings-card .model-reasoning-capabilities:disabled label { opacity: .6; cursor: not-allowed; }
+.settings-card .model-reasoning-capabilities input.sr-only { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @media (max-width: 600px) { .model-reasoning-levels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (forced-colors: active) { .settings-card .model-reasoning-modes label:has(input:checked) { outline: 1px solid Highlight; } }

@@ -91,20 +91,20 @@ test('编辑与新增弹窗保留标签、验证和安全确认且无空说明�
 test('自定义推理能力可编辑、取消、校验并保留服务商映射',async({page})=>{
  await login(page);const card=manager(page);
  await card.getByRole('button',{name:/^编辑模型 /}).first().click();
- await page.getByRole('radio',{name:'自定义',exact:true}).check();
- for(const label of ['低 (low)','中 (medium)','高 (high)'])await page.getByRole('checkbox',{name:label,exact:true}).uncheck();
+ await page.getByRole('radio',{name:'自定义',exact:true}).locator('..').click();
+ for(const label of ['低 (low)','中 (medium)','高 (high)'])await page.getByRole('checkbox',{name:label,exact:true}).locator('..').click();
  await card.getByRole('button',{name:'保存模型',exact:true}).click();
  await expect(card).toContainText('请选择至少一个推理深度');
- await page.getByRole('checkbox',{name:'高 (high)',exact:true}).check();
- await page.getByRole('checkbox',{name:'最高 (max)',exact:true}).check();
+ await page.getByRole('checkbox',{name:'高 (high)',exact:true}).locator('..').click();
+ await page.getByRole('checkbox',{name:'最高 (max)',exact:true}).locator('..').click();
  for(const width of [1440,500,390]){
   await page.setViewportSize({width,height:1000});
   await card.locator('.model-reasoning-capabilities').scrollIntoViewIfNeeded();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   const choices=card.locator('.model-reasoning-capabilities');
   const box=await choices.boundingBox();expect(box!.height).toBeLessThan(260);
-  for(const input of await choices.locator('input').all()){
-   const bounds=await input.boundingBox();expect(bounds!.height).toBe(16);expect(bounds!.width).toBe(16);
+  for(const label of await choices.locator('label').all()){
+   const bounds=await label.boundingBox();expect(bounds!.height).toBeGreaterThanOrEqual(32);expect(bounds!.height).toBeLessThan(44);
   }
   await card.locator('.model-catalog-form').screenshot({path:test.info().outputPath(`model-reasoning-${width}.png`)});
  }
@@ -112,6 +112,11 @@ test('自定义推理能力可编辑、取消、校验并保留服务商映射',
  await expect(page.locator('dialog.settings-confirm')).toBeVisible();
  await page.keyboard.press('Escape');
  await expect(page.getByRole('checkbox',{name:'高 (high)',exact:true})).toBeChecked();
- await card.getByRole('button',{name:'取消编辑',exact:true}).click();
+ await card.getByRole('button',{name:'重新读取配置',exact:true}).click();
+ await expect(page.locator('dialog.settings-confirm')).toContainText('未保存的修改');
+ await page.locator('dialog.settings-confirm').getByRole('button',{name:'取消',exact:true}).click();
+ await expect(page.getByRole('checkbox',{name:'高 (high)',exact:true})).toBeChecked();
+ await card.getByRole('button',{name:'重新读取配置',exact:true}).click();
+ await page.locator('dialog.settings-confirm').getByRole('button',{name:'替换草稿',exact:true}).click();
  await expect(card.locator('.model-reasoning-capabilities')).toHaveCount(0);
 });

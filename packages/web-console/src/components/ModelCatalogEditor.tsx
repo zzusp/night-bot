@@ -1,7 +1,8 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {api, ApiError, errorText, type ModelCatalog, type ModelCatalogEntry, type ModelCatalogSaved, type ModelReasoningCapabilities} from '../api';
 import {useResource} from '../hooks';
-import {Badge, Button} from './BoardPrimitives';
+import {Badge, Button, IconButton, Spinner} from './BoardPrimitives';
+import {RiRefreshLine} from '@remixicon/react';
 import {Confirm} from './ConfirmDialog';
 import {Loading, Notice} from './Shared';
 import {ProviderApiEditor} from './ProviderApiEditor';
@@ -22,6 +23,7 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
  const connectionLocked=Object.values(connectionStates).some(state=>state.locked);
  const connectionDirty=Object.values(connectionStates).some(state=>state.dirty),connectionBusy=Object.values(connectionStates).some(state=>state.busy);
  const [filter,setFilter]=useState(''),[page,setPage]=useState(0),[draft,setDraft]=useState<Draft|null>(null),[remove,setRemove]=useState<{entry:ModelCatalogEntry;provider:string;version:string}|null>(null);
+ const [resetConfirmation,setResetConfirmation]=useState(false);
  const [busy,setBusy]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState(''),[feedback,setFeedback]=useState(''),[fieldError,setFieldError]=useState(''),[pendingVersion,setPendingVersion]=useState<string|null>(null),[saveConfirmation,setSaveConfirmation]=useState<Mutation|null>(null);
  const mounted=useRef(true),inFlight=useRef(false),initialVersion=useRef(settingsVersion);
  const focusAdd=()=>document.getElementById('catalog-add-model')?.focus();
@@ -74,7 +76,7 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
   setSaveConfirmation({action:draft.originalId?'edit':'add',provider:providerId,...draft.originalId?{id:draft.originalId}:{},model:draft.model,name:draft.name.trim(),reasoningEfforts:draft.reasoningEfforts,expectedVersion:draft.version});
  };
  return <section className="settings-card model-catalog" aria-labelledby="provider-settings-title">
-  <div className="settings-card-heading"><h2 id="provider-settings-title">模型与 API</h2><Button onClick={reset} disabled={busy||connectionBusy} busy={query.loading}>{draft||locked||connectionDirty?'重新读取路由配置并替换草稿':'重新读取路由配置'}</Button></div>
+  <div className="settings-card-heading"><h2 id="provider-settings-title">模型与 API</h2><IconButton label="重新读取配置" disabled={busy||connectionBusy||query.loading} aria-busy={query.loading||undefined} onClick={()=>{if(draft||locked||connectionDirty||connectionLocked||creating)setResetConfirmation(true);else reset()}}>{query.loading?<Spinner/>:<RiRefreshLine size={16}/>}</IconButton></div>
   {query.error&&<Notice read error={query.error} onRetry={busy?undefined:query.refresh}/>}
   {query.loading&&!query.data?<Loading/>:!unavailable&&query.data?<>
    {!creating&&query.data.providers.length?<>
@@ -86,11 +88,11 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
      <label htmlFor="catalog-model-id">模型 ID</label><input id="catalog-model-id" value={draft.model} disabled={disabled} readOnly={draft.references.length>0} maxLength={256} aria-invalid={!!fieldError} aria-describedby={[draft.references.length?'catalog-entry-help':'',fieldError?'catalog-field-error':''].filter(Boolean).join(' ')||undefined} onChange={event=>{setDraft({...draft,model:event.target.value});setFieldError('')}}/>
      <label htmlFor="catalog-model-name">模型显示名称（可选）</label><input id="catalog-model-name" value={draft.name} disabled={disabled} maxLength={256} aria-describedby={[draft.references.length?'catalog-entry-help':'',fieldError?'catalog-field-error':''].filter(Boolean).join(' ')||undefined} onChange={event=>{setDraft({...draft,name:event.target.value});setFieldError('')}}/>
      <fieldset className="model-reasoning-capabilities" disabled={disabled} aria-describedby={fieldError?'catalog-field-error':undefined}>
-      <legend>模型推理能力</legend>
-      <div className="model-reasoning-modes">{([{value:'auto',label:'自动识别'},{value:'off',label:'不支持推理'},{value:'custom',label:'自定义'}] as const).map(option=><label key={option.value}><input type="radio" name="model-reasoning-mode" checked={option.value===(draft.reasoningEfforts===null?'auto':draft.reasoningEfforts===false?'off':'custom')} onChange={()=>setDraft({...draft,reasoningEfforts:option.value==='auto'?null:option.value==='off'?false:{off:null,low:'low',medium:'medium',high:'high'}})}/>{option.label}</label>)}</div>
-      {draft.reasoningEfforts!==null&&draft.reasoningEfforts!==false&&<div className="model-reasoning-levels">{reasoningLevels.map(level=><label key={level}><input type="checkbox" checked={typeof (draft.reasoningEfforts as Record<string,string|null>)[level]==='string'} onChange={event=>{const next={...(draft.reasoningEfforts as Record<string,string|null>)};if(event.target.checked)next[level]=level;else delete next[level];setDraft({...draft,reasoningEfforts:next});setFieldError('')}}/>{reasoningLabels[level]} ({level})</label>)}</div>}
+      <legend>推理能力</legend>
+      <div className="model-reasoning-modes">{([{value:'auto',label:'自动识别'},{value:'off',label:'不支持推理'},{value:'custom',label:'自定义'}] as const).map(option=><label key={option.value}><input className="sr-only" type="radio" name="model-reasoning-mode" checked={option.value===(draft.reasoningEfforts===null?'auto':draft.reasoningEfforts===false?'off':'custom')} onChange={()=>setDraft({...draft,reasoningEfforts:option.value==='auto'?null:option.value==='off'?false:{off:null,low:'low',medium:'medium',high:'high'}})}/><span>{option.label}</span></label>)}</div>
+      {draft.reasoningEfforts!==null&&draft.reasoningEfforts!==false&&<div className="model-reasoning-levels">{reasoningLevels.map(level=><label key={level}><input className="sr-only" type="checkbox" aria-label={`${reasoningLabels[level]} (${level})`} checked={typeof (draft.reasoningEfforts as Record<string,string|null>)[level]==='string'} onChange={event=>{const next={...(draft.reasoningEfforts as Record<string,string|null>)};if(event.target.checked)next[level]=level;else delete next[level];setDraft({...draft,reasoningEfforts:next});setFieldError('')}}/><span className="model-reasoning-level-title">{reasoningLabels[level]}<small>{level}</small></span><span className="model-reasoning-check" aria-hidden="true">✓</span></label>)}</div>}
      </fieldset>
-     {draft.references.length>0&&<p id="catalog-entry-help" className="field-help">ID 只读 · 使用中：{referenceText(draft.references)}</p>}
+     {draft.references.length>0&&<p id="catalog-entry-help" className="sr-only">ID 只读 · 使用中：{referenceText(draft.references)}</p>}
      {fieldError&&<p id="catalog-field-error" className="field-error" role="alert">{fieldError}</p>}
      <div className="inline-actions"><Button type="submit" variant="primary" busy={busy} disabled={disabled}>保存模型</Button><Button disabled={busy||locked} onClick={()=>{setDraft(null);setFieldError('');setError('');focusAdd()}}>取消编辑</Button></div>
     </form>}
@@ -102,6 +104,7 @@ export function ModelCatalogEditor({settingsVersion,defaultProvider,onSaved,onSt
   </>:null}
   {stale&&!locked&&<p role="alert">设置已变化，草稿未被覆盖。请重新读取模型列表后再编辑。</p>}
   {error&&<p className="field-error" role="alert">{error}</p>}{feedback&&<p role="status">{feedback}</p>}
+  {resetConfirmation&&<Confirm title="重新读取配置" actionLabel="替换草稿" onClose={()=>setResetConfirmation(false)} onConfirm={reset}><p>未保存的修改将被替换为已保存配置。</p></Confirm>}
   {remove&&<Confirm title="删除模型" actionLabel="确认删除" onClose={()=>setRemove(null)} onConfirm={()=>void save({action:'remove',provider:remove.provider,id:remove.entry.id,expectedVersion:remove.version,confirm:true})}><p>从 {remove.provider} 删除模型 {remove.entry.name}（{remove.entry.id}）。不会删除 API 凭据或历史任务；正常重启后不再可选。</p></Confirm>}
   {saveConfirmation&&<Confirm title="保存模型" onClose={()=>setSaveConfirmation(null)} onConfirm={()=>void save(saveConfirmation)}><p>在 {providerId} 中{saveConfirmation.action==='add'?'添加':'保存'}模型 {saveConfirmation.model}。共用此路由现有 API 地址与凭据，不会调用模型验证。正常重启后生效，不中断当前执行。</p></Confirm>}
  </section>;
