@@ -242,8 +242,9 @@ export interface RoleModelState {
 }
 export interface RoleModelCatalog {provider:string;name:string;models:{id:string;name:string;reasoningEfforts:string[]}[]}
 export interface RoleModelSaved {ok:true;changed:boolean;version:string;role:RoleModelState;restartRequired:boolean}
+export type ModelReasoningCapabilities = false | Record<string,string|null> | null;
 export type ModelInput = 'text'|'image';
-export interface ModelCatalogEntry {id:string;name:string;configuredName:string|null;input:ModelInput[];configuredInput:ModelInput[]|null;reasoningEfforts:string[];references:string[]}
+export interface ModelCatalogEntry {id:string;name:string;configuredName:string|null;configuredReasoningEfforts?:ModelReasoningCapabilities;input:ModelInput[];configuredInput:ModelInput[]|null;reasoningEfforts:string[];references:string[]}
 export interface SecretState {configured:boolean;writable:boolean;source:string;sharedWith?:string[]}
 export interface ModelProvider {provider:string;name:string;api:string;baseURL:string;baseURLConfigured:boolean;secret:SecretState;models:ModelCatalogEntry[]}
 export interface ModelCatalog {version:string;providers:ModelProvider[]}

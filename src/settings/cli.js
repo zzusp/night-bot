@@ -27,6 +27,7 @@ Secret: --kind model|github --action replace|clear --confirm (hidden prompt or o
 Provider API: provider --provider ID --api PROTOCOL --base-url URL; add --action create --model ID for a new route.
 Secret --provider ID targets that model route; omitted retains the default route.
 Model entries: --action add|edit|remove --provider ID --id OLD_ID --model NEW_ID --name LABEL.
+Model capabilities: --reasoning-efforts JSON (null: auto, false: disabled, or level-to-wire mapping).
 Input capability: --input text|image|text,image|model-default (inherit catalog/provider defaults).
 Removal requires --confirm. Use model-list to inspect IDs and references; saved changes need restart.
 Resident model removal/ID changes require an explicit task role (role --role task) or task ENV override.
@@ -39,14 +40,14 @@ const optionsByAction={
  show:[],plugins:[],appearance:['name','icon','expected-version'],model:['provider','model','api','base-url','key-env','reasoning-effort','expected-version'],
  role:['role','provider','model','reasoning-effort','expected-version'],secret:['provider','kind','action','expected-version'],
  provider:['action','provider','api','base-url','model','expected-version'],
- 'model-list':[],'model-entry':['action','provider','id','model','name','input','expected-version'],
+ 'model-list':[],'model-entry':['action','provider','id','model','name','reasoning-efforts','input','expected-version'],
  'work-log':['enabled','time','timezone','expected-version'],
  web:['enabled','host','port','public-origin','channel-id','sender-id','operator-name','expected-version'],
  'channel-list':[],'channel-save':[],'channel-enable':['channel-id','enabled','expected-version'],'channel-remove':['channel-id','expected-version'],
  'channel-ingress':['channel-id','paused','expected-version'],
  'dingtalk-get':['channel-id'],'dingtalk-add':[],'dingtalk-edit':[],'permissions-show':[],'permissions-set':['mode'],'permission-respond':['id','decision'],
 }
-const mapping={'base-url':'baseURL','key-env':'apiKeyEnv','reasoning-effort':'reasoningEffort','expected-version':'expectedVersion','public-origin':'publicOrigin','channel-id':'channelId','sender-id':'senderId','operator-name':'operatorName'}
+const mapping={'reasoning-efforts':'reasoningEfforts','base-url':'baseURL','key-env':'apiKeyEnv','reasoning-effort':'reasoningEffort','expected-version':'expectedVersion','public-origin':'publicOrigin','channel-id':'channelId','sender-id':'senderId','operator-name':'operatorName'}
 const readOnly=new Set(['show','plugins','model-list','channel-list','dingtalk-get','permissions-show'])
 const noFile=new Set([...readOnly,'secret'])
 async function jsonFile(path){
@@ -122,6 +123,7 @@ export async function runSettingsCli(argv,{environment=process.env,write=value=>
  if(values.input!==undefined)body.input=values.input==='model-default'?null:values.input.split(',')
  for(const key of ['enabled','paused'])if(typeof body[key]==='string'){if(!['true','false'].includes(body[key]))throw failure('SETTINGS_COMMAND_INVALID');body[key]=body[key]==='true'}
  if(typeof body.port==='string'){if(!/^\d+$/.test(body.port))throw failure('SETTINGS_COMMAND_INVALID');body.port=Number(body.port)}
+ if(typeof body.reasoningEfforts==='string'){try{body.reasoningEfforts=JSON.parse(body.reasoningEfforts)}catch{throw failure('SETTINGS_JSON_INVALID')}}
  const input={action,body,checkOnly:values.check===true};validateSettingsCommand(input)
  const config=await loadConfig(file)
  let local,ownedInteraction

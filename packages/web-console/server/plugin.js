@@ -208,7 +208,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
         if(request.method==='GET'&&path==='/api/settings') return send(response,200,await settings.view())
         if(request.method==='GET'&&path==='/api/settings/model-catalog') return send(response,200,await settings.modelCatalog())
         if(request.method==='PUT'&&path==='/api/settings/provider') return send(response,200,await settings.saveProvider(await jsonBody(request,['action','provider','api','baseURL','model','expectedVersion'],4096)))
-        if(request.method==='PUT'&&path==='/api/settings/model-catalog') return send(response,200,await settings.saveModelEntry(await jsonBody(request,['action','provider','id','model','name','input','expectedVersion','confirm'],4096)))
+        if(request.method==='PUT'&&path==='/api/settings/model-catalog') return send(response,200,await settings.saveModelEntry(await jsonBody(request,['action','provider','id','model','name','reasoningEfforts','input','expectedVersion','confirm'],4096)))
         if(request.method==='GET'&&path==='/api/settings/channels') return send(response,200,await settings.plugins())
         if(request.method==='PUT'&&path==='/api/settings/appearance') return send(response,200,await settings.saveAppearance(await jsonBody(request,['name','icon','expectedVersion'],4096)))
         if(request.method==='PUT'&&path==='/api/settings/model') return send(response,200,await settings.saveModel(await jsonBody(request,['model','api','baseURL','expectedVersion'],4096)))
