@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite'
 import {queryTaskIndex,queryReplyHistory} from '../src/channels/conversation-context.js'
 import {routerTaskProgress} from '../src/channels/router-progress.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
-import {residentRouterHost,channelMessage,requestEnvelope,requestTools} from './fixtures/resident-router-host.js'
+import {residentRouterHost,channelMessage,requestEnvelope,requestTools,eventually} from './fixtures/resident-router-host.js'
 
 function database(t){
  const db=new DatabaseSync(':memory:');t.after(()=>db.close())
@@ -39,6 +39,24 @@ test('reply keyset query reads current state and complete body without tokens or
  assert.doesNotMatch(JSON.stringify(full),/PRIVATE_TOKEN|PRIVATE_PERMIT|FOREIGN_BODY/)
  assert.equal(queryReplyHistory(db,{conversationId:'b',notificationId:'n1'}).replies.length,0)
  assert.throws(()=>queryReplyHistory(db,{conversationId:'a',sourceId:'source',taskId:'task'}),{code:'ROUTER_REPLY_SELECTOR_REQUIRED'})
+})
+
+test('reply history includes requester questions and task status without exposing operator or foreign notices',t=>{
+ const {db,put}=database(t)
+ for(const [id,kind] of [['question','question'],['status','status']])put('notifications',id,{id,kind,taskId:'task',state:'delivered',deliveredAt:'verified-at',
+  payload:{conversationId:'a',sourceId:'source',sourceVersion:1,audience:'requester',text:'Please provide the page address.'}})
+ put('notifications','operator',{id:'operator',kind:'question',taskId:'task',state:'delivered',payload:{audience:'operator',recipientUserId:'operator',text:'PRIVATE_OPERATOR_QUESTION'}})
+ put('notifications','foreign',{id:'foreign',kind:'question',taskId:'foreign-task',state:'delivered',payload:{conversationId:'b',sourceId:'source',text:'FOREIGN_QUESTION'}})
+ for(const selector of [{taskId:'task'},{sourceId:'source'}]){
+  const result=queryReplyHistory(db,{conversationId:'a',...selector})
+  assert.deepEqual(result.replies.map(reply=>reply.notificationId),['status','question'])
+  assert.ok(result.replies.every(reply=>reply.state==='delivered'&&reply.deliveredAt==='verified-at'))
+  assert.doesNotMatch(JSON.stringify(result),/PRIVATE_OPERATOR_QUESTION|FOREIGN_QUESTION/)
+ }
+ assert.equal(queryReplyHistory(db,{conversationId:'a',notificationId:'question'}).replies[0].text,'Please provide the page address.')
+ assert.equal(queryReplyHistory(db,{conversationId:'a',notificationId:'operator'}).replies.length,0)
+ put('notifications','question',{id:'question',kind:'question',taskId:'task',state:'unknown',payload:{conversationId:'a',sourceId:'source',text:'Please provide the page address.'}})
+ assert.equal(queryReplyHistory(db,{conversationId:'a',notificationId:'question'}).replies[0].state,'unknown')
 })
 
 test('real Router reads committed sole-execution progress without waking another run',{timeout:nativeTestTimeout(120000)},async t=>{
@@ -85,4 +103,38 @@ test('real reply tool and quoted-source index use delivered ledger state after c
  await h.restart()
  await h.receive(channelMessage('lookup',{text:'核实此前已回复的内容',quotedMessage:{messageId:'original',senderId:'alice',text:'Original request original'}}));await h.service.whenIdle()
  assert.equal(queried,true);assert.equal(h.sent.length,1,'history lookup never resends the frozen reply')
+})
+
+
+test('real Router sees the automatically sent requester question on waiting and after cold recovery',{timeout:nativeTestTimeout(90000)},async t=>{
+ const steps=new Map(),question='Please provide the exact page address.';let h,checks=0
+ h=await residentRouterHost(t,body=>{
+  const tools=requestTools(body)
+  if(tools.includes('channel_triage_submit')){const input=requestEnvelope(body,'一级分诊请求：');return {tool:'channel_triage_submit',args:{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'Local fixture only'}))}}}
+  if(tools.includes('resident_router_settle')){
+   const input=requestEnvelope(body,'Router 请求：'),source=input.events.find(event=>event.source)?.source,key=input.events.map(event=>event.id).join(','),step=steps.get(key)??0;steps.set(key,step+1)
+   if(source?.messageId==='ask'&&step===0)return {tool:'resident_task_plan',args:{operationId:'ask',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'requester-question',title:'Inspect local page',objective:'Inspect the local fixture',requirements:['Ask for the missing address']}],dependencies:[]}}
+   const lookup=source?.messageId==='lookup'||input.events.some(event=>event.kind==='task.waiting')
+   if(lookup&&step===0)return {tool:'resident_reply_query',args:{taskId:'requester-question'}}
+   if(lookup&&step===1){
+    const result=JSON.parse(body.messages.at(-1).content)
+    assert.equal(result.replies.length,1)
+    assert.equal(result.replies[0].kind,'question');assert.equal(result.replies[0].textPreview,question)
+    if(source?.messageId==='lookup')assert.equal(result.replies[0].state,'delivered')
+    assert.match(JSON.stringify(body.messages.filter(message=>message.role==='system')),/不换措辞重复提问/)
+    checks++
+   }
+   if(step<2)return {tool:'resident_router_settle',args:{operationId:'settle-'+key,eventIds:input.events.map(event=>event.id),...source?.messageId==='lookup'?{noTaskDispositions:[{eventId:input.events[0].id,outcome:'handled-inline',reason:'Read the existing question; do not send a duplicate.',sourceQuote:source.text}]}:{}}}
+   return {text:'Settled.'}
+  }
+  if(tools.includes('task_result'))return {tool:'task_result',args:{decision:{action:'wait',summary:'The exact address is missing.',question,audience:'requester',evidence:['The local input has no address.'],limitations:[]}}}
+  return {text:'Done.'}
+ })
+ await h.receive(channelMessage('ask'));await h.service.whenIdle()
+ const notice=await eventually(async()=>{const n=(await h.query('notification.list')).find(row=>row.kind==='question');return n?.state==='delivered'&&n},'requester question delivered',t.signal)
+ assert.equal(checks,1);assert.equal(notice.sendAttemptCount,1);assert.equal(h.sent.length,1)
+ await h.restart()
+ await h.receive(channelMessage('lookup',{text:'核对已经发出的页面地址提问'}));await h.service.whenIdle()
+ assert.equal(checks,2);assert.equal(h.sent.length,1,'waiting review and history lookup never send another question')
+ assert.equal((await h.query('notification.get',{notificationId:notice.id})).sendAttemptCount,1)
 })
