@@ -17,6 +17,8 @@ Pi 负责模型与工具迭代、会话历史和模型上下文。Night Bot 在�
 - **使用文件与工具**：提供文件读写、编辑、检索、Bash/PowerShell、后台作业、工作目录、待办及 HTTP 获取。Web 搜索和额外业务系统需单独配置，不随核心安装自动可用。
 - **选择渠道与模型**：Web 与钉钉均为可选渠道。可在同一 API 路由下管理多个模型，并分别为分诊、Router 和任务执行选择模型。见 [渠道](docs/CHANNELS.md)与[模型配置](docs/ops/shared-settings.md)。
 
+任务执行会话可加载实例私有的 `data/config/execution/AGENTS.md`，在 Web「设置 → 工作原则」编辑。见[工作原则配置](docs/ops/shared-settings.md#执行会话工作原则)。
+
 ## 快速开始
 
 需要 **Node.js 24+**、**pnpm 11.25.0**，以及可用的模型服务和凭据。核心安装不需要 DWS CLI，也不默认启用 Web 或钉钉外发。

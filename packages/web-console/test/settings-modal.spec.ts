@@ -80,3 +80,19 @@ for(const width of [1440,390,320])test(`设置入口位于全局工具组并紧�
  await page.screenshot({path:test.info().outputPath(`settings-header-${width}.png`)});
  await trigger.focus();await page.keyboard.press('Enter');await expect(page.getByRole('dialog',{name:'设置',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(trigger).toBeFocused();
 });
+
+test('工作原则在移动设置中保存，冲突保留草稿直至明确重新读取',async({page,browser})=>{
+ const f=await startPreview({port:0});const other=await browser.newPage();
+ try{
+  await page.setViewportSize({width:390,height:900});
+  for(const tab of [page,other]){await login(tab,'/chat/sample-plan',f.origin);await open(tab);await tab.getByRole('tab',{name:'工作原则',exact:true}).click()}
+  const field=(tab:Page)=>tab.getByLabel('AGENTS.md 正文（Markdown）',{exact:true});
+  const save=(tab:Page)=>tab.getByRole('button',{name:'保存工作原则',exact:true});
+  await expect(field(page)).toHaveValue('');await expect(field(other)).toHaveValue('');
+  await field(other).fill('旧版本草稿');
+  await field(page).fill('# 工作原则\n先核验实际终态。');await save(page).click();await expect(page.getByText('已保存。执行会话下次刷新上下文时读取，无需重启。',{exact:true})).toBeVisible();
+  await save(other).click();await expect(other.getByRole('alert')).toContainText('未覆盖新版本');await expect(field(other)).toHaveValue('旧版本草稿');await expect(save(other)).toBeDisabled();
+  await other.getByRole('button',{name:'重新读取并替换草稿'}).click();await expect(field(other)).toHaveValue('# 工作原则\n先核验实际终态。');
+  expect(await page.locator('.settings-panels').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+ }finally{await other.close();await page.goto('about:blank');await f.close()}
+});

@@ -8,15 +8,17 @@ import {Button,IconButton} from './components/BoardPrimitives';
 import {Loading, Notice} from './components/Shared';
 import {Confirm} from './components/ConfirmDialog';
 import {WorkLogEditor} from './components/WorkLogEditor';
+import {ExecutionPrinciplesEditor} from './components/ExecutionPrinciplesEditor';
 import {RoleModelEditor} from './components/RoleModelEditor';
 import {ModelCatalogEditor} from './components/ModelCatalogEditor';
 import {SecretEditor} from './components/SecretEditor';
-import {RiCpuLine, RiGitBranchLine, RiRobot2Line, RiCalendarCheckLine, RiKey2Line, RiServerLine, RiCloseLine} from '@remixicon/react';
+import {RiCpuLine, RiGitBranchLine, RiRobot2Line, RiCalendarCheckLine, RiFileTextLine, RiKey2Line, RiServerLine, RiCloseLine} from '@remixicon/react';
 import './styles/settings-workspace.css';
 
 const sections = [
  {id:'models',label:'模型与 API',icon:RiCpuLine},
  {id:'roles',label:'模型分工',icon:RiGitBranchLine},
+ {id:'principles',label:'工作原则',icon:RiFileTextLine},
  {id:'appearance',label:'助手外观',icon:RiRobot2Line},
  {id:'worklog',label:'工作日志',icon:RiCalendarCheckLine},
  {id:'credentials',label:'访问凭据',icon:RiKey2Line},
@@ -85,6 +87,9 @@ export default function SettingsPage({onClose,registerClose}:{onClose?:()=>void;
      <div role="tabpanel" id="settings-panel-roles" aria-labelledby="settings-tab-roles" hidden={section!=='roles'} tabIndex={0}><ReadErrorVisibility active={section==='roles'}>
       <div className="settings-role-stack">{query.data.roleModels?.roles.map(role=><RoleModelEditor key={`${role.role}-${refreshKey}`} state={role} onStateChange={onRoleState} catalog={query.data!.roleModels.catalog} version={query.data!.version} onSaved={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/>)}</div></ReadErrorVisibility>
      </div>
+     <div role="tabpanel" id="settings-panel-principles" aria-labelledby="settings-tab-principles" hidden={section!=='principles'} tabIndex={0}><ReadErrorVisibility active={section==='principles'}>
+      <ExecutionPrinciplesEditor active={section==='principles'} onStateChange={onRoleState}/>
+     </ReadErrorVisibility></div>
      <div role="tabpanel" id="settings-panel-appearance" aria-labelledby="settings-tab-appearance" hidden={section!=='appearance'} tabIndex={0}><ReadErrorVisibility active={section==='appearance'}>
       <Configuration onStateChange={onRoleState} key={refreshKey} data={query.data} refresh={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/>
      </ReadErrorVisibility></div>
