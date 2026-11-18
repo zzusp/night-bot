@@ -138,12 +138,18 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
   const recordConversations = sessionRecords ? [...rooms.filter(room => room.groupId !== 'room-empty').map(room => room.groupId), `fixture-${CHANNEL_ID}-sample-plan`, `fixture-${CHANNEL_ID}-sample-notes`] : []
   for (const conversationId of recordConversations) for (const kind of ['triage', 'router']) {
     const triage = kind === 'triage', sessionId = triage ? triageSessionId(conversationId) : `fixture-router-${conversationId}`
-    const source = {sourceId: 'fixture-source', version: 1, conversationId, text: '请检查接口文档与实现的差异，并整理待确认事项。'}
+    const versionFixture = triage && conversationId === 'room-product'
+    const source = {sourceId: 'fixture-source', messageId: 'fixture-message', version: versionFixture ? 2 : 1, conversationId, text: '请检查接口文档与实现的差异，并整理待确认事项。'}
+    const packet = (id, messages) => ({id, message: {role: 'custom', customType: 'night.business-input',
+      details: {source: triage ? {kind: 'channel-triage', conversationId} : {kind: 'conversation-router', conversationId, generation: 1}},
+      content: [{type:'text',text: triage ? '一级分诊请求：' + JSON.stringify({conversationId, messages}) : 'Router 请求：' + JSON.stringify({conversationId, generation:1, events:[{source}]})}]}})
     const toolName = triage ? 'channel_triage_submit' : 'resident_task_query'
-    const arguments_ = triage ? {dispositions: [{sourceId: source.sourceId, messageVersion: 1, needsHandling: true, reason: '需要结合当前任务核对实际差异', reply: '我来核对这项任务。'}]} : {limit: 10}
+    const arguments_ = triage ? {dispositions: [{sourceId: source.sourceId, messageVersion: source.version, needsHandling: true, reason: '需要结合当前任务核对实际差异', reply: '我来核对这项任务。'}]} : {limit: 10}
     const result = triage ? {dispositions: [{state: 'committed', decision: arguments_.dispositions[0]}]} : {tasks: [{title: '检查接口文档与实现的一致性', state: 'running', objective: '逐项核对已有接口说明'}], total: 1}
     const rows = [
-      {id: 'input', message: {role: 'custom', customType: 'night.business-input', details: {source: triage ? {kind: 'channel-triage', conversationId} : {kind: 'conversation-router', conversationId, generation: 1}}, content: [{type:'text',text: triage ? '一级分诊请求：' + JSON.stringify({conversationId, messages:[source]}) : 'Router 请求：' + JSON.stringify({conversationId, generation:1, events:[{source}]})}]}},
+      ...(versionFixture ? [packet('old-input', [{...source, sourceId:'fixture-old-source', version:1}]),
+        packet('separate-input', [{...source, sourceId:'fixture-other-source', messageId:'fixture-other-message', version:1}])] : []),
+      packet('input', [source]),
       {id: 'think', message: {role: 'assistant', content: [{type:'thinking',thinking:triage ? '这条消息需要核对已有任务，交给路由继续处理。' : '先查询已有任务，避免重复创建。'}, {type:'toolCall',name:toolName,id:'fixture-call',arguments:arguments_}]}},
       {id: 'result', message: {role: 'toolResult', toolName, toolCallId:'fixture-call', content:[{type:'text',text:JSON.stringify(result)}]}},
       {id: 'reply', message: {role: 'assistant', content:[{type:'text',text:triage ? '已提交本批分诊判断。' : '已找到已有任务，将继续核对当前执行情况。'}]}},

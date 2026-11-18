@@ -60,6 +60,7 @@ export interface MessageBodyPage { messageId: string; text: string; offset: numb
 export interface HistoryReader { endpoint: string; revision: string; onRecover?: () => void }
 export interface Message {
   messageVersion?: number;
+  triageVersion?: { groupId: string; number: number };
   transient?: boolean;
   id: string; role: 'user' | 'assistant' | 'tool'; text: string; createdAt?: string;
   status?: string; senderName?: string; requestId?: string; taskIds?: string[];
