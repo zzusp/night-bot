@@ -55,8 +55,8 @@ function historyMessages(value,config){
   return config.conversationType==='chat'?value.messages.filter(message=>(message.senderOpenDingTalkId??message.senderId)===binding.peerId):value.messages
 }
 /** 复用 bridge 已有的暂停、恢复、补拉和 drain；原生 ID 留在插件内部。 */
-export function dingtalkIngressAdapter(adapter,config,{runner,getFromAt=()=>undefined,getDeferredMessages=()=>[],onRangeRead=()=>{},onRecall,beforeRangeRead=async()=>{}}={}){
-  return {...adapter,
+export function dingtalkIngressAdapter(adapter,config,{runner,getFromAt=()=>undefined,completeGroupRange,retryDeferredIngress,onRecall,beforeRangeRead=async()=>{}}={}){
+  return {...adapter,completeGroupRange,retryDeferredIngress,
     startGroupSubscription(conversationId,onEvent){
       if(conversationId!==config.binding.conversationId)throw failure('DINGTALK_INGRESS_TARGET_MISMATCH')
       const accept=event=>{
@@ -68,7 +68,7 @@ export function dingtalkIngressAdapter(adapter,config,{runner,getFromAt=()=>unde
           const at=messageTimestamp(event.recall_time??event.event_time??event.timestamp)
           if(event.type!==expected||!present(event.message_id)||!present(sender)||!present(event.recaller_open_dingtalk_id)||!Number.isFinite(at))throw failure('DINGTALK_RECALL_IDENTITY_INVALID')
           if(typeof onRecall!=='function')throw failure('DINGTALK_RECALL_UNSUPPORTED')
-          return onRecall({groupId:conversationId,messageId:event.message_id,senderOpenDingTalkId:sender,text:'[消息已撤回]',occurredAt:new Date(at).toISOString(),retraction:{senderId:event.recaller_open_dingtalk_id,at:new Date(at).toISOString()}})
+          return onRecall({groupId:conversationId,messageId:event.message_id,senderOpenDingTalkId:sender,...event.sender_open_dingtalk_id==null?{senderIdentityVerified:false}:{},text:'[消息已撤回]',occurredAt:new Date(at).toISOString(),retraction:{senderId:event.recaller_open_dingtalk_id,at:new Date(at).toISOString()}})
         }
         return onEvent(event)
       }
@@ -78,16 +78,10 @@ export function dingtalkIngressAdapter(adapter,config,{runner,getFromAt=()=>unde
       if(conversationId!==config.binding.conversationId)throw failure('DINGTALK_INGRESS_TARGET_MISMATCH')
       await beforeRangeRead()
       const fromAt=getFromAt()
-      if(Date.parse(range.start)<Date.parse(fromAt))range={...range,start:fromAt}
-      const deferredStart=getDeferredMessages().reduce((start,message)=>Math.min(start,Math.max(0,messageTimestamp(message.occurredAt)-30_000)),Date.parse(range.start))
-      if(deferredStart<Date.parse(range.start))range={...range,start:new Date(deferredStart).toISOString()}
+      if(fromAt!==undefined)range={...range,start:fromAt}
       const value=config.conversationType==='chat'
         ?await dwsReadJson(runner,['chat','+chat-messages','--open-dingtalk-id',config.binding.peerId,'--start',range.start,'--end',range.end,'--order','asc','--page-all'],config.profile)
         :await adapter.readGroupRange(conversationId,range)
-      const messages=historyMessages(value,config),messageIds=new Set(messages.map(message=>message.messageId))
-      // 已知暂缓消息未出现时，供应商的 complete 空页不能解除耐久恢复界。
-      if(getDeferredMessages().some(message=>!messageIds.has(message.messageId)))throw failure('DINGTALK_DEFERRED_HISTORY_INCOMPLETE')
-      onRangeRead({...range})
-      return {...value,messages}
+      return {...value,messages:historyMessages(value,config)}
     }}
 }

@@ -2,7 +2,7 @@ import {dwsEnvironment,dwsAccountPolicy} from './dws-environment.js'
 import {join} from 'node:path'
 import {createDwsAdapter} from '../../../packages/dingtalk-core/dws-adapter.js'
 import {createNodeDwsRunner} from '../../../packages/dingtalk-core/dws-runner.js'
-import {normalizeHistoryMessage,startDwsBridge} from '../../../packages/dingtalk-core/dws-bridge.js'
+import {messageTimestamp,normalizeHistoryMessage,startDwsBridge} from '../../../packages/dingtalk-core/dws-bridge.js'
 import {sendWorkflowNotification,notificationOpenTaskId} from '../../../packages/dingtalk-core/group-message.js'
 import {readTaskNotificationDelivery,readOperatorNotificationDelivery,recallOperatorNotification} from '../../../packages/dingtalk-core/task-notification-readback.js'
 import {readTaskFileDelivery} from '../../../packages/dingtalk-core/task-final-delivery.js'
@@ -32,7 +32,7 @@ export async function apply(ctx,config={},dependencies={}){
   const environment=dwsEnvironment(paths,privateHome,cache,{accountMode:accountPolicy.mode,...dependencies.environment?{inherited:dependencies.environment}:{}})
   for(const directory of [...accountPolicy.mode==='private'?[privateHome,join(privateHome,'config'),join(privateHome,'keychain')]:[],workspace,cache])await privateDirectory(directory)
   const runnerFor=cwd=>dependencies.runner?{...dependencies.runner,cwd}:createNodeDwsRunner({executable:config.executable??'dws',cwd,env:environment}),runner=runnerFor(workspace)
-  let app,adapter,stopBridge,ingressStore,stopAuthObserver,readyBound=false,terminal=false,closed=false,cursorError=false,lastRange,targetValidated=false
+  let app,adapter,stopBridge,ingressStore,stopAuthObserver,readyBound=false,terminal=false,closed=false,cursorError=false,deferredReadError,targetValidated=false
   let health={healthy:false,configured:true,state:'starting'},startTail=Promise.resolve(),settingsTail=Promise.resolve(),ingressTail=Promise.resolve()
   const ingressCalls=new Set()
   const readSavedBinding=async()=>{
@@ -112,19 +112,26 @@ export async function apply(ctx,config={},dependencies={}){
       ...message.resourceRefs?.length?{resourceRefs:message.resourceRefs}:{},
       ...message.quotedMessage?.messageId?{quotedMessage:{messageId:message.quotedMessage.messageId,text:message.quotedMessage.text??'',...message.quotedMessage.senderOpenDingTalkId?{senderId:message.quotedMessage.senderOpenDingTalkId}:{}}}:{}
     }})
-  const receiveHistoryMessage=async(raw,{type=config.conversationType}={})=>{
+  const markCursorError=()=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}}
+  const writeCursor=operation=>operation.catch(error=>{markCursorError();throw error})
+  const deferredResult=()=>({accepted:false,processing:'deferred',reason:'CHANNEL_NOTIFICATION_IDENTITY_PENDING'})
+  const receiveHistoryMessage=async(raw,{type=config.conversationType,recheck=false}={})=>{
     const message=normalize(raw,raw.groupId??raw.conversationId)
     if(type!==config.conversationType||type==='chat'&&message.senderOpenDingTalkId!==config.binding.peerId)throw failure('DWS_CHAT_NOT_AUTHORIZED')
     if(message?.groupId!==config.binding.conversationId||!message.messageId||!message.senderOpenDingTalkId)throw failure('DWS_PLUGIN_AUTHENTICATED_IDENTITY_REQUIRED')
+    if(recheck&&!ingressStore.snapshot().deferredMessages?.some(row=>row.messageId===message.messageId))return
     if(raw.retraction){
       if(typeof raw.retraction.senderId!=='string'||!raw.retraction.senderId||typeof raw.retraction.at!=='string'||!Number.isFinite(Date.parse(raw.retraction.at)))throw failure('DINGTALK_RECALL_IDENTITY_INVALID')
     }
     const retraction=raw.retraction?{retracted:true,retractedBy:ctx.channels.identity({...channelInputFor(message),senderId:raw.retraction.senderId}).principal,retractedAt:raw.retraction.at}:undefined
-    let channelInput=channelInputFor(message,retraction),identity=ctx.channels.identity(channelInput)
-    if(retraction)await ingressStore.recall({messageId:message.messageId,senderId:message.senderOpenDingTalkId,recallerId:raw.retraction.senderId,occurredAt:raw.retraction.at})
+    let channelInput=channelInputFor(message,retraction),identity=ctx.channels.identity(channelInput),verifiedSender=message.senderIdentityVerified!==false
+    if(retraction)await writeCursor(ingressStore.recall({messageId:message.messageId,senderId:message.senderOpenDingTalkId,recallerId:raw.retraction.senderId,occurredAt:raw.retraction.at,...verifiedSender?{verifiedSender:true}:{}}))
     return ctx.channels.withInputTarget(identity.envelope,async()=>{
-      const consumed=(result,{retracted=channelInput.platformFlags?.retracted===true}={})=>ingressStore.consumed(message,{retracted}).then(()=>result)
+      const consumed=(result,{retracted=channelInput.platformFlags?.retracted===true}={})=>writeCursor(ingressStore.consumed(message,{retracted})).then(()=>result)
       if(app.tasks.isOwnNotification({groupId:identity.sessionId,messageId:message.messageId}))return consumed({accepted:false,processing:'ignored',reason:'own-notification',channelType:type,conversationId:message.groupId})
+      const {deferredMessages=[],pendingRecalls=[]}=ingressStore.snapshot()
+      // 已记录的撤回优先于历史旧正文。
+      if(!retraction&&pendingRecalls.some(row=>row.messageId===message.messageId))return deferredResult()
       const context=ctx.channels.groupContext(identity.sessionId),prior=context?.messageFacts?.[message.messageId]
       if(prior){
         channelInput.messageVersion=prior.version??1
@@ -132,31 +139,45 @@ export async function apply(ctx,config={},dependencies={}){
         const sourceId='im:'+hash(JSON.stringify([identity.sessionId,message.messageId,channelInput.messageVersion]))
         const source=await app.tasks.store?.query({kind:'source.get',sourceId})
         ctx.channels.assertInputTarget(identity.envelope)
+        const payloadHash=dingtalkInputFingerprint(identity)
+        const retained=()=>consumed({accepted:false,duplicate:true,processing:'processed',reason:'retained-source',channelType:type,conversationId:message.groupId})
         if(prior.retracted){
           if(source?.retracted)return consumed({accepted:false,duplicate:true,processing:'ignored',reason:'message-retracted',channelType:type,conversationId:message.groupId},{retracted:true})
           // 上下文先于业务账本提交；冷恢复只补完原墓碑，不复活旧正文。
           const sender=context.participants[prior.actorId]
           if(!sender||!prior.retraction)throw failure('DINGTALK_RETRACTION_UNSETTLED')
           channelInput={...channelInputFor({...message,senderOpenDingTalkId:sender,occurredAt:prior.occurredAt},prior.retraction),messageVersion:prior.version}
-        }else if(prior.payloadHash!==dingtalkInputFingerprint(identity)){
+        }else if(prior.payloadHash===payloadHash){
+          if(source?.routed===true&&source.actorId===identity.principal)return retained()
+        }else{
           if(!source&&!retraction)throw failure('DINGTALK_MESSAGE_REVISION_UNSETTLED')
           const actorId=source?.actorId??prior.actorId
           if(actorId!==undefined&&actorId!==identity.principal)throw failure('CHANNEL_MESSAGE_ID_CONFLICT')
           const options={quoteSenderIds:[config.binding.actorId,...Object.values(context.participants??{})]}
-          if(retainedDingtalkDuplicate(identity,prior,source,options))return consumed({accepted:false,duplicate:true,processing:'processed',reason:'retained-source',channelType:type,conversationId:message.groupId})
+          if(retainedDingtalkDuplicate(identity,prior,source,options))return retained()
           if(!retraction){
             // 差异事件可能迟到；只以同账号精确回读的当前版本接纳修订。
             const latest=normalize(await adapter.readMessage(config.binding.conversationId,message.messageId),config.binding.conversationId)
             if(latest.groupId!==message.groupId||latest.messageId!==message.messageId||latest.senderOpenDingTalkId!==message.senderOpenDingTalkId)throw failure('DINGTALK_MESSAGE_REVISION_IDENTITY_INVALID')
+            verifiedSender=latest.senderIdentityVerified!==false
             channelInput={...channelInputFor(latest),messageVersion:prior.version??1}
             identity=ctx.channels.identity(channelInput)
-            if(retainedDingtalkDuplicate(identity,prior,source,options))return consumed({accepted:false,duplicate:true,processing:'processed',reason:'retained-source',channelType:type,conversationId:message.groupId})
+            if(retainedDingtalkDuplicate(identity,prior,source,options))return retained()
           }
           if(prior.payloadHash!==dingtalkInputFingerprint(ctx.channels.identity(channelInput)))channelInput.messageVersion=(prior.version??1)+1
         }
       }
-      try{return await consumed(await ctx.channels.receive(channelInput))}
-      catch(error){if(error.code==='CHANNEL_NOTIFICATION_IDENTITY_PENDING')await ingressStore.deferred(message);throw error}
+      const defer=async(dependsOn,error=failure('CHANNEL_NOTIFICATION_IDENTITY_PENDING'))=>{
+        try{await writeCursor(ingressStore.deferred(message,dependsOn))}catch(cause){throw Object.assign(error,{cause})}
+        return deferredResult()
+      }
+      const quoteId=channelInput.quotedMessage?.messageId
+      const dependsOn=deferredMessages.find(row=>row.messageId===message.messageId)?.dependsOn??quoteId
+      if(!retraction&&dependsOn!==message.messageId&&deferredMessages.some(row=>row.messageId===dependsOn))return defer(dependsOn)
+      let result
+      try{result=await ctx.channels.receive(channelInput,{deferNotificationIdentity:true,verifiedSender})}
+      catch(error){if(error.code==='CHANNEL_NOTIFICATION_IDENTITY_PENDING')return defer(undefined,error);throw error}
+      return consumed(result)
     })
   }
   const enqueueIngress=async(raw,options)=>{
@@ -170,8 +191,29 @@ export async function apply(ctx,config={},dependencies={}){
     if(config.receivePaused||health.ingress?.paused)return Promise.reject(failure('CHANNEL_INGRESS_PAUSED'))
     return enqueueIngress(raw,options)
   }
+  const receiveRecall=(row,options)=>enqueueIngress({groupId:config.binding.conversationId,messageId:row.messageId,senderOpenDingTalkId:row.senderId,senderIdentityVerified:row.verifiedSender===true,text:'[消息已撤回]',occurredAt:row.occurredAt,retraction:{senderId:row.recallerId,at:row.occurredAt}},options)
   const recoverRecalls=async()=>{
-    for(const row of ingressStore.snapshot().pendingRecalls??[])await enqueueIngress({groupId:config.binding.conversationId,messageId:row.messageId,senderOpenDingTalkId:row.senderId,text:'[消息已撤回]',occurredAt:row.occurredAt,retraction:{senderId:row.recallerId,at:row.occurredAt}})
+    const {pendingRecalls=[],deferredMessages=[]}=ingressStore.snapshot()
+    for(const row of pendingRecalls)if(!deferredMessages.some(item=>item.messageId===row.messageId))await receiveRecall(row)
+  }
+  const retryDeferredIngress=async(conversationId,isCurrent)=>{
+    const groupId=ctx.channels.identity({type:config.conversationType,channelId,conversationId,senderId:config.binding.peerId??config.binding.actorId,messageId:'namespace-only',text:'namespace-only'}).sessionId
+    let readFailed=false
+    for(const {messageId,dependsOn,occurredAt} of ingressStore.snapshot().deferredMessages??[]){
+      if(closed||!isCurrent())return
+      const {deferredMessages=[],pendingRecalls=[]}=ingressStore.snapshot()
+      if(!deferredMessages.some(row=>row.messageId===messageId)||deferredMessages.some(row=>row.messageId===dependsOn))continue
+      try{
+        const recall=pendingRecalls.find(row=>row.messageId===messageId)
+        if(recall){await receiveRecall(recall,{recheck:true});continue}
+        if(app.tasks.isOwnNotification({groupId,messageId})){await writeCursor(ingressStore.consumed({messageId,occurredAt}));continue}
+        const raw=await adapter.readMessage(conversationId,messageId)
+        if(closed||!isCurrent())return
+        if(!Number.isFinite(messageTimestamp(raw.createTime??raw.occurredAt)))throw failure('DINGTALK_HISTORY_IDENTITY_INVALID')
+        await acceptHistoryMessage(raw,{recheck:true})
+      }catch{readFailed=true;ctx.logger.warn('DINGTALK_DEFERRED_READ_FAILED')}
+    }
+    deferredReadError=readFailed?'DINGTALK_DEFERRED_READ_FAILED':undefined
   }
   const serialize=work=>{const operation=settingsTail.then(work);settingsTail=operation.catch(()=>{});return operation}
   const persistPaused=async()=>{
@@ -242,9 +284,9 @@ export async function apply(ctx,config={},dependencies={}){
       return {enabled:config.enabled,name:config.name??channelId,promptConfigured:!!config.prompt}
     }),accountPolicy,get adapter(){return adapter},notifications,acceptHistoryMessage,conversationDisplayName:context=>readyBound&&!closed&&context.type===config.conversationType&&context.channelId===channelId&&context.conversationId===config.binding.conversationId?config.conversationName:undefined,responsibility:context=>readyBound&&context.type===config.conversationType&&context.channelId===channelId&&context.conversationId===config.binding.conversationId?config.prompt:undefined,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:options=>createNativeDwsObserver({...options,resolveNotificationScope:notification=>{
     const context=ctx.channels.groupContext(notification.payload?.conversationId)
-    if(context?.channelId!==channelId||context.type!=='chat-room')return
-    return {conversationId:context.conversationId,querySendStatus:id=>adapter.querySendStatus(id)}
-  }}),get health(){const {groups,...value}=health;return {...value,...groups?{conversations:groups.map(({groupId,...entry})=>({conversationId:groupId,...entry}))}:{}}},get accountDirectory(){return accountPolicy.mode==='private'?privateHome:undefined}}
+    if(!readyBound||context?.channelId!==channelId||context.type!=='chat-room'||context.conversationId!==config.binding.conversationId)return
+    return {channelId,conversationId:context.conversationId,senderId:config.binding.actorId,querySendStatus:id=>adapter.querySendStatus(id)}
+  }}),get health(){const {groups,...value}=health,deferredCount=ingressStore?.snapshot().deferredMessages?.length??0;return {...value,deferredCount,...deferredCount&&deferredReadError?{deferredReadError}:{},...groups?{conversations:groups.map(({groupId,...entry})=>({conversationId:groupId,...entry}))}:{}}},get accountDirectory(){return accountPolicy.mode==='private'?privateHome:undefined}}
   unregisterPlugin=ctx.channels.registerPlugin(channelId,plugin)
   stopObserver=ctx.channels.registerOperationObserver(channelId,plugin);stopOperator=config.operatorNotifications===true?ctx.channels.registerOperatorNotifications(channelId,notifications):undefined
   plugin.stopAndDrain=stop
@@ -273,9 +315,9 @@ export async function apply(ctx,config={},dependencies={}){
     const {paused,pausedAt,recoveryFromAt}=ingressStore.snapshot(),ingressState={paused,pausedAt,recoveryFromAt}
     const ingressFrom=()=>{
       const state=ingressStore.snapshot()
-      return [state.firstStartedAt,state.recoveryFromAt,health.groups?.[0]?.backfill?.recoveryFromAt].filter(value=>value!==undefined).sort((left,right)=>Date.parse(left)-Date.parse(right))[0]
+      return [state.recoveryFromAt,health.groups?.[0]?.backfill?.recoveryFromAt].filter(value=>value!==undefined).sort((left,right)=>Date.parse(left)-Date.parse(right))[0]
     }
-    stopBridge=startDwsBridge({privatePeerIds:privatePeers,operatorRepliesEnabled:config.operatorNotifications===true,runtime:facade,adapter:dingtalkIngressAdapter(adapter,config,{runner,getFromAt:ingressFrom,getDeferredMessages:()=>ingressStore.snapshot().deferredMessages??[],onRangeRead:range=>{lastRange=range},onRecall:acceptHistoryMessage,beforeRangeRead:recoverRecalls}),logger:{info:()=>{},warn:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED'),error:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED')},humanUserId:config.humanUserId,currentDwsUserName:config.currentUserName,ingressState,saveIngressState:state=>ingressStore.saveBridgeState(state).catch(error=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'};throw error}),onHealthChange:value=>{health={...value,configured:true,state:closed?'stopped':cursorError?'error':value.ingress?.paused?'paused':value.ingress?.recovering?'recovering':'listening',...cursorError?{healthy:false,lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}:{}};if(lastRange&&value.groups?.[0]?.backfill?.state==='ok'&&!value.groups[0].backfill.inProgress){const range=lastRange;ingressStore.completedRange(range).catch(()=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}})}}})
+    stopBridge=startDwsBridge({privatePeerIds:privatePeers,operatorRepliesEnabled:config.operatorNotifications===true,runtime:facade,adapter:dingtalkIngressAdapter(adapter,config,{runner,getFromAt:ingressFrom,retryDeferredIngress,completeGroupRange:(_id,range)=>writeCursor(ingressStore.completedRange(range)),onRecall:acceptHistoryMessage,beforeRangeRead:recoverRecalls}),logger:{info:()=>{},warn:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED'),error:()=>ctx.logger.warn('DWS_CHANNEL_IO_FAILED')},humanUserId:config.humanUserId,currentDwsUserName:config.currentUserName,ingressState,saveIngressState:state=>ingressStore.saveBridgeState(state).catch(error=>{cursorError=true;health={...health,healthy:false,state:'error',lastError:'DINGTALK_CURSOR_PERSIST_FAILED'};throw error}),onHealthChange:value=>{health={...value,configured:true,state:closed?'stopped':cursorError?'error':value.ingress?.paused?'paused':value.ingress?.recovering?'recovering':'listening',...cursorError?{healthy:false,lastError:'DINGTALK_CURSOR_PERSIST_FAILED'}:{}}}})
     // Shutdown also writes a paused checkpoint. Only the Host-selected user
     // preference keeps a new process paused; ordinary restarts resume recovery.
     // Explicit operator-approval subscriptions remain a separate control path.

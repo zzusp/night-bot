@@ -75,7 +75,7 @@ channel conversation and authenticated sender for that conversion.
 
 - 同一原生消息 ID 的差异由插件串行处理，用绑定 profile 精确回读当前详情，核对会话与原作者后递增 `messageVersion`。来源保留旧正文、版本与审计；并发重复和迟到旧事件不会覆盖当前正文或重复生成修订。可证明的附件/引用展示补全沿原冻结指纹去重，不把任意变化当重复。
 - 群聊、单聊显式订阅 `message,recall`。只有带原作者、撤回人、消息 ID 和有效时间的绑定会话原生 recall 才生成中立 `retracted` 墓碑。同一事务撤销该消息各版本来源授权，墓碑不进入模型分诊；旧正文再次补拉不复活。原版本、Pi 历史、任务与已发生的外部效果保留，不自动取消任务或回滚操作。
-- 原 `ingress.json` 的 `pendingRecalls` 只持久化待完成撤回的原生身份与时间，不复制正文；它与 `deferredMessages` 一起固定恢复下界，阻止旧桥接快照覆盖及完整空页提前推进。上下文先提交、来源未提交的中断窗口在冷启动或既有范围补拉前补齐，正式接纳墓碑后才解除对应暂缓项。
+- 原 `ingress.json` 的 `pendingRecalls` 只持久化待完成撤回的原生身份与时间，不复制正文；待写入墓碑的撤回固定恢复下界；只有因通知身份未决而已进入单条待核对队列的撤回，才与普通逐条暂缓一样不堵住历史范围。上下文先提交、来源未提交的中断窗口在冷启动或既有范围补拉前补齐，正式接纳墓碑后才解除对应暂缓项。
 - 历史缺项、空页、not-found 均不证明撤回。详情读取失败、作者/会话不符或历史不完整时保留原记录和恢复界，不清游标、不手工改账本。离线期间未收到的撤回没有可靠发现保证；不声称从消息缺失自动推断。
 - 已撤回或被修订的来源不能开启新回复或安排；已经 `starting` / `unknown` 的外发继续原独立回读，不因编辑或撤回重发。编辑、撤回都不赋予新业务权限。
 
@@ -153,15 +153,15 @@ Router 的业务工具按实际职责区分：
 
 这些是应用授权的模型工具，不是公开 HTTP 接口。动作的稳定 `operationId` 按 conversation 和业务键派生，不依赖本次 Pi sessionId；跨 generation 仍按原收据去重。当前 generation、来源版本、真实作者和任务权限均在 Host 校验，模型不能自选其它身份。
 
-`resident_router_reply` 可用 `recipientActorIds` 明确选择同一会话中有受信身份依据的一人或多人，值为 Host namespace 内部 actor 标识，`[]` 表示不提及。渠道插件负责将 Host 受众映射为原生 sender/mention/quote 字段；模型和显示名不能直接指定 vendor open ID。不得按姓名猜 ID，也不默认通知所有参与人；Router 不开放 `atAll`。指定受众时默认使用普通 Markdown，不隐式引用或额外 @ 原作者。受众与正文、来源、文件选择一并冻结在 `replyRequest`，相同 operationId 改换受众明确冲突，不能变成新一轮发送。
+`resident_router_reply` 可用 `recipientActorIds` 明确选择同一会话中有受信身份依据的一人或多人，值为 Host namespace 内部 actor 标识，`[]` 表示不提及。渠道插件负责将 Host 受众映射为原生 sender/mention/quote 字段；模型和显示名不能直接指定 vendor open ID。不得按姓名猜 ID，也不默认通知所有参与人；Router 不开放 `atAll`。支持原生引用的渠道中，新 Router 进展和结果回复（含附件的父说明）默认引用本次已验证的原消息；若明确选择的受众不含原作者（含 `[]`），发送普通消息，不隐式通知原作者。省略受众时，默认引用原消息并以原作者为受众；不支持原生引用的渠道维持原规则。受众与正文、来源、文件选择一并冻结在 `replyRequest`，相同 operationId 改换受众明确冲突，不能变成新一轮发送。
 
-`replyToSource` 是仅接受 `true` 的可选公开字段，不接受 `false`；只在原请求明确要求原生引用本次原消息时使用。Host 从已校验的本次 `sourceId` / `messageVersion` 绑定原消息和真实作者，不开放另选引用消息/作者的参数。`recipientActorIds` 必须显式包含该原作者；缺省、空数组或缺作者均拒绝，其余受众仍须是同会话受信成员。引用目标、作者及受众按现有 `replyRequest` 冻结与去重，省略 `replyToSource` 时保留默认行为。
+`replyToSource` 是仅接受 `true` 的可选公开字段，不接受 `false`；只在原请求明确要求原生引用本次原消息时使用。Host 从已校验的本次 `sourceId` / `messageVersion` 绑定原消息和真实作者，不开放另选引用消息/作者的参数。`recipientActorIds` 必须显式包含该原作者；缺省、空数组或缺作者均拒绝，其余受众仍须是同会话受信成员。引用目标、作者及受众按现有 `replyRequest` 冻结与去重；旧冻结回复重试不会补加引用或重发。
 
 ## Router 最终文件交付
 
 `resident_router_reply` 的可选 `taskDelivery` 为 `{taskId, requirementRevision, artifactIds}`。Router 先经 `resident_task_query` 读取任务 `completion.result.artifactFiles`，再显式选择该任务当前完成版本的 1–20 个不同冻结 artifactId；不接受任意路径或模型拼出的 descriptor，也不默认附上所有产物。Host 校验原任务来源、当前要求版本、完整 descriptor/manifest 与原 caption；源已撤权/过期、任务不再完成或恢复仍 held 时拒绝。
 
-最终说明与平台到期回复复用现有通知格式，保留原文件名和 caption。`replyToSource:true` 可与 `taskDelivery` 组合，但仅引用父说明；文件子通知不继承引用，不宣称文件消息自身具备原生 quote/@ 能力。任务交付写入属于该 task 的 `status` 父通知及文件子通知，先确认最终说明送达，再依原顺序发送文件；冻结、`accepted` 或 Router settle 均不表示送达，unknown 先回读，不自动重发。归档包含该任务自己的父子通知，不带整群上下文；已归档任务只能继续已有合法未送达通知，不能重新创建交付，档案恢复仍保持 hold。未指定 `taskDelivery` 且未显式选择受众时，普通文本回复规则不变。
+最终说明与平台到期回复复用现有通知格式，保留原文件名和 caption。`taskDelivery` 只会给父说明绑定引用；文件子通知不继承引用，不宣称文件消息自身具备原生 quote/@ 能力。任务交付写入属于该 task 的 `status` 父通知及文件子通知，先确认最终说明送达，再依原顺序发送文件；冻结、`accepted` 或 Router settle 均不表示送达，unknown 先回读，不自动重发。归档包含该任务自己的父子通知，不带整群上下文；已归档任务只能继续已有合法未送达通知，不能重新创建交付，档案恢复仍保持 hold。原生引用和结构化提及是不同字段；引用可能由平台隐式通知原作者。
 
 选择 `taskDelivery` 时，Host 在冻结正文和父子通知之前校验所选 taskId，内部编号不得出现在公开正文；失败直接返回 Router 工具，由模型订正正文后继续，不产生半条交付。发送通道仍保留安全兜底。本地正文校验若明确在外部发送前拒绝，记录为 `failed`、`knownNotSent:true`、`retryable:false`，不回读、不重试。旧版误记的 `unknown` 仅在单次发送、无 ACK/receipt、发送许可与 payloadDigest/fence 全匹配且原正文可重现同一精确本地错误时结清失败；网络异常、参数不匹配或已有接纳证据仍保持未知。此结清不改写冻结正文、不重跑已完成任务，也不放行依赖它的文件子件。
 
@@ -274,11 +274,9 @@ Windows 默认 `dingtalk_account_mode:"system"`，使用当前 OS 用户受 DPAP
 
 群消息不会仅因发送者与当前账号相同、显示名相同或带通用 DWS 标记就被视为本实例回声；Host 使用同 conversation 下精确消息 ID 与持久 outbox / send ACK / receipt 识别自己的发送。对于 Router/任务队列的通知，关闭 `dingtalk_operator_notifications` 仍使用该 DWS 插件自身 adapter 查询发送身份，经持久渠道 context 将内部 conversation 映射为原生会话并精确核对，再在消息事实和来源持久登记之前过滤自己的消息；身份回读不改变附件交付状态，也不替代文件字节验证。
 
-同会话队列通知仍为 `starting` / `unknown` 且身份未决时，不能排除回声的 typed 入站以 `CHANNEL_NOTIFICATION_IDENTITY_PENDING` 暂缓，不能把超时、查询失败或未确认当作真人来源。bridge 沿既有持久 `recoveryFromAt` 补读水位恢复，水位写入失败保留错误，不靠注入或重放业务修补。本次 resolver 只接队列通知；原 native operation 的 send/status 分支未统一 typed scope/query 接线，不据此外推 shell 原生发送的通用回声能力或验收。有界等待只限制调用方等待时间，当前 observer 关闭不 join/cancel 在途状态查询，底层 CLI 仍可运行至 runner 自身超时；runner 超时后也未等待 child 的真实退出，不能从 bridge 消息/水位排空外推全部旁路进程已排空。正常退出只按本次实际可观察实例及资源逐项核实。上述为实现合同，不代表现场已通过；当前 DWS/profile 是否推送同账号在单成员群中的原始消息仍须实测。`dingtalk_listen:false` 下的 `acceptHistoryMessage`、SDK 注入和 fake 仅验证本地链路；真实订阅、原始入站、群内交付/回读和复盘须分项留证。
+同会话队列通知为 `starting` / `unknown` 且消息身份未决时，当前消息的明确 OpenDingTalkId 与已绑定发信身份不同时可直接接纳。DWS 的通用 `senderId` 投影可能来自不同身份命名空间；仅有该值、同账号、同名或通用 DWS 标记均不能证明不是回声。仍无法排除回声的消息与直接引用已知待核对消息的来源，在同一 `ingress.json` 中以消息 ID、发生时间和必要的引用 ID 占位，不保存正文，不登记为来源。原通知的状态探针由原观察器持有和排空，不占用 typed 入站串行队列；未知外发仍可见，不重发。此改动针对 Router/任务队列通知，不扩展原生 shell 外发识别或旁路 CLI 的排空承诺。
 
-钉钉接入状态区分恢复与日常轮询：首次历史补拉、监听未 ready、持久恢复界或 `recoveryRequired` 未解除时保留 `recovering`；已有成功历史且无恢复缺口的普通增量拉取，即使 `inProgress` 也保持 `receiving`。补拉失败仍报告错误，供应商完整性、身份校验、Host 接纳和耐久消费条件不变。
-
-已认证且因通知身份未决而暂缓的消息，须在该渠道原有串行 ingress 游标文件中持久保存消息 ID 与发生时间，不保存正文。该记录固定补读恢复下界；只有正式入站处理成功或经持久收据确认精确自通知回声后，才解除对应暂缓标识。供应商即使返回 `complete`，只要结果缺少已知暂缓消息（包括空页），仍以 `DINGTALK_DEFERRED_HISTORY_INCOMPLETE` 拒绝，不清恢复界或推进补拉完成水位。旧 bridge 快照只更新其暂停/恢复字段，不能覆盖较新的消费水位或暂缓消息记录。继续使用既有 timer、串行落盘、drain 和去重，不另建重放通道；持久化失败保留错误。此为当前冷恢复实现合同，修复后的真实补拉与无重放结果仍须由本轮对应版本验收，历史 PASS 不替代。
+范围补拉和逐条核对分别推进。范围完整且页内消息已接纳、确认为回声、去重或耐久暂缓后，提交 `backfillThroughAt`。冷启动保留旧文件及旧恢复界，之后增量从完整水位重叠读取。单条待核对复用已有补拉节奏，按同绑定 profile、会话及精确消息 ID 重新读取；缺失、错误或超时不删除记录也不证明送达、未发或撤回。单条失败单独记录在插件诊断（`deferredCount` / `deferredReadError`）及日志。只有正式接纳、确认精确回声或完成对应撤回时才清除；取消接收仍排空已启动的读取。身份未知和候选记录不影响收信连通判断；首次补拉、监听未 ready、完整性失败、来源冲突以及游标写入失败仍显式报告，不能以已接纳代替分诊终态。
 
 `test/pi-channel-plugin.test.js` covers disabled/registered modes and the actual
 standard application without any channel installed. [第八轮报告](acceptance/resident-conversation-routing/round-8.md)

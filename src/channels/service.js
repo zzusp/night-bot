@@ -132,7 +132,7 @@ export default class Channels extends Service {
     const invokeAll=(method,args,selected=[...active.values()])=>handled(Promise.all(selected.map(entry=>invoke(entry,method,args))))
     return {
       recover:()=>handled(Promise.all([...active.values()].map(entry=>entry.ready))),
-      beforeIngress:id=>invokeAll('beforeIngress',[id]),
+      beforeIngress:(id,ingress)=>invokeAll('beforeIngress',ingress?[id,ingress]:[id]),
       notificationChanged:notification=>invokeAll('notificationChanged',[notification]),
       start:(id,...args)=>{
         if(closed)return Promise.resolve()
@@ -200,10 +200,10 @@ export default class Channels extends Service {
   canDeliver(notification){const context=this.groupContext(notification.payload?.conversationId);if(!context)return true;if(this.lifecycleHolds?.has(context.channelId))return false;const transport=this.transports.get(context.channelId);return !!transport&&(!transport.capabilities?.conversationTypes||transport.capabilities.conversationTypes.includes(context.type))&&(!notification.payload?.artifact||typeof transport.sendFile==='function'&&(!transport.capabilities?.files||transport.capabilities.files.includes(context.type)))&&(['unknown','starting'].includes(notification.state)||!transport.canSend||transport.canSend(notification))}
   async transportCall(method,notification,...args){const envelope=this.deliveryEnvelope(notification),transport=envelope&&this.transports.get(envelope.channelId);if(!transport)throw failure('CHANNEL_TRANSPORT_UNAVAILABLE');if(typeof transport[method]!=='function')throw failure('CHANNEL_CAPABILITY_UNAVAILABLE');this.assertLifecycle(envelope.channelId,{read:!['send','sendFile'].includes(method)});return this.trackChannelCall(envelope.channelId,()=>{this.assertLifecycle(envelope.channelId,{read:!['send','sendFile'].includes(method)});return transport[method](envelope,notification,...args)})}
   identity(input){const e=envelopeSchema.parse(input),principal='channel-actor-'+hash(JSON.stringify([e.channelId,e.senderId])),conversation=hash(JSON.stringify([e.type,e.channelId,e.conversationId,...e.type==='chat'?[e.senderId]:[]]));return {envelope:e,sessionId:'conversation-'+conversation,workspace:join(this.host.runtimePaths.workspaces,'conversations',conversation),binding:{actorId:e.type==='chat'?principal:'channel-room-actor-'+hash(JSON.stringify([e.channelId,e.conversationId])),...e.type==='chat-room'?{groupId:'channel-room-'+hash(JSON.stringify([e.channelId,e.conversationId])),groupWrite:true}:{}},principal}}
-  receive(input){
+  receive(input,admission){
     if(this.closed)throw failure('CHANNELS_CLOSED')
     this.assertInputTarget(input)
-    if(this.ingress)return this.ingress(input)
+    if(this.ingress)return this.ingress(input,admission)
     const identity=this.identity(input),previous=this.tails.get(identity.sessionId)??Promise.resolve(),work=previous.catch(()=>{}).then(async()=>{await this.registerConversation(identity.envelope);return this.deliver(identity)});this.tails.set(identity.sessionId,work);work.finally(()=>{if(this.tails.get(identity.sessionId)===work)this.tails.delete(identity.sessionId)}).catch(()=>{});return work
   }
   async deliver({envelope,sessionId,workspace,binding,principal}){
