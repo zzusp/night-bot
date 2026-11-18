@@ -71,7 +71,7 @@ test('one task preserves its effect through a held missing result and explicit c
   const nextHost=await createHost(nextConfig,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});const next=await serviceFor({host:nextHost,config:nextConfig},false);try{await next.service.recover();await nextHost.ctx.reflection.whenIdle();assert.equal((await next.store.query({kind:'task.get',taskId:task.taskId})).status,'completed');const header=(await nextHost.ctx.sessionPersistence.stat(sessionId)).header;assert.ok(header.cwd.startsWith(relocated));assert.equal(await readFile(join(header.cwd,'work/proof.txt'),'utf8'),'single-session-proof');assert.equal(reviews,1)}finally{await next.close();await nextHost.close()}
 })
 
-test('the official task request gives execution ownership of investigation and limits questions to real blockers',{timeout:nativeTestTimeout(15000)},async t=>{
+test('the official task request keeps execution focused on the objective and limits questions to real blockers',{timeout:nativeTestTimeout(15000)},async t=>{
   t=cleanupContext(t)
   let h;t.after(()=>h?.close())
   const f=await memoryHost(t,body=>requestTools(body).includes('task_result')?result:undefined)
@@ -81,6 +81,9 @@ test('the official task request gives execution ownership of investigation and l
   const request=f.requests.find(body=>requestTools(body).includes('task_result'))
   assert.ok(request,'execution must reach the local provider with task_result')
   const prompt=request.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
+  assert.match(prompt,/advances a required outcome, verifies it, or removes a blocker/)
+  assert.match(prompt,/resolving it can change a necessary decision or establish a required finding/)
+  assert.match(prompt,/Once the evidence supports the next authorized step, take it/)
   assert.match(prompt,/Do not rely on the Router to direct the investigation or decide when to ask for help/)
   assert.match(prompt,/start from the original report and supplied materials/)
   assert.match(prompt,/Keep unverified hypotheses separate from findings/)

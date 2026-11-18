@@ -10,6 +10,10 @@ role is an additional task execution session. Topic is no longer an active routi
 entity. A retrospective is a separate tool-free
 model request after completion, not another execution session.
 
+## 目标推进
+
+执行会话按当前任务要求选下一步：推进必要结果、验证结果或解除阻塞。只追查会改变必要决策或影响必需结论的未知；证据够用就执行下一步。任务要求满足且必要结果已验证后，提交结果，不延伸到无关问题。
+
 ## 排查和补问
 
 执行会话负责取证、验证假设和决定是否补问。排查先读原始反馈与已有材料，沿最具体的现象或报错核对现场环境、版本和调用路径；区分已证事实、待验证假设和取证限制。某个工具或访问路径失败不代表用户漏报，也不应中断其他可继续的授权工作。
