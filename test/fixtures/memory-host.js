@@ -48,5 +48,5 @@ export function scriptedSkillGeneration(body){
  if(!body.messages.some(message=>message.role==='tool'))return {tool:'skill',args:{name:'skill-creator'}}
  const content=body.messages.find(message=>message.role==='user').content
  const input=JSON.parse(typeof content==='string'?content:content.map(part=>part.text??'').join(''))
- return {text:JSON.stringify({description:input.candidate.applicability,body:input.candidate.steps.map((step,i)=>(i+1)+'. '+step).join(String.fromCharCode(10))})}
+ return {text:JSON.stringify({description:input.candidate.applicability,body:input.candidate.guidance??input.candidate.steps.join(String.fromCharCode(10))})}
 }
