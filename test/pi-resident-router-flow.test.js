@@ -1,4 +1,5 @@
 import test from 'node:test'
+import {DatabaseSync} from 'node:sqlite'
 import assert from 'node:assert/strict'
 import {createServer,request} from 'node:http'
 import {readFile,writeFile} from 'node:fs/promises'
@@ -1622,4 +1623,89 @@ for(const variant of ['other-tool','wrong-events','stale-source'])test('cold Rou
  assert.equal(stored.entries.filter(e=>e.type==='message'&&e.message.role==='toolResult'&&e.message.toolCallId===call.id).length,0)
  assert((await readFile(file)).subarray(0,prefix.length).equals(prefix))
  assert.equal((await h.query('router.inbox',{conversationId:row.id})).length,1)
+})
+
+for(const fault of [null,'missing-row','missing-receipt','changed-packet','unknown-effect'])test('partially settled 26-event Router batch: '+(fault??'safe replacement drains six remaining events and a new query'),{timeout:nativeTestTimeout(60000)},async t=>{
+  let step=0,recovering=false,originalIds=[],replacementIds=[]
+  const h=await residentRouterHost(t,body=>{
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:false}))
+    const summary=handoff(body);if(summary)return summary
+    if(!requestTools(body).includes('resident_router_settle'))return {text:'No work'}
+    const input=router(body)
+    if(!recovering){
+      if(step++===0){originalIds=input.events.map(event=>event.id);assert.equal(originalIds.length,26);return {tool:'resident_router_settle',args:{operationId:'partial-twenty',eventIds:originalIds.slice(0,20)}}}
+      if(step===2)return {tool:'resident_task_query',args:{detail:'index'}}
+      return {text:'Interrupted before remaining events were handled'}
+    }
+    replacementIds=input.events.map(event=>event.id)
+    return settle(body,input)
+  })
+  const message=channelMessage('partial-register'),conversationId=h.host.ctx.channels.identity(message).sessionId
+  await h.receive(message);await h.service.whenIdle()
+  let seq=0
+  const command=(kind,args)=>h.store.command({id:'partial-fixture-'+(++seq),kind,args})
+  const taskId='partial-ledger-task'
+  await command('task.create',{taskId,conversationId,groupId:conversationId,ownerActorId:'alice',request:'Original task'})
+  for(let i=0;i<25;i++)await command('task.supplement',{taskId,messageId:'supplement-'+i,text:'Evidence '+i,expectedRequirementRevision:1,expectedControlRevision:1})
+  await command('task.control',{taskId,control:'paused',expectedControlRevision:1})
+  assert.equal(await h.query('router.inbox-count',{conversationId}),26)
+  await h.restart();await h.service.whenIdle()
+  assert.equal(await h.query('router.inbox-count',{conversationId}),6)
+  const row=await h.query('router.get',{conversationId}),dbFile=join(h.host.ctx.runtimePaths.state,'tasks.sqlite'),file=join(h.host.ctx.runtimePaths.state,'sessions',piJournalFilename(row.activeSessionId))
+  await command('source.record-direct',{source:{sourceId:'partial-query',groupId:conversationId,messageId:'new-query',actorId:'alice',channel:'chat-room',version:1,text:'What is the progress?',resources:[]},conversation:{conversationId}})
+  await command('triage.commit',{conversationId,dispositions:[{sourceId:'partial-query',messageVersion:1,needsHandling:true,reason:'Status query'}]})
+  assert.equal(await h.query('router.inbox-count',{conversationId}),7)
+  const inspectionBefore=await readFile(file,'utf8'),inspectionRequests=h.requests.length
+  await assert.rejects(h.service.inspectRouterBatch({conversationId}),{code:'ROUTER_RESUME_BATCH_STALE'})
+  assert.equal(await readFile(file,'utf8'),inspectionBefore)
+  assert.equal(h.requests.length,inspectionRequests,'read-only inspection cannot rotate or infer')
+  await h.close();await h.host.close()
+  const lines=(await readFile(file,'utf8')).trimEnd().split('\n'),entries=lines.slice(1).map(line=>JSON.parse(line))
+  const queryIndex=entries.findIndex(entry=>entry.message?.role==='toolResult'&&entry.message.toolName==='resident_task_query'&&!entry.message.isError)
+  assert.ok(queryIndex>=0)
+  const commitIndex=fault==='unknown-effect'
+    ?entries.findLastIndex((entry,i)=>i<queryIndex&&entry.customType==='night.commit')
+    :entries.findIndex((entry,i)=>i>queryIndex&&entry.customType==='night.commit')
+  assert.ok(commitIndex>=0)
+  const prefix=lines.slice(0,commitIndex+2).join('\n')+'\n'
+  await writeFile(file,prefix)
+  if(fault&&fault!=='unknown-effect'){
+    const db=new DatabaseSync(dbFile)
+    try{
+      if(fault==='missing-row')db.prepare('DELETE FROM dynamic_router_inbox WHERE id=?').run(originalIds[0])
+      if(fault==='missing-receipt')db.prepare('DELETE FROM dynamic_router_actions').run()
+      if(fault==='changed-packet')db.prepare("UPDATE dynamic_router_inbox SET body=json_set(body,'$.createdAt','changed') WHERE id=?").run(originalIds[0])
+    }finally{db.close()}
+  }
+  recovering=true
+  await h.restart();await h.service.whenIdle()
+  if(fault){
+    assert.equal(await h.query('router.inbox-count',{conversationId}),7)
+    assert.equal((await h.query('router.get',{conversationId})).generation,row.generation)
+    assert.deepEqual(replacementIds,[],'unsafe checkpoint must never reach a new model request')
+    assert.equal(await readFile(file,'utf8'),prefix)
+    const requests=h.requests.length
+    await assert.rejects(h.service.inspectRouterBatch({conversationId}))
+    assert.equal(h.requests.length,requests,'inspection remains read-only')
+    assert.equal(await readFile(file,'utf8'),prefix)
+    return
+  }
+  assert.equal(await h.query('router.inbox-count',{conversationId}),0)
+  assert.deepEqual(replacementIds.slice(0,6),originalIds.slice(20))
+  assert.equal(replacementIds.length,7)
+  assert.ok(!replacementIds.some(id=>originalIds.slice(0,20).includes(id)))
+  assert.equal((await h.query('router.get',{conversationId})).generation,row.generation+1)
+  assert.equal((await h.query('task.get',{taskId})).control,'paused')
+  assert.equal(await readFile(file,'utf8'),prefix,'old journal is not replayed or rewritten')
+  assert.equal(h.sent.length,0)
+  const settled=await h.query('router.batch-events',{conversationId,eventIds:originalIds})
+  assert.ok(settled.every(event=>event.state==='consumed'))
+  assert.ok(settled.slice(0,20).every(event=>event.processedGeneration===row.generation))
+  assert.ok(settled.slice(20).every(event=>event.processedGeneration===row.generation+1))
+  assert.equal(new Set(settled.map(event=>event.processedCursor)).size,26)
+  const final=await h.query('router.get',{conversationId}),requests=h.requests.length
+  assert.equal(final.cursor,27)
+  await h.restart();await h.service.whenIdle()
+  assert.equal(h.requests.length,requests,'restart must not replay any consumed event')
+  assert.deepEqual(await h.query('router.get',{conversationId}),final)
 })

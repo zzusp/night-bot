@@ -58,6 +58,10 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     const value={decisionId:row.id,conversationId:row.conversationId,sourceId:row.sourceId,messageVersion:row.messageVersion,...triageHandoff(decision.handoff)}
     return routerTriageConclusion({...event,source,triageConclusion:value})
   }
+  function inboxEvent(row){
+    const source=row.sourceId?read('sources',row.sourceId):undefined,conclusion=triageConclusion(row,source)
+    return {...row,source,triageReply:row.triageReplyId?read('notifications',row.triageReplyId):undefined,taskEvent:row.taskEventId?readEvent(row.taskEventId):undefined,...conclusion?{triageConclusion:conclusion}:{}}
+  }
   function dependenciesReady(task) {
     return rows('dependencies').filter(row => row.taskId === task.taskId).every(row => {
       const prior = read('tasks',row.prerequisiteTaskId,true), authorization = read('sources',row.authorizationSourceId,true)
@@ -383,7 +387,12 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(q.kind==='router.list')return rows('conversations')
     if(q.kind==='router.operator.request'){const event=rows('router_inbox').find(row=>row.conversationId===q.conversationId&&row.kind==='operator.message'&&row.operator?.requestId===q.requestId&&row.operator.actorId===q.actorId);return event?{requestId:q.requestId,eventId:event.id,status:'accepted',webOnly:true}:null}
     if(q.kind==='router.pending-conversations')return [...new Set([...rows('router_inbox').filter(row=>row.state==='pending').map(row=>row.conversationId),...rows('conversations').filter(row=>row.phase!=='active').map(row=>row.id)])]
-    if(q.kind==='router.inbox')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').slice(0,bounded(q.limit,30)).map(row=>{const source=row.sourceId?read('sources',row.sourceId):undefined,conclusion=triageConclusion(row,source);return {...row,source,triageReply:row.triageReplyId?read('notifications',row.triageReplyId):undefined,taskEvent:row.taskEventId?readEvent(row.taskEventId):undefined,...conclusion?{triageConclusion:conclusion}:{}}})
+    if(q.kind==='router.batch-events'){
+      required(q.conversationId)
+      if(!Array.isArray(q.eventIds)||!q.eventIds.length||q.eventIds.length>30||new Set(q.eventIds).size!==q.eventIds.length)fail('ROUTER_ARGUMENT_INVALID')
+      return q.eventIds.map(id=>{const row=read('router_inbox',required(id),true);if(!row||row.conversationId!==q.conversationId)fail('ROUTER_EVENT_SCOPE');return inboxEvent(row)})
+    }
+    if(q.kind==='router.inbox')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').slice(0,bounded(q.limit,30)).map(inboxEvent)
     if(q.kind==='router.pending-completion')return rows('router_inbox').some(row=>row.conversationId===q.conversationId&&row.state==='pending'&&row.taskEventId&&readEvent(row.taskEventId)?.kind==='task.completed')
     if(q.kind==='router.inbox-count')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').length
     if(q.kind==='router.dependencies')return rows('dependencies').filter(row=>(!q.conversationId||row.conversationId===q.conversationId)&&(!q.taskId||row.taskId===q.taskId||row.prerequisiteTaskId===q.taskId))
