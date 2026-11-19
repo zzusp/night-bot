@@ -96,9 +96,8 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
     return result
    },
    async resumeRouterBatch(packet,beforeStart,afterClaim,supplements=[]){
-    const eventIds=[...new Set([packet,...supplements].flatMap(input=>input.source.eventIds))]
-    const content='Host 请求继续原已接纳的 Router 批次。沿原历史与当前权限处理未结事件；先统筹后续真实输入中的取消、延期和变更，再决定动作。不执行中断回复中未派发的旧生成调用，不重放已完成动作、不重跑任务。必要动作有持久收据后，本轮结束前必须调用 resident_router_settle 结清下列事件，文字答复不消费事件；工具拒绝时依据真实反馈处理，不伪造成功。学习维护失败如实保留失败，不撤销已完成交付或重开业务任务。本控制消息不是用户来源或新授权。\nRouter 续办检查点：'+JSON.stringify({eventIds})
-    const claimContent='Host 已领取原 Router 失败回合的显式续办；本控制记录不提供新来源或授权。'
+    const content='继续处理未完成的事项'
+    const claimContent=''
     await background?.beforeInput([...supplements,{content:claimContent},{content}])
     tools.beginTurn()
     await bridge.refreshResources();await bridge.reloadResources()

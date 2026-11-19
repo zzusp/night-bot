@@ -1435,7 +1435,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       }), attempted)
     }
   }
-  function recordRouterFailure(id,error){failures.set('router:'+id,{id:'router:'+id,conversationId:id,code:error.code??error.message})}
+  function recordRouterFailure(id,error){failures.set('router:'+id,{id:'router:'+id,conversationId:id,code:error.recoveryReason??error.code??error.message})}
   function syncRouterFailures(){
     for(const [id,error]of residentRouter.errors)recordRouterFailure(id,error)
     for(const [id,error]of failures)if(id==='router:'+error.conversationId&&!residentRouter.errors.has(error.conversationId))failures.delete(id)

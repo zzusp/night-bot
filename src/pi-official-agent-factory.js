@@ -216,9 +216,14 @@ export class OfficialAgentFactory {
     if(claim===undefined&&claims.length)throw fail('PI_ROUTER_RESUME_CHECKPOINT_USED')
     const snapshot=store.snapshot(),tail=claim===undefined?-1:-2
     if(claim!==undefined&&(claims.length!==1||!isDeepStrictEqual(claims[0].details,claim)||messages.at(-1)?.id!==claims[0].id||entries.length!==snapshot.nativeEntryCount))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
-    if(failure?.type!=='message'||messages.at(tail)?.id!==failedEntryId||branch.indexOf(input)>=branch.indexOf(failure))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+    const inputOnly=failure?.id===input.id&&failure.type==='custom_message'
+    if((failure?.type!=='message'&&!inputOnly)||messages.at(tail)?.id!==failedEntryId||branch.indexOf(input)>branch.indexOf(failure))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
     const terminal=failure.message
-    if(terminal.role==='toolResult'){
+    if(inputOnly){
+     // Cold death before the first response: the durable input is the checkpoint,
+     // never a fabricated aborted assistant message or a replayed business input.
+     if(entries.length!==snapshot.nativeEntryCount||branch.at(-1)?.id!==entries.at(-1)?.id)throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+    }else if(terminal.role==='toolResult'){
      // 只在已提交的只读调用批次之后开启新轮；内存尾部不能成为检查点。
      if(entries.length!==snapshot.nativeEntryCount||branch.at(-1)?.id!==entries.at(-1)?.id)throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
      const through=messages.slice(0,claim===undefined?messages.length:-1)

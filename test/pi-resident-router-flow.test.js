@@ -609,7 +609,8 @@ for(const outcome of ['complete','stopped','stopped-failed-tool','newer-input','
     if(requestTools(body).includes('resident_router_settle')){
       if(continuationPacket){
         continuationAdmissions.push(await h.host.ctx.agents.get(continuationSessionId).admission.current())
-        assert.deepEqual(requestEnvelope(body,'Router 续办检查点：'),{eventIds:continuationPacket.source.eventIds})
+        assert.equal(requestEnvelope(body,'Router 续办检查点：'),undefined)
+        assert.ok(requestText(body).includes('继续处理未完成的事项'))
       }
       if(failModel){
         if(outcome==='stopped-failed-tool')return body.messages.at(-1)?.role==='tool'?{text:''}:{tool:'resident_task_query',args:{taskId:'not-a-task-in-this-conversation'}}
@@ -784,7 +785,8 @@ test('operator recovery binds the entire inbox and includes a newer cancellation
       if(failing)return {error:'TEST_RECOVERY_AUTH_FAILURE'}
       const inputs=requestText(body).flatMap(text=>text.split('\n')).filter(line=>line.startsWith('Router 请求：')).map(line=>JSON.parse(line.slice('Router 请求：'.length)))
       const events=[...new Map(inputs.flatMap(input=>input.events).map(event=>[event.id,event])).values()]
-      assert.deepEqual(requestEnvelope(body,'Router 续办检查点：'),{eventIds:events.map(event=>event.id)})
+      assert.equal(requestEnvelope(body,'Router 续办检查点：'),undefined)
+      assert.ok(requestText(body).includes('继续处理未完成的事项'))
       observed=events
       return settle(body,{events})
     }
@@ -813,7 +815,7 @@ test('operator recovery binds the entire inbox and includes a newer cancellation
   assert.equal(h.sent.length,0)
 })
 
-test('operator resumes a committed Router query result without repeating the prior delivery',{timeout:nativeTestTimeout(60000)},async t=>{
+test('cold recovery resumes a committed Router query result with newer cancellation without repeating the prior delivery',{timeout:nativeTestTimeout(60000)},async t=>{
   let initialStep=0,recovering=false,combined
   const h=await residentRouterHost(t,body=>{
     if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
@@ -830,7 +832,8 @@ test('operator resumes a committed Router query result without repeating the pri
     if(input.events.some(event=>event.source?.messageId==='next-after-query-resume'))return settle(body,input)
     const packets=requestText(body).flatMap(text=>text.split('\n')).filter(line=>line.startsWith('Router 请求：')).map(line=>JSON.parse(line.slice('Router 请求：'.length)))
     combined=[...new Map(packets.flatMap(packet=>packet.events).map(event=>[event.id,event])).values()]
-    assert.deepEqual(checkpoint,{eventIds:combined.map(event=>event.id)})
+    assert.equal(checkpoint,undefined)
+    assert.ok(requestText(body).includes('继续处理未完成的事项'))
     return settle(body,{events:combined})
   })
   const original=channelMessage('committed-query-original'),conversationId=h.host.ctx.channels.identity(original).sessionId
@@ -854,22 +857,17 @@ test('operator resumes a committed Router query result without repeating the pri
   await h.restart()
   await assert.rejects(h.service.inspectRouterBatch({conversationId}),{code:'PI_ROUTER_RESUME_CHECKPOINT_INVALID'})
   assert.equal(h.requests.length,requests);assert.equal(await readFile(file,'utf8'),unpaired)
-  await h.close();await h.host.close()
-  await writeFile(file,prefix)
-  await h.restart();await h.service.whenIdle().catch(error=>{if(error.code!=='ROUTER_BATCH_UNSETTLED')throw error})
-  assert.equal(h.requests.length,requests,'cold recovery does not invoke the model')
-  assert.ok(h.service.listAlerts().some(alert=>alert.detail==='ROUTER_BATCH_UNSETTLED'))
-  const first=await h.service.inspectRouterBatch({conversationId})
-  assert.equal(first.proposal.failedEntryId,checkpoint.id)
   const inbox=await h.query('router.inbox',{conversationId}),source=await h.query('source.get',{sourceId:inbox[0].sourceId})
   await h.store.command({id:'fixture-query-later-source',kind:'source.record-direct',args:{source:{sourceId:'query-later-source',groupId:conversationId,messageId:'query-later-message',actorId:source.actorId,channel:source.channel,version:1,text:'Cancel the remaining operation.',resources:[]},conversation:{conversationId}}})
   await h.store.command({id:'fixture-query-later-triage',kind:'triage.commit',args:{conversationId,dispositions:[{sourceId:'query-later-source',messageVersion:1,needsHandling:true,reason:'Later cancellation'}]}})
-  await assert.rejects(h.service.resumeRouterBatch(first.proposal),{code:'ROUTER_RESUME_STALE'})
-  const {proposal,pendingCount}=await h.service.inspectRouterBatch({conversationId})
-  assert.equal(pendingCount,2);assert.equal((await h.service.checkRouterBatch(proposal)).checkOnly,true)
-  assert.equal(h.requests.length,requests);assert.equal(await readFile(file,'utf8'),prefix)
+  await h.close();await h.host.close()
+  await writeFile(file,prefix)
   recovering=true
-  assert.equal((await h.service.resumeRouterBatch(proposal)).settled,true)
+  await h.restart();await h.service.whenIdle()
+  assert.ok(h.requests.length>requests,'cold startup actively continues without new ingress')
+  const recovered=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
+  const proposal=recovered.entries.find(entry=>entry.customType==='night.router-resume-claim').details
+  assert.equal(proposal.failedEntryId,checkpoint.id)
   assert.deepEqual(combined.map(event=>event.source?.messageId),[original.messageId,'query-later-message'])
   assert.equal(await h.query('router.inbox-count',{conversationId}),0)
   assert.ok(!h.service.listAlerts().some(alert=>alert.detail==='ROUTER_BATCH_UNSETTLED'))

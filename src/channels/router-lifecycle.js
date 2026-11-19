@@ -8,7 +8,7 @@ import {routerModelBody,routerModelBatch} from './router-model-input.js'
 import {pendingBusinessInputs} from '../runtime/pi-business-inputs.js'
 import {residentOperationId} from './resident-router-business.js'
 
-const fail=code=>{throw Object.assign(new Error(code),{code})}
+const fail=(code,recoveryReason)=>{throw Object.assign(new Error(code),{code,...recoveryReason?{recoveryReason}:{}})}
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const withoutTiming=source=>{if(!source)return source;const {stages,...value}=source;return value}
 const triageDeliveryFields=new Set('state ack ackedAt deliveredAt deliveryError dispatchToken evidenceRef lastReadbackError nextAttemptAt readbackAttemptCount receipt recoveryToken sendAttemptCount sendPermit sendStartedAt updatedAt'.split(' '))
@@ -39,7 +39,7 @@ export function routerPacketViews(row,batch){
 
 /** 串行调度只负责 Host 生命周期；推理、队列和历史始终由官方 Pi 执行。 */
 export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,agentPreset='night-bot',recordStage}){
-  const handles=new Map(),tails=new Map(),inflight=new Set(),packets=new Map(),errors=new Map(),interruptions=new Map(),cancellationReasons=new Set()
+  const handles=new Map(),tails=new Map(),inflight=new Set(),packets=new Map(),errors=new Map(),interruptions=new Map(),cancellationReasons=new Set(),coldSessions=new Set()
   const closeError=Object.assign(new Error('ROUTER_CLOSED'),{code:'ROUTER_CLOSED'})
   let closed=false,closing
   const assertOpen=()=>{if(closed)throw closeError}
@@ -112,6 +112,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       }}
     const handle=existing?await agents.resume({...options,resumeSessionId:id}):await agents.create({...options,sessionId:id,meta:{cwd:workspace,runtimeOwner:'conversation-router',agentPreset,conversationId:row.id,generation},...(handoff?{routerHandoff:{...handoff,conversationId:row.id}}:{})})
     handles.set(id,handle)
+    if(existing)coldSessions.add(id)
     if(closed){await interrupt(handle);throw closeError}
     return handle
   }
@@ -196,7 +197,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         })}catch(error){
           try{await handle.dispose()}catch(cleanup){throw new AggregateError([error,cleanup],'Router settlement recovery cleanup failed')}
           handles.delete(row.activeSessionId);handle=undefined
-          if(/^(?:PI_ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT)/.test(error.code??''))fail('ROUTER_BATCH_UNSETTLED')
+          if(/^(?:PI_ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT)/.test(error.code??''))fail('ROUTER_BATCH_UNSETTLED',error.code==='PI_ROUTER_RESUME_EFFECT_UNRESOLVED'?error.code:undefined)
           throw error
         }
         if(recovered){
@@ -204,18 +205,26 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
           row=await query('router.get',{conversationId});assertOpen();continue
         }
       }
-      // 巡检异常由 Host 在有界恢复队列内续办；仍复用 Pi 原生检查与原批次，
-      // 任何未知工具效果、较新取消和版本冲突都不得绕过。普通来源沿用显式续办合同。
+      // 冷中断从原生已提交检查点续办一次；仍使用原批次和 Host 校验。
+      // 未知工具效果、较新取消和版本冲突不得绕过；普通 error/stop 仍需显式续办。
       if(admittedPacket?.source.kind==='conversation-router'&&handle.agent.admission.status(admittedPacket.id)==='admitted'&&admittedPacket.source.eventIds.some(id=>inbox.some(event=>event.id===id))){
-        const failed=handle.session.sessionManager.getBranch().findLast(entry=>entry.type==='message')
+        const branch=handle.session.sessionManager.getBranch()
+        const failed=branch.findLast(entry=>entry.type==='message'||entry.type==='custom_message'&&entry.customType==='night.business-input')
+        const cold=coldSessions.delete(row.activeSessionId)
+        const unexpectedStop=cold&&(failed?.id===admittedInput.id||failed?.message.role==='toolResult')
+        // A consumed continuation is not another automatic retry, even after reboot.
+        if(branch.some(entry=>entry.customType==='night.router-resume-claim'&&entry.details?.packetId===admittedPacket.id))fail('ROUTER_BATCH_UNSETTLED')
         const inspection=inbox.some(event=>event.kind==='task.inspection')
-        if(failed?.message.role!=='assistant'||failed.message.stopReason!=='aborted'&&!(inspection&&['error','stop'].includes(failed.message.stopReason)))fail('ROUTER_BATCH_UNSETTLED')
+        if(cold&&failed?.message?.role==='assistant'&&failed.message.stopReason==='toolUse')fail('ROUTER_BATCH_UNSETTLED','PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
+        if(!unexpectedStop&&(failed?.message?.role!=='assistant'||failed.message.stopReason!=='aborted'&&!(inspection&&['error','stop'].includes(failed.message.stopReason))))fail('ROUTER_BATCH_UNSETTLED',errors.get(conversationId)?.recoveryReason)
         try{await continueBatch(row,handle,admittedPacket,failed.id)}catch(error){
-          if(/^(?:PI_ROUTER_RESUME_|ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT)/.test(error.code??''))fail('ROUTER_BATCH_UNSETTLED')
+          if(/^(?:PI_ROUTER_RESUME_|ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT)/.test(error.code??''))fail('ROUTER_BATCH_UNSETTLED',unexpectedStop?error.code:undefined)
           throw error
         }
         row=await query('router.get',{conversationId});continue
       }
+      // Once a cold owner starts fresh work it is no longer a cold checkpoint.
+      coldSessions.delete(row.activeSessionId)
       const persistedPacket=pendingBusinessInputs(handle.agent)[0]
       let batch=[]
       if(persistedPacket){

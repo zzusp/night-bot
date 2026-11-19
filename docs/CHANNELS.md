@@ -212,9 +212,9 @@ Router 另附现有任务表/归档表的只读轻量索引：本会话非终态
 
 Router 批次已经 `admitted`、随后模型轮失败或正常 `stop` 但事件尚未 `settled` 时，普通恢复不能把它重新 `enqueue` / `deliver` 成另一份业务输入。正常停机留下的最后 `aborted` 生成由 Host 普通恢复沿原会话领取一次；模型 `error` 和正常 `stop` 未结批次不自动续轮，只允许受信 Host 显式调用 `application.tasks.resumeRouterBatch({conversationId,generation,sessionId,packetId,failedEntryId})`，绑定原 conversation、当前 generation/Router active session、原 packet 和原生失败 checkpoint；该方法拒绝模型域调用；操作者通过本机 `night-bot-router` CLI 接入同一 Host 能力，不直调 Pi SDK。`inspect` 只读取已经打开的原 owner，返回包含 generation/session/packet/失败 entry、checkpoint revision 和完整 inbox digest 的 proposal；无 owner、busy 或不满足既有守卫时明确拒绝。`resume --check` 不领取 claim、不提交历史、不调用模型或清告警；实际 resume 重新核对 proposal，并继续执行原来源授权与全部 no-replay 检查。入口使用独立私有 capability，拒绝远端、浏览器 Origin 和普通渠道发送者；操作流程见 [Windows runbook](ops/windows-local-runtime.md#router-模型错误的显式续办)。
 
-原生历史停在完整提交的 `resident_task_query` 结果时，也只允许操作者显式续办。末次 assistant 调用必须全部是本会话只读任务查询，且每个调用都已有唯一、匹配、非错误的提交结果；未提交、错配、未完成或混有其他工具的末次调用均拒绝。沿原历史开启新模型轮，不重新调用旧工具，也不把查询结果当作当前账本状态。
+硬停没有留下 `aborted` 时，启动恢复沿原会话主动检查一次：最后只有完整提交的原业务输入、尚无生成工具派发，或最后为完整提交的 `resident_task_query` 结果，才沿既有 Host checkpoint 续办。模型 `error` / 正常 `stop` 仍走上述显式入口；无可靠检查点不猜测成功。末次 assistant 调用必须全部是本会话只读任务查询，且每个调用都已有唯一、匹配、非错误的提交结果；未提交、错配、未完成或混有其他工具的末次调用均拒绝。沿原历史开启新模型轮，不重新调用旧工具，也不把查询结果当作当前账本状态。
 
-续办前重新校验 active owner、原官方会话 idle、来源权限、packet/历史一致性及未结事件全集。原事件必须仍是队列前缀；较新事件全部经原业务 admission 校验，写成真实 `night.business-input` 后才触发推理，current 来源同时绑定原 packet 与新 packet。模型先统筹新取消/延期/变更，不能只沿旧请求执行。原 packet 不重复 enqueue/admit，控制消息不是来源或新授权。续办控制消息显式列出原批次及补充批次的事件ID全集，要求必要动作已有持久收据后调用 `resident_router_settle`；纯文字结束不消费事件，Host仍不代替模型结清。学习维护失败保留真实失败，不撤销已完成交付或重开业务任务。联合批次仍至多15条用户消息、30事件及原编码预算；pending 总数必须与已读取全集一致，分页外较新输入或超限仍拒绝，不能忽略后续取消以求恢复。
+续办前重新校验 active owner、原官方会话 idle、来源权限、packet/历史一致性及未结事件全集。原事件必须仍是队列前缀；较新事件全部经原业务 admission 校验，写成真实 `night.business-input` 后才触发推理，current 来源同时绑定原 packet 与新 packet。模型先统筹新取消/延期/变更，不能只沿旧请求执行。原 packet 不重复 enqueue/admit，控制消息不是来源或新授权。续办提示正文只有「继续处理未完成的事项」，领取 claim 不附加说明文字；原批次、补充批次和证明仍由现有结构化记录及 admission 绑定，Host 的权限、版本、配对、收据和结清校验不交给模型。必要动作已有持久收据后仍须调用 `resident_router_settle`；纯文字结束不消费事件，Host仍不代替模型结清。学习维护失败保留真实失败，不撤销已完成交付或重开业务任务。联合批次仍至多15条用户消息、30事件及原编码预算；pending 总数必须与已读取全集一致，分页外较新输入或超限仍拒绝，不能忽略后续取消以求恢复。
 
 原批次身份比较忽略可变的来源观测计时，以及独立首答通知的发送/回读进度（如 prepared→delivered）；通知ID、种类、冻结正文/载荷摘要、来源/版本和撤销状态仍须一致。比较不改写原packet或Pi历史，不把旧packet中的发送状态当作当前送达权威；真实效果仍以Host投递账本和回读为准。
 
@@ -226,7 +226,7 @@ Host 经公开 Pi 生命周期接口先持久消费原失败 checkpoint 的非�
 
 普通 `recover()` 的 phase 恢复和已 `published` 交接的旧 owner 清理，也经同一 conversation 的 tail 串行执行；排队后重新读取当前 row/rotation，不把仍在途的交接当作冷中断。不暂停恢复 timer、不因 busy 静默跳过，也不放宽 live owner 守卫。原批次已经 `settled` 时不再调用 `resumeRouterBatch`，只由正式普通恢复推进该 Router 旧部署尚待完成的交接/换代，不重跑原任务或业务输入。
 
-不满足上述中止恢复或纯账本对账条件时，冷启动仍将确定的 `ROUTER_BATCH_UNSETTLED` 保留为任务服务 `recover()` 的 `degraded` 结果及现有 `listAlerts` 恢复告警，以保留上述 Host 入口；不代表恢复完成或消息已消费。其它 journal、owner、store 恢复错误仍失败关闭，不能被另一个 conversation 的未结告警遮蔽。正常关闭的结果不证明错误关闭已安全释放全部资源；Host/Application 异常关闭及未证排空时的依赖保留规则见下文。
+不满足上述中止恢复或纯账本对账条件时，冷启动仍将确定的 `ROUTER_BATCH_UNSETTLED` 保留为任务服务 `recover()` 的 `degraded` 结果及现有 `listAlerts` 恢复告警，以保留上述 Host 入口；未知工具效果明确显示 `PI_ROUTER_RESUME_EFFECT_UNRESOLVED`，不重放外部调用。已领取续办 claim 的原批次不因重复恢复或再次启动而自动循环；不代表恢复完成或消息已消费。其它 journal、owner、store 恢复错误仍失败关闭，不能被另一个 conversation 的未结告警遮蔽。正常关闭的结果不证明错误关闭已安全释放全部资源；Host/Application 异常关闭及未证排空时的依赖保留规则见下文。
 
 [第八轮报告](acceptance/resident-conversation-routing/round-8.md)记录了 Host checkpoint 续办及模型前拒绝反例，并在最新 `423a2e97` lifecycle 版本验证 live handoff/普通 recover 的确定性交错、另一 scope 错误传播和原安装已结批次的普通恢复。原安装最后仅一次无工具交接，原任务/执行 session/`run1` 与配置、私有 Skill、其它 journal 保持，重复恢复不重放且正常关闭。各组只绑定报告所列受验指纹，不宣称同版全量通过；第八轮仅使用 loopback 脚本模型，没有新增真实模型或厂商调用。该轮当时仍保留 Windows 进程隐私限制、异常关闭风险及未专项验证的取消路径；历史 Topic/Owner 或此前局部结果不能替代当前专项证据，当前关闭规则见下文。
 
