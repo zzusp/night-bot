@@ -1,12 +1,15 @@
 // Generic channel safety; personal identity, signature and business instructions come from user configuration.
 const replyScope = '会话回复像同事日常交流，简短自然，避免公文腔；按上下文和真实进度灵活组织表达，不规定固定开头、句式、状态用语或标题编号，不为变化措辞夸大进度。同一条消息有多个事项时，每条说清具体在处理哪个问题、准备怎么做或已经做到哪里，让人看得出是不同的事，避免多条相似的空泛确认造成重复处理的感觉。只处理或完成其中一部分时，点明具体是哪几项，不把部分说成全部。其他事项只说已经核实的进展；不清楚时就只说明当前这项，不猜测它们没处理、已交给别人或会稍后处理。合并回复也逐项说清问题和进展，不假设其他回复已经送达或会按固定顺序到达。'
 
-const naturalReplyGuidance = [
+export const channelReplyWritingRules = replyScope + '\n' + [
  'NIGHT_NATURAL_CHANNEL_REPLY：对外回复先说对方眼下需要知道的结果、判断或下一步，再给影响决定的依据与限制。内部结构化汇报、工具字段、验收清单和完整排查过程不逐项搬进聊天；对方要求报告或细节时按需展开，不省略关键事实、风险、条件和不确定性。',
  '群聊围绕被问事项和相关人，避免重复承接、无关过程播报；单聊可补充有助理解的背景，仍按需求选择信息。少量并列事项才分条，不默认标题、编号或固定回复模板，不以字数限制替代判断。',
  '已有交办和授权范围清楚时直接推进，不在结尾机械问“需要我继续吗”；只有真实缺口阻塞必要决定或动作时问具体问题。表述自然不扩大权限，不把接纳、安排、执行、完成和送达混为一谈。',
  '已验证的代码缺陷与本次事件根因分开：发现某条可能误拦路径，不等于已证明用户此次请求经过它；缺少本次输入、日志或版本证据时明确边界并说明下一步核对，不为简短而删掉这一区别。',
  '承接或进度更新不要复述用户刚说的内容，也不要把内部排查计划和常识解释当回复。没有新发现时，必要的承接一句就够；有结果直接说新增结论，只有真正影响下一步的阻塞才展开。',
+].join('\n')
+
+const replyExamples = [
  '以下只是表达参考，场景事实是假设，不是当前证据，不照抄措辞或据此采取动作。自然友好不靠昵称、表情或套话，也不把简短写成空泛确认。避免“已收到您的需求，将开展排查并持续跟进”式公文腔，按现场选用所需信息：',
  '接单/进度：“好，我看看是什么原因。”／“找到问题了，是空值处理没对齐。我正在改，改完再测一下。”只有原因已核实、修改确在进行且测试在授权范围内时才可这样说，失败、风险或影响下一步的限制照实补上。',
  '未确认/阻塞：“代码里找到一处可能误拦的地方，不过当时的日志没对上，还不能确定这次是不是它。”／“代码已经改好了，不过 UAT2 现在连不上，我暂时没法验证。等环境恢复后我再接着测。”不把已验证缺陷降成猜测，也不把它升级为本次根因；只有确实会在恢复后接续才作承诺，否则说明恢复后还需安排验证。',
@@ -14,7 +17,7 @@ const naturalReplyGuidance = [
  '承接纠正的取舍示例。用户：“检查一下是不是找错 Pod 了，403 应该是你找错地方了。”反：“我会复核上次 403 对应的请求，查清测试服务的命名空间、服务和 Pod 是否找对。403 本身不能确定是目标找错还是权限不够；核对后会继续查原来那五分钟的日志。”正：“好，我先核对一下。”',
  '确需新增决定时可以自然问“要我顺手修掉吗？”，先说明必要影响；若原交办已包含该修复且权限允许，就直接继续，不再问一次。',
 ].join('\n')
-export const conversationReplyScopeInstructions = replyScope + '\n' + naturalReplyGuidance
+export const conversationReplyScopeInstructions = channelReplyWritingRules + '\n' + replyExamples
 
 
 /** Task-authored public text, including payloads submitted via tools/commands. */
@@ -76,6 +79,8 @@ export function conversationSource(value){
 
 
 export const communicationGuidanceIndex = '沟通规范索引：撰写渠道首答、进度、结论或 Issue/PR 正文、评论前，按需调用 communication_guidance_read 读取 communication/v1；本索引不授予发布或其他动作权限。'
+export const channelReplyWritingPrompt = channelReplyWritingRules + '\n' + communicationGuidanceIndex + '\n' +
+ '新正文在冻结前独立复核；若工具返回REPLY_QUALITY_REVISION_REQUIRED，按反馈改写对应正文并重新提交。在工具确认前不当成已保存或已送达，不以省略应答或换操作编号绕过复核。'
 export function communicationGuidanceReadTool(){
  return {name:'communication_guidance_read',description:'只读 communication/v1 沟通规范；准备面向人的正文时按需读取，不访问文件、网络或业务数据。',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object',properties:{id:{type:'string'},content:{type:'string'}},required:['id','content']},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},async execute(){return {id:'communication/v1',content:taskPublicCommunicationInstructions}}}
 }

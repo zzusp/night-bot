@@ -1718,6 +1718,11 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       const task = ['triage-reply','router-reply','platform-reply','topic-reply', 'fixed-topic-reply', 'routing-clarification'].includes(a.kind) ? null : get('dynamic_tasks', a.taskId), id = text(a.notificationId, 'notificationId')
       if (!['question','status','triage-reply','router-reply','platform-reply','topic-reply','fixed-topic-reply','routing-clarification'].includes(a.kind)) fail('DYNAMIC_ARGUMENT_INVALID', 'kind')
       integer(a.requirementRevision, 'requirementRevision')
+      // 复核是异步的，在实际冻结事务中核对当前代际和来源。
+      if(a.routerGeneration!==undefined){
+        const p=record(a.payload)
+        routerLedger.assertReplySource({conversationId:p.conversationId,generation:a.routerGeneration,sourceId:p.sourceId,messageVersion:p.sourceVersion})
+      }
       if(['triage-reply','router-reply','platform-reply'].includes(a.kind)){
         const p=record(a.payload),ref=record(p.sourceRef),source=get('dynamic_sources',text(p.sourceId,'sourceId'))
         if(a.taskId||p.atAll&&a.kind!=='platform-reply'||source.groupId!==p.conversationId||source.messageId!==ref.messageId||source.version!==ref.messageVersion||source.actorId!==ref.actorId||typeof p.text!=='string'||!p.text.trim()||source.authorizationRevoked)fail('DYNAMIC_DIRECT_SOURCE_INVALID')
