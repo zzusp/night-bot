@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {ModelRuntime} from '@earendil-works/pi-coding-agent'
 import {InMemoryCredentialStore,InMemoryModelsStore,createAssistantMessageEventStream} from '@earendil-works/pi-ai'
-import {officialReflectionText} from '../src/memory/reflection-inference.js'
+import {officialReflectionText,reflectionInputFits} from '../src/memory/reflection-inference.js'
 
 async function fixture(reply){
  const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false})
@@ -44,7 +44,7 @@ test('background review uses explicit configured resolution, refuses secrets and
  await complete('one','verified local result');const detach=ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});t.after(detach);await entered.promise
  const scope=memoryScope({actorId:'PRIVATE_OWNER_NEVER_PROVIDER'},{scope:'personal'},true)
  await ctx.memory.store.forget(scope,{topic:'experience',key:'bounded',source:{sessionId:'forget',messageId:'forget'}});release.resolve();await ctx.reflection.whenIdle()
- assert.equal(f.requests.length,1);assert.equal(f.requests[0].tools,undefined)
+ assert.equal(f.requests.length,2);assert.ok(f.requests.every(request=>request.tools===undefined))
  assert.equal(resolved.length,1);assert.equal(resolved[0].config.provider,'fixture');assert.equal(resolved[0].scope,undefined);assert.ok(resolved[0].config.signal instanceof AbortSignal)
  assert.doesNotMatch(JSON.stringify(f.requests),/PRIVATE_OWNER_NEVER_PROVIDER/);assert.equal((await ctx.memory.store.read(scope,{topic:'experience'})).entries.length,0)
  assert.equal(Object.values((await ctx.reflection.state(scope)).reviews)[0].code,'MEMORY_SCOPE_CHANGED')
@@ -52,3 +52,15 @@ test('background review uses explicit configured resolution, refuses secrets and
  assert.equal(resolved.length,1);assert.doesNotMatch(JSON.stringify(f.requests),/DO_NOT_SEND_REFLECTION/)
  assert.equal(Object.values((await ctx.reflection.state(scope)).reviews).find(review=>review.taskId==='secret').code,'MEMORY_SECRET_REFUSED')
 })
+
+
+test('reflection batches follow resolved context and native output headroom including configured responsibility',()=>{
+ const small={model:{contextWindow:4096,maxTokens:1024},requestOptions:{maxTokens:512}},large={...small,model:{...small.model,contextWindow:32000}};
+ const data={text:'related '.repeat(3000)},fitsSmall=reflectionInputFits(small),fitsLarge=reflectionInputFits(large);
+ assert.equal(fitsSmall(data,'policy'),false);assert.equal(fitsLarge(data,'policy'),true);
+ assert.equal(fitsSmall({text:'ok'},'policy'),true);
+ assert.equal(reflectionInputFits(small,'responsibility '.repeat(2000))({text:'ok'},'policy'),false);
+ assert.equal(fitsSmall.selection({memoryIds:['m'],skillKeys:[],installedIds:[]}),true);
+ assert.equal(fitsSmall.selection({memoryIds:Array.from({length:300},(_,i)=>'identity-'+i),skillKeys:[],installedIds:[]}),false);
+ assert.throws(()=>reflectionInputFits({model:{contextWindow:500,maxTokens:1024}}),{code:'REFLECTION_OFFICIAL_MODEL_REQUIRED'});
+});

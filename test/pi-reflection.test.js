@@ -32,13 +32,13 @@ test('real default Host learns completed SQLite task evidence, deduplicates, cre
   assert.equal((await readUsage(f.host.ctx.memory.store,usageScope)).loadCount,1)
   await f.host.ctx.memory.search(a.agent,{query:'Summary'})
   assert.equal((await readUsage(f.host.ctx.memory.store,usageScope)).searchCount,1)
-  assert.equal((await f.host.ctx.memory.read(a.agent,{scope:'group',topic:'experience'})).entries.length,2)
+  assert.equal((await f.host.ctx.memory.read(a.agent,{scope:'group',topic:'experience'})).entries.length,1)
   assert.equal((await readUsage(f.host.ctx.memory.store,usageScope)).readCount,2)
   assert.equal((await f.host.ctx.skills.list({scope:other.agent})).filter(s=>s.provider==='learned').length,1)
   f.host.ctx.reflection.scan();await f.host.ctx.reflection.whenIdle();assert.equal(analyses,2)
   const scope=await f.host.ctx.memory.scope(a.agent,{}),state=JSON.parse(await readFile(join(f.host.ctx.reflection.directory(scope),'state.json'),'utf8'));assert.equal(Object.keys(state.reviews).length,2);assert.ok(Object.values(state.reviews).every(r=>r.lessons[0].evidenceIds.length&&r.lessons[0].summary&&!Object.hasOwn(r.lessons[0],'hypothesis')));assert.ok(state.skills['inspect-first'].taskIds.includes('one'))
-  assert.deepEqual((await f.host.ctx.memory.store.read(scope,{topic:'experience'})).entries.map(row=>row.key),['inspect-first','inspect-first-2'])
-  for(const id of ['one','two']){
+  assert.deepEqual((await f.host.ctx.memory.store.read(scope,{topic:'experience'})).entries.map(row=>row.key),['inspect-first'])
+  for(const id of ['two']){
     const report=Object.values(state.reviews).find(row=>row.taskId===id),task=await store.query({kind:'task.get',taskId:id})
     assert.equal(report.destinations[0].memory.key,report.lessons[0].memoryKey)
     const detail=await f.host.ctx.reflection.inspectTask(task,{actorId:'owner'},{store}),change=detail.changes.find(row=>row.kind==='memory')
@@ -66,7 +66,7 @@ test('real default Host learns completed SQLite task evidence, deduplicates, cre
   assert.equal(manager.buildSessionProjection().entries.find(entry=>entry.sourceEntry.id===historicalId).messages[0].content[0].text,rememberedSkill)
   const forgotten=await f.host.ctx.reflection.state(scope)
   assert.ok(Object.values(forgotten.reviews).every(review=>review.lessons.every(lesson=>lesson.memoryKey!==key)&&review.destinations.every(row=>row.memory?.key!==key)))
-  assert.equal(Object.values(forgotten.reviews).find(review=>review.taskId==='two').lessons[0].memoryKey,'inspect-first-2')
+  assert.deepEqual(Object.values(forgotten.reviews).find(review=>review.taskId==='two').lessons,[])
   detach();await f.close();await store.close();await f.boot();store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning'});detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await f.host.ctx.reflection.whenIdle();assert.equal(analyses,2);detach()
 })
 test('invalid reflection evidence cannot invent memory or block committed task delivery; retry state is durable',async t=>{
@@ -219,7 +219,7 @@ test('任务 Skill 保留完整指引，经实际 creator 生成；缺证据判�
   const state=await r.state(memoryScope({actorId:'owner'})),report=Object.values(state.reviews)[0]
   assert.equal(report.status,'done',r.lastError)
   if(scenario==='guidance'){
-   const value=state.skills['inspect-first'];assert.equal(value.guidance,guidance);assert.equal(value.body,guidance);assert.ok(value.body.length>2048);assert.ok(value.generation.creator.callId)
+   const value=state.skills['inspect-first'];assert.ok(value.guidance.startsWith(guidance));assert.equal(value.body,value.guidance);assert.match(value.body,/适用类别：Evidence-first local changes/);assert.match(value.body,/必要边界：/);assert.ok(value.body.length>2048);assert.ok(value.generation.creator.callId)
    assert.match(f.requests.find(body=>JSON.stringify(body.messages).includes('NIGHT_BOT_TASK_REFLECTION')).messages[0].content,/正向.*反向/)
   }else{assert.deepEqual(state.skills,{});assert.equal(report.lessons[0].skill,undefined);assert.equal(f.requests.filter(body=>JSON.stringify(body.messages).includes('NIGHT_BOT_SKILL_GENERATION')).length,0)}
  })
