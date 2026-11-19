@@ -44,7 +44,7 @@ test('background review uses explicit configured resolution, refuses secrets and
  await complete('one','verified local result');const detach=ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});t.after(detach);await entered.promise
  const scope=memoryScope({actorId:'PRIVATE_OWNER_NEVER_PROVIDER'},{scope:'personal'},true)
  await ctx.memory.store.forget(scope,{topic:'experience',key:'bounded',source:{sessionId:'forget',messageId:'forget'}});release.resolve();await ctx.reflection.whenIdle()
- assert.equal(f.requests.length,1);assert.equal(f.requests[0].tools,undefined)
+ assert.equal(f.requests.length,2);assert.ok(f.requests.every(request=>request.tools===undefined))
  assert.equal(resolved.length,1);assert.equal(resolved[0].config.provider,'fixture');assert.equal(resolved[0].scope,undefined);assert.ok(resolved[0].config.signal instanceof AbortSignal)
  assert.doesNotMatch(JSON.stringify(f.requests),/PRIVATE_OWNER_NEVER_PROVIDER/);assert.equal((await ctx.memory.store.read(scope,{topic:'experience'})).entries.length,0)
  assert.equal(Object.values((await ctx.reflection.state(scope)).reviews)[0].code,'MEMORY_SCOPE_CHANGED')
