@@ -44,6 +44,7 @@ import { ingestTaskResidentMessage, projectTaskNotification, stableTaskResourceI
 import { taskWorkspace, taskDirectories, taskFilePath, checkedTaskDirectory, taskWorkspaceReady, assertTaskWorkspaceReady, initializeTaskDirectories } from './session-workspaces.js'
 import {conversationNotificationRouting,finalConversationNotificationRouting,prepareConversationNotification,notificationAudience,conversationMessageActorId} from './group-notification.js'
 import {formatTaskConversationReply} from './group-reply-format.js'
+import {reviewChannelReplies} from '../../src/channels/reply-quality.js'
 import {assertConversationReply,replyInternalTaskId,conversationQuote} from '../../src/channels/message-safety.js'
 import { taskExecutionContext } from './execution-context.js'
 import { assertTaskContextSemantics } from './task-input-contract.js'
@@ -844,7 +845,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const {atOpenDingTalkIds,replyToSenderOpenDingTalkId,...request}=value
     return clean({...request,...notificationAudience(value)})
   }
-  async function prepareDirectReply(args){
+  const reviewReplies=(exec,drafts)=>reviewChannelReplies(ctx.nativePiProvider.official,exec,drafts)
+  async function prepareDirectReply(args,exec){
     const source=args.source,selection=args.taskDelivery,kind=selection?'status':args.kind??'router-reply',notificationId=args.outboundId
     const audience=notificationAudience(args)
     const explicitAudience=kind!=='platform-reply'&&audience.recipientActorIds!==undefined
@@ -893,7 +895,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const text=finalReply?prepareConversationNotification({conversationId:source.groupId,text:args.text,replyToMessageId,replyToActorId,
       recipientActorIds:recipients,atAll:args.atAll,artifactFiles,signature:legacy.getAgentConfig().replySignature,internalIds}).text:args.text
     assertConversationReply(text,internalIds)
-    const receipt=await command('notification.prepare',{notificationId,taskId:selection?.taskId??null,requirementRevision:selection?.requirementRevision??1,kind,
+    if(exec){
+      const rejected=await reviewReplies(exec,[{text:args.text,sourceText:source.text,purpose:selection?'task-delivery':args.replyPurpose??'router-reply'}])
+      if(rejected)return rejected
+      exec.signal.throwIfAborted()
+    }
+    const receipt=await command('notification.prepare',{notificationId,...exec?{routerGeneration:args.generation}:{},taskId:selection?.taskId??null,requirementRevision:selection?.requirementRevision??1,kind,
       payload:{text,conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceMessageId:replyToMessageId,actorId:replyToActorId,
         sourceRef:{messageId:source.messageId,messageVersion:source.version,actorId:source.actorId},replyToMessageId,replyToActorId,
         recipientActorIds:recipients,...(args.atAll?{atAll:true}:{}),replyKind:'substantive',taskIds:selection?[selection.taskId]:[],topicRefs:[],replyRequest:request,...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
@@ -928,7 +935,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,
     readTasks:readPlatformTasks,appendOutbox:prepareDirectPlatformReply,
     notify:undefined})
-  const triage=createChannelTriage({ctx,root,query,recordStage:recordResidentStage,models:()=>roleModels('triage'),legacy,responsibilityFor,
+  const triage=createChannelTriage({ctx,root,query,recordStage:recordResidentStage,models:()=>roleModels('triage'),legacy,responsibilityFor,reviewReplies,
     observe:(groupId,record)=>observationQueue.enqueue(record,{runtimeOwner:'channel-triage',groupId}),
     commit:async(groupId,decision)=>{
     const receipt=await command('triage.commit',decision,'triage:'+hash(decision.dispositions))
@@ -940,7 +947,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   residentRouter=await openRouterLifecycle({ctx,store,root,settle:(args,id)=>command('router.settle',args,id),recordStage:recordResidentStage,models:()=>roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
     const platformPages=new Map()
     return registerResidentRouterTools(agentCtx,binding,{
-    query,command,responsibilityFor,applyTaskAction:applyDirectTaskAction,prepareReply:args=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args)},
+    query,command,responsibilityFor,applyTaskAction:applyDirectTaskAction,prepareReply:(args,exec)=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args,exec)},
     platformQuery:async(groupId,args)=>{
       const key=JSON.stringify([args.state??'all',args.day??null,args.limit??50])
       let snapshot=platformPages.get(key)
@@ -1117,7 +1124,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             return (await command('task.human.resolve', { binding, ...args },
               `human-review:${taskId}:${humanReview.requestId}:${binding.leaseEpoch}`)).result
           },
-          submit: async decision => {
+          submit: async (decision,submittedBinding,exec) => {
+            const replyBinding={...submittedBinding}
             if(task.conversationId&&decision.audience==='topic')decision={...decision,audience:'requester'}
             if (decision.question?.trim() && decision.audience === undefined) decision = { ...decision, audience: 'operator' }
             if (decision.question?.trim() && decision.executionIds) for (const id of decision.executionIds) {
@@ -1161,8 +1169,18 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
                   humanReply.notification={...reply,conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceRef:{messageId:source.messageId,messageVersion:source.version,actorId:source.actorId},humanRequestId:humanReview.requestId,replyKind:'substantive',fact:{taskId:task.taskId}}
                 }
               }
+              if(task.conversationId){
+                const requester=decision.question?.trim()&&decision.audience==='requester'?await requesterReplySource(task):null
+                const draft=humanReply?.notification?{text:decision.summary,sourceText:sources.find(item=>item.sourceId===decision.replySourceId).text,purpose:'task-follow-up'}
+                  :requester?{text:decision.question,sourceText:requester.text,purpose:'task-requester-question'}:null
+                if(draft){
+                  const rejected=await reviewReplies(exec,[draft])
+                  if(rejected)return rejected
+                  exec.signal.throwIfAborted()
+                }
+              }
               const topicFacts=!task.conversationId&&(replyBindings.length>0||!!task.replyBindings?.length||!!task.topicRefs?.length)
-              await command('task.wait', { binding, ...decision, topicFacts, replyBindings, ...(humanReply ? { humanReply } : {}), ...(decision.question?.trim() ? { humanRequest: {
+              await command('task.wait', { binding:replyBinding, ...decision, topicFacts, replyBindings, ...(humanReply ? { humanReply } : {}), ...(decision.question?.trim() ? { humanRequest: {
                 requestId: `human-${hash([taskId, binding.requirementRevision, binding.controlRevision, binding.leaseEpoch])}`,
                 reason: decision.summary, audience: decision.audience ?? 'operator', ...(decision.executionIds ? { executionIds: decision.executionIds } : {}), attemptedActions: decision.attemptedActions ?? [] } } : {}) }, `wait:${taskId}:${binding.leaseEpoch}`)
               if (decision.question?.trim()) {
@@ -1193,7 +1211,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         if (!drained) {
           await command('task.sessionFailed', { binding }, `task-session-failed:${taskId}:${binding.leaseEpoch}`)
         }
-        if(drained&&['TASK_PI_PROVIDER_ERROR','TASK_SESSION_NO_SUBMISSION','TASK_SESSION_PROVIDER_TRANSIENT','TASK_DIALOGUE_NO_REPLY'].includes(error.code)){
+        if(drained&&['TASK_PI_PROVIDER_ERROR','TASK_SESSION_NO_SUBMISSION','TASK_SESSION_PROVIDER_TRANSIENT','TASK_DIALOGUE_NO_REPLY','REPLY_QUALITY_REVISION_REQUIRED','REPLY_QUALITY_UNAVAILABLE'].includes(error.code)){
           if(!await currentTask(binding))return
           const failure={code:error.code,...typeof error.phase==='string'?{phase:error.phase}:{},...typeof error.nativeAssistantStopReason==='string'?{stopReason:error.nativeAssistantStopReason}:{}}
           failures.set(taskId,{id:taskId,code:error.code})
@@ -1238,8 +1256,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       ...(current?.humanRequests ?? task.humanRequests ?? []).map(item => item.requestId),
       ...executions.flatMap(item => [item.executionId, item.sessionId]), ...operations.map(item => item.operationId)].filter(Boolean)
   }
+  async function requesterReplySource(task) {
+    const source=await sourceFor(task)
+    if(source&&source.channel!=='web'&&!source.sourceId.startsWith('web:'))return source
+  }
   async function queueReply(task, source, decision, id, kind, humanRequest) {
-    if (!source || source.channel === 'web' || source.sourceId.startsWith('web:')) return
+    if(!source)return
     if ((await query('notification.list')).some(item => item.id === id)) {
       void deliverNotifications()
       return
@@ -1259,7 +1281,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (request.topicFactIds?.length) return
     if (request.audience === 'topic') return // 归属 Topic 负责选择联系人与原群回复，绝不退回默认私聊。
     if (request.audience === 'requester') {
-      const source = await sourceFor(task)
+      const source = await requesterReplySource(task)
       return queueReply(task, source, { summary: request.question, evidence: [], limitations: [] },
         `question:${task.taskId}:${request.requestId}`, 'question', request)
     }

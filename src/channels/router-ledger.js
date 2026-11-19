@@ -362,5 +362,9 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(q.kind==='router.source-links')return rows('source_links').filter(row=>(!q.taskId||row.taskId===q.taskId)&&(!q.sourceId||row.sourceId===q.sourceId))
     if(q.kind==='router.evaluations')return rows('completion_evaluations').filter(row=>!q.taskId||row.taskId===q.taskId)
   }
-  return {command,query,dependenciesReady,taskEvent,taskMutation}
+  function assertReplySource({conversationId,generation,sourceId,messageVersion}) {
+    conversationOf({conversationId,generation})
+    sourceOf({conversationId,sourceId,messageVersion})
+  }
+  return {command,query,dependenciesReady,taskEvent,taskMutation,assertReplySource}
 }
