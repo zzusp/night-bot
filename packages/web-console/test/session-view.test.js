@@ -268,7 +268,7 @@ test('待办只取同会话最新已提交回执，独立于历史页且不采�
   await assert.rejects(taskSessionView(options), {code: 'SESSION_TODOS_INVALID'})
 })
 
-test('命令错误正文、作业和网页结果可读，私有记忆与技能保持独立授权', async () => {
+test('命令失败无分类时安全降级，成功作业和网页结果与独立授权不变', async () => {
   const value = snapshot(); value.context.projection.entries = []
   for (const [index, name] of ['pwsh', 'job_output', 'web_fetch', 'memory_read', 'skill'].entries()) {
     value.context.projection.entries.push(project('call-' + index, {role: 'assistant', content: [{type: 'toolCall', id: String(index), name, arguments: {}}]}),
@@ -276,11 +276,12 @@ test('命令错误正文、作业和网页结果可读，私有记忆与技能�
         content: [{type: 'text', text: name.startsWith('memory') || name === 'skill' ? 'PRIVATE_SCOPE_BODY' : '结果 https://example.test/source /fixture/report.txt Bearer SECRET_AUTH'}], details: {private: 'PRIVATE_DETAILS'}}))
   }
   const page = await taskSessionView({task, persistence: {readNative: async () => value}})
-  for (const name of ['pwsh', 'job_output', 'web_fetch']) {
+  for (const name of ['job_output', 'web_fetch']) {
     const row = page.items.find(row => row.kind === 'tool-result' && row.toolName === name)
     assert.match(row.text, /https:\/\/example.test\/source \/fixture\/report.txt/)
   }
   assert.equal(page.items.find(row => row.kind === 'tool-result' && row.toolName === 'pwsh').isError, true)
+  assert.equal(page.items.find(row => row.kind === 'tool-result' && row.toolName === 'pwsh').text, '未记录失败原因')
   assert.doesNotMatch(JSON.stringify(page), /PRIVATE_|SECRET_AUTH/)
 })
 
@@ -376,7 +377,7 @@ test('shell credentials are scrubbed before paging inputs, errors and job output
   for (const [index, [name, command, output]] of cases.entries()) {
     value.context.projection.entries.push(
       project('call-secure-' + index, {role:'assistant',content:[{type:'toolCall',id:String(index),name,arguments:command ? {command} : {job_id:'example-job'}}]}),
-      project('result-secure-' + index, {role:'toolResult',toolName:name,toolCallId:String(index),isError:true,content:[{type:'text',text:output}]}),
+      project('result-secure-' + index, {role:'toolResult',toolName:name,toolCallId:String(index),isError:index<3,content:[{type:'text',text:output}]}),
     )
   }
   const options = {task, persistence:{readNative:async()=>value}, secrets:[secret]}
@@ -672,3 +673,37 @@ test('Router 多轮回复正文独立、顺序稳定、不按正文去重，错�
  assert.deepEqual(page.items.filter(row=>row.kind==='tool-call').slice(0,2).map(row=>row.callId),rows.map(row=>row.callId));
  assert.doesNotMatch(JSON.stringify(rows),/PRIVATE_|notification|已送达/);
 });
+
+
+test('paired Host error classification exposes fixed reason/code only across task, Router and triage', async () => {
+  const {toolTimeoutResult} = await import('../../../src/native-tool-timeout.js')
+  const native = toolTimeoutResult(1)
+  native.error.message = 'PRIVATE_EXCEPTION'; native.error.info.stack = 'PRIVATE_STACK'
+  for (const kind of ['task','router','triage']) {
+    const value=snapshot(), conversationId='fixture-conversation', sessionId=kind==='triage'?triageSessionId(conversationId):kind==='router'?'pi-router':'pi-one'
+    value.header={id:sessionId,...kind==='router'?{runtimeOwner:'conversation-router',conversationId,generation:1}:kind==='triage'?{runtimeOwner:'channel-triage',conversationId}:{}}
+    value.context.projection.entries=[
+      project('call',{role:'assistant',content:[{type:'toolCall',name:'resident_reply_query',id:'failed-call',arguments:{private:'PRIVATE_ARGS'}}]}),
+      project('result',{role:'toolResult',toolName:'resident_reply_query',toolCallId:'failed-call',isError:true,details:{nativeResult:native,private:'PRIVATE_DETAILS'},content:[{type:'text',text:'PRIVATE_BODY with /private/path'}]}),
+    ]
+    const persistence={readNative:async()=>value}
+    const options={conversationId,persistence}
+    const page=kind==='task'?await taskSessionView({task,persistence}):kind==='router'?await routerSessionView({...options,readRouter:async()=>({id:conversationId,activeSessionId:sessionId,generation:1,phase:'active'})}):await triageSessionView(options)
+    const result=page.items.find(row=>row.kind==='tool-result')
+    assert.deepEqual(result.failure,{reason:'调用超时，请先核对执行状态，避免重复操作。',code:'TOOL_TIMEOUT'})
+    assert.equal(result.text,'调用超时，请先核对执行状态，避免重复操作。\n错误码：TOOL_TIMEOUT')
+    assert.doesNotMatch(JSON.stringify(page),/PRIVATE_|private\/path|nativeResult|stack/)
+    if(kind==='task')assert.equal((await taskSessionMessageView({task,persistence,messageId:result.id,revision:page.revision})).text,result.text)
+  }
+})
+
+test('untrusted text/details, unknown codes/tools, mismatched and duplicate calls cannot authorize error details',async()=>{
+ const info={name:'ToolArgsError',code:'INVALID_ARGS'}
+ const cases=[{}, {details:{code:'INVALID_ARGS',error:{info}}}, {details:{nativeResult:{isError:false,error:{info}}}}, {details:{nativeResult:{isError:true,error:{info:{...info,code:'PRIVATE_CODE'}}}}}, {details:{nativeResult:{isError:true,error:{info:{...info,name:'UntrustedClass'}}}}}, {toolName:'custom_tool',details:{nativeResult:{isError:true,error:{info}}}}, {orphan:true,details:{nativeResult:{isError:true,error:{info}}}}, {duplicate:true,details:{nativeResult:{isError:true,error:{info}}}}, {mismatch:true,details:{nativeResult:{isError:true,error:{info}}}}]
+ for(const item of cases){
+  const value=snapshot(),name=item.toolName??'resident_reply_query',call=project('call',{role:'assistant',content:[{type:'toolCall',name:item.mismatch?'resident_task_query':name,id:'call',arguments:{}}]})
+  value.context.projection.entries=[...item.orphan?[]:[call],...item.duplicate?[{...call,sourceEntry:{id:'duplicate'}}]:[],project('result',{role:'toolResult',toolName:name,toolCallId:'call',isError:true,details:item.details,content:[{type:'text',text:'INVALID_ARGS PRIVATE_TEXT /private/path'}]})]
+  const page=await taskSessionView({task,persistence:{readNative:async()=>value}}),row=page.items.at(-1)
+  assert.equal(row.text,'未记录失败原因');assert.deepEqual(row.failure,{reason:'未记录失败原因'});assert.doesNotMatch(JSON.stringify(page),/PRIVATE_|private\/path|nativeResult/)
+ }
+})
