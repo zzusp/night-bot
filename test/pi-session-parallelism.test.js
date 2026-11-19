@@ -69,7 +69,9 @@ test('Router context reuses the admitted event list and indexed source checks wi
    if(kind==='router.source-links')return [{conversationId:'room',sourceId:'source',messageVersion:2,taskId:'task',relation:'original'}]
    if(kind==='router.task-index')return {tasks:[{taskId:'task',requirementRevision:3,controlRevision:4}],total:1}
    if(kind==='router.reply-history')return {replies:[]}
-   throw Error('Unexpected '+kind)
+   if(kind==='task.get')return {taskId:args.taskId,groupId:'room',request:'Existing request',requirements:[],sourceRefs:[],requirementRevision:1,controlRevision:1}
+  if(kind==='router.dependencies')return []
+  throw Error('Unexpected '+kind)
   },responsibilityFor:()=>''})
  })
  const text=await context.officialText({actor:f.owner})

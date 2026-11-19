@@ -35,7 +35,8 @@ export function routerPacketViews(row,batch){
     // omitted from model text. Delivery progress alone may change during recovery.
     const identityBody={...body,events:body.events.map(event=>({...event,...event.triageReply?{triageReply:triageReplyIdentity(event.triageReply)}:{}}))}
     const compact={...packet,source:{...packet.source,modelViewVersion:1,ledgerIdentity:hash(identityBody)},content:[{type:'text',text:'Router 请求：'+JSON.stringify(routerModelBody(row,batch))}]}
-    return [compact,packet,{...packet,content:[{type:'text',text:'Router 请求：'+JSON.stringify(body)}]}]
+    const current=batch.some(event=>event.taskEvent?.kind==='task.completed')?{...compact,source:{...compact.source,modelViewVersion:2},content:[{type:'text',text:'Router 请求：'+JSON.stringify(routerModelBody(row,batch,{compactCompletion:true}))}]}:undefined
+    return [...current?[current]:[],compact,packet,{...packet,content:[{type:'text',text:'Router 请求：'+JSON.stringify(body)}]}]
   }
 
 /** 串行调度只负责 Host 生命周期；推理、队列和历史始终由官方 Pi 执行。 */
