@@ -92,6 +92,6 @@ export function MessageProcessPopover({ endpoint, message, trigger, onDismiss, o
       else if (!event.shiftKey && document.activeElement === controls.at(-1)) close(true);
     }}>
     <ReadErrorScope><header className="message-process-heading"><h2 id={title}>消息处理过程</h2><IconButton label="关闭消息处理过程" onClick={() => close(true)}><RiCloseLine size={18} /></IconButton></header>
-    <div className="message-process-body"><ReadErrorOutlet/><ResponseTimes endpoint={endpoint} message={message} onAccessRevoked={onAccessRevoked} /></div>
+    <div className="message-process-body" tabIndex={0} role="region" aria-label="处理时间线"><ReadErrorOutlet/><ResponseTimes endpoint={endpoint} message={message} onAccessRevoked={onAccessRevoked} /></div>
   </ReadErrorScope></div>, document.body);
 }

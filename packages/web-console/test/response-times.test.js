@@ -177,3 +177,14 @@ test('新直入来源的首次实际回复不把旧分诊收悉或显式 acknowl
  assert.equal(responseTiming(message,[original],[ack],{event:{state:'consumed'}}).status,'awaiting-reply')
  assert.equal(responseTiming(message,[source],[ack]).durationMs,1000,'historical timing is not rewritten')
 })
+
+
+test('Web delivery classification distinguishes historical acknowledgement without rewriting timing',()=>{
+ for(const old of [notice(),notice({kind:'router-reply',payload:{...notice().payload,replyPurpose:'acknowledgement'}})]){
+  const row=responseTiming(message,[source],[old]);assert.equal(row.status,'confirmed');assert.equal(row.durationMs,3000)
+  assert.equal(row.steps.find(step=>step.kind==='reply-visible').deliveryKind,'acknowledgement')
+ }
+ const actual=notice({kind:'router-reply',payload:{...notice().payload,replyPurpose:'direct-answer'}})
+ assert.equal(responseTiming(message,[source],[actual]).steps.find(step=>step.kind==='reply-visible').deliveryKind,'reply')
+ for(const state of ['prepared','starting','unknown','failed'])assert.ok(!responseTiming(message,[source],[{...actual,state}]).steps.some(step=>step.kind==='reply-visible'))
+})

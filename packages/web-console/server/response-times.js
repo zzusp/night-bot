@@ -51,7 +51,7 @@ export function responseTiming(message,sources,notifications,routing,{secrets=[]
  if(stamp(routing?.event?.consumedAt))steps.push({kind:'routing-completed',label:'本条消息安排已提交',at:routing.event.consumedAt,timingType:'milestone'})
  const attempt=[...associated].filter(row=>stamp(row.createdAt)).sort((a,b)=>Date.parse(a.createdAt)-Date.parse(b.createdAt))[0]
  if(attempt){steps.push({kind:'reply-prepared',label:'回复已准备',at:attempt.createdAt,timingType:'milestone'});if(stamp(attempt.sendStartedAt))steps.push({kind:'send-started',label:'开始发送',at:attempt.sendStartedAt,timingType:'milestone'})}
- if(first)steps.push({kind:'reply-visible',label:earlierUnknown?'一条后续回复已确认可见':'首条回复已确认可见',at:firstReplyAt,timingType:'milestone'})
+ if(first)steps.push({kind:'reply-visible',label:earlierUnknown?'一条后续回复已确认可见':'首条回复已确认可见',at:firstReplyAt,timingType:'milestone',deliveryKind:first.kind==='triage-reply'||first.payload?.replyPurpose==='acknowledgement'?'acknowledgement':'reply'})
  steps.sort((a,b)=>Date.parse(a.at)-Date.parse(b.at))
  const missingDeliveryTime=associated.some(row=>row.state==='delivered'&&!stamp(row.deliveredAt))
  let status

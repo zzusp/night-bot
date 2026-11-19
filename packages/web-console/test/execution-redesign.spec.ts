@@ -39,6 +39,9 @@ test('移除 tab 和执行页：点击消息读精确来源，气泡侧边浮层
   await page.locator('.conversation-page .message-body').first().click()
   const dialog = page.getByRole('dialog', { name: '消息处理过程', exact: true })
   await expect(dialog).toBeVisible()
+  await expect(dialog.locator('.response-time-summary')).toHaveCount(0)
+  await expect(dialog).not.toContainText(/首次回复|首条回复/)
+  await expect(dialog).toContainText('回复已送达')
   await expect(dialog).toContainText('1 秒')
   await expect(dialog).not.toContainText(confirmed.replyPreview)
   await expect(dialog).not.toContainText(confirmed.preview)
@@ -71,6 +74,8 @@ test('移除 tab 和执行页：点击消息读精确来源，气泡侧边浮层
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme)
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 960 })
+      await page.keyboard.press('Escape')
+      await openMessageProcess(page)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       await expect.poll(async () => {
         const box = await dialog.boundingBox()
@@ -104,12 +109,13 @@ test('未知、失败、多来源与空记录不伪装耗时；失败保留旧�
   await login(page)
   await openMessageProcess(page)
   const section = page.getByRole('region', { name: '消息回复与处理过程' })
-  for (const text of ['回复尚未确认可见', '回复发送失败', '等待发送', '无需处理及回复', '历史记录不足', '时间记录异常', '6 个来源']) await expect(section).toContainText(text)
-  await expect(section.locator('.response-time-summary strong')).toHaveCount(0)
+  for (const text of ['回复尚未确认可见', '回复发送失败', '等待发送', '无需回复', '历史记录不足', '时间记录异常', '6 个来源']) await expect(section).toContainText(text)
+  await expect(section.locator('.response-time-summary')).toHaveCount(6)
+  await expect(section).not.toContainText('无过程记录')
   mode = 'error'
   await expect(section).toContainText('独立来源 0')
-  await expect(section.locator('.notice')).toBeVisible({ timeout: 8000 })
-  mode = 'empty'; await section.getByRole('button', { name: '重新获取', exact: true }).click()
+  await expect(page.getByRole('dialog').getByRole('alert', {name:'读取状态汇总'})).toBeVisible({ timeout: 8000 })
+  mode = 'empty'; await page.getByRole('dialog').getByRole('button', { name: '重试', exact: true }).click()
   await expect(section).toContainText('无来源记录')
   mode = 'unavailable'
   await expect(section).toContainText('来源不可核验')
@@ -141,7 +147,9 @@ test('初读等待、关闭取消及更换消息不串记录；长内容可滚�
   release()
   await expect(dialog).not.toContainText(`来源 ${requested[0]}`)
   await page.setViewportSize({ width: 390, height: 560 })
-  await dialog.locator('.message-process-body').evaluate(el => { el.scrollTop = el.scrollHeight })
+  const scrollBody=dialog.getByRole('region', {name:'处理时间线',exact:true})
+  await scrollBody.focus();await page.keyboard.press('End')
+  await expect.poll(()=>scrollBody.evaluate(el=>el.scrollTop)).toBeGreaterThan(0)
   await expect(dialog.getByRole('button', { name: '关闭消息处理过程' })).toBeInViewport()
   await dialog.getByRole('button', { name: '关闭消息处理过程' }).click()
   await expect(dialog).toHaveCount(0)
@@ -190,9 +198,9 @@ test('Web 回复来源、Markdown 链接和文字选择保留，后退切页关�
   await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 12000 })
   await expect(page.locator('.message')).toHaveCount(0)
   denyMode = 'retry'
-  await page.locator('.conversation-page').getByRole('button', { name: '重新获取', exact: true }).click()
+  await page.getByRole('alert', {name:'读取状态汇总'}).getByRole('button', { name: '重试', exact: true }).click()
   await expect(page.locator('.message')).toHaveCount(0)
-  await expect(page.locator('.conversation-page .notice')).toBeVisible()
+  await expect(page.getByRole('alert', {name:'读取状态汇总'})).toBeVisible()
   await expect(page.locator('.message')).toHaveCount(0)
 })
 
@@ -206,6 +214,8 @@ test('外部点击与重复点击关闭，滚动跟随，窗口调整重新定�
   await expect(dialog).toHaveCount(0)
   dialog = await openMessageProcess(page)
   await expect(dialog.getByRole('button', {name: '关闭消息处理过程'})).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(dialog.getByRole('region', {name:'处理时间线',exact:true})).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(dialog).toHaveCount(0)
   dialog = await openMessageProcess(page)
@@ -232,7 +242,16 @@ test('滚动实时跟随所点消息，消息完全离屏才关闭并停止读�
   await expect(dialog).toBeVisible()
   await expect.poll(async()=>Math.round((await dialog.boundingBox())!.y)).not.toBe(Math.round(before.y))
   const after=(await dialog.boundingBox())!,sourceAfter=(await bubble.boundingBox())!
-  expect(Math.abs((after.y-before.y)-(sourceAfter.y-sourceBefore.y))).toBeLessThanOrEqual(2)
+  expect(sourceAfter.y).not.toBe(sourceBefore.y)
+  // Collision avoidance may choose another side; keep the panel in bounds and
+  // the source visible instead of requiring a fixed pixel translation.
+  expect(after.x).toBeGreaterThanOrEqual(8);expect(after.x+after.width).toBeLessThanOrEqual(1440-8)
+  await expect(bubble).toBeInViewport()
+  const side=await dialog.getAttribute('data-side')
+  const offset=await dialog.evaluate(el=>parseFloat(getComputedStyle(el).getPropertyValue('--process-arrow-offset')))
+  const horizontal=side==='left'||side==='right',tip=(horizontal?after.y:after.x)+offset
+  expect(tip).toBeGreaterThanOrEqual((horizontal?sourceAfter.y:sourceAfter.x)-2)
+  expect(tip).toBeLessThanOrEqual((horizontal?sourceAfter.y+sourceAfter.height:sourceAfter.x+sourceAfter.width)+2)
   await page.locator('.transcript').evaluate(el=>{el.scrollTop=el.scrollHeight})
   await expect(dialog).toHaveCount(0)
 })
@@ -285,14 +304,14 @@ test('异步首读增高时浮层自行重新测量，不需要滚动或调整�
 })
 
 
-test('首答和节点共用时长格式，小于一秒显示毫秒，达到一秒显示四舍五入整数秒', async ({page}) => {
+test('节点共用时长格式，小于一秒显示毫秒，达到一秒显示四舍五入整数秒', async ({page}) => {
   const values = [0, 999, 1000, 1499, 1500, 2500]
   await page.route(endpoint, route => route.fulfill({json: pageData([{...confirmed, durationMs: 1500,
     steps: values.map(ms => ({kind: 'stage-turn-completed', label: `节点 ${ms}`, at: confirmed.receivedAt, durationMs: ms}))
   }])}))
   await login(page)
   const dialog = await openMessageProcess(page)
-  await expect(dialog.locator('.response-time-summary strong')).toHaveText('2 秒')
+  await expect(dialog.locator('.response-time-summary')).toHaveCount(0)
   const elapsed = dialog.locator('.response-time-elapsed')
   await expect(elapsed).toHaveText(['0 毫秒', '999 毫秒', '1 秒', '1 秒', '2 秒', '3 秒'])
   await expect(dialog).not.toContainText(/1\.499|1\.5|2\.5/)
@@ -315,14 +334,14 @@ test('Router 开始准备使用真实起点；时间点显示接收后经过时�
   const start = dialog.locator('li').filter({ hasText: 'Router 开始准备' })
   await expect(start).toContainText('+26 秒')
   await expect(dialog.locator('li').filter({ hasText: 'Router 处理' })).toContainText('3 秒')
-  await expect(dialog.locator('li').filter({ hasText: '首条回复已确认可见' })).toContainText('+29 秒')
+  await expect(dialog.locator('li').filter({ hasText: '回复已送达' })).toContainText('+29 秒')
   await expect(dialog).not.toContainText('未记录')
   await expect(dialog).not.toContainText(/截至回复可见|批次共享|接收后/)
   await expect(dialog.locator('.response-time-explanation')).toHaveCount(0)
   await expect(dialog.locator('.response-time-legend')).toHaveText('+距接收阶段耗时')
   const router = dialog.locator('li').filter({hasText:'Router 处理'})
   await expect(router).toHaveAttribute('data-timing-type', 'span')
-  await expect(router).toContainText('至首答')
+  await expect(router).toContainText('至回复')
   await expect(router).toContainText('共享')
   await expect(router.getByRole('img', {name:'耗时 3 秒',exact:true})).toBeVisible()
   await expect(start).toHaveAttribute('data-timing-type', 'milestone')
@@ -358,5 +377,40 @@ test('紧凑过程保留缺失和异常状态，不显示解释段落或将未�
     const label = (await row.locator('.response-time-event').boundingBox())!
     const value = (await row.locator('.response-time-elapsed').boundingBox())!
     expect(label.x + label.width).toBeLessThanOrEqual(value.x)
+  }
+})
+
+test('合成送达样例：425秒只在本条时间线显示，历史收悉与待发送不冒充答复', async ({page}) => {
+  const {responseTiming} = await import('../server/response-times.js')
+  const at = (ms: number) => new Date(Date.parse(confirmed.receivedAt) + ms).toISOString()
+  const source = {sourceId:'synthetic-source',groupId:'room-product',messageId:'synthetic-message',version:1,receivedAt:at(0),routeReceipt:{kind:'router'},routedAt:at(10)}
+  const notice = {id:'synthetic-notice',kind:'router-reply',state:'delivered',createdAt:at(424000),sendStartedAt:at(424500),deliveredAt:at(425000),payload:{conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:1,sourceMessageId:source.messageId,replyPurpose:'direct-answer'}}
+  let mode = 'delivered'
+  await page.route(endpoint, route => {
+    const notices = mode === 'silent' ? [] : [{...notice,...mode === 'pending' ? {state:'prepared'} : mode === 'legacy' ? {kind:'triage-reply'} : {}},...mode==='unknown-later'?[{...notice,id:'unknown-earlier',state:'unknown',createdAt:at(100),sendStartedAt:at(200),deliveredAt:null}]:[]]
+    const row = responseTiming({messageId:source.messageId,messageVersion:1},[{...source,...mode === 'legacy' ? {routeReceipt:{kind:'triage'}} : {}}],notices,{event:{state:'consumed',...mode === 'silent' ? {noTaskDisposition:{outcome:'context-only'}} : {}}})
+    return route.fulfill({json:pageData([{...row,preview:'合成样例：核对已有任务状态'}])})
+  })
+  await login(page)
+  let dialog = await openMessageProcess(page)
+  await expect(dialog.locator('.response-time-summary')).toHaveCount(0)
+  await expect(dialog).not.toContainText(/首次|首条/)
+  const delivered = dialog.locator('li').filter({hasText:'回复已送达'})
+  await expect(delivered).toContainText('+425 秒')
+  await expect(delivered).toHaveCount(1)
+  for(const width of [1440,390]){
+    await page.setViewportSize({width,height:800})
+    await page.keyboard.press('Escape');dialog=await openMessageProcess(page)
+    await expect(delivered).toBeVisible()
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+    await page.screenshot({path:test.info().outputPath(`synthetic-message-delivery-${width}.png`)})
+  }
+  for(const state of ['legacy','pending','silent','unknown-later']){
+    await page.keyboard.press('Escape');mode=state;dialog=await openMessageProcess(page)
+    await expect(dialog.getByText('回复已送达',{exact:true})).toHaveCount(state==='unknown-later'?1:0)
+    await expect(dialog).not.toContainText(/首次|首条/)
+    if(state==='unknown-later'){await expect(dialog).toContainText('另有回复送达未确认');await expect(dialog.locator('li').filter({hasText:'回复已送达'})).toContainText('+425 秒')}
+    else if(state==='legacy')await expect(dialog.locator('li').filter({hasText:'历史收悉已送达'})).toContainText('+425 秒')
+    else {await expect(dialog.locator('.response-time-summary')).toHaveCount(1);await expect(dialog).toContainText(state==='pending'?'等待发送':'无需回复')}
   }
 })
