@@ -28,6 +28,7 @@ test('duration uses closed execution receipts, never wall clock or placeholder',
  assert.equal(taskConclusionDuration(withMs(8301000)), '用时 2h 18m 21s');
  assert.equal(taskConclusionDuration(withMs(61000)), '用时 1m 1s');
  assert.equal(taskConclusionDuration(withMs(0)), '用时 0s');
+ assert.equal(taskConclusionDuration({...task,durations:{execution:{milliseconds:61000,activeSince:null,estimated:true}}}), '用时 约 1m 1s');
  for(const ms of [null, undefined, -1, NaN, Infinity]) assert.equal(taskConclusionDuration(withMs(ms)), null);
  assert.equal(taskConclusionDuration(task), null);
  assert.equal(taskConclusionDuration({...withMs(8301000),state:'running'}), null);

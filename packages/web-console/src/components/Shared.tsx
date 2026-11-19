@@ -16,6 +16,7 @@ import '../styles/execution-groups.css';
 
 const states: Record<string, [string, 'neutral' | 'success' | 'warning' | 'danger' | 'info']> = {
   running: ['执行中', 'info'], active: ['进行中', 'info'], queued: ['排队中', 'neutral'], pending: ['处理中', 'info'],
+  'result-unrecorded': ['结果未记录', 'neutral'],
   accepted: ['已接纳', 'neutral'], completed: ['已完成', 'success'], complete: ['已完成', 'success'], done: ['已完成', 'success'],
   waiting: ['等待中', 'warning'], blocked: ['受阻', 'warning'], failed: ['失败', 'danger'], error: ['失败', 'danger'],
   cancelled: ['已取消', 'neutral'], canceled: ['已取消', 'neutral'], archived: ['已归档', 'neutral'],

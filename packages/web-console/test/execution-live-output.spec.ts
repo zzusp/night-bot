@@ -107,14 +107,19 @@ test('HTTP live snapshot contract replaces provisional output, commits once and 
 });
 
 test('live tool result replaces each snapshot without accumulating partial copies',async({page})=>{
- let tick=1;
+ let tick=0;
  const call={id:'call',role:'tool',kind:'tool-call',toolName:'bash',callId:'tool-one',text:JSON.stringify({command:'example'}),status:'pending',source:{sessionId:'authorized'}};
  const prior=[{...call,id:'prior',callId:'prior'},{...call,id:'prior-result',callId:'prior',kind:'tool-result',text:'previous',status:'completed'}];
- await page.route('**/api/tasks/task-research/session?*',r=>{const finished=tick===3;const items=[...prior,call,...(finished?[{...call,id:'final-result',kind:'tool-result',text:'line 3\n',status:'completed'}]:[])];return r.fulfill({json:{status:'ready',scope:'current-context',items,total:items.length,checkpoint:'call',revision:'same',live:{active:!finished,items:finished?[]:[{...call,id:'live-result',kind:'tool-result',text:`line ${tick}\n`,status:'running',transient:true}]}}});});
+ await page.route('**/api/tasks/task-research/session?*',r=>{const finished=tick===3;const items=[...prior,call,...(finished?[{...call,id:'final-result',kind:'tool-result',text:'line 3\n',status:'completed'}]:[])];return r.fulfill({json:{status:'ready',scope:'current-context',items,total:items.length,checkpoint:'call',revision:'same',live:{active:tick>0&&!finished,items:!tick||finished?[]:[{...call,id:'live-result',kind:'tool-result',text:`line ${tick}\n`,status:'running',transient:true}]}}});});
  await page.goto('/#/tasks/task-research');
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
- const tool=page.locator('[data-message-id="call"] .pi-tool-step');await tool.locator('summary').click();
+ const tool=page.locator('[data-message-id="call"] .pi-tool-step');
+ await expect(tool.locator('summary')).toContainText('结果未记录');
+ await expect(tool.locator('.pi-tool-shimmer')).toHaveCount(0);
+ await tool.locator('summary').click();
+ tick=1;await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await expect(tool.locator('.pi-tool-shimmer')).toBeVisible();
  await expect(tool).toContainText('line 1');
  tick=2;await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await expect(tool).toContainText('line 2');await expect(tool).not.toContainText('line 1');

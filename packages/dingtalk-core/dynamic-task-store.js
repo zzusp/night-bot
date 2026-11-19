@@ -1,6 +1,7 @@
 import {inspectionVersion,taskInspectionReason,taskWaitIdentity,inspectionIsCurrent,inspectionHoldsExecution} from '../../src/tasks/inspection.js'
 import {sourceHistorySchema} from '../../src/channels/source-history.js'
 import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
+import {missingInterruptedTimings,readTaskTimingRows} from '../../src/tasks/observer-durations.js'
 import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
 import {effectReconciliationAuditKinds,taskEffectBinding,taskEffectDigest,taskEffectReconciliationIdentity} from '../../src/tasks/effect-reconciliation.js'
 import {installTaskArchive, archiveTable, archiveTaskRows, unarchiveTaskRows, readReceiptRow, insertReceipt, canArchiveRecord} from './task-archive.js'
@@ -573,6 +574,17 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     const heldTaskId=a.taskId??a.binding?.taskId
     if(heldTaskId&&kind.startsWith('task.')&&!kind.startsWith('task.effect-reconciliation.')&&kind!=='task.drained'&&kind!=='task.sessionFailed'
       &&get('dynamic_tasks',heldTaskId,true)?.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
+    if(kind==='observer.timing.record'){
+      const task=get('dynamic_tasks',a.taskId),estimates=array(a.estimates)
+      const windows=new Map(missingInterruptedTimings(task,readTaskTimingRows(db,[task.taskId])).map(window=>[window.leaseEpoch,window]))
+      if(a.sessionId!==task.sessionId||!estimates.length||new Set(estimates.map(row=>row.leaseEpoch)).size!==estimates.length)fail('TASK_TIMING_EVIDENCE_INVALID')
+      const interruptedTimings=estimates.map(({leaseEpoch,at,entryId})=>{
+        const window=windows.get(leaseEpoch),date=typeof at==='string'?Date.parse(at):NaN
+        if(!window||!Number.isFinite(date)||date<window.start||date>window.end||typeof entryId!=='string'||!entryId||entryId.length>128)fail('TASK_TIMING_EVIDENCE_INVALID')
+        return {leaseEpoch,at,entryId}
+      })
+      return changed({binding:{taskId:task.taskId,sessionId:task.sessionId},interruptedTimings})
+    }
     if (kind.startsWith('topic.fact.')) {
       const result = topicFacts.reduce(kind, a)
       if (result !== undefined) return changed(result)
@@ -925,9 +937,10 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'task.sessionBound' || kind === 'task.drained') {
       const task = currentTask(a.binding, { active: false, current: false, allowHumanReview: true })
+      const interruptedDrain=kind==='task.drained'&&task.recovering===true
       if (kind === 'task.sessionBound') task.sessionBound = true
       else { task.drained = true; task.recovering = false; task.sessionFailure = null }
-      saveTask(task); return changed({ task })
+      saveTask(task); return changed({ task, ...interruptedDrain?{interruptedDrain}:{} })
     }
     if (kind === 'task.wake' || kind === 'wake.enqueue') {
       const task = get('dynamic_tasks', a.taskId)
@@ -2248,6 +2261,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       }
       else if (q.kind === 'task.blockers') value = blockers(q.taskId)
       else if (q.kind === 'task.binding') value = bindingOf(get('dynamic_tasks', q.taskId))
+      else if(q.kind==='observer.timing.missing')value=missingInterruptedTimings(get('dynamic_tasks',q.taskId),readTaskTimingRows(db,[q.taskId]))
       else if (q.kind === 'execution.get') value = executionViews([get('dynamic_executions', q.executionId, true)])[0]
       else if (q.kind === 'execution.list') value = executionViews(q.taskId ? execs(q.taskId) : all('dynamic_executions'))
       else if (q.kind === 'execution.binding') value = executionBinding(get('dynamic_executions', q.executionId))

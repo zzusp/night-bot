@@ -4,6 +4,7 @@ import {mkdtemp,mkdir,rm,readFile,writeFile,appendFile,readdir} from 'node:fs/pr
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {createHash} from 'node:crypto'
+import {DatabaseSync} from 'node:sqlite'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
 import {Context} from '@deepseek-ai/cordis'
@@ -65,6 +66,16 @@ async function fixture(t,{effect=false}={}){
  return {intentEntryId,root,paths,options,config,configFile,task,backend,bound,note,route,evidence}
 }
 const cli=async(f,...args)=>JSON.parse((await exec(process.execPath,['bin/night-bot-jobs.js',f.configFile,...args],{encoding:'utf8'})).stdout)
+async function resumeFromOperatorAfterColdDrain(h,taskId){
+ await h.service.recover();await h.service.whenIdle()
+ const task=await h.query('task.get',{taskId})
+ assert.equal(task.drained,true);assert.equal(task.sessionFailure,null)
+ assert.equal(h.requests.filter(request=>request.tools.some(tool=>tool.name==='task_result')).length,0,'restart alone must not clear a retained drain failure')
+ assert.equal(task.inspection?.pending,true,'consuming the inspection does not authorize continuation')
+ await h.service.appendTaskContext({taskId,requestId:'operator-cold-job-readback',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,
+  progressImpact:'preserve',authorizationChange:'none',context:'Continue the original task using the retained operator readback; do not replay the old producer.'})
+ await h.service.whenIdle()
+}
 test('real CLI inspect/check are zero-write; closure is append-only and preserves ledger, inputs and unknown exit',{timeout:60000},async t=>{
  const f=await fixture(t),journal=await readFile(f.route.path),db=await readFile(join(f.paths.state,'tasks.sqlite'))
  const {proposal}=await cli(f,'inspect',f.task.taskId,f.bound.jobId),proposalFile=join(f.root,'proposal.json'),noteFile=join(f.root,'note.json')
@@ -111,7 +122,7 @@ test('foreign installation and retained resources reject rather than forge a pro
  writer.appendAudit({version:1,domain:'job',kind:'resource-ownership',payload:{...f.bound,seq:1,resource}});await writer.close()
  await assert.rejects(inspectNativeJob(f.config,f.task.taskId,f.bound.jobId),{code:'NIGHT_JOB_RECONCILIATION_UNSUPPORTED'})
 })
-test('real Host cold resumes the same task/session after operator closure without rerunning the old producer',{timeout:60000},async t=>{
+test('real Host cold drains and resumes the same task/session on operator input without rerunning the old producer',{timeout:60000},async t=>{
  const f=await fixture(t),{proposal}=await inspectNativeJob(f.config,f.task.taskId,f.bound.jobId)
  await reconcileNativeJob(f.config,proposal,f.note,{check:true});await reconcileNativeJob(f.config,proposal,f.note)
  const store=await openDynamicTaskStore(f.options);let turns=0
@@ -119,13 +130,10 @@ test('real Host cold resumes the same task/session after operator closure withou
   if(!request.tools.some(tool=>tool.name==='task_result'))return topicTaskCalls(request)
   turns++;const input=latestInput(request);assert.equal(input.task.taskId,f.task.taskId)
   assert.equal(input.jobReconciliations.length,1);assert.equal(input.jobReconciliations[0].noReplay,true);assert.equal(input.jobReconciliations[0].exitStatus,'unknown')
-  return [{name:'task_result',args:{decision:{action:'wait',summary:'The original objective continued after readback; no old producer was replayed.',question:'Review the retained unknown original exit before continuing the bounded objective.',audience:'operator',evidence:['original operator evidence'],limitations:['Old build exit remains unknown']}}}]
+  return [{name:'task_result',args:{decision:{action:'wait',summary:'The original objective continued after readback; no old producer was replayed.',question:'Review the retained unknown original exit before continuing the bounded objective.',evidence:['original operator evidence'],limitations:['Old build exit remains unknown']}}}]
  },{store,permissionMode:'full'})
  try{
-  await h.service.recover();await h.service.whenIdle()
-  assert.equal(h.requests.filter(request=>request.tools.some(tool=>tool.name==='task_result')).length,0,'restart alone must not clear a retained drain failure')
-  await store.command({id:'continue-after-operator-job-closure',kind:'task.wake',args:{taskId:f.task.taskId,kind:'host.explicit-continuation',payload:{reason:'Trusted Host continues readback after exact offline closure; never replay the old producer.'}}})
-  await h.service.recover();await h.service.whenIdle()
+  await resumeFromOperatorAfterColdDrain(h,f.task.taskId)
   const task=await h.query('task.get',{taskId:f.task.taskId}),stored=await h.ctx.sessionPersistence.readNative(f.task.sessionId,{requireComplete:true})
   assert.equal(turns,1);assert.equal(task.sessionId,f.task.sessionId);assert.equal(task.drained,true);assert.equal(task.sessionFailure,null)
   assert.match(task.lastDecision.summary,/objective continued/)
@@ -145,6 +153,7 @@ test('a registered job outside the selected Pi branch cannot be reconciled',{tim
 
 test('cold shell effect closes through real job CLI and Host readback, then a new shell runs without old-call replay',{timeout:60000},async t=>{
  const f=await fixture(t,{effect:true}),original=await readFile(f.route.path)
+ const lastOriginal=(await f.backend.readNative(f.task.sessionId,{requireComplete:true})).entries.at(-1)
  const {proposal}=await cli(f,'inspect',f.task.taskId,f.bound.jobId),proposalFile=join(f.root,'proposal.json'),noteFile=join(f.root,'note.json')
  await writeFile(proposalFile,JSON.stringify(proposal));await writeFile(noteFile,JSON.stringify(f.note))
  assert.equal((await cli(f,'close',proposalFile,noteFile,'--check')).noWrites,true)
@@ -154,16 +163,24 @@ test('cold shell effect closes through real job CLI and Host readback, then a ne
  const h=await nativeRuntimeHost(f.root,async request=>{
   if(!request.tools.some(tool=>tool.name==='task_result'))return topicTaskCalls(request)
   if(phase==='continue'&&!shellIssued){shellIssued=true;return [{name:nativeShell,args:{description:'Run a new independent local shell after exact old-effect closure',command:'echo independent-shell-ok'}}]}
-  return [{name:'task_result',args:{decision:{action:'wait',summary:phase==='continue'?'Independent shell finished':'Original output retained; no old shell replay',question:'Review the original unknown outcome before continuing.',audience:'operator',evidence:['retained operator readback'],limitations:['Original exit and effects remain unknown']}}}]
+  return [{name:'task_result',args:{decision:{action:'wait',summary:phase==='continue'?'Independent shell finished':'Original output retained; no old shell replay',question:'Review the original unknown outcome before continuing.',evidence:['retained operator readback'],limitations:['Original exit and effects remain unknown']}}}]
  },{store,permissionMode:'full'})
  try{
-  await h.service.recover();await h.service.whenIdle()
-  assert.equal(h.requests.filter(request=>request.tools.some(tool=>tool.name==='task_result')).length,0,'restart alone must not clear a retained drain failure')
-  await store.command({id:'continue-after-operator-job-closure',kind:'task.wake',args:{taskId:f.task.taskId,kind:'host.explicit-continuation',payload:{reason:'Trusted Host continues readback after exact offline closure; never replay the old producer.'}}})
-  await h.service.recover();await h.service.whenIdle()
+  await resumeFromOperatorAfterColdDrain(h,f.task.taskId)
   const task=await h.query('task.get',{taskId:f.task.taskId}),inspection=await h.service.inspectTaskEffect({taskId:task.taskId,intentEntryId:f.intentEntryId})
   assert.equal(task.drained,true);assert.equal(task.sessionId,f.task.sessionId)
   assert.ok(inspection.coldJobReconciliation.entryId);assert.ok(inspection.currentBinding.leaseEpoch>inspection.originBinding.leaseEpoch)
+  const timed=(await h.service.taskDetail(task.taskId)).durations.execution
+  assert.equal(timed.estimated,true);assert.ok(timed.milliseconds>=0)
+  assert.deepEqual(await h.query('observer.timing.missing',{taskId:task.taskId}),[])
+  const records=new DatabaseSync(f.options.dbPath,{readOnly:true})
+  try{
+   const rows=records.prepare("SELECT body FROM dynamic_receipts WHERE id GLOB 'observer-timing:*'").all()
+   assert.equal(rows.length,1)
+   const receipt=JSON.parse(rows[0].body)
+   assert.equal(receipt.dispatchEligible,false)
+   assert.deepEqual(receipt.result.interruptedTimings,[{leaseEpoch:f.task.leaseEpoch,at:lastOriginal.timestamp,entryId:lastOriginal.id}])
+  }finally{records.close()}
   const doc={version:1,kind:'task-effect-readback',...Object.fromEntries(['taskId','sessionId','intentEntryId','intentDigest','callEntryId','argumentsDigest','originBinding','currentBinding','scopeDigest'].map(key=>[key,inspection[key]])),observedAt:new Date().toISOString(),summary:'Original local readback retained; producer absent after offline operator check, exit unknown.',outcome:'partial-or-unknown',noReplay:true}
   const bytes=Buffer.from(JSON.stringify(doc)),sha256=hash(bytes),path='materials/runtime-evidence/effects/'+sha256+'.json'
   await mkdir(join(f.route.root,'materials/runtime-evidence/effects'),{recursive:true});await writeFile(join(f.route.root,path),bytes)

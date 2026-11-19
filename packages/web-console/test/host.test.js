@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {createHash} from 'node:crypto'
-import {memoryHost} from '../../../test/fixtures/memory-host.js'
+import {memoryHost,replyQualityRequest} from '../../../test/fixtures/memory-host.js'
 import {nativeTestTimeout} from '../../../test/fixtures/native-lifecycle.js'
 import {requestEnvelope, requestTools, eventually} from '../../../test/fixtures/resident-router-host.js'
 import {createHost} from '../../../src/host.js'
@@ -96,6 +96,8 @@ test('discovered Web plugin reaches real channel triage and durable reply readba
     assert.ok(channelMessages.some(row => row.role === 'assistant' && row.status === 'delivered'))
     assert.equal((await api('/api/tasks')).body.total, 0)
     const requestCount = f.requests.length
+    assert.equal(requestCount,2,'one original triage turn and one tool-free prose review')
+    assert.equal(f.requests.filter(replyQualityRequest).length,1,'the discovered application must use its declared review provider')
     const channels = host.ctx.channels
     await host.close(); host = undefined
     assert.equal(channels.transports.has(channelId), false, 'Host stop must release optional HTTP transport')

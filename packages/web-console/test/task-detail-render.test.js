@@ -79,6 +79,7 @@ test('duration formatting uses server clock plus monotonic elapsed and handles b
  assert.equal(fixed(0), '0 毫秒'); assert.equal(fixed(999), '999 毫秒'); assert.equal(fixed(1000), '1 秒'); assert.equal(fixed(1999), '1 秒'); assert.equal(fixed(3600000), '1 小时 0 分'); assert.equal(fixed(86400000), '1 天 0 小时');
  assert.equal(taskDurationText({milliseconds: 2000, activeSince: '2026-01-01T00:00:00Z'}, '2026-01-01T00:00:10Z', 3000), '15 秒');
  assert.equal(taskDurationText({milliseconds: null, activeSince: null}, undefined, 0), '—');
+ assert.equal(taskDurationText({milliseconds: 31000, activeSince: null, estimated: true}, undefined, 0), '约 31 秒');
 });
 
  test('task overview shows authoritative durations without blockers', () => {

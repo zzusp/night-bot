@@ -25,5 +25,5 @@ export function taskConclusionDuration(task: Task): string | null {
       || duration.milliseconds < 0) return null;
   const seconds = Math.floor(duration.milliseconds / 1000);
   const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
-  return `用时 ${h ? `${h}h ` : ''}${h || m ? `${m}m ` : ''}${s}s`;
+  return `用时 ${duration.estimated ? '约 ' : ''}${h ? `${h}h ` : ''}${h || m ? `${m}m ` : ''}${s}s`;
 }

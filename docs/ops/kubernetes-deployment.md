@@ -126,4 +126,6 @@ kubectl --kubeconfig $kube -n $ns exec deployment/night-bot -c night-bot -- dws 
 
 冷崩溃后 shell 的 `job` 和 `effect` 账本分别结清。原生产者排空证明缺失时，使用[效果对账规程](../EFFECT-RECONCILIATION.md#冷丢失-shell-缺少原执行者排空证明)：正常停机确认原 Pod 消失及 PVC 没有其他业务写者，持安装租约离线 `jobs close --check` / `close`；正常重启原任务只读核验并真实排空，再由操作者走原 `effects inspect` / `close`。已有合法 job 收据直接复用，禁止重放原命令或伪造 owner-drained。
 
+正常重启后，核对中断轮的执行时长在列表和详情标为「约」。回填只读取原轮已提交会话，按最后一条记录估算，不使用 Pod 退出时间、不改原任务状态。没有可信同轮记录时仍显示「—」。
+
 实现升级必须使用已合并源码的正式镜像，保留 Recreate、卷身份和正常排空边界；新 typed 回执不能交给旧镜像读取，不删除审计回退。`committed`、Pod Ready 和只读工具成功均不代表剩余任务已恢复；至少核对原会话后续独立工具的真实结果、任务终态及通知 no-replay。实际厂商/业务验收单列。
