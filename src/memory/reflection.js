@@ -22,7 +22,9 @@ export default class Reflection extends Service {
   constructor(ctx,config={}){
     super(ctx,'reflection');this.host=ctx;this.config=config;this.jobs=new Set();this.sources=new Set();this.abort=new AbortController();this.closed=false;this.lastError=null
     this.maintenance=new MemoryMaintenance(this,config.maintenance??{},config.maintenanceModel)
-    ctx.skills.registerProvider(()=>({name:'learned',list:async options=>({candidates:await this.catalog(options?.scope),complete:!!options?.scope||!this.host.agents.currentInitiator()}),get:async(candidate,options)=>this.skill(candidate,options?.scope,{resourceOnly:options?.resourceOnly===true})}))
+    const provider={name:'learned',list:async options=>({candidates:await this.catalog(options?.scope),complete:!!options?.scope||!this.host.agents.currentInitiator()}),get:async(candidate,options)=>this.skill(candidate,options?.scope,{resourceOnly:options?.resourceOnly===true})}
+    ctx.skills.registerProvider(()=>provider)
+    this.officialResources=(skills,options)=>this.readOfficialResources(provider,skills,options)
     ctx.effect(()=>async()=>{this.closed=true;this.abort.abort();await this.maintenance.stop();await this.whenIdle()},'reflection drain')
   }
   async [Service.init](){
@@ -366,15 +368,38 @@ export default class Reflection extends Service {
     if(!Object.values(state.skills).some(skill=>skill.active&&skill.origin!=='router'))return []
     return (await this.host.memory.store.index(scope,{topic:'experience'})).entries
   }
-  async catalog(requestedAgent){
+  async authorizedSkills(requestedAgent,{signal,verifyState=false}={}){
+    signal?.throwIfAborted()
     const agent=this.host.agents.currentInitiator()??requestedAgent;if(!agent)return []
     const binding=await this.host.memory.binding(agent);if(!binding)return []
     const result=[]
     for(const {scope}of readableScopes(binding)){
-      const state=await this.state(scope),entries=await this.supportEntries(scope,state)
-      for(const [key,skill]of Object.entries(state.skills))if(skill.active&&learnedSkillSupported(skill,entries))result.push({name:'learned-'+key,description:skill.applicability,provider:'learned',source:skill.origin??'task-reflection',rank:100,locator:{scope,key},invocation:{modelInvocable:true,userInvocable:true}})
+      signal?.throwIfAborted();const state=await this.state(scope)
+      signal?.throwIfAborted();const entries=await this.supportEntries(scope,state)
+      signal?.throwIfAborted()
+      // Reflection can publish state outside the memory lock. Check it again
+      // after reading the evidence index rather than combining two versions.
+      if(verifyState&&!isDeepStrictEqual((await this.state(scope)).skills,state.skills))throw failure('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
+      signal?.throwIfAborted()
+      for(const [key,value]of Object.entries(state.skills))if(value.active&&learnedSkillSupported(value,entries)){
+        const candidate={name:'learned-'+key,description:value.applicability,provider:'learned',source:value.origin??'task-reflection',rank:100,locator:{scope,key},invocation:{modelInvocable:true,userInvocable:true}}
+        result.push({candidate,value})
+      }
     }
     return result
+  }
+  async catalog(requestedAgent){return (await this.authorizedSkills(requestedAgent)).map(row=>row.candidate)}
+  // These views are fresh for each Host validation phase and never authorize a tool read.
+  async readOfficialResources(provider,skills,options){
+    const selected=await skills.officialCandidates(provider,options),resources=new Map()
+    if(!selected.length)return resources
+    const current=new Map((await this.authorizedSkills(options.scope,{signal:options.signal,verifyState:true})).map(row=>[row.candidate.name,row]))
+    for(const candidate of selected){
+      const row=current.get(candidate.name),{scope,key}=candidate.locator
+      const skill=row?.candidate.locator.scope.id===scope.id?{...row.candidate,content:this.renderSkill(scope,key,row.value)}:undefined
+      resources.set(candidate.name,skill)
+    }
+    return resources
   }
   async skill(candidate,agent,{resourceOnly=false}={}){
     const allowed=(await this.catalog(agent)).find(row=>row.name===candidate.name&&row.locator.scope.id===candidate.locator.scope.id);if(!allowed)return

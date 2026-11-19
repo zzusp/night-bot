@@ -72,3 +72,22 @@ single task execution session and handling/reply-only first-tier triage are docu
 [SINGLE-TASK](SINGLE-TASK.md) and [CHANNELS](CHANNELS.md). Reference-domain tests still
 cover historical API contracts; current default wiring has separate portable Host
 and real local Pi-protocol tests. Neither test category proves live vendor access.
+
+## 会话执行中的安全并行与等待
+
+所有具备原生工具的官方会话共用 `runtime/parallel-read.js` 的短规则：以数据与资源依赖安排同批调用，不按工具名推断安全性。Pi 仍负责工具批次；Host 原有 `ToolLeases` 按真实注册定义的 `isConcurrencySafe`、FIFO 写屏障和 `maxParallelToolCalls` 控制执行，不新增执行会话或调度底座。短命令前台；长作业仅在能与其他已授权步骤重叠时后台，提交后先做独立工作，依赖结果时再等通知或阻塞读取，不忙轮询。后台 ID 不等于完成。既有 bash 默认 `enableRunInBackground=true`、`promoteOnTimeout=true`（后者还受前者约束），本轮不改开关；明确关闭仍拒绝后台参数。真实脚本夹具使用显式 full 权限，只验证作业生命周期与重叠，不证明 ask/auto 的 OS 隔离。
+
+| 路径 | 实际能力与本轮处理 |
+|---|---|
+| 分诊、Router、普通原生会话、任务执行 | 共用官方 context 注入；没有原生工具时不注入，不增加工具。分诊提交、Router 动作/回执和任务结果仍互斥；任务仍为唯一执行会话，原禁止 subagent/委派/子执行的工具限制不变。 |
+| Router 只读工具 | 明确声明任务、来源、回复、当前配置与排期列表可并行；每调用仍校验会话身份/当前 generation。`platform_task_query` 会更新分页消费状态，继续互斥；记忆/Skill 读取、加载或维护也不凭名称放开。 |
+| 普通文件/网页工具 | 原生文件只读与 web_search/web_fetch 本来已有安全声明；write/edit、shell、job_output/job_list/job_kill 等未因本轮规则被自动放开。job_output 会消费读游标，wait 可能持有独占租约，取消/终态/通知/模型结果的原守卫保留。 |
+| 诊断 | 独立官方 Pi 会话复用同一规则，只有原来的 diagnosis_evidence；证据别名、缓存和调查预算共享，未证明可重入，仍按 SDK 默认串行，不另建 Host 工具或放宽证据范围。 |
+| Skill 生成 | 现有 creator 加载/起草流程复用规则；只有原有 creator 读取工具，先加载再起草的依赖不改变，没有新增委派或评测工具。 |
+| 审批、复盘、压缩等无工具推理 | 不增加工具或伪造并行调用；原来的输入、证据与恢复边界保留。 |
+
+Router 的 `conversationContext` 分阶段并行读取精确引用、来源→任务连接、回复索引与任务索引，返回次序确定；阶段容量取现有 Host 配置，单个阶段失败先等待已发读取结束再返回错误，不发布半份上下文。`currentEvents` 只在本次投影内复用，不跨请求缓存。单来源 latest 查询使用原有会话/消息/版本索引，调度分支不再做无用全会话扫描。新 `sourceTaskLinks` 保留来源版本绑定；`sourceQuoteLinks` 仅投影 Host 核验为 current 的精确引用。当前任务索引与准确绑定已足够时可直接安排，不机械先发模型查询；缺失、歧义、旧版本或需要完整要求/进展/完成证据时仍查询，引用不借出权限，Host 继续核对实际来源、版本与结清回执。
+
+任务准备只并行已证明独立的阶段：缓存附件的受控路径/哈希校验、独立依赖边读取，以及材料处理后的 operation.list/execution.list。按现有 `maxParallelToolCalls` 限制单次读取阶段，保持输入顺序，失败等待已发读取退出。原本已有的多来源 Promise.all 不重复改造。未把操作、blocker 或依赖快照提前到不定时长的下载之前；多附件连接器下载、多任务材料发布、可写目录的产物范围、调度队列/wake 复查等仍按原序，缺少可重入或一致性证明时不盲目重叠。阶段内上限不等于所有任务/连接器的全局 I/O 上限。
+
+验证入口：`pi-session-parallelism` 用显式 gate 验证真实原生 Router 查询同时在途、容量和写屏障；`pi-session-preparation` 验证实际任务准备重叠、精确绑定与旧投影对照下模型查询/请求次数；`pi-job-tools-wire` 的真实本地脚本验证后台提交→独立步骤→同作业取消/终态且不轮询输出。受控对照不是现场模型行为或百部耗时基准，不据此承诺真实延迟下降。

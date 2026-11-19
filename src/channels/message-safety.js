@@ -82,5 +82,5 @@ export const communicationGuidanceIndex = '沟通规范索引：撰写渠道首�
 export const channelReplyWritingPrompt = channelReplyWritingRules + '\n' + communicationGuidanceIndex + '\n' +
  '新正文在冻结前独立复核；若工具返回REPLY_QUALITY_REVISION_REQUIRED，按反馈改写对应正文并重新提交。在工具确认前不当成已保存或已送达，不以省略应答或换操作编号绕过复核。'
 export function communicationGuidanceReadTool(){
- return {name:'communication_guidance_read',description:'只读 communication/v1 沟通规范；准备面向人的正文时按需读取，不访问文件、网络或业务数据。',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object',properties:{id:{type:'string'},content:{type:'string'}},required:['id','content']},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},async execute(){return {id:'communication/v1',content:taskPublicCommunicationInstructions}}}
+ return {name:'communication_guidance_read',isConcurrencySafe:()=>true,description:'只读 communication/v1 沟通规范；准备面向人的正文时按需读取，不访问文件、网络或业务数据。',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object',properties:{id:{type:'string'},content:{type:'string'}},required:['id','content']},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},async execute(){return {id:'communication/v1',content:taskPublicCommunicationInstructions}}}
 }

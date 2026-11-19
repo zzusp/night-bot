@@ -96,9 +96,11 @@ node bin/night-bot-settings.js data/config/config.json model-list --live
 ```
 
 - **模型与凭据**：配置 API 协议、地址、模型目录和角色模型，使用环境引用或凭据服务管理密钥。见 [统一配置命令](docs/ops/shared-settings.md)。
-- **技能**：默认发现随代码/镜像交付的[工作日志写作技能](skills/work-log-writing/SKILL.md)及脱敏示例、[skill-creator](skills/skill-creator/SKILL.md)，无需配置 `skillDirs`；已认证用户可用 `/skill:work-log-writing` 或 `/skill:skill-creator`。源码安装正常重启后生效，镜像安装需更新到包含本变更的镜像。仍支持 `skillDirs` 和私有安装目录，同名私有/自定义技能优先，不覆盖其文件。内置技能随代码更新，不进入私有技能学习快照；日报技能不改变独立定时日报提示。skill-creator 采用单执行会话流程，离线脚本需 Python 3（校验/打包另需 PyYAML，镜像已提供）；Claude CLI 触发率测量不属于默认能力。私有技能和业务素材仍不提交到代码仓库。
+- **技能**：默认发现随代码/镜像交付的[工作日志写作技能](skills/work-log-writing/SKILL.md)及脱敏示例、[skill-creator](skills/skill-creator/SKILL.md)，无需配置 `skillDirs`；已认证用户可用 `/skill:work-log-writing` 或 `/skill:skill-creator`。源码安装正常重启后生效，镜像安装需更新到包含本变更的镜像。仍支持 `skillDirs` 和私有安装目录，同名私有/自定义技能优先，不覆盖其文件。内置技能随代码更新，不进入私有技能学习快照；日报技能不改变独立定时日报提示。skill-creator 采用单执行会话流程，离线脚本需 Python 3（校验/打包另需 PyYAML，镜像已提供）；Claude CLI 触发率测量不属于默认能力。私有技能和业务素材仍不提交到代码仓库。学习技能在每次 Pi 资源刷新内共用批量授权视图，不跨轮复用；文件技能仍逐项检查当前文件和访问权限。
 - **渠道插件**：通过 `channelPluginDirs` 与 `channelPlugins` 接入其他消息渠道。插件须遵循认证身份、生命周期和能力合同。见 [插件接口](docs/CHANNEL-PLUGINS.md)。
 - **工具插件**：可信部署配置可挂载额外浏览器、搜索、数据库等能力。插件与 Host 同进程运行，不是沙箱；不会从普通群消息自动加载代码。
+
+分诊、Router 和任务执行的活跃 Pi 会话沿用已提交的日志前缀，提交时只检查并落盘新增记录或分支切换；重新打开、恢复和离线核验仍严格检查磁盘日志。磁盘格式不变，无需迁移。
 
 官方会话工厂发布前，会按耐久默认选择、显式运行时/记忆模型选择及当前角色模型选择预加载所需 Pi 协议模块，只做本地导入，不读模型凭据、不发探测或推理请求。首次模块加载成本移到启动阶段；无效模型配置仍保留现有延迟诊断。分流性能使用现有 `/state/performance` 查询，按真实 `sessionId` / `groupId` 返回 `runtimeOwner: channel-triage` 及 `phaseMs`（次数、总量、最大值、p50/p95、失败次数），无需创建任务。阶段覆盖会话准备、资源读取/SDK reload、输入接纳、请求准备、提交和收尾；只记录元数据。嵌套及并行阶段不可相加，SDK 模型尝试次数不代表 HTTP 请求数；旧记录缺少分项时返回空集合，不回填推测耗时。
 

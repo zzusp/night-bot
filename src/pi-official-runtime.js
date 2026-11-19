@@ -24,7 +24,7 @@ export async function apply(ctx,config={}){
  ctx.effect(()=>()=>names.close(),'official Pi session names ownership')
  const ownership=installOfficialProcessOwnership(ctx)
  const factory=new OfficialAgentFactory(ctx,{
-  resolveResources,
+  resolveResources,maxParallelToolCalls:config.maxParallelToolCalls??4,
   drainBusiness:createOfficialBusinessDrain(ctx,ownership),
   async authorizeInput(packet,actor){const schedule=ctx.get('schedule');return typeof schedule?.authorizeInput==='function'&&await schedule.authorizeInput(packet,actor)===true},
   createMetadata(meta={}){

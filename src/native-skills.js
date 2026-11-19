@@ -28,6 +28,12 @@ export default class NativeSkills extends Service {
  control(options){aborted(options.signal);aborted(this.lifecycle.signal);return options.signal?AbortSignal.any([options.signal,this.lifecycle.signal]):this.lifecycle.signal}
  async snapshot(options={}){const result=await this.collect(options);return{skills:[...result.entries.values()].map(e=>summary(e.candidate)).sort((a,b)=>cmp(a.name,b.name)),complete:result.cacheable}}
  async list(options={}){return(await this.snapshot(options)).skills}
+ // Use the registered object, not the provider label: scoped overrides may win.
+ async officialCandidates(provider,options){
+  const result=await this.collect(options);this.control(options)
+  if(!result.cacheable)throw Object.assign(new Error('Complete scoped skill snapshot required'),{code:'PI_OFFICIAL_SKILL_SNAPSHOT_REQUIRED'})
+  return [...result.entries.values()].filter(entry=>entry.provider===provider).map(entry=>entry.candidate)
+ }
  async get(name,options={}){if(typeof name!=='string'||!namePattern.test(name))return undefined;const result=await this.collect(options),signal=this.control(options),entry=result.entries.get(name);aborted(signal);if(!entry)return;const skill=await wait(entry.provider.get(entry.candidate,options),signal);if(skill===undefined)return;if(entry.provider===runtimeProvider?entry.layer.runtime.get(entry.candidate.name)!==entry.candidate.locator:entry.layer.providers.get(entry.registrationName)?.provider!==entry.provider)return;definition(skill);if(skill.name!==entry.candidate.name){if(entry.layer.providers.get(entry.registrationName)?.provider===entry.provider)this.invalidateCache();return}return skill}
  // This port is only for Host resource mapping. Unrecognized/dynamic providers
  // retain get semantics; they cannot opt themselves into the filesystem fast path.

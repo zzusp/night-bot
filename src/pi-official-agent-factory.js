@@ -32,6 +32,7 @@ export class OfficialAgentFactory {
   this.ctx=ctx;this.ports=ports;this.startups=new Set();this.startupCleanupFailures=new Set();this.handles=new Set();this.lifetime=new AbortController();this.closing=undefined;this.startContext=new AsyncLocalStorage();this.executionContext=new AsyncLocalStorage()
   ctx.effect(()=>()=>this.close(),'official agent factory ownership')
  }
+ get parallelReadLimit(){return this.ports.maxParallelToolCalls??1}
  close(){
   if(this.startContext.getStore()===this||this.executionContext.getStore())return Promise.reject(fail('PI_OFFICIAL_FACTORY_CLOSE_REENTRANT'))
   if(this.closing)return this.closing
