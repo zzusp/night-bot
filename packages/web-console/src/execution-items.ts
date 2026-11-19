@@ -6,7 +6,10 @@ export type ExecutionItem = TranscriptItem | { kind: 'tool-group'; id: string; t
 
 export function toolState(item: ToolItem): string {
   const result = item.results.at(-1);
-  return item.resultStatus || (result ? result.isError ? 'error' : result.status || 'completed' : item.call?.status || 'pending');
+  if (item.resultStatus) return item.resultStatus;
+  if (result) return result.isError ? 'error' : result.status || 'completed';
+  const status = item.call?.status;
+  return !status || status === 'pending' ? 'result-unrecorded' : status;
 }
 
 // Pair only within an uninterrupted segment and the same session/call/name.

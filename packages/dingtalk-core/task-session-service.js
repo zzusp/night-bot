@@ -1,3 +1,4 @@
+import {interruptedTimingEvidence} from '../../src/tasks/observer-durations.js'
 import {inspectionVersion,taskInspectionReason,inspectionHoldsExecution} from '../../src/tasks/inspection.js'
 import {cancelNotificationBeforeSend} from './notification-delivery.js'
 import {bindTaskMaterialPaths,resolveTaskMaterialPaths} from '../../src/tasks/material-paths.js'
@@ -146,7 +147,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       || !!recovery.nextAttemptAt && Date.parse(recovery.nextAttemptAt) <= Date.now()
     return (failures.get(id)?.retryAfter ?? 0) <= Date.now()
   }
-  let closed = false, closingService, recovering, scheduling, scheduleRequested = false
+  let closed = false, closingService, recovering, scheduling, scheduleRequested = false, timingBackfilled = false
   let notificationScan, notificationScanRequested = false, notificationTransportRetryAt = 0
   let sourceProcessingRevision = 0
   let observerGroupPage
@@ -1441,6 +1442,19 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       catch(error){if(!['TASK_INSPECTION_STALE','DYNAMIC_TASK_LEASE_STALE'].includes(error.code))throw error}
     }
   }
+  async function recoverTaskTiming(task){
+    const windows=await query('observer.timing.missing',{taskId:task.taskId})
+    if(!windows.length)return
+    let stored
+    const started=performance.now()
+    try{stored=await ctx.sessionPersistence.readNative(task.sessionId)}catch{
+      // Timing is observational. No journal repair and no fabricated result.
+      startup.record('task-store.interrupted-timing',started,'unavailable')
+      return
+    }
+    const estimates=interruptedTimingEvidence(task,stored,windows)
+    if(estimates.length)await command('observer.timing.record',{taskId:task.taskId,sessionId:task.sessionId,estimates},'observer-timing:'+hash([task.sessionId,estimates]))
+  }
   async function recover() {
     if (closed) return { failures: [] }
     // Inspection must keep recording incidents while a previous recovery waits
@@ -1476,7 +1490,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       for (const task of await query('task.list')) if (task.sessionBound) {
         const cwd = await taskWorkspace(root,task.taskId,task)
         await attachWorkspace(task.sessionId, cwd, task.title)
+        if(!timingBackfilled)await recoverTaskTiming(task)
       }
+      timingBackfilled=true
 
       for(const group of residentStore.listGroups())for(const outbound of group.outbox){
         if(outbound.status!=='pending'||outbound.matterUnitRefs?.length!==1||await query('notification.get',{notificationId:outbound.outboundId}))continue

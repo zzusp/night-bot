@@ -671,4 +671,5 @@ test('Router 多轮回复正文独立、顺序稳定、不按正文去重，错�
  assert.equal(rows.length,2);assert.equal(rows[0].text,'同样回复 apiKey=[已隐藏]');assert.equal(rows[1].text,rows[0].text);assert.notEqual(rows[0].id,rows[1].id);
  assert.deepEqual(page.items.filter(row=>row.kind==='tool-call').slice(0,2).map(row=>row.callId),rows.map(row=>row.callId));
  assert.doesNotMatch(JSON.stringify(rows),/PRIVATE_|notification|已送达/);
+ assert.equal(page.items.at(-1).status,'result-unrecorded');
 });

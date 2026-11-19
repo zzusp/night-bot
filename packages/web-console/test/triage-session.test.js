@@ -19,6 +19,13 @@ test('triage uses shared stable native identity and only selected current-source
  assert.doesNotMatch(JSON.stringify(result),/PRIVATE_|SECRET_REGISTERED|background|一级分诊请求/)
  assert.deepEqual(value,snapshot())
 })
+test('triage with an unmatched native call does not claim it is still processing',async()=>{
+ const value=snapshot();value.context.projection.entries.pop()
+ const page=await triageSessionView(options(value))
+ assert.equal(page.items.at(-1).kind,'tool-call')
+ assert.equal(page.items.at(-1).status,'result-unrecorded')
+ assert.ok(!page.items.some(row=>row.kind==='tool-result'))
+})
 test('triage rejects foreign header, runtime owner and source identity',async()=>{
  for(const mutate of [s=>s.header.id='foreign',s=>s.header.runtimeOwner='conversation-router',s=>s.header.conversationId='foreign',s=>s.context.projection.entries[1].messages[0].details.source.conversationId='foreign',s=>{const m=s.context.projection.entries[1].messages[0];m.content[0].text=m.content[0].text.replace('"conversationId":"conversation-fixture","text"','"conversationId":"foreign","text"')}]){
   const value=snapshot();mutate(value);await assert.rejects(triageSessionView(options(value)),e=>['SESSION_IDENTITY_INVALID','SESSION_SOURCE_IDENTITY_INVALID'].includes(e.code))

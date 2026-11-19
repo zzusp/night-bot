@@ -296,7 +296,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           const selected = toolInput(block.name, block.arguments)
           const resultText = businessResultText(block.name, selected.text)
           if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(resultText ? {resultText} : {})})
-          add(entry, 'call-' + index + '-' + blockIndex, 'tool', selected.text, {kind: 'tool-call', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), callId, status: 'pending'}, message)
+          add(entry, 'call-' + index + '-' + blockIndex, 'tool', selected.text, {kind: 'tool-call', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), callId, status: 'result-unrecorded'}, message)
         }
       } else if (message.role === 'toolResult') {
         const nativeId = message.toolCallId, pending = calls.get(nativeId)

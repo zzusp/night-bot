@@ -35,6 +35,14 @@ test('all pending, running, queued and unknown tools remain separate even betwee
   assert.deepEqual(executionItems([call('a', 'completed'), call('b', 'running')]).map(item => item.kind), ['tool', 'tool']);
 });
 
+test('unmatched historical calls are unrecorded; only a paired live update or result changes the card', () => {
+  const initial = [call('old'), call('current', 'result-unrecorded')];
+  const states = rows => transcriptItems(rows).map(toolState);
+  assert.deepEqual(states(initial), ['result-unrecorded', 'result-unrecorded']);
+  assert.deepEqual(states([...initial, { ...result('current', 'running'), transient: true }]), ['result-unrecorded', 'running']);
+  assert.deepEqual(states([...initial, result('current')]), ['result-unrecorded', 'completed']);
+});
+
 test('poll completion merges into stable first-call group; next running call stays outside', () => {
   const initial = [...done('a'), ...done('b'), call('current', 'running')];
   const first = executionItems(initial);
