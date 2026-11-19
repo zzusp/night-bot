@@ -277,7 +277,7 @@ test('Router progress quotes the original source without changing an old frozen 
  ])
 })
 
-test('triage always sees the writing rules and reads examples through a bounded native tool',{timeout:nativeTestTimeout(30000)},async t=>{
+test('triage keeps safety boundaries and reads shared communication guidance on demand',{timeout:nativeTestTimeout(30000)},async t=>{
  let reads=0,initial;
  const h=await residentRouterHost(t,body=>{
   const input=triageInput(body),prompt=JSON.stringify(body.messages.filter(row=>row.role==='system'));
