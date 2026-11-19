@@ -170,10 +170,6 @@ function readOutputPresentation(text: string, offset: number, input?: string): R
   return <pre className="tool-content pi-read-output"><code>{lines.map((line, index) => <span className="pi-code-line" key={index}>{offset === 0 && <span className="pi-line-number" data-line={start + index} aria-hidden="true" />}<span>{line}{index < lines.length - 1 ? '\n' : ''}</span></span>)}</code></pre>;
 }
 
-function ToolFailure({failure}: {failure?: Message['failure']}) {
-  return <span className="pi-tool-failure"><span className="sr-only">失败：</span>{failure?.reason || '未记录失败原因'}{failure?.code && <code>{failure.code}</code>}</span>;
-}
-
 function ToolActivity({ item, history, compact = false, disclosures }: { item: ToolItem; history?: HistoryReader; compact?: boolean; disclosures?: Map<string, boolean> }) {
   const [open, setOpen] = useState(() => disclosures?.get(item.id) ?? false);
   const [opened, setOpened] = useState(() => disclosures?.get(item.id) ?? false);
@@ -205,7 +201,7 @@ function ToolActivity({ item, history, compact = false, disclosures }: { item: T
     }}>
       <summary className={running ? 'pi-tool-shimmer' : undefined}>
         <span key={state} className={`pi-tool-status${completionCue ? ' pi-motion-cue' : ''}${running ? ' is-running' : failed ? ' is-error' : result ? ' is-complete' : ''}`} aria-hidden="true">{running ? <PiIcon path={mdiLoading} size={14} /> : failed ? <PiIcon path={mdiAlertCircle} size={14} /> : result ? <PiIcon path={mdiCheck} size={14} /> : <span>·</span>}</span>
-        <span className={`pi-tool-title${failed ? ' has-failure' : ''}`}><span>{summaryHidden ? message.toolName || '工具' : toolSummary(item)}</span>{failed && !summaryHidden && <ToolFailure failure={result?.failure} />}</span>
+        <span className="pi-tool-title">{summaryHidden ? message.toolName || '工具' : toolSummary(item)}{failed && <span className="sr-only"> · 失败</span>}</span>
         {!result && <span className="pi-tool-state">{states[state]?.[0] || state}</span>}
         <PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} />
       </summary>
@@ -227,7 +223,7 @@ function ToolActivity({ item, history, compact = false, disclosures }: { item: T
       disclosures?.set(item.id, event.currentTarget.open);
       if (event.currentTarget.open) setOpened(true);
     }}>
-      <summary>{item.call ? '查看工具输入与结果' : '查看工具结果'}{failed && !summaryHidden && <ToolFailure failure={result?.failure} />}</summary>
+      <summary>{item.call ? '查看工具输入与结果' : '查看工具结果'}</summary>
       {opened && <>
         <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain />
           : <p className="message-scope">{item.inputElsewhere ? '见上方调用。' : '本页无输入记录。'}</p>}</section>

@@ -186,8 +186,3 @@
 .scheduled-message-origin { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin: 0 2px 6px 0; color: var(--board-muted); font-size: 11px; line-height: 1.5; }
 .message.message-scheduled > .message-body { background: color-mix(in srgb, var(--board-message-user-bg) 48%, var(--board-panel)); }
 .message-scheduled .message-disclosure { margin-left: 0; margin-right: auto; padding-left: 0; color: var(--board-message-muted); }
-
-/* A failed step keeps its reason readable without opening the body. */
-.pi-tool-title.has-failure { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
-.pi-tool-failure { display: block; color: var(--board-danger); font-family: var(--board-font); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
-.pi-tool-failure code { display: inline; margin-inline-start: 8px; font-size: 11px; font-family: var(--board-mono); }

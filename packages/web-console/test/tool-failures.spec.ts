@@ -47,22 +47,37 @@ for (const router of [true,false]) {
     await group.locator(':scope > summary').focus();await page.keyboard.press('Enter');
     const steps=group.locator('.pi-tool-step');
     await expect(steps).toHaveCount(5);
-    await expect(steps.nth(0)).not.toHaveAttribute('open');
-    await expect(steps.nth(0).locator('summary')).toContainText('输入不符合要求，请检查参数。');
-    await expect(steps.nth(0).locator('summary')).toContainText('INVALID_ARGS');
-    await expect(steps.nth(1).locator('summary')).toContainText('调用超时，请先核对执行状态，避免重复操作。');
-    await expect(steps.nth(2).locator('summary')).toContainText('未记录失败原因');
-    await expect(steps.nth(3).locator('.pi-tool-failure')).toHaveCount(0);
+    const reason='输入不符合要求，请检查参数。';
+    const hiddenReasons = async () => {
+      for(const index of [0,1,2]){
+        await expect(steps.nth(index)).not.toHaveAttribute('open');
+        const summary=steps.nth(index).locator('summary');
+        await expect(summary).not.toContainText(/输入不符合要求|调用超时|未记录失败原因|INVALID_ARGS|TOOL_TIMEOUT/);
+        await expect(summary.locator('[title]')).toHaveCount(0);
+        await expect(steps.nth(index).locator('.pi-tool-body')).not.toBeVisible();
+      }
+    };
+    await hiddenReasons();
     await steps.nth(0).locator('summary').focus();await page.keyboard.press('Enter');
     await expect(steps.nth(0)).toHaveAttribute('open');
     await expect(steps.nth(0).locator('summary')).toBeFocused();
-    await expect(steps.nth(0).locator('.tool-part').last()).toContainText('输入不符合要求，请检查参数。');
-    await expect(steps.nth(0).locator('.tool-part').last()).not.toContainText('尚未声明');
+    const output=steps.nth(0).locator('.tool-part').last();
+    await expect(output).toContainText(reason);
+    await expect(output).toContainText('INVALID_ARGS');
+    await expect(output).not.toContainText('尚未声明');
+    expect((await steps.nth(0).innerText()).split(reason).length-1).toBe(1);
+    await steps.nth(0).locator('summary').click();
+    await hiddenReasons();
     await steps.nth(2).locator('summary').click();
     await expect(steps.nth(2).locator('.tool-part').last()).toContainText('未记录失败原因');
+    await expect(steps.nth(2).locator('summary')).not.toContainText('未记录失败原因');
+    await steps.nth(2).locator('summary').click();
+    await hiddenReasons();
+    // One expanded known failure beside two collapsed failures in each capture.
+    await steps.nth(0).locator('summary').click();
     await expect(page.locator('body')).not.toContainText('PRIVATE_');
     await expect(steps.nth(3).locator('summary')).toBeVisible();
-    if(router)await page.screenshot({path:'/tmp/night-bot-tool-failure-desktop.png'});
+    if(router)await page.screenshot({path:'/tmp/night-bot-tool-failure-expanded-desktop.png'});
     for(const theme of ['light','dark']){
       await page.setViewportSize({width:390,height:844});
       await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
@@ -70,7 +85,7 @@ for (const router of [true,false]) {
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
       expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([]);
     }
-    if(!router){await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.screenshot({path:'/tmp/night-bot-tool-failure-narrow.png'});}
+    if(!router){await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.screenshot({path:'/tmp/night-bot-tool-failure-expanded-narrow.png'});}
     await page.evaluate(()=>window.dispatchEvent(new Event('online')));
     await expect(steps.nth(0)).toHaveAttribute('open');
     denied=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));
