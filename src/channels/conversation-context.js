@@ -42,15 +42,17 @@ export function queryReplyHistory(db,{conversationId,sourceId,taskId,notificatio
 /** Facts are separate from immutable admitted business packets. */
 export async function conversationContext(query,conversationId,{sources=[],taskIds=[],router=false,readConcurrency=1}={}){
  const sourceIds=new Set(sources.map(source=>source.sourceId)),tasks=new Set(taskIds)
- const quoted=await mapIndependentReads(sources.filter(source=>source.quote?.messageId),readConcurrency,source=>query('router.source-current',{conversationId,sourceId:source.sourceId}))
- for(const current of quoted)if(current?.quote?.currentSourceId)sourceIds.add(current.quote.currentSourceId)
+ const quotedSources=sources.filter(source=>source.quote?.messageId),quoted=await mapIndependentReads(quotedSources,readConcurrency,source=>query('router.source-current',{conversationId,sourceId:source.sourceId}))
+ const sourceQuoteLinks=[]
+ for(const [index,current] of quoted.entries())if(current?.quote?.currentSourceId){sourceIds.add(current.quote.currentSourceId);if(current.quote.status==='current')sourceQuoteLinks.push({sourceId:quotedSources[index].sourceId,messageVersion:quotedSources[index].version,quoteSourceId:current.quote.currentSourceId,quoteMessageVersion:current.quote.currentMessageVersion})}
  const links=await mapIndependentReads([...sourceIds],readConcurrency,sourceId=>query('router.source-links',{sourceId}))
- for(const rows of links)for(const link of rows)if(link.conversationId===conversationId)tasks.add(link.taskId)
+ const sourceTaskLinks=[]
+ for(const rows of links)for(const link of rows)if(link.conversationId===conversationId){tasks.add(link.taskId);if(sourceIds.has(link.sourceId)&&Number.isSafeInteger(link.messageVersion)&&link.messageVersion>0)sourceTaskLinks.push({sourceId:link.sourceId,messageVersion:link.messageVersion,taskId:link.taskId,relation:link.relation})}
  const selectors=[...[...sourceIds].map(sourceId=>({sourceId})),...[...tasks].map(taskId=>({taskId}))]
  const reads=[...router?[()=>query('router.task-index',{conversationId,sourceIds:[...sourceIds],taskIds:[...tasks]})]:[],...selectors.map(selector=>async()=>({...selector,...await query('router.reply-history',{conversationId,...selector})}))]
  const values=await mapIndependentReads(reads,readConcurrency,read=>read())
- return {asOf:new Date().toISOString(),historicalReferenceOnly:true,...router?{taskIndex:values[0]}:{},replyIndex:values.slice(router?1:0)}
+ return {asOf:new Date().toISOString(),historicalReferenceOnly:true,sourceQuoteLinks,sourceTaskLinks,...router?{taskIndex:values[0]}:{},replyIndex:values.slice(router?1:0)}
 }
 
-export const currentContextPolicy='Host 当前账本投影（不是新交办或授权）：prepared仅表示已冻结，unknown需查询原通知，delivered才表示已确认送达。任务向需求提出者发出的提问和任务状态回复也纳入回复索引；同一问题已有通知时查原通知状态，不换措辞重复提问。同一承接不重复发送；实际进度追问应回答新事实或具体阻断。状态以本轮索引或只读查询为准，不以旧摘要推断；分页剩余内容按需查询，通知预览不是完整正文。'
+export const currentContextPolicy='Host 当前账本投影（不是新交办或授权）：prepared仅表示已冻结，unknown需查询原通知，delivered才表示已确认送达。任务向需求提出者发出的提问和任务状态回复也纳入回复索引；同一问题已有通知时查原通知状态，不换措辞重复提问。同一承接不重复发送；实际进度追问应回答新事实或具体阻断。状态以本轮索引或只读查询为准，不以旧摘要推断；本轮sourceTaskLinks保留确切来源版本→任务绑定，taskIndex含当前状态与修订；当前来源或sourceQuoteLinks中Host核验的当前精确引用有唯一匹配且版本/要求足够时可直接用于Router安排，不机械再次查询。同名、缺失、歧义或需要完整要求/进展/完成证据时仍查询；引用不是业务授权，Host继续校验当前来源、版本与回执。分页剩余内容按需查询，通知预览不是完整正文。'
 export const progressTaskView=task=>({task:routerTaskSummary(task),asOf:new Date().toISOString(),...Object.fromEntries(['requirements','request','completion','humanRequests'].filter(key=>task[key]!==undefined).map(key=>[key,task[key]]))})

@@ -1,3 +1,4 @@
+import {mapIndependentReads} from '../../src/runtime/parallel-read.js'
 import {inspectionVersion,taskInspectionReason,inspectionHoldsExecution} from '../../src/tasks/inspection.js'
 import {cancelNotificationBeforeSend} from './notification-delivery.js'
 import {bindTaskMaterialPaths,resolveTaskMaterialPaths} from '../../src/tasks/material-paths.js'
@@ -95,6 +96,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (value !== undefined && (!Number.isSafeInteger(value) || value < 1 || value > 50)) fail('TASK_SESSION_CONCURRENCY_INVALID')
   }
   assertPiTaskBackend(config)
+  const readConcurrency=()=>ctx.get('officialAgentFactory')?.parallelReadLimit??1
   const root = resolve(config.workspaceDir ?? residentStore.getTaskWorkspaceDir?.() ?? legacy.getAgentConfig().workspaceDir)
   await mkdir(dirname(config.dbPath), { recursive: true })
   const store = suppliedStore ?? await openDynamicTaskStore({ dbPath: config.dbPath, instanceId: config.instanceId,
@@ -592,11 +594,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         || material.version !== undefined && material.version !== source.version || material.actorId !== source.actorId || material.messageId !== source.messageId || material.text !== source.text
         || hash(material.quote ?? null) !== hash(source.quote ?? null) || !Array.isArray(material.resources)
         || material.resources.length !== (source.resources ?? []).length) fail('TASK_MATERIAL_SOURCE_MISMATCH')
-      for (const [index, resource] of material.resources.entries()) {
+      await mapIndependentReads(material.resources,readConcurrency(),async resource => {
         if (!resource || !source.resources.some(item => stableTaskResourceIdentity([resource.resource]) === stableTaskResourceIdentity([item]))) fail('TASK_MATERIAL_SOURCE_MISMATCH')
         if (resource.status === 'unavailable') {
           if (resource.path !== undefined || resource.value !== undefined) fail('TASK_MATERIAL_SNAPSHOT_INVALID')
-          continue
+          return
         }
         if (resource.status !== 'read' || resource.complete !== true || typeof resource.path !== 'string'
           || dirname(resource.path) !== directories.materials || !/^[a-f0-9]{64}$/.test(resource.sha256 ?? '')
@@ -612,7 +614,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           || resource.value?.image && resource.value.image.path !== resource.path
           || resource.value?.file && (!validMaterialFile(resource.value.file) || resource.value.file.path !== resource.path
             || resource.value.file.bytes !== resource.bytes || resource.value.file.sha256 !== resource.sha256)) fail('TASK_MATERIAL_CONTENT_CHANGED')
-      }
+      })
       await checkedTaskDirectory(directories.materials)
       if (typeof source.text === 'string' && Buffer.byteLength(source.text) >= 512) {
         const textPath = target.replace(/\.json$/, '.txt')
@@ -1043,9 +1045,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
 
   async function taskInputWithDependencies(task) {
     const dependencies=(await query('router.dependencies',{taskId:task.taskId})).filter(row=>row.taskId===task.taskId)
-    const inputs=[]
     const evaluations=dependencies.length?await query('router.evaluations',{taskId:task.taskId}):[]
-    for(const dependency of dependencies){
+    const inputs=await mapIndependentReads(dependencies,readConcurrency(),async dependency=>{
       const evaluation=evaluations.find(row=>row.id===dependency.evaluationId)
       const prerequisite=await query('task.get',{taskId:dependency.prerequisiteTaskId})
       const completion=prerequisite?.completion
@@ -1061,11 +1062,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         ||!event||event.id!==evaluation.completionEventId||event.kind!=='task.completed'||event.taskId!==prerequisite.taskId
         ||event.commandId!==completion.commandId||event.requirementRevision!==completion.requirementRevision||event.controlRevision!==completion.controlRevision||hash(event.result)!==hash(completion.result)
         ||!authorization||authorization.groupId!==dependency.conversationId||authorization.version!==dependency.authorizationSourceVersion)fail('ROUTER_EVALUATION_STALE')
-      inputs.push({...dependency,evaluation,
+      return {...dependency,evaluation,
         authorization:{sourceId:authorization.sourceId,messageVersion:authorization.version,actorId:authorization.actorId},
         prerequisite:{taskId:prerequisite.taskId,requirementRevision:prerequisite.requirementRevision,completion},
-        completionEvent:{id:event.id,kind:event.kind,taskId:event.taskId,requirementRevision:event.requirementRevision,controlRevision:event.controlRevision,recordedAt:event.recordedAt}})
-    }
+        completionEvent:{id:event.id,kind:event.kind,taskId:event.taskId,requirementRevision:event.requirementRevision,controlRevision:event.controlRevision,recordedAt:event.recordedAt}}
+    })
     if(dependencies.length&&!await query('task.dependencies-ready',{taskId:task.taskId}))fail('ROUTER_DEPENDENCY_PENDING')
     return {...task,dependencies:inputs}
   }
@@ -1094,8 +1095,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       try {
         const sources = (await Promise.all(task.sourceRefs.map(sourceId => query('source.get', { sourceId })))).filter(Boolean)
         const materials = await Promise.all(sources.map(source => materializeSource(taskId, source)))
-        const operations = await query('operation.list', { taskId })
-        const executions = await query('execution.list',{taskId})
+        // Keep ledger observations after material loading: moving them earlier
+        // would retain stale blocker/effect state across an arbitrary download.
+        const [operations,executions]=await mapIndependentReads(['operation.list','execution.list'],readConcurrency(),kind=>query(kind,{taskId}))
         if(executions.length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
         await ctx.get?.('memory')?.bindSession(binding.sessionId,{actorId:task.ownerActorId??config.ownerActorId,...task.groupId&&task.metadata?.channelType!=='chat'?{groupId:task.metadata?.memoryGroupId??task.groupId,groupWrite:true}:{}})
         const runResult = await taskSessions.run({ binding, input: { task:await taskInputWithDependencies(task), artifactScope: await resolveTaskArtifactScope({ root, task, query }), sources, ...(dialogue ? { dialogue } : {}), ...(humanReview ? { humanReview } : {}), materials: materials.map(({ resources, ...value }) => ({ ...value, resources: resources.map(({ value: body, ...resource }) => ({ ...resource, ...(body?.file ? { file: body.file } : {}) })) })), wakes, executions,

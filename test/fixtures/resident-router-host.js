@@ -49,6 +49,7 @@ export async function residentRouterHost(t, decide, options = {}) {
     const rawStore = await openDynamicTaskStore({...config,initialize:config.initialize})
     const store = options.wrapStore ? options.wrapStore(rawStore) : rawStore
     const service = await openTaskSessionService({ctx,config,store,residentStore,
+      readResource:options.readResource,
       legacy:{getAgentConfig:()=>({...config,agentNames:['assistant']}),getGroup:id=>residentStore.getGroup(id)},
       notifications:{send:async()=>{throw Error('Channel replies must use registered transport')},
         readback:async()=>{throw Error('Channel replies must use registered transport')}}})
