@@ -1,16 +1,13 @@
-import {RouterComposer} from './RouterComposer';
-import type {Drafts} from '../chat-drafts';
 import {useId, useState, type ReactNode} from 'react';
 import {ExecutionHistory} from './ExecutionHistory';
 
 type View = 'dialogue' | 'triage' | 'router';
 const tabs: {id: View; label: string}[] = [{id: 'dialogue', label: '对话'}, {id: 'triage', label: '分诊'}, {id: 'router', label: '路由'}];
 
-// Channel Router messages use the same composer, with a separate Web-only destination.
 // Keep the conversation mounted so drafts, pending sends and scroll survive a tab switch.
 // Only the selected internal journal polls; hiding it cancels the old reader.
-export function ConversationFrame({label, channel = false, endpoint, children, drafts}: {
-  label?: string; channel?: boolean; endpoint?: string; children: ReactNode; drafts?: Drafts;
+export function ConversationFrame({label, channel = false, endpoint, children}: {
+  label?: string; channel?: boolean; endpoint?: string; children: ReactNode;
 }) {
   const prefix = useId();
   const [selection, setSelection] = useState<{endpoint?: string; view: View}>({endpoint, view: 'dialogue'});
@@ -29,7 +26,6 @@ export function ConversationFrame({label, channel = false, endpoint, children, d
       <div className="conversation-tab-content" role="tabpanel" id={`${prefix}-panel-dialogue`} aria-labelledby={`${prefix}-dialogue`} hidden={view !== 'dialogue'}>{children}</div>
       {tabs.slice(1).map(tab => <div key={tab.id} className="conversation-tab-content conversation-session-records" role="tabpanel" id={`${prefix}-panel-${tab.id}`} aria-labelledby={`${prefix}-${tab.id}`} hidden={view !== tab.id} tabIndex={0}>
         {view === tab.id && <ExecutionHistory key={`${endpoint}:${tab.id}`} endpoint={`${endpoint}/${tab.id === 'triage' ? 'triage/session' : 'session'}`} router sessionKind={tab.id === 'triage' ? 'triage' : 'router'} controlsTarget={null} />}
-        {channel && view==='router' && tab.id==='router' && endpoint && drafts && <RouterComposer key={endpoint} endpoint={endpoint} drafts={drafts} />}
       </div>)}
     </> : children}
   </section>;
