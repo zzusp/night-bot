@@ -481,7 +481,6 @@ html, body, #root { width: 100%; min-width: 0; }
 .message-process-popover .response-time-row { padding: 10px 16px 14px; border-top: 0; }
 .message-process-popover .response-time-row + .response-time-row { border-top: 1px solid var(--board-border); }
 .message-process-popover .response-time-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; font-size: 12px; }
-.message-process-popover .response-time-summary strong { font-family: var(--board-mono); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .message-process-popover .response-time-source { margin: 0 0 8px; font-size: 12px; overflow-wrap: anywhere; }
 .message-process-popover .response-time-timeline li { gap: 10px; padding-bottom: 12px; }
 .message-process-popover .response-time-timeline li:last-child { padding-bottom: 0; }

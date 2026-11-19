@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { RiTimerLine } from '@remixicon/react';
 import { ApiError, type Message } from '../api';
 import { dateTime, useResource } from '../hooks';
-import { messageProcessDuration, messageProcessMetricView, type MessageProcessTiming } from '../message-process-duration';
+import { messageProcessMetricView, type MessageProcessTiming } from '../message-process-duration';
 import { Badge } from './BoardPrimitives';
 import { Loading, Notice } from './Shared';
 
-interface TimingStep extends MessageProcessTiming { label: string; shared?: boolean; clipped?: boolean }
+interface TimingStep extends MessageProcessTiming { label: string; shared?: boolean; clipped?: boolean; deliveryKind?: 'reply' | 'acknowledgement' }
 interface ReplyTiming {
   messageId: string; messageVersion?: number; preview: string; status: string;
   receivedAt: string | null; firstReplyAt: string | null; durationMs: number | null;
@@ -14,29 +14,30 @@ interface ReplyTiming {
 }
 interface TimingPage { status: string; reason?: string; items: ReplyTiming[]; nextOffset: number | null; total: number; coverage?: string }
 const labels: Record<string, string> = {
-  confirmed: '首次回复已确认', unavailable: '历史记录不足', 'invalid-time': '时间记录异常',
-  unconfirmed: '回复尚未确认可见', failed: '回复发送失败', pending: '等待发送', 'no-reply': '无需处理及回复', 'awaiting-handling': '等待处理', 'awaiting-reply': '等待回复',
+  confirmed: '回复已送达', unavailable: '历史记录不足', 'invalid-time': '时间记录异常',
+  unconfirmed: '回复尚未确认可见', failed: '回复发送失败', pending: '等待发送', 'no-reply': '无需回复', 'awaiting-handling': '等待处理', 'awaiting-reply': '等待回复',
 };
 const exactTime = (value: string | null) => dateTime(value ?? undefined, true);
 const tone = (status: string) => status === 'confirmed' ? 'success' : status === 'failed' || status === 'invalid-time' ? 'danger' : status === 'unconfirmed' || status === 'pending' ? 'warning' : 'neutral';
 
 function MessageJourney({ row, multiple }: { row: ReplyTiming; multiple: boolean }) {
-  const confirmed = row.status === 'confirmed' && row.durationMs !== null && Number.isFinite(row.durationMs) && row.durationMs >= 0;
+  const showStatus = row.status !== 'confirmed';
+  const statusLabel = row.status === 'unconfirmed' && row.steps.some(step => step.kind === 'reply-visible') ? '另有回复送达未确认' : labels[row.status] || '记录不足';
   return <article className="response-time-row">
     {multiple && <p className="response-time-source">{row.preview || '来源消息正文未提供'}</p>}
-    <header className="response-time-summary">
-      {confirmed ? <><span>首次回复耗时</span><strong>{messageProcessDuration(row.durationMs!)}</strong></> : <Badge tone={tone(row.status)} title={row.reason ?? undefined}>{labels[row.status] || '记录不足'}</Badge>}
-    </header>
+    {showStatus && <header className="response-time-summary"><Badge tone={tone(row.status)}>{statusLabel}</Badge></header>}
     {row.replyAssociation === 'task' && <Badge className="response-time-association">共同回复</Badge>}
     {row.steps.length ? <>
       <div className="response-time-legend" aria-label="时间图例"><span><b aria-hidden="true">+</b>距接收</span><span><RiTimerLine size={12} aria-hidden="true" />阶段耗时</span></div>
       <ol className="response-time-timeline">{row.steps.map((step, index) => {
         const metric = messageProcessMetricView(step, row.receivedAt);
+        const delivered = step.kind === 'reply-visible' || ['首条回复已确认可见', '一条后续回复已确认可见'].includes(step.label);
+        const label = delivered ? step.deliveryKind === 'acknowledgement' ? '历史收悉已送达' : '回复已送达' : step.label.replace(/（批次共享）|（截至回复可见）/g, '');
         const clipped = step.clipped === true || step.label.includes('（截至回复可见）');
         return <li key={`${step.kind || step.label}:${step.at}:${index}`} data-timing-type={metric.kind}>
-          <span className="response-time-event" title={exactTime(step.at)}>{step.label.replace(/（批次共享）|（截至回复可见）/g, '')}
+          <span className="response-time-event" title={exactTime(step.at)}>{label}
             {(clipped || step.shared) && <span className="response-time-markers">
-              {clipped && <Badge title="截至首条回复可见">至回复</Badge>}
+              {clipped && <Badge title="截至该回复送达">至回复</Badge>}
               {step.shared && <Badge title="批次共享，不分摊时长">共享</Badge>}
             </span>}
           </span>
@@ -46,7 +47,7 @@ function MessageJourney({ row, multiple }: { row: ReplyTiming; multiple: boolean
           </span>
         </li>;
       })}</ol>
-    </> : <Badge>无过程记录</Badge>}
+    </> : !showStatus && <Badge>无过程记录</Badge>}
 
   </article>;
 }
