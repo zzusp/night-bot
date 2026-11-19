@@ -849,12 +849,13 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   const reviewReplies=(exec,drafts)=>reviewChannelReplies(ctx.nativePiProvider.official,exec,drafts)
   async function prepareDirectReply(args,exec){
+    const measure=(phase,run)=>exec?.agent.measurePhase?exec.agent.measurePhase(phase,run):run()
     const source=args.source,selection=args.taskDelivery,kind=selection?'status':args.kind??'router-reply',notificationId=args.outboundId
     const audience=notificationAudience(args)
     const explicitAudience=kind!=='platform-reply'&&audience.recipientActorIds!==undefined
     const finalReply=kind==='platform-reply'||!!selection||explicitAudience
     const explicitQuote=args.replyToSource===true
-    const previous=await query('notification.get',{notificationId})
+    const previous=await measure('router-reply-lookup',()=>query('notification.get',{notificationId}))
     const channels=ctx.get('channels'),context=channels.groupContext(source.groupId)
     // 已冻结的普通回复重试不升级为引用；新回复也不得隐式通知受众之外的作者。
     const defaultQuote=!explicitQuote&&finalReply&&kind!=='platform-reply'&&source.channel==='im'&&!args.atAll
@@ -865,7 +866,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const replyToMessageId=quoteSource?source.messageId:finalReply?args.replyToMessageId:args.replyToMessageId??source.messageId
     const replyToActorId=quoteSource?source.actorId:finalReply?audience.replyToActorId:audience.replyToActorId??source.actorId
     const recipients=[...new Set(audience.recipientActorIds??(explicitQuote||finalReply&&!defaultQuote?[]:[source.actorId]))]
-    const request=clean({kind,sourceId:source.sourceId,sourceVersion:source.version,text:args.text,taskDelivery:selection,...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
+    const request=clean({kind,sourceId:source.sourceId,sourceVersion:source.version,text:args.text,taskDelivery:selection,...args.completionBinding?{completionBinding:args.completionBinding}:{},...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
       replyToMessageId,replyToActorId,recipientActorIds:recipients,...(args.atAll?{atAll:true}:{}),artifactFiles:args.artifactFiles??[]})
     if(previous){
       const p=previous.payload
@@ -900,15 +901,15 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       recipientActorIds:recipients,atAll:args.atAll,artifactFiles,signature:legacy.getAgentConfig().replySignature,internalIds}).text:args.text
     assertConversationReply(text,internalIds)
     if(exec){
-      const rejected=await reviewReplies(exec,[{text:args.text,sourceText:source.text,purpose:selection?'task-delivery':args.replyPurpose??'router-reply',routerReply:true}])
+      const rejected=await measure('router-reply-review',()=>reviewReplies(exec,[{text:args.text,sourceText:source.text,purpose:selection?'task-delivery':args.replyPurpose??'router-reply',routerReply:true}]))
       if(rejected)return rejected
       exec.signal.throwIfAborted()
     }
-    const receipt=await command('notification.prepare',{notificationId,...exec?{routerGeneration:args.generation}:{},taskId:selection?.taskId??null,requirementRevision:selection?.requirementRevision??1,kind,
-      payload:{text,conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceMessageId:replyToMessageId,actorId:replyToActorId,
+    const receipt=await measure('router-reply-register',()=>command('notification.prepare',{notificationId,...exec?{routerGeneration:args.generation}:{},taskId:selection?.taskId??null,requirementRevision:selection?.requirementRevision??1,kind,
+      payload:{text,...args.completionBinding?{completionBinding:args.completionBinding}:{},conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceMessageId:replyToMessageId,actorId:replyToActorId,
         sourceRef:{messageId:source.messageId,messageVersion:source.version,actorId:source.actorId},replyToMessageId,replyToActorId,
         recipientActorIds:recipients,...(args.atAll?{atAll:true}:{}),replyKind:'substantive',taskIds:selection?[selection.taskId]:[],topicRefs:[],replyRequest:request,...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
-        ...(selection?{taskDelivery:selection}:{}),...(artifactFiles.length?{artifactFiles,deliveryId:notificationId}:{})}},'prepare-notification:'+notificationId)
+        ...(selection?{taskDelivery:selection}:{}),...(artifactFiles.length?{artifactFiles,deliveryId:notificationId}:{})}},'prepare-notification:'+notificationId))
     void deliverNotifications();return receipt.result
   }
   async function prepareDirectPlatformReply(args){

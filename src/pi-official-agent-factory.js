@@ -123,7 +123,7 @@ export class OfficialAgentFactory {
    const state=await measurePhase('session-state-restore',()=>createNativeBusinessState(store,{readOnly:options.readOnly===true}))
    bundle=await createNightOfficialSession({ctx:ownerCtx,store,admission,deferResources:true,measurePhase,
     prepareActor:async value=>{
-     actor=value;phaseActor=actor;scope=createScope(ownerCtx,actor,{parent:options.parentAgent});actor.ctx=scope.ctx
+     actor=value;phaseActor=actor;Object.defineProperty(actor,'measurePhase',{value:measurePhase});scope=createScope(ownerCtx,actor,{parent:options.parentAgent});actor.ctx=scope.ctx
      Object.defineProperty(actor,'metadata',{value:deepFreeze(structuredClone(store.header)),enumerable:true});actor.options=deepFreeze(Object.fromEntries(['provider','model','reasoningEffort','maxTokens','temperature'].filter(key=>options.agentOptions?.[key]!==undefined).map(key=>[key,options.agentOptions[key]])))
      actor.lifecycle=Object.freeze({signal:AbortSignal.any([lifecycle.signal,options.signal]),isLive:live})
      actor.requestPolicy=Object.freeze({addBeforeRequest(guard){if(typeof guard!=='function')throw new TypeError('Business request guard required');requestGuards.add(guard);return()=>requestGuards.delete(guard)}})

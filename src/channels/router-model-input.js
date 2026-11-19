@@ -1,3 +1,4 @@
+import {completionResultView} from './router-task-context.js'
 import {routerTriageConclusion} from './triage-conclusion.js'
 import {conversationSource} from './message-safety.js'
 
@@ -7,7 +8,7 @@ const pick=(value,keys)=>Object.fromEntries(keys.filter(key=>value[key]!==undefi
  * Keep user text, quotes and attachments exact. Delivery receipts, retry tokens,
  * duplicate identifiers and source-processing bookkeeping stay with the Host.
  */
-export function routerModelEvent(event){
+export function routerModelEvent(event,{compactCompletion=false}={}){
   const view=pick(event,['id','kind','sourceId','messageVersion','taskId','taskEventId','directRouter'])
   if(event.kind==='router.lookup.completed')view.lookupResult=event.lookupResult
   if(event.kind==='operator.message')view.operator=pick(event.operator,['requestId','actorId','text','destination'])
@@ -24,12 +25,12 @@ export function routerModelEvent(event){
   }
   // Task event payloads carry completion/effect evidence, not source delivery
   // bookkeeping. Preserve their exact semantics until a dedicated DTO exists.
-  if(event.taskEvent!==undefined)view.taskEvent=event.taskEvent
+  if(event.taskEvent!==undefined)view.taskEvent=compactCompletion&&event.taskEvent.kind==='task.completed'?{...pick(event.taskEvent,['id','kind','taskId','commandId','taskDecisionReceiptId','requirementRevision','controlRevision','contextRevision','runSequence','leaseEpoch','recordedAt']),result:completionResultView(event.taskEvent.result),detailAvailable:true}:event.taskEvent
   return view
 }
 
-export function routerModelBody(row,batch){
-  return {conversationId:row.id,generation:row.generation,events:batch.map(routerModelEvent)}
+export function routerModelBody(row,batch,options={}){
+  return {conversationId:row.id,generation:row.generation,events:batch.map(event=>routerModelEvent(event,options))}
 }
 
 /** 128 KiB packing target, not a truncation limit. A single larger original is

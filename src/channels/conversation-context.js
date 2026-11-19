@@ -1,4 +1,5 @@
 import {mapIndependentReads} from '../runtime/parallel-read.js'
+import {routerTaskContext} from './router-task-context.js'
 import {routerTaskSummary} from './router-task-view.js'
 
 const fail=code=>{throw Object.assign(new Error(code),{code})}
@@ -33,14 +34,14 @@ export function queryReplyHistory(db,{conversationId,sourceId,taskId,notificatio
  const rows=db.prepare(`SELECT n.rowid AS sequence,n.body FROM dynamic_notifications n WHERE ${clauses.join(' AND ')} ORDER BY n.rowid DESC LIMIT ?`).all(...args,limit+1)
  const selected=rows.slice(0,limit),replies=selected.map(row=>{
   const n=JSON.parse(row.body),p=n.payload??{},text=p.text??''
-  const fields={notificationId:n.notificationId??n.id,kind:n.kind,replyPurpose:p.replyPurpose,sourceId:p.sourceId,messageVersion:p.sourceVersion??p.sourceRef?.messageVersion,taskId:n.taskId??p.taskIds?.[0],state:n.state,createdAt:n.createdAt,updatedAt:n.updatedAt,deliveredAt:n.deliveredAt}
+  const fields={notificationId:n.notificationId??n.id,kind:n.kind,...p.completionBinding?{completionEventId:p.completionBinding.eventId}:{},replyPurpose:p.replyPurpose,sourceId:p.sourceId,messageVersion:p.sourceVersion??p.sourceRef?.messageVersion,taskId:n.taskId??p.taskIds?.[0],state:n.state,createdAt:n.createdAt,updatedAt:n.updatedAt,deliveredAt:n.deliveredAt}
   return {...Object.fromEntries(Object.entries(fields).filter(([,value])=>value!==undefined)),...notificationId?{text}:{textPreview:text.slice(0,400),truncated:text.length>400}}
  })
  return {asOf:new Date().toISOString(),replies,hasMore:rows.length>limit,nextCursor:rows.length>limit?selected.at(-1).sequence:null}
 }
 
 /** Facts are separate from immutable admitted business packets. */
-export async function conversationContext(query,conversationId,{sources=[],taskIds=[],router=false,readConcurrency=1}={}){
+export async function conversationContext(query,conversationId,{sources=[],taskIds=[],router=false,readConcurrency=1,events=[]}={}){
  const sourceIds=new Set(sources.map(source=>source.sourceId)),tasks=new Set(taskIds)
  const quotedSources=sources.filter(source=>source.quote?.messageId),quoted=await mapIndependentReads(quotedSources,readConcurrency,source=>query('router.source-current',{conversationId,sourceId:source.sourceId}))
  const sourceQuoteLinks=[]
@@ -48,11 +49,16 @@ export async function conversationContext(query,conversationId,{sources=[],taskI
  const links=await mapIndependentReads([...sourceIds],readConcurrency,sourceId=>query('router.source-links',{sourceId}))
  const sourceTaskLinks=[]
  for(const rows of links)for(const link of rows)if(link.conversationId===conversationId){tasks.add(link.taskId);if(sourceIds.has(link.sourceId)&&Number.isSafeInteger(link.messageVersion)&&link.messageVersion>0)sourceTaskLinks.push({sourceId:link.sourceId,messageVersion:link.messageVersion,taskId:link.taskId,relation:link.relation})}
+ const exact=sources.map(source=>{const ids=[...new Set(sourceTaskLinks.filter(link=>link.sourceId===source.sourceId&&link.messageVersion===source.version||sourceQuoteLinks.some(quote=>quote.sourceId===source.sourceId&&quote.messageVersion===source.version&&quote.quoteSourceId===link.sourceId&&quote.quoteMessageVersion===link.messageVersion)).map(link=>link.taskId))];return {sourceId:source.sourceId,messageVersion:source.version,status:ids.length===1?'matched':ids.length?'ambiguous':'unmatched',taskIds:ids}})
+ const matched=[...new Set(exact.filter(row=>row.status==='matched'&&Number.isSafeInteger(row.messageVersion)).flatMap(row=>row.taskIds))]
+ const taskHandoffs=router?await mapIndependentReads(matched,readConcurrency,taskId=>routerTaskContext(query,conversationId,taskId)):[]
+ const completionEvents=events.filter(event=>event.kind==='task.completed'&&event.taskId&&event.taskEventId)
+ const completionContexts=router?await mapIndependentReads(completionEvents,readConcurrency,event=>routerTaskContext(query,conversationId,event.taskId,{completionEvent:event})):[]
  const selectors=[...[...sourceIds].map(sourceId=>({sourceId})),...[...tasks].map(taskId=>({taskId}))]
  const reads=[...router?[()=>query('router.task-index',{conversationId,sourceIds:[...sourceIds],taskIds:[...tasks]})]:[],...selectors.map(selector=>async()=>({...selector,...await query('router.reply-history',{conversationId,...selector})}))]
  const values=await mapIndependentReads(reads,readConcurrency,read=>read())
- return {asOf:new Date().toISOString(),historicalReferenceOnly:true,sourceQuoteLinks,sourceTaskLinks,...router?{taskIndex:values[0]}:{},replyIndex:values.slice(router?1:0)}
+ return {asOf:new Date().toISOString(),historicalReferenceOnly:true,sourceQuoteLinks,sourceTaskLinks,...router?{taskIndex:values[0],taskMatches:exact,taskHandoffs,completionContexts}:{},replyIndex:values.slice(router?1:0)}
 }
 
-export const currentContextPolicy='Host 当前账本投影（不是新交办或授权）：prepared仅表示已冻结，unknown需查询原通知，delivered才表示已确认送达。任务向需求提出者发出的提问和任务状态回复也纳入回复索引；同一问题已有通知时查原通知状态，不换措辞重复提问。同一承接不重复发送；实际进度追问应回答新事实或具体阻断。状态以本轮索引或只读查询为准，不以旧摘要推断；本轮sourceTaskLinks保留确切来源版本→任务绑定，taskIndex含当前状态与修订；当前来源或sourceQuoteLinks中Host核验的当前精确引用有唯一匹配且版本/要求足够时可直接用于Router安排，不机械再次查询。同名、缺失、歧义或需要完整要求/进展/完成证据时仍查询；引用不是业务授权，Host继续校验当前来源、版本与回执。分页剩余内容按需查询，通知预览不是完整正文。'
+export const currentContextPolicy='Host 当前账本投影（不是新交办或授权）：prepared仅表示已冻结，unknown需查询原通知，delivered才表示已确认送达。任务向需求提出者发出的提问和任务状态回复也纳入回复索引；同一问题已有通知时查原通知状态，不换措辞重复提问。同一承接不重复发送；实际进度追问应回答新事实或具体阻断。状态以本轮索引或只读查询为准，不以旧摘要推断；本轮sourceTaskLinks保留确切来源版本→任务绑定，taskIndex含当前状态与修订；当前来源或sourceQuoteLinks中Host核验的当前精确引用有唯一匹配且版本/要求足够时可直接用于Router安排，不机械再次查询。同名、缺失、歧义或需要完整要求/进展/完成证据时仍查询；引用不是业务授权，Host继续校验当前来源、版本与回执。taskMatches 仅按当前精确来源/已核验引用绑定；matched 的 taskHandoffs 已含接续所需原要求、状态及版本，requiresFullRead=false且本次范围未变时直接交原执行会话，不重复列任务或读记忆/Skill目录。unmatched/ambiguous、截断、范围改变或需完整证据时按taskId一次精确读detail=handoff/full，不凭同名或旧摘要重开。completionContexts 绑定本批完成命令，给任务记录结论、限制和原消息版本的真实回复状态；记录不等于独立核验，prepared/unknown仍不等于送达，已有进展回复不等于本次完成已回复。完成回复使用该eventId作completionEventId，Host按完成事件及原sourceId/版本固定通知身份；completionReply只认该次回执，delivered不重发，prepared/unknown沿原编号对账。completion.requiresFullRead=true、证据/限制截断或需依赖验收/附件时先按taskId读full，不从预览补猜。先回复有证据的阶段结果，无关记忆维护不阻塞答复。分页剩余内容按需查询，通知预览不是完整正文。'
 export const progressTaskView=task=>({task:routerTaskSummary(task),asOf:new Date().toISOString(),...Object.fromEntries(['requirements','request','completion','humanRequests'].filter(key=>task[key]!==undefined).map(key=>[key,task[key]]))})

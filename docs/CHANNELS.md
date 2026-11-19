@@ -424,3 +424,14 @@ Router 压缩图复用既有有界 Host performance trace 的 foreground/backgro
 快的已有任务状态查询仍在 Router 内联完成。慢的同会话任务状态、进展或结果整理可用 `resident_task_lookup_async`：Host 只给无工具 Pi 子推理最多三个任务的有界快照，不给原用户正文、通用上下文、Skill、shell、仓库、业务网络或写入能力。线上排查、代码问答/分析及独立调查沉淀仍走正式任务（已有事项则沿用），不能仅因只读改用临时查询。此入口不拆分任务执行会话。
 
 受控 NativeJobs 每会话最多一个、全实例最多两个，30 秒截止；提交立即返回，Router 用 `async-query` 和精确 `lookupId` 结清查询来源，继续处理后续消息。结果与完成事件在既有 Router SQLite 事务中一起持久化，子查询不外发、不改任务、不递归。Router 收到内部结果后核对快照与当前事实，按阶段结论规则回复。来源换版或撤回丢弃迟到结果；任务修订、状态或执行租约变化只回失效状态，不冒充最新进展。结果不成为新用户指令或授权。重启将尚未完成的查询记为中断并入箱一次，不盲目重跑；旧未知效果的写入保护不因此放宽。
+
+
+### Router 接续与完成的精确只读投影
+
+`conversation-state` 在既有 sourceTaskLinks/taskIndex 旁提供 taskMatches/taskHandoffs：仅当前同会话来源版本或 Host 核验的当前引用能产生唯一绑定；无匹配、多匹配不猜任务、不自动重开。唯一匹配带原任务摘要、原要求预览、版本与依赖；requiresFullRead 或范围改变时按原 taskId 使用 resident_task_query(detail=handoff/full)。Host 仍校验 generation、来源、修订、租约、未决效果及依赖，执行沿用原单一会话；这是减少模型目录往返，不是 Router 自行调查或增加权限。记忆目录已在原按需入口；不为普通接续或无关完成强制再次读取记忆/Skill。
+
+新完成批次使用 modelViewVersion=2 的小投影，给记录的结果摘要、限制和证据引用，截断/省略有标记；原完整 result 仍在账本中，依赖验收、附件交付及证据不足须精确读 full。原 v1 与旧包仍可重建，未决包的正文/ID不重写；完整 ledgerIdentity 仍绑定被省略字段。completionContexts 仅接纳当前 task.completed 命令/修订，提供原来源版本与本次完成的精确通知查询。记录结果不是独立核验或新用户授权；旧进展回复不能冒充这次完成回执。
+
+完成回复可显式填 completionEventId，新 v2 批次在同源唯一完成时也会由 Host 绑定；多匹配须明确事件。通知身份固定为会话、完成事件、原 sourceId/版本，不因模型换 operationId 或省略参数重复外发。正文改变仍冲突，不替换旧冻结请求；prepared/unknown 沿原编号回查，delivered 不重发。冻结事务再次核对当前来源、完成命令和任务版本，异步复核期间变化则拒绝。旧 v1 冻结回执与恢复协议保持原样。先答复有证据的阶段结论，必要的相关记忆维护仍保留，无关 review 不挡住回复；不增加额外复核模型轮。
+
+现有 trace 增加 router-reply-lookup/review/register 三个 Host 阶段，只记耗时/成败，不记正文或秘密；覆盖通知查询、原有正文复核、冻结登记，不包括全部验证、调度、发送和回查。阶段可能嵌套/重叠，不能简单相加当工具总耗时。Router 的 handles 缓存、idle 保留、空队列不开会话均不变；首次/重启仍有真实 SDK 打开，暖消息沿用同一 handle。每轮技能、系统提示和请求准备与供应商首输出是不同边界，不做保活空推理、全会话预热或压缩策略变更。
