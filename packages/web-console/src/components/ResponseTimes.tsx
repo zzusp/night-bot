@@ -14,7 +14,7 @@ interface ReplyTiming {
 }
 interface TimingPage { status: string; reason?: string; items: ReplyTiming[]; nextOffset: number | null; total: number; coverage?: string }
 const labels: Record<string, string> = {
-  confirmed: '首答已确认', unavailable: '历史记录不足', 'invalid-time': '时间记录异常',
+  confirmed: '首次回复已确认', unavailable: '历史记录不足', 'invalid-time': '时间记录异常',
   unconfirmed: '回复尚未确认可见', failed: '回复发送失败', pending: '等待发送', 'no-reply': '无需处理及回复', 'awaiting-handling': '等待处理', 'awaiting-reply': '等待回复',
 };
 const exactTime = (value: string | null) => dateTime(value ?? undefined, true);
@@ -25,7 +25,7 @@ function MessageJourney({ row, multiple }: { row: ReplyTiming; multiple: boolean
   return <article className="response-time-row">
     {multiple && <p className="response-time-source">{row.preview || '来源消息正文未提供'}</p>}
     <header className="response-time-summary">
-      {confirmed ? <><span>首答耗时</span><strong>{messageProcessDuration(row.durationMs!)}</strong></> : <Badge tone={tone(row.status)} title={row.reason ?? undefined}>{labels[row.status] || '记录不足'}</Badge>}
+      {confirmed ? <><span>首次回复耗时</span><strong>{messageProcessDuration(row.durationMs!)}</strong></> : <Badge tone={tone(row.status)} title={row.reason ?? undefined}>{labels[row.status] || '记录不足'}</Badge>}
     </header>
     {row.replyAssociation === 'task' && <Badge className="response-time-association">共同回复</Badge>}
     {row.steps.length ? <>
@@ -36,7 +36,7 @@ function MessageJourney({ row, multiple }: { row: ReplyTiming; multiple: boolean
         return <li key={`${step.kind || step.label}:${step.at}:${index}`} data-timing-type={metric.kind}>
           <span className="response-time-event" title={exactTime(step.at)}>{step.label.replace(/（批次共享）|（截至回复可见）/g, '')}
             {(clipped || step.shared) && <span className="response-time-markers">
-              {clipped && <Badge title="截至首条回复可见">至首答</Badge>}
+              {clipped && <Badge title="截至首条回复可见">至回复</Badge>}
               {step.shared && <Badge title="批次共享，不分摊时长">共享</Badge>}
             </span>}
           </span>
@@ -59,7 +59,7 @@ export function ResponseTimes({ endpoint, message, onAccessRevoked }: { endpoint
   useEffect(() => { if (revoked) setDenied(true); }, [revoked]);
   useEffect(() => { if (!query.error && query.updatedAt) setDenied(false); }, [query.updatedAt]);
   const data = revoked || denied ? null : query.data;
-  return <section className="response-times" aria-label="消息首答与处理过程">
+  return <section className="response-times" aria-label="消息回复与处理过程">
     {query.error && <Notice error={query.error} onRetry={query.refresh} message={data ? '读取失败 · 上次快照' : '读取失败'} />}
     {!data ? query.loading ? <Loading>读取中</Loading> : query.error ? null : <div className="execution-empty"><Badge>记录不可读</Badge></div>
       : data.status !== 'ready' ? <div className="execution-empty"><Badge title={data.reason}>来源不可核验</Badge></div> : <>

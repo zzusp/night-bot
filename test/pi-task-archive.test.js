@@ -69,7 +69,6 @@ test('sealed archives reject corrupt bytes and symlinks; lost shared index is re
 test('task-required attachment bytes are local and independently restored without the original attachment store',{timeout:nativeTestTimeout(20000)},async t=>{
   const f=await fixture(t),ref=await f.host.ctx.attachments.saveFile({name:'required.txt',data:new TextEncoder().encode('TASK_ATTACHMENT_PROOF')})
   await f.app.tasks.store.command({id:'attachment-source',kind:'source.acceptHistory',args:{sourceId:'attachment-source',groupId:'fixture-room',messageId:'original',actorId:'owner',text:'Use the attached file',resources:[ref],timestamp:new Date().toISOString(),authorizationRef:'message-retry:fixture-room:original:1'}})
-  await f.app.tasks.store.command({id:'attachment-routed',kind:'source.routed',args:{sourceId:'attachment-source',receipt:{kind:'fixture-local-source'}}})
   await f.app.tasks.store.command({id:'attachment-create',kind:'task.create',args:{taskId:'task-attachment',ownerActorId:'owner',request:'Create local proof using supplied source',sourceRefs:['attachment-source']}})
   await initializeWorkspace(f.app.tasks.store,join(f.root,'data/workspaces'),'task-attachment')
   await f.app.tasks.recover();await f.app.tasks.whenIdle();await f.host.ctx.reflection.whenIdle();await f.close()

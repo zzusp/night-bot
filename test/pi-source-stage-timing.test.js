@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
-import {createChannelTriage} from '../src/channels/resident-router-business.js'
 import {sameRouterPacket} from '../src/channels/router-lifecycle.js'
 import {sourceStageTiming} from '../src/channels/source-stage-timing.js'
 
@@ -65,17 +64,6 @@ test('an unjoined operation stays open; a later run start clears a prior settled
   const f=fixture();f.observed.start([source('a')]);await f.observed.finishIfSettled();assert.equal(f.records.length,1)
   f.tick(2000);f.event('agent_settled');f.tick(3000);f.event('agent_start');await f.observed.finishIfSettled();assert.equal(f.records.length,1)
   f.stop()
-})
-
-
-for(const disposalFails of [false,true])test(`triage failure ${disposalFails?'without a confirmed disposal stays open':'with a successful disposal closes its observed work'}`,async t=>{
-  const root=await mkdtemp(join(tmpdir(),'source-stage-timing-'));t.after(()=>rm(root,{recursive:true,force:true}))
-  const records=[],deliveryError=Error('delivery failed'),disposeError=Error('dispose failed')
-  const handle={session:{subscribe:()=>()=>{}},enqueue:async()=>{},deliver:async()=>{throw deliveryError},whenIdle:async()=>{},dispose:async()=>{if(disposalFails)throw disposeError}}
-  const triage=createChannelTriage({root,ctx:{get:()=>({create:async()=>handle})},legacy:{getAgentConfig:()=>({agentPreset:'test'})},models:{},responsibilityFor:()=>'',commit:async()=>{},recordStage:(ref,stage)=>records.push({ref,stage})})
-  await assert.rejects(triage.run('group',[source('a')]),error=>error===(disposalFails?disposeError:deliveryError))
-  assert.equal(records.length,disposalFails?1:2);assert.equal(records[0].stage.completedAt,null)
-  if(!disposalFails)assert.ok(records[1].stage.completedAt)
 })
 
 

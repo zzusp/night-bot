@@ -103,7 +103,7 @@ test('未知、失败、多来源与空记录不伪装耗时；失败保留旧�
   })
   await login(page)
   await openMessageProcess(page)
-  const section = page.getByRole('region', { name: '消息首答与处理过程' })
+  const section = page.getByRole('region', { name: '消息回复与处理过程' })
   for (const text of ['回复尚未确认可见', '回复发送失败', '等待发送', '无需处理及回复', '历史记录不足', '时间记录异常', '6 个来源']) await expect(section).toContainText(text)
   await expect(section.locator('.response-time-summary strong')).toHaveCount(0)
   mode = 'error'

@@ -1,0 +1,36 @@
+import {test,expect} from '@playwright/test'
+import {startPreview} from './preview.mjs'
+let fixture:Awaited<ReturnType<typeof startPreview>>
+test.beforeAll(async()=>{fixture=await startPreview({port:0,sessionRecords:true})})
+test.afterAll(async()=>{await fixture.close()})
+for(const width of [1440,390])test(`direct Router labels preserve historical triage and show two active model roles ${width}`,async({page})=>{
+ await page.route('**/stage-times?limit=8',route=>route.fulfill({json:{status:'ready',items:[{receivedAt:'2026-11-19T00:00:00Z',triage:{status:'missing',durationMs:null,shared:false},router:{status:'recorded',durationMs:750,shared:false}}]}}))
+ await page.setViewportSize({width,height:900});await page.goto(fixture.origin+'/#/channels/room-product')
+ await page.getByLabel('访问令牌',{exact:true}).fill(fixture.token);await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
+ await expect(page.getByRole('tab',{name:'分诊',exact:true})).toHaveCount(0)
+ if(width<900)await page.getByRole('button',{name:'显示活动面板',exact:true}).click()
+ await expect(page.locator('.stage-timing-card-router')).toBeVisible()
+ await expect(page.locator('.stage-timing-card-triage')).toHaveCount(0)
+ await page.getByRole('tab',{name:'历史分诊',exact:true}).click()
+ await expect(page.getByRole('tabpanel',{name:'历史分诊',exact:true})).toContainText('channel_triage_submit')
+ await page.getByRole('tab',{name:'路由',exact:true}).click()
+ await expect(page.getByRole('tabpanel',{name:'路由',exact:true})).toContainText('resident_task_query')
+ await expect(page.locator('.board-composer:visible')).toHaveCount(0)
+ await page.getByRole('button',{name:'设置',exact:true}).click()
+ await page.getByRole('tab',{name:'模型分工',exact:true}).click()
+ const dialog=page.getByRole('dialog')
+ await expect(dialog.locator('.settings-role-card')).toHaveCount(2)
+ await expect(dialog.locator('#role-router-title')).toBeVisible();await expect(dialog.locator('#role-task-title')).toBeVisible()
+ await expect(dialog.locator('#role-triage-title')).toHaveCount(0)
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+})
+
+test('recorded historical triage timings remain separately labelled without adding them to Router duration',async({page})=>{
+ await page.route('**/stage-times?limit=8',route=>route.fulfill({json:{status:'ready',items:[{receivedAt:'2026-11-18T00:00:00Z',triage:{status:'recorded',durationMs:2000,shared:false},router:{status:'recorded',durationMs:3000,shared:false}}]}}))
+ await page.goto(fixture.origin+'/#/channels/room-product')
+ await page.getByLabel('访问令牌',{exact:true}).fill(fixture.token);await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
+ await expect(page.getByRole('heading',{name:'历史分诊耗时',exact:true})).toBeVisible()
+ await expect(page.getByRole('heading',{name:'路由耗时',exact:true})).toBeVisible()
+ await expect(page.locator('.stage-timing-card-triage .stage-plot-heading strong')).toContainText('2')
+ await expect(page.locator('.stage-timing-card-router .stage-plot-heading strong')).toContainText('3')
+})

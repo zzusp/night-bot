@@ -53,8 +53,8 @@ export function StageTimingChart({kind, id}: {kind: 'chat'|'conversations'; id?:
   // Do not show a previous conversation or stale timings as current measurements.
   const failure = query.error ?? (query.data && query.data.status !== 'ready' ? unavailableTimings : null);
   const items = !failure && query.data?.status === 'ready' ? [...query.data.items].reverse() : [];
-  return <div className="stage-timing-charts" role="group" aria-label="最近处理耗时">{failure && <Notice read source={!query.error ? `/${kind}/${encodeURIComponent(resolvedId || '')}/stage-times?limit=8` : undefined} error={failure} onRetry={query.refresh}/>} {(['triage','router'] as const).map(stage => {
-    const title = stage === 'triage' ? '分诊' : '路由';
+  return <div className="stage-timing-charts" role="group" aria-label="最近处理耗时">{failure && <Notice read source={!query.error ? `/${kind}/${encodeURIComponent(resolvedId || '')}/stage-times?limit=8` : undefined} error={failure} onRetry={query.refresh}/>} {(['router',...(items.some(item=>item.triage.status!=='missing')?['triage' as const]:[])] as const).map(stage => {
+    const title = stage === 'triage' ? '历史分诊' : '路由';
     return <section key={stage} className={`rail-section stage-timing-card stage-timing-card-${stage}`} aria-label={`${title}耗时`}>
       <div className="rail-section-title"><h3><i className="stage-title-dot"/>{title}耗时</h3><span className="stage-scope">本会话 · {items.length ? `${items.length} 条消息` : '最近消息'}</span></div>
       {items.length ? <StagePlot key={`${resolvedId}:${stage}`} items={items} stage={stage} title={title}/> : <p className="rail-empty">{failure ? '—' : query.data && query.data.status !== 'ready' ? '来源暂不可读' : query.loading || !resolvedId ? '读取中…' : '暂无耗时记录'}</p>}

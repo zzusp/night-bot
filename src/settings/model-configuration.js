@@ -160,7 +160,7 @@ export async function saveModelConfiguration(file,{provider,model,baseURL,api,ap
     config.providers={...config.providers,[provider]:profile}
     const next=mergeRoleModelSelection(config.model,{provider,model,reasoningEffort}),{reasoningEffort:previous,...rest}=config.model??{}
     config.model={...rest,...next}
-    if(reasoningEffort!==undefined)validateRoleModels({...config,roleModels:{...config.roleModels,triage:next}})
+    if(reasoningEffort!==undefined)validateRoleModels({...config,roleModels:{...config.roleModels,router:next}})
     return config
   },{checkOnly}))
 }

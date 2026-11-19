@@ -26,24 +26,23 @@ test('role config validates only explicit roles and exposes a capability-only ca
 })
 for(const [name,roleModels,error]of [
  ['array',[],/ROLE_MODELS_INVALID/],['null',null,/ROLE_MODELS_INVALID/],['unknown role',{owner:{provider:'fixture',model:'reasoner'}},/MODEL_ROLE_INVALID/],
- ['partial entry',{triage:{provider:'fixture'}},/ROLE_MODEL_INVALID/],['blank model',{triage:{provider:'fixture',model:' '}},/ROLE_MODEL_INVALID/],
- ['extra authority',{triage:{provider:'fixture',model:'reasoner',permissionMode:'full'}},/ROLE_MODEL_INVALID/],
- ['unconfigured provider',{triage:{provider:'unknown',model:'reasoner'}},/PROVIDER_PROFILE_REQUIRED/],['unconfigured model',{triage:{provider:'fixture',model:'missing'}},/MODEL_NOT_CONFIGURED/],
- ['unsupported Pi level',{triage:{provider:'fixture',model:'reasoner',reasoningEffort:'ultra'}},/UNSUPPORTED_REASONING_EFFORT/],
- ['unsupported model level',{triage:{provider:'fixture',model:'reasoner',reasoningEffort:'medium'}},/UNSUPPORTED_REASONING_EFFORT/],
- ['nonreasoning model level',{triage:{provider:'fixture',model:'plain',reasoningEffort:'high'}},/UNSUPPORTED_REASONING_EFFORT/],
- ['persisted sentinel',{triage:{provider:'fixture',model:'reasoner',reasoningEffort:'model-default'}},/UNSUPPORTED_REASONING_EFFORT/],
- ['null effort',{triage:{provider:'fixture',model:'reasoner',reasoningEffort:null}},/UNSUPPORTED_REASONING_EFFORT/],
+ ['partial entry',{router:{provider:'fixture'}},/ROLE_MODEL_INVALID/],['blank model',{router:{provider:'fixture',model:' '}},/ROLE_MODEL_INVALID/],
+ ['extra authority',{router:{provider:'fixture',model:'reasoner',permissionMode:'full'}},/ROLE_MODEL_INVALID/],
+ ['unconfigured provider',{router:{provider:'unknown',model:'reasoner'}},/PROVIDER_PROFILE_REQUIRED/],['unconfigured model',{router:{provider:'fixture',model:'missing'}},/MODEL_NOT_CONFIGURED/],
+ ['unsupported Pi level',{router:{provider:'fixture',model:'reasoner',reasoningEffort:'ultra'}},/UNSUPPORTED_REASONING_EFFORT/],
+ ['unsupported model level',{router:{provider:'fixture',model:'reasoner',reasoningEffort:'medium'}},/UNSUPPORTED_REASONING_EFFORT/],
+ ['nonreasoning model level',{router:{provider:'fixture',model:'plain',reasoningEffort:'high'}},/UNSUPPORTED_REASONING_EFFORT/],
+ ['persisted sentinel',{router:{provider:'fixture',model:'reasoner',reasoningEffort:'model-default'}},/UNSUPPORTED_REASONING_EFFORT/],
+ ['null effort',{router:{provider:'fixture',model:'reasoner',reasoningEffort:null}},/UNSUPPORTED_REASONING_EFFORT/],
 ])test('role config rejects '+name,()=>{assert.throws(()=>validateRoleModels({...config(),roleModels}),error)})
 
-test('environment role fields override saved fields without mutation and clear stale effort on route changes',()=>{
- const value=config();value.roleModels={triage:{...value.model},router:{provider:'fixture',model:'reasoner',reasoningEffort:'low'}};const before=structuredClone(value)
- const env={NIGHT_BOT_TRIAGE_MODEL:'plain',NIGHT_BOT_ROUTER_REASONING_EFFORT:'high',NIGHT_BOT_TASK_REASONING_EFFORT:'model-default'}
- assert.deepEqual(resolveRoleModels(value,env),{triage:{provider:'fixture',model:'plain'},router:{provider:'fixture',model:'reasoner',reasoningEffort:'high'},task:{provider:'other',model:'other-model'}})
+test('environment role fields override saved fields; retired triage config and ENV stay inert',()=>{
+ const value=config();value.roleModels={triage:{provider:'retired',model:'missing'},router:{...value.model},task:{provider:'fixture',model:'reasoner',reasoningEffort:'low'}};const before=structuredClone(value)
+ const env={NIGHT_BOT_TRIAGE_MODEL:'missing',NIGHT_BOT_ROUTER_MODEL:'plain',NIGHT_BOT_TASK_REASONING_EFFORT:'high'}
+ assert.deepEqual(resolveRoleModels(value,env),{router:{provider:'fixture',model:'plain'},task:{provider:'fixture',model:'reasoner',reasoningEffort:'high'}})
  assert.deepEqual(value,before)
- const same=resolveRoleModels(value,{NIGHT_BOT_TRIAGE_MODEL:'reasoner'});assert.equal(same.triage.reasoningEffort,'high')
- assert.deepEqual(resolveRoleModels(value,{NIGHT_BOT_TRIAGE_PROVIDER:'other',NIGHT_BOT_TRIAGE_MODEL:'other-model'}).triage,{provider:'other',model:'other-model'})
- assert.throws(()=>resolveRoleModels(value,{NIGHT_BOT_TRIAGE_MODEL:'plain',NIGHT_BOT_TRIAGE_REASONING_EFFORT:'high'}),/UNSUPPORTED_REASONING_EFFORT/)
+ assert.deepEqual(resolveRoleModels(value,{NIGHT_BOT_ROUTER_PROVIDER:'other',NIGHT_BOT_ROUTER_MODEL:'other-model'}).router,{provider:'other',model:'other-model'})
+ assert.throws(()=>resolveRoleModels(value,{NIGHT_BOT_ROUTER_MODEL:'plain',NIGHT_BOT_ROUTER_REASONING_EFFORT:'high'}),/UNSUPPORTED_REASONING_EFFORT/)
  assert.throws(()=>resolveRoleModels(value,{NIGHT_BOT_TASK_MODEL:''}),/ROLE_MODEL_INVALID/)
 })
 
@@ -52,26 +51,26 @@ test('ENV supports partial legacy fallbacks and snapshot precedence without appl
  assert.deepEqual(resolveRoleModels(value,environment),{router:{provider:'fixture',model:'reasoner'}})
  assert.deepEqual(resolveRoleModels(value,{NIGHT_BOT_TASK_REASONING_EFFORT:'high'}).task,{provider:'other',model:'other-model',reasoningEffort:'high'})
  const saved=process.env.NIGHT_BOT_TRIAGE_MODEL;process.env.NIGHT_BOT_TRIAGE_MODEL='missing'
- try{assert.equal((await loadConfig(f.file)).roleModels,undefined);assert.throws(()=>resolveRoleModels(value),/MODEL_NOT_CONFIGURED/)}finally{if(saved===undefined)delete process.env.NIGHT_BOT_TRIAGE_MODEL;else process.env.NIGHT_BOT_TRIAGE_MODEL=saved}
+ try{assert.equal((await loadConfig(f.file)).roleModels,undefined);assert.deepEqual(resolveRoleModels(value),{})}finally{if(saved===undefined)delete process.env.NIGHT_BOT_TRIAGE_MODEL;else process.env.NIGHT_BOT_TRIAGE_MODEL=saved}
  assert.deepEqual(legacyRoleModelSelection({...value,resident:{taskSessions:{reasoningMode:'model-default'}}},'task'),{provider:'fixture',model:'reasoner'})
 })
 
 test('configured dotenv admits exactly the role names while retaining bootstrap refusal and source precedence',async t=>{
  const f=await fixture(t),cwd=join(f.root,'dotenv');await mkdir(cwd)
  await writeFile(join(cwd,'.env'),Object.values(ROLE_MODEL_ENV_NAMES).flatMap(names=>Object.entries(names).map(([field,name])=>`${name}=${field==='provider'?'fixture':field==='model'?'reasoner':'low'}`)).join('\n'))
- const environment=await loadNativeEnvironment({cwd,home:cwd,inherited:{NIGHT_BOT_TRIAGE_REASONING_EFFORT:'high'}})
- assert.equal(resolveRoleModels(config(),environment).triage.reasoningEffort,'high');assert.equal(resolveRoleModels(config(),environment).router.reasoningEffort,'low')
+ const environment=await loadNativeEnvironment({cwd,home:cwd,inherited:{NIGHT_BOT_TASK_REASONING_EFFORT:'high'}})
+ assert.equal(resolveRoleModels(config(),environment).task.reasoningEffort,'high');assert.equal(resolveRoleModels(config(),environment).router.reasoningEffort,'low')
  for(const name of ['NIGHT_BOT_RUNTIME_TMPDIR','NIGHT_BOT_TASK_PERMISSION_MODE','NIGHT_BOT_ROUTER_MODEL_EXTRA']){await writeFile(join(cwd,'.env'),`${name}=not-allowed\n`);await assert.rejects(loadNativeEnvironment({cwd,inherited:{}}),/BOOTSTRAP_ENV_REFUSED/)}
 })
 
 test('roleModelSelection clones explicit and fallback selections',()=>{const value={triage:{provider:'fixture',model:'reasoner'}},fallback={provider:'other',model:'other-model'};const ctx={get:()=>value},explicit=roleModelSelection(ctx,'triage',fallback),inherited=roleModelSelection(ctx,'task',fallback);explicit.model='changed';inherited.model='changed';assert.equal(value.triage.model,'reasoner');assert.equal(fallback.model,'other-model')})
 
 test('actual headless role CLI validates zero-write check, saves each role, clears effort and redacts secrets',async t=>{
- const f=await fixture(t),before=await snapshot(f.root),args=['role-model','--role','triage','--provider','fixture','--model','reasoner','--reasoning-effort','low']
+ const f=await fixture(t),before=await snapshot(f.root),args=['role-model','--role','router','--provider','fixture','--model','reasoner','--reasoning-effort','low']
  const checked=await cliJson(f.file,...args,'--check');assert.equal(checked.checkOnly,true);assert.equal(checked.changed,true);assert.equal(checked.restartRequired,true);assert.deepEqual(await snapshot(f.root),before)
- for(const role of MODEL_ROLES){const result=await cliJson(f.file,...args.map(value=>value==='triage'?role:value));assert.equal(result.changed,true)}
+ for(const role of MODEL_ROLES){const result=await cliJson(f.file,...args.map(value=>value==='router'?role:value));assert.equal(result.changed,true)}
  let value=await f.read();for(const role of MODEL_ROLES)assert.deepEqual(value.roleModels[role],{provider:'fixture',model:'reasoner',reasoningEffort:'low'})
- await cliJson(f.file,'role-model','--role','triage','--reasoning-effort','model-default');assert.deepEqual((await f.read()).roleModels.triage,{provider:'fixture',model:'reasoner'})
+ await cliJson(f.file,'role-model','--role','router','--reasoning-effort','model-default');assert.deepEqual((await f.read()).roleModels.router,{provider:'fixture',model:'reasoner'})
  await cliJson(f.file,'role-model','--role','router','--model','plain');assert.deepEqual((await f.read()).roleModels.router,{provider:'fixture',model:'plain'})
  value=await f.read();const shown=await cliJson(f.file,'show');assert.deepEqual(shown.roleModels,value.roleModels);assert.doesNotMatch(JSON.stringify(shown),/SECRET_MUST_NOT_BE_SHOWN|ambient-value/);assert.equal(shown.permissionMode,'full')
  assert.equal((await cliJson(f.file,'role-model','--role','router','--model','plain')).changed,false)
@@ -80,7 +79,7 @@ test('actual headless role CLI validates zero-write check, saves each role, clea
 
 test('actual role CLI rejects malformed, unknown or incompatible selections without check side effects',async t=>{
  const f=await fixture(t),before=await snapshot(f.root)
- for(const args of [[],['--role','owner'],['--role','triage','--provider','missing'],['--role','triage','--model','missing'],['--role','triage','--reasoning-effort','ultra'],['--role','triage','--model','plain','--reasoning-effort','high'],['--role','triage','--reasoning-effort',''],['--role','triage','--api-key','SECRET']]){
+ for(const args of [[],['--role','owner'],['--role','router','--provider','missing'],['--role','router','--model','missing'],['--role','router','--reasoning-effort','ultra'],['--role','router','--model','plain','--reasoning-effort','high'],['--role','router','--reasoning-effort',''],['--role','router','--api-key','SECRET']]){
    await assert.rejects(cli(f.file,'role-model',...args,'--check'));assert.deepEqual(await snapshot(f.root),before)
  }
 })

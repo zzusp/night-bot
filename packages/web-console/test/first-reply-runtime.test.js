@@ -3,13 +3,20 @@ import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools} from '../../../test/fixtures/resident-router-host.js'
 import {createWebConsole} from '../server/plugin.js'
-test('真实 Host 接收到无任务首答、Router直接答复、未知投递与静默，经HTTP逐消息核验',{timeout:45000},async t=>{
+test('真实 Host 直入 Router 的实际回复、未知投递与静默，经HTTP逐消息核验',{timeout:45000},async t=>{
  const replied=new Set(),settled=new Set()
  const h=await residentRouterHost(t,body=>{
   const tools=requestTools(body),handoff=requestEnvelope(body,'Router 交接请求：')
   if(handoff&&!tools.length)return {text:JSON.stringify({currentIntent:'保持真实来源',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
-  if(tools.includes('channel_triage_submit')){const input=requestEnvelope(body,'一级分诊请求：');return {tool:'channel_triage_submit',args:{dispositions:input.messages.map(row=>({sourceId:row.sourceId,messageVersion:row.version??row.messageVersion,needsHandling:row.text.includes('DIRECT')||row.text.includes('WAIT'),reason:'本地首答验证',...row.text.includes('SILENT')||row.text.includes('DIRECT')||row.text.includes('WAIT')?{}:{reply:'已收到 '+row.text}}))}}}
-  if(tools.includes('resident_router_reply')){const input=requestEnvelope(body,'Router 请求：');if(!input)return {text:'等待真实输入'};const key=input.events.map(row=>row.id).join(',');if(settled.has(key))return {text:'本批已结清'};const event=input.events.find(row=>row.source);if(event&&!event.source.text.includes('WAIT')&&!replied.has(event.source.sourceId)){replied.add(event.source.sourceId);return {tool:'resident_router_reply',args:{operationId:'direct-'+event.source.sourceId,sourceId:event.source.sourceId,messageVersion:event.source.version,text:'这条消息无需建立任务，可直接答复。'}}}if(body.messages.at(-1)?.role!=='tool'&&!(event?.source?.text??'').includes('WAIT'))return {text:'已提交'};settled.add(key);return {tool:'resident_router_settle',args:{operationId:'settle-'+input.events.map(row=>row.id).join(','),eventIds:input.events.map(row=>row.id)}}}
+  if(tools.includes('resident_router_reply')){
+   const input=requestEnvelope(body,'Router 请求：');if(!input)return {text:'等待真实输入'}
+   const key=input.events.map(row=>row.id).join(',');if(settled.has(key))return {text:'本批已结清'}
+   const event=input.events.find(row=>row.source&&!row.source.text.includes('SILENT')&&!row.source.text.includes('WAIT')&&!replied.has(row.source.sourceId))
+   if(event){replied.add(event.source.sourceId);return {tool:'resident_router_reply',args:{operationId:'direct-'+event.source.sourceId,sourceId:event.source.sourceId,messageVersion:event.source.version,text:'这条消息无需建立任务，可直接答复。'+event.source.text}}}
+   if(input.events.some(row=>row.source?.text.includes('WAIT')))return {text:'Synthetic unanswered query stays pending'}
+   settled.add(key)
+   return {tool:'resident_router_settle',args:{operationId:'settle-'+key,eventIds:input.events.map(row=>row.id),noTaskDispositions:input.events.filter(row=>row.source).map(row=>({eventId:row.id,outcome:row.source.text.includes('SILENT')?'context-only':'handled-inline',sourceQuote:row.source.text,reason:'Synthetic direct Router decision; no business task requested'}))}}
+  }
   return {text:'完成'}
  },{readback:envelope=>envelope.text.includes('UNKNOWN')?undefined:{messageId:'confirmed-'+envelope.deliveryKey,visible:true}})
  let web
@@ -21,11 +28,11 @@ test('真实 Host 接收到无任务首答、Router直接答复、未知投递�
   const api=async path=>{const r=await fetch(web.origin+path,{headers:{origin:web.origin,cookie}});return {status:r.status,body:await r.json()}}
   const id=h.host.ctx.channels.identity(input).sessionId,endpoint='/api/conversations/'+id+'/response-times'
   await Promise.all([h.receive(channelMessage('batch-one',{text:'BATCH_TOPIC_ONE'})),h.receive(channelMessage('batch-two',{text:'BATCH_TOPIC_TWO'}))]);await h.service.whenIdle()
-  for(const [messageId,text] of [['reply-two','FIRST_TWO'],['reply-direct','DIRECT'],['reply-unknown','UNKNOWN'],['reply-silent','SILENT'],['reply-wait','WAIT']]){await h.receive(channelMessage(messageId,{text}));await h.service.whenIdle()}
+  for(const [messageId,text] of [['reply-two','FIRST_TWO'],['reply-direct','DIRECT'],['reply-unknown','UNKNOWN'],['reply-silent','SILENT'],['reply-wait','WAIT']]){await h.receive(channelMessage(messageId,{text}));await h.service.whenIdle().catch(error=>{if(!text.includes('WAIT'))throw error;assert.equal(error.code,'ROUTER_BATCH_UNSETTLED')})}
   const result=await api(endpoint);assert.equal(result.status,200,JSON.stringify(result.body));const row=id=>result.body.items.find(row=>row.messageId===id)
   for(const id of ['reply-one','reply-two','reply-direct','batch-one','batch-two']){assert.equal(row(id).status,'confirmed',JSON.stringify(row(id)));assert.ok(row(id).durationMs>=0);assert.ok(row(id).steps.some(step=>step.label==='首条回复已确认可见'))}
   for (const id of ['reply-one','reply-two','reply-direct','batch-one','batch-two']) {
-   const stage=row(id).steps.find(step=>step.kind==='stage-triage-completed')
+   const stage=row(id).steps.find(step=>step.kind==='stage-router-completed')
    assert.ok(stage&&Number.isFinite(stage.durationMs)&&stage.durationMs>=0,JSON.stringify(row(id)))
   }
   const routerStage=row('reply-direct').steps.find(step=>step.kind==='stage-router-completed')
@@ -36,13 +43,13 @@ test('真实 Host 接收到无任务首答、Router直接答复、未知投递�
   assert.equal(row('reply-direct').steps.find(step=>step.kind==='reply-visible').timingType,'milestone')
   assert.match(row('reply-direct').replyPreview,/无需建立任务/);
   const direct=(await h.query('notification.list')).find(notice=>notice.payload?.sourceRef?.messageId==='reply-direct');assert.equal(direct.payload.replyPurpose,undefined,'真实 Router 未标用途的送达回执也必须进入 HTTP 首答结果');
-  assert.equal(row('reply-unknown').durationMs,null);assert.equal(row('reply-unknown').status,'unconfirmed');assert.equal(row('reply-silent').status,'no-reply');assert.equal(row('reply-wait').status,'awaiting-reply');assert.equal((await h.query('task.list',{groupId:id})).length,0)
+  assert.equal(row('reply-unknown').durationMs,null);assert.equal(row('reply-unknown').status,'unconfirmed');assert.equal(row('reply-silent').status,'no-reply');assert.equal(row('reply-wait').status,'awaiting-handling');assert.equal((await h.query('task.list',{groupId:id})).length,0)
   assert.equal((await api('/api/conversations/foreign/response-times')).status,404)
   const stageEndpoint='/api/conversations/'+id+'/stage-times'
   const stageResult=await api(stageEndpoint+'?limit=3')
   assert.equal(stageResult.status,200);assert.equal(stageResult.body.items.length,3)
   assert.equal(stageResult.body.scope,'recent-message-host-stage-spans')
-  assert.ok(stageResult.body.items.every(item=>item.triage.status==='recorded'&&item.triage.durationMs>=0))
+  assert.ok(stageResult.body.items.every(item=>item.triage.status==='missing'&&item.router.durationMs>=0))
   assert.doesNotMatch(JSON.stringify(stageResult.body),/FIRST_|messageId|sourceId|replyPreview/)
   assert.equal((await api('/api/conversations/foreign/stage-times')).status,404)
   for(const query of ['?limit=0','?limit=21','?offset=0','?selectedMessageId=reply-direct'])assert.equal((await api(stageEndpoint+query)).status,400)
@@ -58,7 +65,7 @@ test('真实 Host 接收到无任务首答、Router直接答复、未知投递�
   const csrf=(await api('/api/session')).body.csrfToken,current=(await api('/api/chat-current')).body.conversationId
   const posted=await fetch(web.origin+'/api/chat',{method:'POST',headers:{origin:web.origin,cookie,'content-type':'application/json','x-csrf-token':csrf},body:JSON.stringify({conversationId:current,requestId:'web-first-answer',text:'WEB_FIRST'})});assert.equal(posted.status,202,await posted.text());await h.service.whenIdle()
   const webTiming=await api('/api/chat/'+current+'/response-times');assert.equal(webTiming.status,200);assert.equal(webTiming.body.items[0].status,'confirmed',JSON.stringify(webTiming.body));assert.ok(webTiming.body.items[0].durationMs>=0)
-  const webStages=await api('/api/chat/'+current+'/stage-times');assert.equal(webStages.status,200);assert.equal(webStages.body.items[0].triage.status,'recorded');assert.ok(webStages.body.items[0].triage.durationMs>=0)
+  const webStages=await api('/api/chat/'+current+'/stage-times');assert.equal(webStages.status,200);assert.equal(webStages.body.items[0].triage.status,'missing');assert.ok(webStages.body.items[0].router.durationMs>=0)
   const webSelected=await api('/api/chat/'+current+'/response-times?selectedMessageId=web-first-answer');assert.equal(webSelected.body.items[0].messageId,'web-first-answer')
   const webChat=await api('/api/chat/'+current),webReply=webChat.body.messages.find(message=>message.role==='assistant');assert.ok(webReply)
   const webAssistant=await api('/api/chat/'+current+'/response-times?selectedMessageId='+encodeURIComponent(webReply.id));assert.equal(webAssistant.body.items[0].messageId,'web-first-answer')

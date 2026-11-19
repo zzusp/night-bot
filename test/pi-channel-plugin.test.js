@@ -305,7 +305,7 @@ test('configured channel responsibilities isolate all model roles through the de
     assert.equal(review.taskId,task.taskId);assert.equal(review.eventId,event.id)
     assert.deepEqual(JSON.parse(await readFile(join(ctx.runtimePaths.workspaces,'tasks',task.taskId,'reviews',hash(event.id)+'.json'),'utf8')),review)
     proof.push({taskId:task.taskId,sessionId:task.sessionId,eventId:event.id,status:task.status,drained:task.drained,reviewStatus:review.status,scope,destination:'tasks/'+task.taskId+'/reviews/'+hash(event.id)+'.json'})
-    const required=['triage','router','task','reflection',...room.key==='alpha'?['channel']:[]]
+    const required=['router','task','reflection',...room.key==='alpha'?['channel']:[]]
     for(const role of required){
       const requests=observed.filter(row=>row.room===room.key&&row.role===role);assert.ok(requests.length,room.key+' '+role+' reached the actual model endpoint')
       for(const request of requests){assert.ok(request.system.includes(room.responsibility),room.key+' '+role+' preserves the complete literal responsibility');assert.ok(!request.system.includes(rooms.find(other=>other!==room).responsibility));assert.ok(!request.system.includes(spoof));assert.ok(!request.system.includes(old))}
@@ -495,17 +495,18 @@ for(const quoteMode of ['other-recipient','explicit','default'])test('default ap
 })
 
 async function defaultDwsEcho(t,statusMode='success'){
-  const stages=new Map(),sent=[],triaged=[],historyReads=[],detailReads=[],streams=new Map(),statusGate=Promise.withResolvers(),contentGate=Promise.withResolvers()
-  const currentMessages=new Map();let detailFailure=false
+  const stages=new Map(),sent=[],routed=[],historyReads=[],detailReads=[],streams=new Map(),statusGate=Promise.withResolvers(),contentGate=Promise.withResolvers()
+  const currentMessages=new Map(),observedVersions=new Set();let detailFailure=false
   let app,plugin,otherPlugin,channels,ready=statusMode==='success',contentStarted=false,statusStarted=false,history=[],historyGate
   t.signal.addEventListener('abort',()=>{statusGate.resolve();contentGate.resolve()},{once:true})
   t.after(()=>{statusGate.resolve();contentGate.resolve()})
   const f=await memoryHost(t,body=>{
     const tools=requestTools(body),triage=requestEnvelope(body,'一级分诊请求：'),handoff=requestEnvelope(body,'Router 交接请求：')
-    if(tools.includes('channel_triage_submit')){triaged.push(...triage.messages.map(message=>message.messageId));return {tool:'channel_triage_submit',args:{dispositions:triage.messages.map(message=>({sourceId:message.sourceId,messageVersion:message.version??message.messageVersion,needsHandling:message.messageId==='race-request',reason:'Only the original request needs a reply'}))}}}
+    assert.ok(!tools.includes('channel_triage_submit'))
     if(handoff)return {text:JSON.stringify({currentIntent:'Preserve exact delivery identity',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
     if(!tools.includes('resident_router_reply'))return {text:'No further action'}
     const input=requestEnvelope(body,'Router 请求：'),key=input.events.map(event=>event.id).join(','),step=stages.get(key)??0;stages.set(key,step+1)
+    for(const event of input.events.filter(event=>event.source)){const key=event.source.sourceId+':'+event.source.version;if(!observedVersions.has(key)){observedVersions.add(key);routed.push(event.source.messageId)}}
     const source=input.events.find(event=>event.source?.messageId==='race-request')?.source
     if(source&&step===0)return {tool:'resident_router_reply',args:{operationId:'race-reply',sourceId:source.sourceId,messageVersion:source.version,text:'Exactly one visible reply',recipientActorIds:[]}}
     if(step===(source?1:0))return {tool:'resident_router_settle',args:{operationId:'race-settle:'+key,eventIds:input.events.map(event=>event.id)}}
@@ -566,9 +567,9 @@ async function defaultDwsEcho(t,statusMode='success'){
   async function absent(message){
     assert.equal(channels.groupContext(channels.identity(input(message)).sessionId)?.messageFacts?.[message.messageId],undefined,'no channel fact may precede identity resolution')
     assert.equal((await app.tasks.store.query({kind:'source.list'})).filter(source=>source.messageId===message.messageId&&source.groupId===identity.sessionId).length,0)
-    assert.equal(triaged.filter(id=>id===message.messageId).length,0)
+    assert.equal(routed.filter(id=>id===message.messageId).length,0)
   }
-  return {f,sent,triaged,historyReads,detailReads,raw,identity,ingressFile,input,absent,
+  return {f,sent,routed,historyReads,detailReads,raw,identity,ingressFile,input,absent,
     get app(){return app},get plugin(){return plugin},get otherPlugin(){return otherPlugin},get channels(){return channels},
     get statusStarted(){return statusStarted},get contentStarted(){return contentStarted},
     receive:message=>plugin.acceptHistoryMessage(message),
@@ -602,7 +603,7 @@ test('default optional DWS filters exact echo before registration while content 
     await assert.rejects(h.receive({...echo,groupId:'other-room'}),/AUTHENTICATED_IDENTITY_REQUIRED/)
     assert.notEqual((await h.channels.plugins.get('other-room-dws').acceptHistoryMessage({...echo,groupId:'other-room'})).reason,'own-notification')
     assert.notEqual((await h.otherPlugin.acceptHistoryMessage(echo)).reason,'own-notification')
-    await eventually(async()=>{const sources=await h.app.tasks.store.query({kind:'source.list'});return sources.length===4&&h.triaged.includes(fresh.messageId)},'three non-echo messages reach formal source and triage',t.signal)
+    await eventually(async()=>{const sources=await h.app.tasks.store.query({kind:'source.list'});return sources.length===4&&h.routed.includes(fresh.messageId)},'three non-echo messages reach formal source and triage',t.signal)
   }finally{h.release()}
   await h.app.tasks.whenIdle()
   await eventually(async()=>(await h.app.tasks.store.query({kind:'notification.list'}))[0]?.state==='delivered','original content readback completes delivery',t.signal)
@@ -626,19 +627,19 @@ for(const mode of ['timeout','error'])test('default optional DWS defers unresolv
     await h.absent(deferred);assert.equal(h.plugin.health.healthy,true)
     const other={...deferred,groupId:'other-room',messageId:'other-scope-real-message'}
     assert.notEqual((await h.channels.plugins.get('other-room-dws').acceptHistoryMessage(other)).reason,'own-notification')
-    await eventually(()=>h.triaged.includes(other.messageId),'another scope remains available during the unresolved send',t.signal)
+    await eventually(()=>h.routed.includes(other.messageId),'another scope remains available during the unresolved send',t.signal)
     phase='cold-admission'
     h.current(deferred);h.release();await h.restart([])
-    await eventually(async()=>{const sources=await h.app.tasks.store.query({kind:'source.list'});return sources.some(source=>source.messageId===deferred.messageId)&&h.triaged.includes(deferred.messageId)},'cold exact read admits the original older message',t.signal)
+    await eventually(async()=>{const sources=await h.app.tasks.store.query({kind:'source.list'});return sources.some(source=>source.messageId===deferred.messageId)&&h.routed.includes(deferred.messageId)},'cold exact read admits the original older message',t.signal)
     phase='cold-drain'
     await h.app.tasks.whenIdle()
     const sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(source=>source.messageId===deferred.messageId)
-    assert.equal(sources.length,1);assert.equal(sources[0].version,1);assert.equal(h.triaged.filter(id=>id===deferred.messageId).length,1)
+    assert.equal(sources.length,1);assert.equal(sources[0].version,1);assert.equal(h.routed.filter(id=>id===deferred.messageId).length,1)
     assert.ok(h.detailReads.includes(deferred.messageId))
     assert.equal(JSON.parse(await readFile(h.ingressFile,'utf8')).deferredMessages,undefined)
     await eventually(async()=>JSON.parse(await readFile(h.ingressFile,'utf8')).recoveryFromAt===undefined,'only successful complete recovery clears the durable lower bound',t.signal)
     assert.equal(h.sent.length,1);assert.equal((await h.app.tasks.store.query({kind:'task.list'})).length,0)
-    t.diagnostic(JSON.stringify({case:'default-optional-dws-deferred-'+mode,sourceCount:1,triageCount:1,oldTimestampRecovered:true,sendCount:1,realVendorExecuted:false}))
+    t.diagnostic(JSON.stringify({case:'default-optional-dws-deferred-'+mode,sourceCount:1,routedCount:1,oldTimestampRecovered:true,sendCount:1,realVendorExecuted:false}))
   }catch(error){
     const describe=(value,seen=new Set())=>{
       if(value===null||typeof value!=='object')return value
@@ -649,17 +650,17 @@ for(const mode of ['timeout','error'])test('default optional DWS defers unresolv
     let ingress,sources
     try{ingress=JSON.parse(await readFile(h.ingressFile,'utf8'))}catch(value){ingress={readError:describe(value)}}
     try{sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(source=>source.messageId===deferred?.messageId)}catch(value){sources={queryError:describe(value)}}
-    t.diagnostic(JSON.stringify({case:'default-optional-dws-deferred-diagnostic',mode,phase,error:describe(error),health:h.plugin.health,ingress,historyReads:h.historyReads.map(range=>({...range,coversDeferred:range.conversationId===deferred?.groupId&&Date.parse(range.start)<=Date.parse(deferred?.occurredAt)&&Date.parse(range.end)>=Date.parse(deferred?.occurredAt)})),deferred,sources,triageCount:h.triaged.filter(id=>id===deferred?.messageId).length,triaged:h.triaged,errors:h.f.errors.map(value=>describe(value)),rawBridgeErrorUnavailable:true,realVendorExecuted:false}))
+    t.diagnostic(JSON.stringify({case:'default-optional-dws-deferred-diagnostic',mode,phase,error:describe(error),health:h.plugin.health,ingress,historyReads:h.historyReads.map(range=>({...range,coversDeferred:range.conversationId===deferred?.groupId&&Date.parse(range.start)<=Date.parse(deferred?.occurredAt)&&Date.parse(range.end)>=Date.parse(deferred?.occurredAt)})),deferred,sources,routedCount:h.routed.filter(id=>id===deferred?.messageId).length,routed:h.routed,errors:h.f.errors.map(value=>describe(value)),rawBridgeErrorUnavailable:true,realVendorExecuted:false}))
     throw error
   }finally{h.release()}
 })
 
-test('未知外发无 ACK 时同群实时和冷恢复历史仍结清分诊',{timeout:nativeTestTimeout(45000)},async t=>{
+test('未知外发无 ACK 时同群实时和冷恢复历史仍结清路由',{timeout:nativeTestTimeout(45000)},async t=>{
   const h=await defaultDwsEcho(t,'no-ack'),holdHistory=Promise.withResolvers()
   const checkpoint=()=>readFile(h.ingressFile,'utf8').then(JSON.parse)
   const settled=async message=>{
     const sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.groupId===h.identity.sessionId&&row.messageId===message.messageId)
-    return sources.length===1&&sources[0].routed===true&&h.triaged.filter(id=>id===message.messageId).length===1
+    return sources.length===1&&sources[0].routed===true&&h.routed.filter(id=>id===message.messageId).length===1
   }
   try{
     await h.receive(h.raw)
@@ -689,7 +690,7 @@ test('未知外发无 ACK 时同群实时和冷恢复历史仍结清分诊',{tim
     holdHistory.resolve()
     await eventually(()=>settled(historical),'从更早的暂缓边界补到独立来源，并完成分诊',t.signal)
     await eventually(()=>settled(heldLive),'补完历史后，实时来源完成分诊',t.signal)
-    assert.ok(h.triaged.indexOf(historical.messageId)<h.triaged.indexOf(heldLive.messageId))
+    assert.ok(h.routed.indexOf(historical.messageId)<h.routed.indexOf(heldLive.messageId))
     await eventually(async()=>{const state=await checkpoint();return h.plugin.ingressControl.getStatus().state==='receiving'&&Date.parse(state.backfillThroughAt)>Date.parse(before.backfillThroughAt)&&!state.recoveryFromAt},'完整范围独立推进并恢复接收',t.signal)
     await h.absent(pending);await h.absent(quote)
     assert.deepEqual((await checkpoint()).deferredMessages,before.deferredMessages)
@@ -704,7 +705,7 @@ test('未知外发无 ACK 时同群实时和冷恢复历史仍结清分诊',{tim
   }finally{holdHistory.resolve();h.release();await h.f.close()}
 })
 
-test('暂停期间只按原边界恢复暂缓项，真实分诊不放行实时或未知外发',{timeout:nativeTestTimeout(70000)},async t=>{
+test('暂停期间只按原边界恢复暂缓项，真实路由不放行实时或未知外发',{timeout:nativeTestTimeout(70000)},async t=>{
   const h=await defaultDwsEcho(t,'no-ack')
   const cursor=()=>readFile(h.ingressFile,'utf8').then(JSON.parse)
   try{
@@ -729,9 +730,9 @@ test('暂停期间只按原边界恢复暂缓项，真实分诊不放行实时�
     assert.equal(applied.accepted,2);assert.equal(applied.remaining,2)
     await eventually(async()=>{
       const sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(s=>[first.messageId,second.messageId].includes(s.messageId))
-      return sources.length===2&&sources.every(s=>s.routed&&h.triaged.filter(id=>id===s.messageId).length===1)
+      return sources.length===2&&sources.every(s=>s.routed&&h.routed.filter(id=>id===s.messageId).length===1)
     },'两条原消息的分诊确实完成',t.signal)
-    assert.ok(h.triaged.indexOf(first.messageId)<h.triaged.indexOf(second.messageId))
+    assert.ok(h.routed.indexOf(first.messageId)<h.routed.indexOf(second.messageId))
     for(const message of [held,heldQuote,future])await h.absent({...message,senderOpenDingTalkId:'carol'})
     assert.deepEqual((await cursor()).deferredMessages.map(row=>row.messageId),[held.messageId,heldQuote.messageId,future.messageId])
     assert.equal((await cursor()).backfillThroughAt,before.backfillThroughAt)
@@ -1461,7 +1462,7 @@ test('钉钉编辑按当前详情递增来源版本，重复、迟到事件及�
   const sources=(await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId==='editable').sort((a,b)=>a.version-b.version)
   assert.deepEqual(sources.map(row=>[row.version,row.text]),[[1,original.text],[2,edited.text]])
   assert.equal(sources[0].sourceId,first.sourceId);assert.equal(sources[0].actorId,sources[1].actorId)
-  assert.equal(h.triaged.filter(id=>id==='editable').length,2)
+  assert.equal(h.routed.filter(id=>id==='editable').length,2)
   assert.equal(h.channels.groupContext(h.identity.sessionId).messageFacts.editable.version,2)
   const after=JSON.parse(await readFile(h.ingressFile,'utf8'))
   assert.equal(after.firstStartedAt,before.firstStartedAt)

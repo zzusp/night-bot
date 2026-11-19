@@ -8,7 +8,7 @@ const pick=(value,keys)=>Object.fromEntries(keys.filter(key=>value[key]!==undefi
  * duplicate identifiers and source-processing bookkeeping stay with the Host.
  */
 export function routerModelEvent(event){
-  const view=pick(event,['id','kind','sourceId','messageVersion','taskId','taskEventId'])
+  const view=pick(event,['id','kind','sourceId','messageVersion','taskId','taskEventId','directRouter'])
   if(event.kind==='operator.message')view.operator=pick(event.operator,['requestId','actorId','text','destination'])
   if(event.source){
     const source=conversationSource(event.source)

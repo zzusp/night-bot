@@ -80,16 +80,6 @@ test('quote snapshots never expose foreign or withdrawn target bodies and identi
  put('unknownQuote',{quote:{messageId:'not-captured',text:'unverified quote snapshot'}})
  assert.equal(queryCurrentSource(db,{conversationId:'room',sourceId:'unknownQuote'}).quote.status,'unverified')
 })
-test('closing while optional background loads cannot create a new triage actor',async()=>{
- const {createChannelTriage}=await import('../src/channels/resident-router-business.js')
- let resolve
- const gate=new Promise(done=>{resolve=done})
- const triage=createChannelTriage({ctx:{get(){throw Error('No actor may be created after close')}},query:()=>gate})
- const running=triage.run('room',[{sourceId:'source',messageId:'message',version:1}])
- await triage.close();resolve({sources:[]})
- await assert.rejects(running,/TRIAGE_CLOSED/)
-})
-
 test('existing v4 ledger gains derived history indexes only after installation identity checks',async t=>{
  const {mkdtemp,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path')
  const {openDynamicTaskStore}=await import('../packages/dingtalk-core/dynamic-task-store.js')

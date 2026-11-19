@@ -38,7 +38,7 @@ function submit(input,select) {
     messageVersion:message.version??message.messageVersion,...select(message),reason:'Use the directly available original context'}))}}
 }
 function settle(body,input) {
-  if(body.messages.at(-1)?.role==='tool')return {text:'The necessary business disposition is committed.'}
+  if(body.messages.at(-1)?.role==='tool'&&body.messages.findLast(message=>message.role==='assistant')?.tool_calls?.at(-1)?.function?.name==='resident_router_settle')return {text:'The necessary business disposition is committed.'}
   return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle:'+input.events.map(event=>event.id).join(',')}}
 }
 
@@ -213,50 +213,17 @@ test('read-only Router reports actual memory and Skill refusals without persisti
   assert.equal(h.sent.length,1);assert.match(h.sent[0].text,/没有保存/)
 })
 
-test('all four default dispositions keep original handling independent of an unknown short reply and survive cold deduplication',{timeout:nativeTestTimeout(40000)},async t=>{
-  const observed=[],handoffs=[];let h
-  h=await residentRouterHost(t,body=>{
-    const summary=handoff(body)
-    if(summary){handoffs.push(body);return summary}
-    const first=triage(body)
-    if(requestTools(body).includes('channel_triage_submit'))return submit(first,source=>({needsHandling:source.text.includes('HANDLE'),
-      ...source.text.includes('REPLY')?{reply:'Concise '+source.messageId}:{}}))
-    if(requestTools(body).includes('resident_router_settle')){const input=router(body);observed.push(input);const answer=settle(body,input);if(answer.args)answer.args.noTaskDispositions=input.events.filter(event=>event.source&&event.triageReply).map(event=>({eventId:event.id,outcome:'handled-inline',sourceQuote:event.source.text,reason:'Synthetic dialogue is handled inline, no requested business work.'}));return answer}
-    return {text:'No other work'}
-  },{send:async()=>{throw Error('Simulated lost acknowledgement after external send')},readback:async()=>{throw Error('Readback not yet available')}})
-  const originals=[channelMessage('silent',{text:'QUIET'}),channelMessage('reply',{text:'REPLY'}),
-    channelMessage('handle',{text:'HANDLE',quotedMessage:{messageId:'prior',senderId:'bob',text:'Quoted source only'}}),
-    channelMessage('both',{text:'HANDLE REPLY',senderId:'bob'})]
-  for(const input of originals)await h.receive(input)
-  await eventually(async()=>(await h.query('source.list')).filter(source=>source.routed).length===4,'all first-tier dispositions durably committed',t.signal)
-  await h.service.whenIdle()
-  const handled=new Map(observed.flatMap(input=>input.events).filter(event=>event.sourceId).map(event=>[event.source.messageId,event.source]))
-  assert.deepEqual([...handled.keys()].sort(),['both','handle'])
-  for(const input of originals.filter(input=>input.text.includes('HANDLE'))){const source=handled.get(input.messageId)
-    assert.equal(source.text,input.text);assert.equal(source.version,1);assert.ok(source.actorId)
-    if(input.quotedMessage){assert.equal(source.quote.messageId,input.quotedMessage.messageId);assert.match(JSON.stringify(source.quote),/Quoted source only/)}
-  }
-  assert.equal(h.sent.length,2);assert.equal(new Set(h.sent.map(envelope=>envelope.deliveryKey)).size,2)
-  const notices=(await h.query('notification.list')).filter(notice=>notice.kind==='triage-reply')
-  assert.equal(notices.length,2);assert.ok(notices.every(notice=>notice.state==='unknown'))
-  assert.ok(observed.flatMap(input=>input.events).find(event=>event.source?.messageId==='both')?.triageReply,'Router sees the independently prepared short reply')
-  assert.equal((await h.query('task.list')).length,0,'handled dialogue can settle without empty task creation')
-  assert.equal(handoffs.length,0,'idle conversation must not trigger an extra model handoff')
-  assert.equal((await h.query('router.inbox',{conversationId:h.host.ctx.channels.identity(originals[0]).sessionId})).length,0)
-  const sendCount=h.sent.length,requestCount=h.requests.length
-  await h.restart()
-  for(const input of originals)await h.receive(input)
-  await h.service.whenIdle()
-  assert.equal(h.sent.length,sendCount,'unknown short replies are never resent after cold restart')
-  assert.equal(h.requests.length,requestCount,'committed dispositions and Router actions are not replayed after cold restart')
-})
-
 test('durable receipt echoes tolerate later DWS flags without replacing existing message facts',{timeout:nativeTestTimeout(40000)},async t=>{
   const {readFile}=await import('node:fs/promises'),{join}=await import('node:path'),{hash}=await import('../src/memory/format.js'),{apply:applyDws,validateConfig:validateDws}=await import('../src/channels/plugins/dingtalk-dws.js')
-  const sent=[],readbacks=[],revisionReads=[],at=new Date().toISOString(),flag=(args,key)=>args[args.indexOf(key)+1]
+  const answered=new Set(),sent=[],readbacks=[],revisionReads=[],at=new Date().toISOString(),flag=(args,key)=>args[args.indexOf(key)+1]
   const h=await residentRouterHost(t,body=>{
     const summary=handoff(body);if(summary)return summary
-    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),source=>({needsHandling:false,...source.text==='Original request receipt-original'?{reply:'Bounded synthetic reply'}:{}}))
+    const input=router(body)
+    if(input&&requestTools(body).includes('resident_router_settle')){
+      const source=input.events.find(event=>event.source?.messageId==='receipt-original')?.source
+      if(source&&!answered.has(source.sourceId)){answered.add(source.sourceId);return {tool:'resident_router_reply',args:{operationId:'bounded-receipt-reply',sourceId:source.sourceId,messageVersion:source.version,text:'Bounded synthetic reply'}}}
+      return settle(body,input)
+    }
     return {text:'No additional business work'}
   })
   const runner={async run(args){
@@ -333,52 +300,6 @@ test('durable receipt echoes tolerate later DWS flags without replacing existing
   t.diagnostic(JSON.stringify({case:'existing-fact-dws-echo',coldFactsUnchanged:true,preciseEchoIgnored:true,provenFlagEnrichmentConsumed:true,lateDifferenceReadback:true,foreignActorRejected:true,coreFingerprintStrict:true,crossChannelAndConversationKept:true,receiptlessSameAccountKept:true,realDwsExecuted:false}))
 })
 
-test('in-flight first tier steers at most 15 original messages and leaves the sixteenth durably queued',{timeout:nativeTestTimeout(45000)},async t=>{
-  const entered=Promise.withResolvers(),release=Promise.withResolvers(),batches=[],business=[],corrections=[];let paused=false,submitted=false
-  t.after(()=>release.resolve())
-  const h=await residentRouterHost(t,async body=>{
-    const summary=handoff(body);if(summary)return summary
-    if(requestTools(body).includes('channel_triage_submit')){
-      if(!paused){paused=true;entered.resolve();await release.promise}
-      let input=triage(body)
-      const tool=body.messages.filter(message=>message.role==='tool').at(-1)
-      if(tool?.content.startsWith('{')){
-        const result=JSON.parse(tool.content)
-        if(result.code==='TRIAGE_BATCH_INCOMPLETE'&&result.messages.some(message=>input.messages.some(current=>current.sourceId===message.sourceId))){corrections.push(result);input=result}
-      }
-      if(!submitted){submitted=true;input={messages:input.messages.slice(0,1)}}
-      batches.push(input.messages.map(source=>source.sourceId));return submit(input,()=>({needsHandling:true}))
-    }
-    if(requestTools(body).includes('resident_router_settle')){const input=router(body);business.push(input);return settle(body,input)}
-    return {text:'No other work'}
-  })
-  await h.receive(channelMessage('1'));await entered.promise
-  await Promise.all(Array.from({length:15},(_,index)=>h.receive(channelMessage(String(index+2)))))
-  const sources=await h.query('source.list')
-  assert.equal(sources.length,16,'overflow must be durable before the original model turn is released')
-  assert.equal((await h.query('triage.pending',{conversationId:h.host.ctx.channels.identity(channelMessage('1')).sessionId})).length,15)
-  release.resolve()
-  await h.service.whenIdle()
-  const committed=(await h.query('source.list')).filter(source=>source.routed)
-  assert.equal(committed.length,16)
-  assert.equal(corrections.length,1,'one correction supplies the full batch after a stale submission')
-  assert.equal(corrections[0].messages.length,15)
-  for(const source of committed){
-    const spans=source.stages.filter(stage=>stage.stage==='triage')
-    assert.ok(spans.length&&spans.every(stage=>stage.completedAt),'each accepted source has joined observed triage spans')
-    assert.ok(spans.every(stage=>Date.parse(stage.startedAt)>=Date.parse(source.receivedAt)),'late sources are never backdated before Host receipt')
-  }
-  assert.ok(committed.find(source=>source.messageId==='1').stages.some(stage=>stage.stage==='triage'&&stage.shared),'original source becomes explicitly shared after a steer append')
-  assert.ok(batches.every(batch=>batch.length<=15))
-  assert.ok(batches.some(batch=>batch.length===15),'arrivals must use the active batch rather than 16 unrelated one-item sessions')
-  for(const input of business)assert.ok(input.events.filter(event=>event.sourceId).length<=15)
-  // Each official turn asks again after its tool result; dedup request snapshots.
-  const sets=new Set(business.map(input=>input.events.map(event=>event.id).join(',')))
-  const unique=business.filter((input,index,array)=>array.findIndex(other=>other.events.map(event=>event.id).join(',')===input.events.map(event=>event.id).join(','))===index)
-  assert.equal(new Set(unique.flatMap(input=>input.events.map(event=>event.sourceId))).size,16)
-  assert.equal(unique.reduce((sum,input)=>sum+input.events.filter(event=>event.sourceId).length,0),16)
-  assert.ok(sets.size>=2);assert.equal(h.sent.length,0)
-})
 
 test('messages after idle and cold restart continue the same Router generation exactly once',{timeout:nativeTestTimeout(40000)},async t=>{
   const observed=[]
@@ -549,7 +470,12 @@ for(const format of ['legacy','neutral','compact','conclusion'])test(`cold Route
   }
   t.after(()=>{registry.create=create})
   const input=channelMessage('legacy-pending',{text:'Original pending business input',quotedMessage:{messageId:'quoted',senderId:'bob',text:'Preserve this original context'}}),conversationId=h.host.ctx.channels.identity(input).sessionId
-  await h.receive(input)
+  if(format==='conclusion'){
+    const identity=h.host.ctx.channels.identity(input)
+    await h.store.command({id:'legacy-conclusion-source',kind:'source.record-direct',args:{source:{sourceId:'legacy-conclusion-source',groupId:conversationId,messageId:input.messageId,actorId:identity.principal,channel:input.type,version:1,text:input.text,quote:input.quotedMessage,resources:[]},conversation:{conversationId}}})
+    await h.store.command({id:'legacy-conclusion-decision',kind:'triage.commit',args:{conversationId,dispositions:[{sourceId:'legacy-conclusion-source',messageVersion:1,needsHandling:true,reason:'Historical explicit decision',handoff:{assignment:'explicit',summary:'本批明确只读交办，先匹配已有事项。'}}]}})
+    await h.service.recover().catch(error=>assert.equal(error.code,'TEST_ROUTER_ENQUEUE_INTERRUPTED'))
+  }else await h.receive(input)
   await eventually(()=>injected,'legacy packet durably enqueued before SDK admission',t.signal)
   await h.service.whenIdle().catch(error=>assert.match(error.message,/TEST_ROUTER_ENQUEUE_INTERRUPTED/))
   const before=await h.query('router.get',{conversationId}),stored=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})
@@ -600,15 +526,6 @@ for(const outcome of ['complete','stopped','stopped-failed-tool','newer-input','
   t.after(()=>releaseResume())
   const h=await residentRouterHost(t,async body=>{
     const summary=handoff(body);if(summary)return summary
-    if(requestTools(body).includes('channel_triage_submit')){
-      if(outcome==='newer-input'){
-        const conversationId=h.host.ctx.channels.identity(channelMessage('explicit-failed-batch')).sessionId,taskId='paused-inbox-fixture'
-        await h.store.command({id:'fixture-paused-task',kind:'task.create',args:{taskId,conversationId,groupId:conversationId,ownerActorId:'owner',request:'A paused task used only to produce real internal ledger events'}})
-        // 29个正式内部变更加本次用户来源构成30项原批次，不放宽15条用户输入上限。
-        for(let index=0;index<29;index++)await h.store.command({id:'fixture-paused-control-'+index,kind:'task.control',args:{taskId,control:'paused',expectedControlRevision:index+1}})
-      }
-      return submit(triage(body),()=>({needsHandling:true}))
-    }
     if(requestTools(body).includes('resident_router_settle')){
       if(continuationPacket){
         continuationAdmissions.push(await h.host.ctx.agents.get(continuationSessionId).admission.current())
@@ -630,6 +547,11 @@ for(const outcome of ['complete','stopped','stopped-failed-tool','newer-input','
     return result
   }})})
   const message=channelMessage('explicit-failed-batch'),conversationId=h.host.ctx.channels.identity(message).sessionId
+  if(outcome==='newer-input'){
+    const taskId='paused-inbox-fixture'
+    await h.store.command({id:'fixture-paused-task',kind:'task.create',args:{taskId,conversationId,groupId:conversationId,ownerActorId:'owner',request:'Internal recovery fixture'}})
+    for(let index=0;index<29;index++)await h.store.command({id:'fixture-paused-control-'+index,kind:'task.control',args:{taskId,control:'paused',expectedControlRevision:index+1}})
+  }
   await h.receive(message)
   await assert.rejects(h.service.whenIdle(),{code:'ROUTER_BATCH_UNSETTLED'})
   const row=await h.query('router.get',{conversationId}),failed=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
@@ -831,7 +753,7 @@ for(const stopsAgain of [false,true])test(stopsAgain?'cold recovery recognizes a
       return {text:'No settlement before interruption'}
     }
     const checkpoint=requestEnvelope(body,'Router 续办检查点：')
-    if(body.messages.at(-1)?.role==='tool')return {text:'Committed disposition'}
+    if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1)?.result.isError)return {text:'Committed disposition'}
     if(replacement||input.events.some(event=>event.source?.messageId==='next-after-query-resume'))return settle(body,input)
     const packets=requestText(body).flatMap(text=>text.split('\n')).filter(line=>line.startsWith('Router 请求：')).map(line=>JSON.parse(line.slice('Router 请求：'.length)))
     combined=[...new Map(packets.flatMap(packet=>packet.events).map(event=>[event.id,event])).values()]
@@ -1035,7 +957,7 @@ test('Router close joins and disposes an actual late-created official handle wit
   assert.equal(handle.agent.lifecycle.signal.aborted,true);assert.equal(registry.get(before.activeSessionId),undefined)
   const cold=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})
   assert.equal(cold.audit.filter(receipt=>receipt.domain==='admission').length,0);assert.equal(cold.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.router-handoff').length,0)
-  assert.equal(cold.header.generation,before.generation);assert.equal(before.cursor,0);assert.equal(h.requests.length,1)
+  assert.equal(cold.header.generation,before.generation);assert.equal(before.cursor,0);assert.equal(h.requests.length,0)
 })
 
 test('Router close cannot swallow an admission PAUSED failure produced before its own interruption',{timeout:nativeTestTimeout(40000)},async t=>{
@@ -1053,7 +975,7 @@ test('Router close cannot swallow an admission PAUSED failure produced before it
   t.after(()=>{registry.create=create})
   await h.receive(channelMessage('paused-router-close'));await entered.promise;assert.equal(prior.code,'PI_BUSINESS_ADMISSION_PAUSED')
   const closing=h.close(),rejected=assert.rejects(closing,error=>{const contains=value=>value===prior||value?.errors?.some(contains);return contains(error)})
-  await aborted.promise;trace.push({at:'release',code:prior.code,safe:prior.routerSafeToResume});t.diagnostic(JSON.stringify({pausedCloseTrace:trace}));release.resolve();await rejected;assert.equal(h.requests.length,1)
+  await aborted.promise;trace.push({at:'release',code:prior.code,safe:prior.routerSafeToResume});t.diagnostic(JSON.stringify({pausedCloseTrace:trace}));release.resolve();await rejected;assert.equal(h.requests.length,0)
 })
 
 for(const answerFrom of ['requester','same-conversation-member'])test(`Router resumes a waiting task in its original Pi session after an answer from ${answerFrom}`,{timeout:nativeTestTimeout(60000)},async t=>{
@@ -1247,7 +1169,7 @@ test('Router synthesizes project memory with linked evidence, cold recall and re
     if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),source=>({needsHandling:source.messageId!=='project-announcement'}))
     if(!requestTools(body).includes('resident_router_settle'))return {text:'No other work'}
     const input=router(body),source=input.events.find(event=>event.source)?.source
-    if(!source)return settle(body,input)
+    if(!source||source.messageId==='project-announcement')return settle(body,input)
     const id=source.messageId,step=steps.get(id)??0;steps.set(id,step+1)
     const write=memory=>({tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'projects',key,sourceQuote:source.text,memory,expectedRevision:id==='project-record'?0:1}})
     if(step===0){
@@ -1312,39 +1234,6 @@ test('Router synthesizes project memory with linked evidence, cold recall and re
   await h.receive(channelMessage('project-delete',{text:'这条编辑器看板约定已过时，删除它。'}));await h.service.whenIdle();assert.deepEqual((await h.host.ctx.memory.store.read(scope,{topic:'projects',key})).entries,[])
   assert.equal((await h.query('task.list')).length,0)
   t.diagnostic(JSON.stringify({case:'router-contextual-memory',sections:3,contextResolved:true,historyIsEvidenceOnly:true,subject:'context-dependent',diskAndDetailVerified:true,coldRecall:true,duplicateNoReplay:true,updateAndDiff:true,noSpeculation:true,deleted:true,realMessages:0}))
-})
-
-test('taskless persistent triage retains owner and native metrics through service restart',{timeout:nativeTestTimeout(60000)},async t=>{
- const h=await residentRouterHost(t,body=>{
-  if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:false}))
-  return {text:'No further work'}
- })
- const message=channelMessage('triage-phase-metrics',{text:'PRIVATE_TRIAGE_BODY'})
- await h.receive(message);await h.service.whenIdle()
- const rows=await eventually(()=>{
-  const rows=h.service.listPerformance({runtimeOwner:'channel-triage'}).rows
-  return rows.some(row=>row.phaseMs['triage-total'])&&rows
- },'durable triage tail')
- assert.equal(rows.length,1);const row=rows[0]
- assert.equal(row.taskId,undefined);assert.equal(row.groupId,h.host.ctx.channels.identity(message).sessionId)
- assert.ok(row.sessionId.startsWith('session-triage-'));assert.ok(h.host.ctx.agents.get(row.sessionId),'successful batch retains its owner')
- assert.equal(row.modelCalls,1);assert.equal(row.toolCalls,1);assert.equal(row.toolResults,1)
- for(const phase of ['triage-total','session-create','workspace','session-store-open','session-prepare-actor','session-resolve-resources','session-sdk-create','resources-before-run','instructions','skills','sdk-reload','input-enqueue','input-acknowledge','request-prepare','request-guards','request-commit','triage-commit']){
-  assert.ok(row.phaseMs[phase]?.count>0,phase);assert.equal(row.phaseMs[phase].failures,0,phase)
- }
- assert.equal(row.phaseMs['resources-deliver'],undefined,'custom delivery must not duplicate before-run reads')
- assert.equal(row.phaseMs['resources-create'],undefined,'triage keeps construction lazy; first-input preflight maps resources later')
- assert.equal(row.phaseMs['resources-before-run'].count,1)
- assert.equal(row.phaseMs['resources-turn-end'].count,1)
- assert.equal(row.phaseMs.skills.count,3,'cold one-turn triage maps resources at initial prompt preflight, before-run and turn-end')
- assert.equal(row.phaseMs.instructions.count,3)
- assert.ok(row.phaseMs['triage-total'].sum>=row.phaseMs['session-create'].sum)
- assert.equal(JSON.stringify(rows).includes(message.text),false)
- assert.equal((await h.query('task.list')).length,0);assert.equal(h.sent.length,0)
- const requests=h.requests.length
- await h.restart();await h.receive(message);await h.service.whenIdle()
- const restored=h.service.listPerformance({sessionId:row.sessionId}).rows[0]
- assert.deepEqual(restored,row);assert.equal(h.requests.length,requests)
 })
 
 test('Router schedules the same execution session across wait, stop, cancellation, completion and restart without operator grants',{timeout:nativeTestTimeout(100000)},async t=>{
@@ -1470,7 +1359,7 @@ for(const cut of ['prepared-only','journal-committed'])test(`Router resumes thro
   assert.ok(!(await h.query('source.list')).some(row=>row.requestIdentity?.effectAuthorization))
 })
 
-for(const scenario of ['newer-cancellation','committed-reply','failed-tool','late-triage-receipt'])test('normal Router shutdown resumes an aborted generation safely: '+scenario,{timeout:nativeTestTimeout(60000)},async t=>{
+for(const scenario of ['newer-cancellation','committed-reply','failed-tool'])test('normal Router shutdown resumes an aborted generation safely: '+scenario,{timeout:nativeTestTimeout(60000)},async t=>{
   const entered=Promise.withResolvers(),release=Promise.withResolvers(),replyRelease=Promise.withResolvers()
   const withCancellation=scenario==='newer-cancellation'||scenario==='late-triage-receipt'
   t.after(()=>{release.resolve();replyRelease.resolve()})
@@ -1487,7 +1376,7 @@ for(const scenario of ['newer-cancellation','committed-reply','failed-tool','lat
         assert.equal(current.messages.length,2,'the real later input, not a Host control, supplies cancellation context')
         assert.ok(requestText(body).some(text=>text.includes('Do not release; postpone until next week.')))
       }
-      if(body.messages.at(-1)?.role==='tool')return {text:'The current request and later constraint are settled without release.'}
+      if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1)?.result.isError)return {text:'The current request and later constraint are settled without release.'}
       const pending=await h.query('router.inbox',{conversationId:input.conversationId})
       return {tool:'resident_router_settle',args:{operationId:'settle-aborted-after-current-inputs',eventIds:resumedSources,noTaskDispositions:pending.filter(event=>event.source&&event.triageReply).map(event=>({eventId:event.id,outcome:'handled-inline',sourceQuote:event.source.text,reason:'Later authenticated cancellation postpones the original preparation; no task was started.'}))}}
     }
@@ -1632,6 +1521,7 @@ for(const fault of [null,'missing-row','missing-receipt','changed-packet','unkno
     const summary=handoff(body);if(summary)return summary
     if(!requestTools(body).includes('resident_router_settle'))return {text:'No work'}
     const input=router(body)
+    if(input.events.some(event=>event.source?.messageId==='partial-register'))return body.messages.at(-1)?.role==='tool'?{text:'Synthetic registration complete'}:{tool:'resident_router_settle',args:{operationId:'registration-only',eventIds:input.events.map(event=>event.id),noTaskDispositions:input.events.map(event=>({eventId:event.id,outcome:'context-only',sourceQuote:event.source.text,reason:'Synthetic conversation registration only'}))}}
     if(!recovering){
       if(step++===0){originalIds=input.events.map(event=>event.id);assert.equal(originalIds.length,26);return {tool:'resident_router_settle',args:{operationId:'partial-twenty',eventIds:originalIds.slice(0,20)}}}
       if(step===2)return {tool:'resident_task_query',args:{detail:'index'}}
@@ -1704,7 +1594,7 @@ for(const fault of [null,'missing-row','missing-receipt','changed-packet','unkno
   assert.ok(settled.slice(20).every(event=>event.processedGeneration===row.generation+1))
   assert.equal(new Set(settled.map(event=>event.processedCursor)).size,26)
   const final=await h.query('router.get',{conversationId}),requests=h.requests.length
-  assert.equal(final.cursor,27)
+  assert.equal(final.cursor,28)
   await h.restart();await h.service.whenIdle()
   assert.equal(h.requests.length,requests,'restart must not replay any consumed event')
   assert.deepEqual(await h.query('router.get',{conversationId}),final)

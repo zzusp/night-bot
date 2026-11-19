@@ -19,14 +19,17 @@ async function availablePort() {
   return port
 }
 
-test('discovered Web plugin reaches real channel triage and durable reply readback; restart preserves one delivery', {timeout: nativeTestTimeout(45000)}, async t => {
+test('discovered Web plugin reaches direct channel Router and durable reply readback; restart preserves one delivery', {timeout: nativeTestTimeout(45000)}, async t => {
+  const answered=new Set()
   const f = await memoryHost(t, body => {
-    if (!requestTools(body).includes('channel_triage_submit')) return {text: 'No task execution requested'}
-    const input = requestEnvelope(body, '一级分诊请求：')
-    return {tool: 'channel_triage_submit', args: {dispositions: input.messages.map(message => ({
-      sourceId: message.sourceId, messageVersion: message.version ?? message.messageVersion,
-      needsHandling: false, reason: 'Local verified greeting only', reply: '你好，Web 渠道已收到这条消息。',
-    }))}}
+    if (!requestTools(body).includes('resident_router_settle')) return {text: 'No task execution requested'}
+    const input=requestEnvelope(body,'Router 请求：'),event=input.events.find(event=>event.source)
+    if(event&&!answered.has(event.sourceId)){
+      answered.add(event.sourceId)
+      return {tool:'resident_router_reply',args:{operationId:'web-answer:'+event.id,sourceId:event.sourceId,messageVersion:event.messageVersion,text:'你好，Web 渠道已收到这条消息。'}}
+    }
+    if(body.messages.at(-1)?.role==='tool'&&body.messages.findLast(message=>message.role==='assistant')?.tool_calls?.some(call=>call.function.name==='resident_router_settle'))return {text:'Settled'}
+    return {tool:'resident_router_settle',args:{operationId:'web-settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id),noTaskDispositions:input.events.filter(event=>event.source).map(event=>({eventId:event.id,outcome:'handled-inline',sourceQuote:event.source.text,reason:'Actual Router answer recorded'}))}}
   })
   await f.close()
   const channelId = 'web-integration', senderId = 'configured-web-operator', port = await availablePort()
@@ -96,7 +99,8 @@ test('discovered Web plugin reaches real channel triage and durable reply readba
     assert.ok(channelMessages.some(row => row.role === 'assistant' && row.status === 'delivered'))
     assert.equal((await api('/api/tasks')).body.total, 0)
     const requestCount = f.requests.length
-    assert.equal(requestCount,2,'one original triage turn and one tool-free prose review')
+    assert.equal(f.requests.filter(body=>requestTools(body).includes('channel_triage_submit')).length,0,'no pre-Router inference')
+    assert.equal(f.requests.filter(body=>requestTools(body).includes('resident_router_settle')).length,3,'reply, settle and final Router response')
     assert.equal(f.requests.filter(replyQualityRequest).length,1,'the discovered application must use its declared review provider')
     const channels = host.ctx.channels
     await host.close(); host = undefined
@@ -110,12 +114,12 @@ test('discovered Web plugin reaches real channel triage and durable reply readba
     const duplicate = await api('/api/chat', input)
     assert.equal(duplicate.response.status, 202); assert.equal(duplicate.body.duplicate, true)
     await app.tasks.whenIdle()
-    assert.equal(f.requests.length, requestCount, 'the original request is read back without rerunning triage')
+    assert.equal(f.requests.length, requestCount, 'the original request is read back without rerunning Router')
     assert.equal((await api('/api/chat/web-chat')).body.messages.filter(message => message.role === 'assistant').length, 1)
     assert.equal((await app.tasks.store.query({kind: 'notification.list'})).length, 1)
 
     // Preserve a real prepared notification across shutdown. Only transport
-    // availability is removed; real triage/admission and delivery gates remain.
+    // availability is removed; real Router/admission and delivery gates remain.
     host.ctx.channels.transports.delete(channelId)
     const pendingInput = {conversationId: 'web-chat', requestId: 'pending-greeting', text: '这条回复在恢复渠道后送达。'}
     assert.equal((await api('/api/chat', pendingInput)).body.accepted, true)

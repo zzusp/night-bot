@@ -88,7 +88,7 @@ test('角色模型分组行移除描述摘要，首行紧接标题且浅深色�
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme)
   for(const width of [1440,390]){
    await page.setViewportSize({width,height:960})
-   for(const label of ['一级分诊','Router','任务执行']){
+   for(const label of ['Router','任务执行']){
     const card=page.getByRole('region',{name:label,exact:true})
     await expect(card).not.toContainText(/当前运行：|当前保存：|下次启动：/)
     await expect(card.locator(':scope > h2 + form')).toHaveCount(1)
@@ -108,7 +108,7 @@ test('角色模型分组行移除描述摘要，首行紧接标题且浅深色�
 
 test('角色模型独立保存、原生选项、取消焦点、确认重启与刷新持久化',async({page})=>{
  await login(page);await page.getByRole('tab',{name:'模型分工',exact:true}).click()
- for(const label of ['一级分诊','Router','任务执行']){
+ for(const label of ['Router','任务执行']){
   await expect(page.getByRole('heading',{name:label,exact:true})).toBeVisible()
   await selectOption(page.getByLabel(label+'模型路由',{exact:true}),'fixture-model')
   await selectOption(page.getByLabel(label+'模型',{exact:true}),'reasoning-fixture')
@@ -123,13 +123,13 @@ test('角色模型独立保存、原生选项、取消焦点、确认重启与�
   await expect(button).toBeEnabled()
  }
  await page.reload();await page.getByRole('tab',{name:'模型分工',exact:true}).click()
- for(const label of ['一级分诊','Router','任务执行']){await expect(page.getByLabel(label+'模型',{exact:true})).toHaveAttribute('data-value','reasoning-fixture');await expect(page.getByLabel(label+'推理深度',{exact:true})).toHaveAttribute('data-value',label==='Router'?'high':'low')}
+ for(const label of ['Router','任务执行']){await expect(page.getByLabel(label+'模型',{exact:true})).toHaveAttribute('data-value','reasoning-fixture');await expect(page.getByLabel(label+'推理深度',{exact:true})).toHaveAttribute('data-value',label==='Router'?'high':'low')}
  await selectOption(page.getByLabel('任务执行模型',{exact:true}),'fixture');await expect(page.getByLabel('任务执行推理深度',{exact:true})).toHaveAttribute('data-value','model-default')
  await page.getByLabel('任务执行推理深度',{exact:true}).click();await expect(page.getByRole('option')).toHaveText(['模型默认','关闭 (off)']);await page.keyboard.press('Escape')
  await page.getByRole('button',{name:'保存任务执行配置',exact:true}).click();await confirm(page);await expect(page.getByText('任务执行配置已保存，正常重启后生效。',{exact:true})).toBeVisible()
  const settings=await page.request.get('/api/settings').then(r=>r.json())
  expect(settings.roleModels.roles.find((row:{role:string})=>row.role==='task').saved.reasoningEffort).toBeUndefined()
- await page.getByLabel('一级分诊模型路由',{exact:true}).focus();await page.keyboard.press('ArrowDown');await page.keyboard.press('Escape')
+ await page.getByLabel('Router模型路由',{exact:true}).focus();await page.keyboard.press('ArrowDown');await page.keyboard.press('Escape')
  for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([]);await page.screenshot({path:test.info().outputPath(`roles-${width}.png`),fullPage:true})}
 })
 
@@ -149,16 +149,16 @@ test('角色保存失败、未知回执和版本冲突保留草稿且禁止重�
 test('角色模型环境覆盖来源明确，忙碌禁用，确认保存不声称已运行',async({page})=>{
  await page.route('**/api/settings',async route=>{
   const response=await route.fetch(),data=await response.json()
-  const row=data.roleModels.roles.find((row:{role:string})=>row.role==='triage')
-  row.environmentOverrides=[{name:'NIGHT_BOT_TRIAGE_MODEL',source:'process'}];row.nextStart=row.running
+  const row=data.roleModels.roles.find((row:{role:string})=>row.role==='router')
+  row.environmentOverrides=[{name:'NIGHT_BOT_ROUTER_MODEL',source:'process'}];row.nextStart=row.running
   await route.fulfill({response,json:data})
  })
  await login(page);await page.getByRole('tab',{name:'模型分工',exact:true}).click()
- const section=page.locator('.settings-card').filter({has:page.getByRole('heading',{name:'一级分诊',exact:true})})
- await expect(section).toContainText('环境变量优先于保存配置');await expect(section).toContainText('NIGHT_BOT_TRIAGE_MODEL · 进程环境');await expect(section).toContainText('按当前环境重启')
+ const section=page.locator('.settings-card').filter({has:page.getByRole('heading',{name:'Router',exact:true})})
+ await expect(section).toContainText('环境变量优先于保存配置');await expect(section).toContainText('NIGHT_BOT_ROUTER_MODEL · 进程环境');await expect(section).toContainText('按当前环境重启')
  let release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve})
  await page.route('**/api/settings/role-model',async route=>{await pending;await route.fulfill({status:503,json:{error:'SETTINGS_SAVE_UNAVAILABLE'}})})
- await page.getByRole('button',{name:'保存一级分诊配置',exact:true}).click();await expect(page.locator('dialog.settings-confirm')).toContainText('只保存网页配置不会移除覆盖');await confirm(page)
- await expect(page.getByLabel('一级分诊模型',{exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'保存一级分诊配置',exact:true})).toBeDisabled();release()
+ await page.getByRole('button',{name:'保存Router配置',exact:true}).click();await expect(page.locator('dialog.settings-confirm')).toContainText('只保存网页配置不会移除覆盖');await confirm(page)
+ await expect(page.getByLabel('Router模型',{exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'保存Router配置',exact:true})).toBeDisabled();release()
  await expect(section).toContainText('无法确认最新保存结果')
 })

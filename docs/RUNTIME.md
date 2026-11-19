@@ -52,9 +52,9 @@ All other optional provider integrations retain their own explicit admission.
 
 ## 常驻 Router 与执行边界
 
-当前消息入口按“认证来源 → 轻量一级分诊 → conversation Router → 唯一任务执行会话”分工。分诊只决定转交/短回复；Router 通过受控动作安排事项并评估结果，不能直接执行业务脚本。Topic 不再作为活动路由实体，旧 Owner/团队路径不因更换会话而恢复。
+当前消息入口按“认证来源 → conversation Router → 唯一任务执行会话”分工。不运行前置分诊或自动收悉；Router 通过受控动作安排事项并评估结果，不能直接执行业务脚本。Topic 不再作为活动路由实体，旧 Owner/团队路径不因更换会话而恢复。
 
-Host/SQLite 保持直接来源、依赖、动作收据、内部事件和 active generation 的权威。依赖满足必须绑定当前授权、任务版本与证据，`completed` 和通知送达各自独立。Router 持续复用当前 Pi 会话，空闲和任务完成不再触发交接模型轮；分诊与 Router 均采用500,000 token目标预算（不超过模型真实窗口），60%后台压缩、80%原生前台压缩兜底；小窗口优先保留原生输出余量。旧部署已持久交接仍经严格提交证明、候选准备及 CAS 发布恢复；新代提交前不得处理业务。旧 journal、未知效果阻断和唯一业务 owner 继续保留。
+Host/SQLite 保持直接来源、依赖、动作收据、内部事件和 active generation 的权威。依赖满足必须绑定当前授权、任务版本与证据，`completed` 和通知送达各自独立。Router 持续复用当前 Pi 会话，空闲和任务完成不再触发交接模型轮；Router 采用500,000 token目标预算（不超过模型真实窗口），60%后台压缩、80%原生前台压缩兜底；小窗口优先保留原生输出余量。旧部署已持久交接仍经严格提交证明、候选准备及 CAS 发布恢复；新代提交前不得处理业务。旧 journal、未知效果阻断和唯一业务 owner 继续保留。
 
 完整职责与失败恢复见 [CHANNELS](CHANNELS.md)，本次版本的实际验收见 [任务入口](acceptance/resident-conversation-routing/goal.md)；此前阶段计数和 Topic 测试不替代本轮证据。
 
@@ -67,7 +67,7 @@ DWS is loaded only by `src/channels/plugins/dingtalk-dws.js` when enabled. The
 historical DWS resident remains attributed reference code, not the CLI entry.
 
 The installation layout, scoped Markdown memory, durable task retrospectives,
-single task execution session and handling/reply-only first-tier triage are documented in
+single task execution session and direct channel-to-Router ingress are documented in
 [DATA-LAYOUT](DATA-LAYOUT.md), [MEMORY](MEMORY.md), [SELF-EVOLUTION](SELF-EVOLUTION.md),
 [SINGLE-TASK](SINGLE-TASK.md) and [CHANNELS](CHANNELS.md). Reference-domain tests still
 cover historical API contracts; current default wiring has separate portable Host
@@ -79,7 +79,7 @@ and real local Pi-protocol tests. Neither test category proves live vendor acces
 
 | 路径 | 实际能力与本轮处理 |
 |---|---|
-| 分诊、Router、普通原生会话、任务执行 | 共用官方 context 注入；没有原生工具时不注入，不增加工具。分诊提交、Router 动作/回执和任务结果仍互斥；任务仍为唯一执行会话，原禁止 subagent/委派/子执行的工具限制不变。 |
+| Router、普通原生会话、任务执行 | 共用官方 context 注入；没有原生工具时不注入，不增加工具。Router 动作/回执和任务结果仍互斥；任务仍为唯一执行会话，原禁止 subagent/委派/子执行的工具限制不变。 |
 | Router 只读工具 | 明确声明任务、来源、回复、当前配置与排期列表可并行；每调用仍校验会话身份/当前 generation。`platform_task_query` 会更新分页消费状态，继续互斥；记忆/Skill 读取、加载或维护也不凭名称放开。 |
 | 普通文件/网页工具 | 原生文件只读与 web_search/web_fetch 本来已有安全声明；write/edit、shell、job_output/job_list/job_kill 等未因本轮规则被自动放开。job_output 会消费读游标，wait 可能持有独占租约，取消/终态/通知/模型结果的原守卫保留。 |
 | 诊断 | 独立官方 Pi 会话复用同一规则，只有原来的 diagnosis_evidence；证据别名、缓存和调查预算共享，未证明可重入，仍按 SDK 默认串行，不另建 Host 工具或放宽证据范围。 |

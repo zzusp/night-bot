@@ -12,7 +12,7 @@ Web 表单不执行 shell 命令。Web API 与 CLI 调用同一套配置服务�
 
 ```sh
 # 停机配置，--check 不写文件、锁、目录或凭据。
-node bin/night-bot-config.js CONFIG role-model --role triage --provider PROVIDER --model MODEL --reasoning-effort high --check
+node bin/night-bot-config.js CONFIG role-model --role router --provider PROVIDER --model MODEL --reasoning-effort high --check
 node bin/night-bot-settings.js CONFIG appearance --name 'My Bot' --icon moon
 node bin/night-bot-settings.js CONFIG secret --kind model --action replace --confirm
 node bin/night-bot-auth.js CONFIG set-ref MY_CHANNEL_TOKEN
@@ -82,7 +82,7 @@ node bin/night-bot-settings.js CONFIG model-entry --action remove --provider PRO
 | 全局模型（兼容接口，当前 Web 表单不使用） | `/api/settings/model` | `night-bot-config model` / `night-bot-settings model` | `saveModelConfiguration`；旧 Web 接口固定 `web-model` provider；CLI 仍可显式选择全局默认 |
 | 路由 API | `/api/settings/provider` PUT | `night-bot-settings provider` | `saveProviderConfiguration`；显式选择已有 provider，或 action:create 新建，保留全局默认、角色与所有模型字段 |
 | 路由内模型列表 | `/api/settings/model-catalog` GET/PUT | `night-bot-settings model-list/model-entry` | 共用安全目录投影和 `saveModelCatalogEntry`，ID/显示名增改删、引用保护、CAS，保存后正常重启 |
-| 分诊/Router/执行模型 | `/api/settings/role-model` | `night-bot-config role-model` / `night-bot-settings role` | `saveRoleModelConfiguration` 和相同 Pi 能力校验 |
+| Router/执行模型 | `/api/settings/role-model` | `night-bot-config role-model` / `night-bot-settings role` | `saveRoleModelConfiguration` 和相同 Pi 能力校验 |
 | 模型/GitHub Key | `/api/settings/secrets/*` | `night-bot-settings secret` | `operator.saveSecret`，确认、路由版本锁、环境只读、NativeCredentials |
 | OAuth/任意引用 | 无对应 Web 表单 | `night-bot-auth` | Pi authentication/NativeCredentials；不是独立秘密存储 |
 | 权限模式 | `/api/permissions` | `night-bot-settings permissions-set --live` / `night-bot-config permissions` | 在线 `toolPermissions.setMode`；持久化均为 `savePermissionConfiguration`；离线仅改变下次启动配置 |
@@ -108,9 +108,9 @@ node bin/night-bot-settings.js CONFIG model-entry --action remove --provider PRO
 
 在「模型与 API → 编辑模型 → 模型推理能力」设置可选深度。默认「自动识别」保留 Pi 官方模型能力；自定义网关别名无法自动推断后端能力，需要选择「自定义」并勾选服务商确实支持的级别。不会因为配置成功就证明 API 支持这些级别。
 
-模型能力保存在原有 `providers.<provider>.models[].reasoningEfforts`，一级分诊、Router、任务执行共用 Pi 解析后的目录。未修改能力的旧配置保持不变；已被角色选中的深度不能被移除。保存后正常重启生效。
+模型能力保存在原有 `providers.<provider>.models[].reasoningEfforts`，Router 与任务执行共用 Pi 解析后的目录。未修改能力的旧配置保持不变；已被角色选中的深度不能被移除。保存后正常重启生效。
 
-渠道新正文复核沿用当前写作角色（分诊、Router 或执行）的模型与授权，不新增环境变量、开关或数据库迁移。升级后检查已配置模型能否完成无工具复核；若出现 `REPLY_QUALITY_UNAVAILABLE`，核对对应角色的模型可用性及输出是否完整，按原待办恢复流程处理。不要改冻结正文、手动重放或清空待办。复核失败可能延后首答或分诊结清，详见[渠道回复](../CHANNELS.md#对外回复的信息取舍)。
+渠道新正文复核沿用当前写作角色（Router 或执行）的模型与授权，不新增环境变量、开关或数据库迁移。升级后检查已配置模型能否完成无工具复核；若出现 `REPLY_QUALITY_UNAVAILABLE`，核对对应角色的模型可用性及输出是否完整，按原待办恢复流程处理。不要改冻结正文、手动重放或清空待办。复核失败可能延后 Router 回复或结清，详见[渠道回复](../CHANNELS.md#对外回复的信息取舍)。
 
 CLI 使用同一入口（也支持 `--json-file`）：
 
@@ -129,3 +129,5 @@ node bin/night-bot-settings.js CONFIG model-entry --action edit --provider PROVI
 安装操作者可通过 Web「设置 → 工作原则」编辑独立的 `data/config/execution/AGENTS.md`。文件位于安装持久数据中，不应进入代码库。仅任务执行会话在 Pi 上下文刷新时读取，无需重启；分诊、Router、普通对话和复盘不加载此文件。已有通用与项目指令文件不变。未创建或正文为空白时不附加指令。
 
 保存只接受 UTF-8 Markdown（最大 64 KiB），使用文件版本防止其他页面的旧草稿覆盖当前正文。版本冲突或保存结果未知时，页面保留草稿，须显式重新读取并核对。网页只操作固定文件，不接受路径，不提供任意文件管理。正文可能进入执行模型请求及会话记录，请勿填入凭据；原则不能授予权限，也不替代 Host 审批。无 Web 时可信安装操作者可维护同一文件；避免与 Web 保存同时直接编辑。
+
+旧 `roleModels.triage` 仅保留配置原值，不再作为运行模型或 Web 可编辑角色；旧分诊环境覆盖不再生效。新渠道消息直入 Router，历史分诊 journal 和统计只读保留。

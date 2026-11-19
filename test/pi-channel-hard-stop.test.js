@@ -9,7 +9,7 @@ import {promisify} from 'node:util'
 import {fileURLToPath} from 'node:url'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 
-for(const role of ['triage','router','query','reply-query','unknown','unfrozen','fails','unreadable','slow','retry-new'])test(`${role}: SIGKILL recovery uses the original session and does not replay effects`,{timeout:nativeTestTimeout(60000)},async t=>{
+for(const role of ['router','query','reply-query','unknown','unfrozen','fails','unreadable','slow','retry-new'])test(`${role}: SIGKILL recovery uses the original session and does not replay effects`,{timeout:nativeTestTimeout(60000)},async t=>{
  const root=await mkdtemp(join(tmpdir(),'night-hard-stop-'));t.after(()=>rm(root,{recursive:true,force:true}))
  let oldRoot
  if(role==='unfrozen'){

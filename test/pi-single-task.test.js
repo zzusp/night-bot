@@ -315,7 +315,7 @@ test('Router room unknown effect drains and inspects with distinct conversation 
  await f.receive(channelMessage('scope-request',{text:'Perform the bounded local scope verification'}))
  const row=await eventually(async()=>{const row=await f.query('task.get',{taskId:'room-effect-scope'});return row?.drained&&row.lastDecision?.limitations?.includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY')&&row},'room unknown effect drain')
  await f.service.whenIdle();const stored=await f.host.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true}),intent=stored.auditEntries.find(e=>e.data.domain==='task'&&e.data.kind==='effect-intent')
- for(const [tool,loaded] of [['channel_triage_submit',false],['resident_router_settle',false],['task_result',true]]){
+ for(const [tool,loaded] of [['resident_router_settle',false],['task_result',true]]){
   const requests=f.requests.filter(body=>requestTools(body).includes(tool));assert.ok(requests.length,tool)
   for(const request of requests)assert.equal(JSON.stringify(request.messages).includes('EXECUTION_ROOM_SCOPE_MARKER'),loaded,tool)
  }

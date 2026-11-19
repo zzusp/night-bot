@@ -2,15 +2,15 @@ import {visibleText} from './session-view.js'
 // 计时只认 Host 接收和可靠送达；共同回复的来源覆盖由 Host 历史快照证明。
 const instant=value=>typeof value==='string'&&Number.isFinite(Date.parse(value))?Date.parse(value):null
 const stamp=value=>instant(value)===null?null:value
-const phaseNames={ingress:'消息已接纳',queue:'排队结束',turn:'消息处理完成',host:'安排已提交',send:'发送阶段完成',readback:'可见性核对完成',triage:'消息分流完成',router:'消息处理完成'}
+const phaseNames={ingress:'消息已接纳',queue:'排队结束',turn:'消息处理完成',host:'安排已提交',send:'发送阶段完成',readback:'可见性核对完成',triage:'历史分诊完成',router:'消息处理完成'}
 export function responseTiming(message,sources,notifications,routing,{secrets=[],taskReplySources=[]}={}){
  const matches=sources.filter(row=>row.messageId===message.messageId&&row.version===(message.messageVersion??1))
  if(matches.length!==1)return {messageId:message.messageId,status:'unavailable',reason:'历史接收时间或唯一来源关联缺失',receivedAt:null,firstReplyAt:null,durationMs:null,steps:[]}
- const source=matches[0],receivedAt=stamp(source.receivedAt)
+ const source=matches[0],receivedAt=stamp(source.receivedAt),directRouter=source.routeReceipt?.kind==='router'
  const direct=row=>row.payload?.sourceId===source.sourceId
   &&(row.payload.sourceVersion??row.payload.sourceRef?.messageVersion)===source.version
   &&(row.payload.sourceRef?.messageId??row.payload.sourceMessageId)===source.messageId
- const associated=notifications.filter(row=>row.payload?.conversationId===source.groupId&&(direct(row)
+ const associated=notifications.filter(row=>(!directRouter||row.kind!=='triage-reply'&&row.payload?.replyPurpose!=='acknowledgement')&&row.payload?.conversationId===source.groupId&&(direct(row)
   ||taskReplySources.some(ref=>ref.notificationId===row.id&&ref.taskId===row.taskId&&ref.sourceId===source.sourceId&&ref.messageVersion===source.version)))
  const confirmed=associated.filter(row=>row.state==='delivered'&&stamp(row.deliveredAt)).sort((a,b)=>Date.parse(a.deliveredAt)-Date.parse(b.deliveredAt))
  const first=confirmed[0],firstReplyAt=first?.deliveredAt??null
@@ -38,7 +38,7 @@ export function responseTiming(message,sources,notifications,routing,{secrets=[]
    const measured=end&&Date.parse(end)>=Date.parse(start)
    const clipped=measured&&firstReplyAt&&Date.parse(end)>Date.parse(firstReplyAt)
    const at=clipped?firstReplyAt:end??start
-   const label=stage.stage==='triage'?'消息分流':'Router 处理'
+   const label=stage.stage==='triage'?'历史分诊':'Router 处理'
    if(stage.stage==='router')steps.push({kind:'stage-router-started',label:'Router 开始准备'+(shared?'（批次共享）':''),at:start,shared,timingType:'milestone'})
    steps.push({kind:`stage-${stage.stage}-completed`,label:label+(clipped?'（截至回复可见）':'')+(shared?'（批次共享）':''),at,shared,clipped:Boolean(clipped),timingType:'span',
     ...(measured?{durationMs:Date.parse(at)-Date.parse(start)}:{})})
@@ -49,7 +49,7 @@ export function responseTiming(message,sources,notifications,routing,{secrets=[]
   if(end)steps.push({kind:`stage-${stage.stage}-completed`,label:phaseNames[stage.stage]+(shared?'（批次共享）':''),at:end,shared,timingType:'span',
    ...(start&&Date.parse(end)>=Date.parse(start)?{durationMs:Date.parse(end)-Date.parse(start)}:{})})
  }
- if(!measuredTriage&&stamp(source.routedAt))steps.push({kind:'triage-completed',label:'消息分流完成',at:source.routedAt,timingType:'milestone'})
+ if(!measuredTriage&&stamp(source.routedAt))steps.push({kind:directRouter?'router-enqueued':routing?.triage?.state==='committed'||source.routeReceipt?.kind==='triage'?'triage-completed':'routing-accepted',label:directRouter?'已交给 Router':routing?.triage?.state==='committed'||source.routeReceipt?.kind==='triage'?'历史分诊完成':'已进入消息处理',at:source.routedAt,timingType:'milestone'})
  if(stamp(routing?.event?.consumedAt))steps.push({kind:'routing-completed',label:'本条消息安排已提交',at:routing.event.consumedAt,timingType:'milestone'})
  const attempt=[...associated].filter(row=>stamp(row.createdAt)).sort((a,b)=>Date.parse(a.createdAt)-Date.parse(b.createdAt))[0]
  if(attempt){steps.push({kind:'reply-prepared',label:'回复已准备',at:attempt.createdAt,timingType:'milestone'});if(stamp(attempt.sendStartedAt))steps.push({kind:'send-started',label:'开始发送',at:attempt.sendStartedAt,timingType:'milestone'})}
@@ -66,11 +66,13 @@ export function responseTiming(message,sources,notifications,routing,{secrets=[]
  else if(associated.some(row=>row.state==='failed'))status='failed'
  else if(associated.some(row=>row.state==='prepared'))status='pending'
  else if(missingDeliveryTime)status='unconfirmed'
+ else if(!associated.length&&directRouter&&routing?.event?.state==='consumed'&&['context-only','not-assigned'].includes(routing.event.noTaskDisposition?.outcome))status='no-reply'
+ else if(directRouter)status=routing?.event?.state==='pending'?'awaiting-handling':routing?.event?.state==='consumed'?'awaiting-reply':'unavailable'
  else if(!associated.length&&decision?.needsHandling===false&&!decision.reply)status='no-reply'
  else if(decision)status=decision.needsHandling&&routing?.event?.state!=='consumed'?'awaiting-handling':'awaiting-reply'
  else status=routing?.triage?.state==='pending'?'awaiting-handling':'unavailable'
  const shared=first&&!direct(first)
- const reason=earlierUnknown?'较早回复可见性未知，无法确认首答':status==='confirmed'&&shared?'此回复通过精确来源绑定及回复前已提交的任务快照关联，为共同任务回复。':status==='no-reply'?'一级分诊明确无需处理且无需回复。':status==='awaiting-handling'?'消息仍待分诊或 Router 处理，尚未取得首答回执。':status==='awaiting-reply'?'消息安排已提交，尚未找到本条消息或明确关联任务的回复回执。':status==='unavailable'?!receivedAt?'历史接收时间缺失':missingDeliveryTime?'回复已送达，但历史确认时间缺失':'缺少明确处置记录，无法判定首答状态':null
+ const reason=earlierUnknown?'较早回复可见性未知，无法确认首答':status==='confirmed'&&shared?'此回复通过精确来源绑定及回复前已提交的任务快照关联，为共同任务回复。':status==='no-reply'?directRouter?'Router 已明确无需回复。':'旧版分诊明确无需处理且无需回复。':status==='awaiting-handling'?'消息仍待 Router 处理，尚未取得首答回执。':status==='awaiting-reply'?'消息安排已提交，尚未找到本条消息或明确关联任务的回复回执。':status==='unavailable'?!receivedAt?'历史接收时间缺失':missingDeliveryTime?'回复已送达，但历史确认时间缺失':'缺少明确处置记录，无法判定首答状态':null
  return {messageId:message.messageId,messageVersion:source.version,status,receivedAt,firstReplyAt:status==='confirmed'?firstReplyAt:null,durationMs:status==='confirmed'?duration:null,
   replyPreview:status==='confirmed'?visibleText(first.payload.text??'',secrets,{maxLength:160}).text:null,
   replyMessageId:typeof first?.receipt?.messageId==='string'?first.receipt.messageId:null,

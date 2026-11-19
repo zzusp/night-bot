@@ -1,6 +1,6 @@
 # 分角色模型配置
 
-一级分诊（`triage`）、常驻 Router（`router`）和任务执行（`task`）可分别选择
+常驻 Router（`router`）和任务执行（`task`）可分别选择
 provider、模型及推理深度。无需开启 Web 渠道，也不要求 Bot 正在运行。
 
 ## 一个配置入口
@@ -13,11 +13,11 @@ Web 设置和 `night-bot-config` 使用同一个配置服务
 ```sh
 # 检查配置，不创建锁文件、不修改配置或目录
 node bin/night-bot-config.js /absolute/install/data/config/config.json role-model \
-  --role triage --provider openai --model gpt-5 --reasoning-effort low --check
+  --role router --provider openai --model gpt-5 --reasoning-effort low --check
 
-# 保存一级分诊选型
+# 保存 Router 选型
 node bin/night-bot-config.js /absolute/install/data/config/config.json role-model \
-  --role triage --provider openai --model gpt-5 --reasoning-effort low
+  --role router --provider openai --model gpt-5 --reasoning-effort low
 
 # Router 与任务分别设置。provider/model 必须已存在于 providers 配置中。
 node bin/night-bot-config.js /absolute/install/data/config/config.json role-model \
@@ -47,7 +47,6 @@ Web 与 CLI 新设 endpoint 均要求 HTTPS，或本机回环 HTTP；不接受�
 ```json
 {
   "roleModels": {
-    "triage": {"provider": "openai", "model": "gpt-5", "reasoningEffort": "low"},
     "router": {"provider": "openai", "model": "gpt-5", "reasoningEffort": "high"},
     "task": {"provider": "openai", "model": "gpt-5"}
   }
@@ -64,7 +63,7 @@ Web 与 CLI 新设 endpoint 均要求 HTTPS，或本机回环 HTTP；不接受�
   解析实际级别，不把这个派生值写回配置。`model-default` 只用于 CLI/ENV，保存时删除该字段。
 - CLI 未指定的字段保留已有角色配置；首次创建角色时，缺少字段从旧配置补齐。
   更换 provider/model 时会清除继承来的旧推理深度，除非此次同时指定新深度。
-- 没有配置的角色继续使用全局/任务默认选择逻辑，不会强制生成三个覆盖项。
+- 没有配置的角色继续使用全局/任务默认选择逻辑，不会强制生成两个覆盖项。
   正式文件安装的全局选择以 `config.json` 的 `model` 为唯一配置来源，Web 与 CLI
   保存后重启会实际生效。以前单独保存的全局选型文件保留原样，不再覆盖该配置。
   现有运行时交互的全局模型保存也走同一个配置服务，成功后更新当前运行快照。
@@ -72,16 +71,14 @@ Web 与 CLI 新设 endpoint 均要求 HTTPS，或本机回环 HTTP；不接受�
 
 ## 环境变量
 
-临时覆盖使用以下九个变量，不修改保存的配置：
+临时覆盖使用以下六个变量，不修改保存的配置：
 
 | 角色 | provider | model | 推理深度 |
 | --- | --- | --- | --- |
-| 一级分诊 | `NIGHT_BOT_TRIAGE_PROVIDER` | `NIGHT_BOT_TRIAGE_MODEL` | `NIGHT_BOT_TRIAGE_REASONING_EFFORT` |
 | Router | `NIGHT_BOT_ROUTER_PROVIDER` | `NIGHT_BOT_ROUTER_MODEL` | `NIGHT_BOT_ROUTER_REASONING_EFFORT` |
 | 任务执行 | `NIGHT_BOT_TASK_PROVIDER` | `NIGHT_BOT_TASK_MODEL` | `NIGHT_BOT_TASK_REASONING_EFFORT` |
 
 ```sh
-NIGHT_BOT_TRIAGE_REASONING_EFFORT=low \
 NIGHT_BOT_ROUTER_REASONING_EFFORT=high \
 NIGHT_BOT_TASK_REASONING_EFFORT=model-default \
 pnpm start /absolute/install/data/config/config.json
@@ -108,7 +105,7 @@ ENV 按字段覆盖，所以只设置某个角色的推理深度即可。更换 
 并保留旧选型存储；不会为了保存配置而放宽路径保护。统一设置 CLI 需要标准受控安装路径。
 
 保存角色配置后需要重启 Bot。ENV 在启动时冻结，修改 shell 或 `.env` 后也需要重启。
-三个角色正在执行或已经打开的会话都不会在一次任务中途热切选型。重启后重新打开或恢复的
+两个角色正在执行或已经打开的会话都不会在一次任务中途热切选型。重启后重新打开或恢复的
 会话也会应用对应角色的新模型和深度，包括从显式深度改回模型默认，同时保留既有 Pi 历史、任务与来源记录，不重置会话、
 删除历史或重放已执行的副作用。尚未打开的会话在首次打开时使用本次启动配置。
 
@@ -116,3 +113,5 @@ ENV 按字段覆盖，所以只设置某个角色的推理深度即可。更换 
 设置页显示的“当前运行 / 下次启动 / 环境覆盖”状态确认实际来源。
 
 本功能不改变消息来源认证、工具权限、任务依赖或批准收据。模型选择不是权限授权。
+
+`roleModels.triage` 与旧分诊环境变量仅为历史配置：保存值保留，但不参与活跃角色选择，也不再提供网页编辑入口。
