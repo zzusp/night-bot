@@ -75,7 +75,7 @@ and real local Pi-protocol tests. Neither test category proves live vendor acces
 
 ## 会话执行中的安全并行与等待
 
-所有具备原生工具的官方会话共用 `runtime/parallel-read.js` 的短规则：以数据与资源依赖安排同批调用，不按工具名推断安全性。Pi 仍负责工具批次；Host 原有 `ToolLeases` 按真实注册定义的 `isConcurrencySafe`、FIFO 写屏障和 `maxParallelToolCalls` 控制执行，不新增执行会话或调度底座。短命令前台；长作业仅在能与其他已授权步骤重叠时后台，提交后先做独立工作，依赖结果时再等通知或阻塞读取，不忙轮询。后台 ID 不等于完成。
+所有具备原生工具的官方会话共用 `runtime/parallel-read.js` 的短规则：以数据与资源依赖安排同批调用，不按工具名推断安全性。Pi 仍负责工具批次；Host 原有 `ToolLeases` 按真实注册定义的 `isConcurrencySafe`、FIFO 写屏障和 `maxParallelToolCalls` 控制执行，不新增执行会话或调度底座。短命令前台；长作业仅在能与其他已授权步骤重叠时后台，提交后先做独立工作，依赖结果时再等通知或阻塞读取，不忙轮询。后台 ID 不等于完成。既有 bash 默认 `enableRunInBackground=true`、`promoteOnTimeout=true`（后者还受前者约束），本轮不改开关；明确关闭仍拒绝后台参数。真实脚本夹具使用显式 full 权限，只验证作业生命周期与重叠，不证明 ask/auto 的 OS 隔离。
 
 | 路径 | 实际能力与本轮处理 |
 |---|---|
