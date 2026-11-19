@@ -93,18 +93,13 @@ test('recent stage charts preserve gaps and expose equivalent point labels',asyn
   await login(page);
   const card=page.getByRole('group',{name:'最近处理耗时',exact:true});
   await expect(card).toContainText('本会话 · 8 条消息');
-  await expect(card.getByRole('region',{name:'历史分诊耗时',exact:true})).toBeVisible();
   await expect(card.getByRole('region',{name:'路由耗时',exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.querySelector('.stage-timing-charts')!.getBoundingClientRect().bottom <= document.querySelector('.activity-counts')!.getBoundingClientRect().top)).toBe(true);
   await expect(card.locator('.stage-line').first()).toHaveAttribute('d',/ C /);
   await expect(card.locator('circle')).toHaveCount(0);
-  await expect(card.locator('.stage-plot-triage [data-stage-sample=measured]')).toHaveCount(8);
   await expect(card.locator('.stage-plot-router [data-stage-sample=measured]')).toHaveCount(7);
   await expect(card.locator('.stage-plot-router .stage-missing')).toHaveCount(1);
   await expect(card.locator('.stage-plot-router .stage-line')).toHaveCount(2);
-  await expect(card.locator('.stage-plot-triage .stage-plot-heading')).toContainText('4 秒');
-  await card.locator('.stage-plot-triage svg g[tabindex]').first().focus();
-  await expect(card.locator('.stage-plot-triage .stage-plot-foot')).not.toContainText('最新一条');
   expect((await new AxeBuilder({page}).include('#activity-panel').analyze()).violations).toEqual([]);
 });
 
@@ -118,8 +113,8 @@ test('stage chart unavailable data never becomes a zero plot',async({page})=>{
 test('single stage sample has a value but does not invent a trend or point',async({page})=>{
   await page.route('**/stage-times?limit=8',route=>route.fulfill({json:{status:'ready',items:timingPage.items.slice(0,1)}}));
   await login(page);
-  const card=page.getByRole('region',{name:'历史分诊耗时',exact:true});
-  await expect(card).toContainText('4 秒');
+  const card=page.getByRole('region',{name:'路由耗时',exact:true});
+  await expect(card).toContainText('15 秒');
   await expect(card).toContainText('仅 1 条记录');
   await expect(card.locator('circle, .stage-line')).toHaveCount(0);
   await card.locator('[data-stage-sample]').focus();

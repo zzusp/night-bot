@@ -14,7 +14,7 @@ test('role model cards omit descriptive summaries and retain actionable warnings
   const catalog=[{provider:'test-route',name:'测试路由',models:[{id:'test-model',name:'测试模型',reasoningEfforts:['off','high']}]}];
   const render=(state)=>renderToStaticMarkup(React.createElement(RoleModelEditor,{state,catalog,version:'test-v1',onSaved(){},onReload(){},reloading:false,onStateChange(){}}));
   const state={running:{...selection,reasoningEffort:'off'},saved:selection,savedExplicit:false,nextStart:{...selection,reasoningEffort:'off'},restartRequired:false,environmentOverrides:[]};
-  for(const [role,label] of [['triage','历史分诊（停用）'],['router','Router'],['task','任务执行']]){
+  for(const [role,label] of [['router','Router'],['task','任务执行']]){
    for(const savedExplicit of [false,true]){
     const markup=render({...state,role,savedExplicit});
     assert.doesNotMatch(markup,/当前运行：|当前保存：|下次启动：|沿用默认配置|沿用运行默认配置/);
@@ -25,7 +25,7 @@ test('role model cards omit descriptive summaries and retain actionable warnings
     assert.match(markup,new RegExp(`保存${label}配置`));
    }
   }
-  const restart=render({...state,role:'triage',restartRequired:true});
+  const restart=render({...state,role:'router',restartRequired:true});
   assert.match(restart,/待重启/);
   const missing=render({...state,role:'router',nextStart:null});
   assert.match(missing,/<p role="alert">无法核验下次启动模型，请检查路由与推理深度配置。<\/p>/);

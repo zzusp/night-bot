@@ -1,4 +1,4 @@
-# 渠道协议、轻量分诊与常驻 Router
+# 渠道协议与常驻 Router
 
 Night Bot supports two channel-independent conversation types: `chat` for one
 person and `chat-room` for a room with multiple senders. DingTalk is an optional
@@ -38,7 +38,7 @@ or real account is enabled by initialization.
 
 A standalone Host supports scoped conversational turns. Once the real task service
 is attached (the standard managed service composition), it owns the channel
-triage ingress. Adapters must start ingress after that composition is ready and
+Router ingress. Adapters must start ingress after that composition is ready and
 stop it before shutdown. The current SDK supplies this integration boundary;
 it does not claim integrations with all messaging platforms or install accounts.
 Historical resident ingress/outbox projections retain DingTalk-named fields;
@@ -69,7 +69,7 @@ channel conversation and authenticated sender for that conversion.
 
 配置只匹配本实例已认证的 conversation 类型、`channelId` 和目标 `conversationId`；私聊与群聊分别绑定，不借用其它会话职责。首次连接核对账号、组织、目标及对端身份并耐久绑定；未找到、多候选、资料不完整或后续身份不符均不得猜选。普通配置修改通过专用 CLI 离线保存，按 `restartRequired` 正常重启；保存不代表在线生效，也不验证真实登录、监听或外发。CLI 的 `--check` 不写盘、不调用 DWS；命令及环境导入见 [接入流程](ops/windows-local-runtime.md#指定钉钉群接入)。
 
-标准任务服务把同一会话职责传入四个角色的系统指令：一级分诊 `channel-triage-scope`、Router `resident-conversation-scope`、执行会话 `task:group-responsibility`，以及按任务所属认证会话解析的独立无工具复盘。分诊与 Router 在每次系统指令编译时解析，执行和复盘在本次调用时取值；配置文字不进行模板插值，不混入用户事实，也不产生任务控制权、外发许可或跨会话记忆权限。职责配置不改变四角色分工、任务版本与依赖守卫。`task.completed` 只证明任务账本完成，不证明群消息或附件送达；复盘保留该证据边界。
+标准任务服务把同一会话职责传入当前三个角色的系统指令：Router `resident-conversation-scope`、执行会话 `task:group-responsibility`，以及按任务所属认证会话解析的独立无工具复盘。Router 在每次系统指令编译时解析，执行和复盘在本次调用时取值；配置文字不进行模板插值，不混入用户事实，也不产生任务控制权、外发许可或跨会话记忆权限。职责配置不改变当前角色分工、任务版本与依赖守卫。`task.completed` 只证明任务账本完成，不证明群消息或附件送达；复盘保留该证据边界。
 
 ## 钉钉消息编辑与撤回
 
@@ -85,7 +85,7 @@ channel conversation and authenticated sender for that conversion.
 
 没有任务关联的直接来源须显式结清：`context-only` 表示无需动作的背景，`not-assigned` 表示未交办，`handled-inline` 须有同来源版本的 Router 冻结答复，`clarification` 保留原具体缺项与回执要求。静默原文留在同一原生 Router 上下文，不重新注入整个历史，不作为别的会话来源；Pi 原生压缩仍负责上下文预算。每批最多 15 条用户来源，沿用编码预算及溢出排队。任务派发与执行分离，Router 不等待任务结果才处理独立消息。
 
-新显式历史回补同样直接入箱，不调用分诊。此次不扫描或补跑旧的未分诊来源。升级前已分诊入 Router 的原事件、首答、分诊绑定和冻结 packet 保留原身份；已静默处理的旧来源不重新排队。旧分诊 journal、通知和统计只读留存，Web 标为“历史分诊”，旧配置 `roleModels.triage` 保留但不再选择或执行；新模型角色仅 Router / 任务执行。
+新显式历史回补同样直接入箱，不调用分诊。此次不扫描或补跑旧的未分诊来源。升级前已分诊入 Router 的原事件、首答、分诊绑定和冻结 packet 保留原身份；已静默处理的旧来源不重新排队。旧分诊 journal、通知和统计仅供内部恢复兼容，Web 不再提供历史分诊入口、记录 API 或统计展示，旧配置 `roleModels.triage` 保留但不再选择或执行；新模型角色仅 Router / 任务执行。
 
 ## 常驻 Router 与事项直连
 
@@ -175,7 +175,7 @@ Pi 保留最近原始尾部和较早内容的模型摘要；不会机械保证�
 
 Router 按当前用户目标和完成条件安排工作，仅执行目标所必需的步骤与最小充分验证。部署本身的状态确认不等于业务复测；未要求复测时不自动追加，开发也不自行扩展为长流程耗时验收。可选复测或额外验收可在主线继续推进时询问，不作为主线依赖或完成门槛，未获同意不提前创建或启动；用户补充同意部署后复测时，先部署再复测。当前指令，或记忆/Router 上下文中有可核实来源、仍有效且适用的既往明确要求，可直接执行，无需重复询问；一般经验、模型建议或旧任务流程不能当作用户要求，当前修订/取消优先。原有权限、依赖、结果证据核对与如实交付仍须保留。
 
-原消息、引用、批次及 Pi journal 保持原样。Pi 压缩后若当前已接纳批次原文不再可见，系统仅补充原 packet 的只读引用；不重复接纳或重放已结动作，原文仍在上下文时不重复附加。分诊与 Router 的应用上下文在每次模型请求前只刷新命名的 Night sections，保留 Pi 自己的基础提示、资源与工具声明；同一轮追加来源也生效。分诊没有执行/查询工具，不加载 bash/jobs 等不可用工具的通用说明；长期指令按当前认证来源适用，普通偏好只提供相关导航，深入核实交 Router。
+原消息、引用、批次及 Pi journal 保持原样。Pi 压缩后若当前已接纳批次原文不再可见，系统仅补充原 packet 的只读引用；不重复接纳或重放已结动作，原文仍在上下文时不重复附加。Router 的应用上下文在每次模型请求前只刷新命名的 Night sections，保留 Pi 自己的基础提示、资源与工具声明；同一轮追加来源也生效。长期指令按当前认证来源适用，普通偏好只提供相关导航，深入核实交 Router。
 
 两角色附当前/直接引用来源及直接相关任务的回复索引：通知 ID、来源版本、用途、冻结正文预览与读取时的实际状态。`prepared` 仅冻结，`unknown` 需读回原通知，只有 `delivered` 已确认送达；不能因为旧 packet 中还是 prepared 而重复承接，也不能因避免重复而省略真正的进度答复。索引不输出发送许可、恢复 token 或底层回执凭据。引用当前版本仍需核对 source-current 的状态，旧引文不成为新授权。
 
@@ -411,4 +411,6 @@ Router 的静态系统提示包含共享两句沟通规则：先回应当前问�
 旧网页输入和获确认的回复仍通过原 Router 会话投影展示；当前页面没有对应输入框、发送/重试或草稿布线。网页接纳只说明已入队，不代表推理完成；原 Router 受阻时仍遵循既有恢复和 no-replay 约束。
 
 ### 首次实际回复与历史计时
-新直入来源的回复计时按确切来源/版本与 Host 可靠送达回执计算，不生成分诊兜底节点；显式 acknowledgement 和旧 triage-reply 不作为它的实际答复。静默结清由 Router context-only / not-assigned 收据证明，不能因缺回复推断静默。旧来源的历史确认及计时保留原口径，分诊统计单独标为历史，不与路由耗时相加。
+新直入来源的回复计时按确切来源/版本与 Host 可靠送达回执计算，不生成分诊兜底节点；显式 acknowledgement 和旧 triage-reply 不作为它的实际答复。静默结清由 Router context-only / not-assigned 收据证明，不能因缺回复推断静默。旧来源的历史确认及计时保留原口径，Web 不展示分诊统计；原卡位改为当前 Router 独立压缩事件耗时，普通 Router 处理跨度保留。
+
+Router 压缩图复用既有有界 Host performance trace 的 foreground/background-compaction 真实计量，不新增采样、数据库或日志扫描。按当前 conversation 与 Router session 筛选、按完成时间取最近 8 次；后台成功需唯一采纳记录，取消/失败/缺采纳不画成功点。事件独立于消息，空消息页仍可显示已有压缩；未保留的旧计量不回填，旧 Router 代际与其他会话不混入。

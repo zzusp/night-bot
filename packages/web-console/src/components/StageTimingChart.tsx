@@ -6,16 +6,16 @@ import { smoothStagePath, type ChartPoint } from '../stage-chart-path';
 import { messageProcessDuration } from '../message-process-duration';
 
 const unavailableTimings=new ApiError(503,'STAGE_TIMES_UNAVAILABLE');
-type Stage = { status: 'recorded' | 'running' | 'missing' | 'invalid'; durationMs: number | null; shared: boolean };
-type Sample = { receivedAt: string | null; triage: Stage; router: Stage };
-type StagePage = { status: string; items: Sample[] };
+type Stage = { status: 'recorded' | 'running' | 'missing' | 'invalid' | 'failed' | 'cancelled' | 'unconfirmed'; durationMs: number | null; shared: boolean };
+type Sample = { receivedAt: string | null; router?: Stage; compaction?: Stage };
+type StagePage = { status: string; items: Sample[]; compactions?: {status: string; items: Sample[]} };
 const valueOf = (stage: Stage) => stage.status === 'recorded' && typeof stage.durationMs === 'number' && Number.isFinite(stage.durationMs) && stage.durationMs >= 0 ? stage.durationMs : null;
-const stageText = (stage: Stage) => valueOf(stage) !== null ? messageProcessDuration(valueOf(stage)!) : stage.status === 'running' ? '结束未记录' : stage.status === 'invalid' ? '时间异常' : '未记录';
+const stageText = (stage: Stage) => valueOf(stage) !== null ? messageProcessDuration(valueOf(stage)!) : stage.status === 'failed' ? '压缩失败' : stage.status === 'cancelled' ? '已取消' : stage.status === 'unconfirmed' ? '结果未确认' : stage.status === 'running' ? '结束未记录' : stage.status === 'invalid' ? '时间异常' : '未记录';
 
-function StagePlot({items, stage, title}: {items: Sample[]; stage: 'triage'|'router'; title: string}) {
+function StagePlot({items, stage, title}: {items: Sample[]; stage: 'router'|'compaction'; title: string}) {
   const gradientId = useId();
   const [selected, select] = useState<number | null>(null);
-  const values = items.map(item => valueOf(item[stage]));
+  const values = items.map(item => valueOf(item[stage]!));
   const maximum = Math.max(1000, ...values.filter((value): value is number => value !== null));
   const ceiling = Math.ceil(maximum / 1000) * 1000;
   const x = (index: number) => items.length === 1 ? 124 : 12 + index * 224 / Math.max(1, items.length - 1);
@@ -25,7 +25,7 @@ function StagePlot({items, stage, title}: {items: Sample[]; stage: 'triage'|'rou
   const currentIndex = selected ?? items.length - 1;
   const current = items[currentIndex];
   return <div className={`stage-plot stage-plot-${stage}`}>
-    <div className="stage-plot-heading"><span>{selected === null ? '最新一条' : '所选消息'}</span><strong>{current ? stageText(current[stage]) : '—'}</strong></div>
+    <div className="stage-plot-heading"><span>{selected === null ? '最新一条' : '所选消息'}</span><strong>{current ? stageText(current[stage]!) : '—'}</strong></div>
     <svg className="stage-plot-graph" viewBox="0 0 248 94" role="group" aria-label={`${title}最近消息耗时`}>
       <defs><linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--stage-color)" stopOpacity=".18"/><stop offset="100%" stopColor="var(--stage-color)" stopOpacity=".01"/></linearGradient></defs>
       <text x="12" y="11" className="stage-axis-label">{ceiling / 1000} 秒</text>
@@ -35,7 +35,7 @@ function StagePlot({items, stage, title}: {items: Sample[]; stage: 'triage'|'rou
       {segments.filter(segment=>segment.length>1).map((segment,index)=><g key={index} aria-hidden="true"><path d={`${smoothStagePath(segment)} L ${segment[segment.length-1].x},76 L ${segment[0].x},76 Z`} fill={`url(#${gradientId})`}/><path d={smoothStagePath(segment)} className="stage-line"/></g>)}
       {items.map((item,index)=>{
         const value=values[index];
-        const label=`${dateTime(item.receivedAt ?? undefined)}，${title} ${stageText(item[stage])}${item[stage].shared ? '，批次共享耗时' : ''}`;
+        const label=`${dateTime(item.receivedAt ?? undefined)}，${title} ${stageText(item[stage]!)}${item[stage]!.shared ? '，批次共享耗时' : ''}`;
         return <g key={index} data-stage-sample={value !== null ? "measured" : "missing"} tabIndex={0} role="img" aria-label={label} onFocus={()=>select(index)} onBlur={()=>select(null)} onMouseEnter={()=>select(index)} onMouseLeave={()=>select(null)}>
           <title>{label}</title><rect x={x(index)-10} y="16" width="20" height="70" fill="transparent"/>
           {value === null && <text x={x(index)} y="88" textAnchor="middle" className="stage-missing">—</text>}
@@ -43,7 +43,7 @@ function StagePlot({items, stage, title}: {items: Sample[]; stage: 'triage'|'rou
       })}
       <text x="2" y="79" className="stage-axis-zero">0</text>
     </svg>
-    <div className="stage-plot-foot"><span>{selected === null ? items.length === 1 ? '仅 1 条记录' : '较早 → 最近' : dateTime(current?.receivedAt ?? undefined)}</span><span>{current?.[stage].shared ? '批次共享' : ''}</span></div>
+    <div className="stage-plot-foot"><span>{selected === null ? items.length === 1 ? '仅 1 条记录' : '较早 → 最近' : dateTime(current?.receivedAt ?? undefined)}</span><span>{current?.[stage]?.shared ? '批次共享' : ''}</span></div>
   </div>;
 }
 
@@ -53,11 +53,14 @@ export function StageTimingChart({kind, id}: {kind: 'chat'|'conversations'; id?:
   // Do not show a previous conversation or stale timings as current measurements.
   const failure = query.error ?? (query.data && query.data.status !== 'ready' ? unavailableTimings : null);
   const items = !failure && query.data?.status === 'ready' ? [...query.data.items].reverse() : [];
-  return <div className="stage-timing-charts" role="group" aria-label="最近处理耗时">{failure && <Notice read source={!query.error ? `/${kind}/${encodeURIComponent(resolvedId || '')}/stage-times?limit=8` : undefined} error={failure} onRetry={query.refresh}/>} {(['router',...(items.some(item=>item.triage.status!=='missing')?['triage' as const]:[])] as const).map(stage => {
-    const title = stage === 'triage' ? '历史分诊' : '路由';
+  const compactions = query.data?.compactions;
+  return <div className="stage-timing-charts" role="group" aria-label="最近处理耗时">{failure && <Notice read source={!query.error ? `/${kind}/${encodeURIComponent(resolvedId || '')}/stage-times?limit=8` : undefined} error={failure} onRetry={query.refresh}/>} {(['compaction','router'] as const).map(stage => {
+    const title = stage === 'compaction' ? 'Router 上下文压缩' : '路由';
+    const samples = stage === 'compaction' ? !failure && compactions?.status === 'ready' ? [...compactions.items].reverse() : [] : items;
+    const unavailable = Boolean(failure || stage === 'compaction' && query.data && (!compactions || compactions.status === 'unavailable'));
     return <section key={stage} className={`rail-section stage-timing-card stage-timing-card-${stage}`} aria-label={`${title}耗时`}>
-      <div className="rail-section-title"><h3><i className="stage-title-dot"/>{title}耗时</h3><span className="stage-scope">本会话 · {items.length ? `${items.length} 条消息` : '最近消息'}</span></div>
-      {items.length ? <StagePlot key={`${resolvedId}:${stage}`} items={items} stage={stage} title={title}/> : <p className="rail-empty">{failure ? '—' : query.data && query.data.status !== 'ready' ? '来源暂不可读' : query.loading || !resolvedId ? '读取中…' : '暂无耗时记录'}</p>}
+      <div className="rail-section-title"><h3><i className="stage-title-dot"/>{title}耗时</h3><span className="stage-scope">本会话 · {samples.length ? `${samples.length} ${stage === 'compaction' ? '次压缩' : '条消息'}` : stage === 'compaction' ? '最近压缩' : '最近消息'}</span></div>
+      {samples.length ? <StagePlot key={`${resolvedId}:${stage}`} items={samples} stage={stage} title={title}/> : <p className="rail-empty">{unavailable ? '—' : query.loading || !resolvedId ? '读取中…' : stage === 'compaction' ? '暂无压缩耗时记录' : '暂无耗时记录'}</p>}
     </section>;
   })}</div>;
 }

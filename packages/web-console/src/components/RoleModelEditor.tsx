@@ -4,7 +4,7 @@ import {api, ApiError, errorText, type RoleModelCatalog, type RoleModelSelection
 import {Badge, Button} from './BoardPrimitives';
 import {Confirm} from './ConfirmDialog';
 
-const labels = {triage:'历史分诊（停用）',router:'Router',task:'任务执行'};
+const labels = {router:'Router',task:'任务执行'};
 const effortLabels:Record<string,string> = {'model-default':'模型默认',off:'关闭',minimal:'最低',low:'低',medium:'中',high:'高',xhigh:'极高',max:'最高'};
 const sourceLabels:Record<string,string> = {process:'进程环境', 'project-env':'安装环境文件', 'user-env':'用户环境文件',environment:'启动环境'};
 const describe = (selection:RoleModelSelection) => `${selection.provider} / ${selection.model} · ${effortLabels[selection.reasoningEffort??'model-default']??selection.reasoningEffort}`;

@@ -276,19 +276,6 @@ function ThinkingMessage({message, history, compact, live}: {message: Message; h
   return <details className="thinking-message" open={open} onToggle={event => {if(event.target === event.currentTarget)setOpen(event.currentTarget.open);}}><summary><span>{isThinking ? '思考中' : '模型思考'}</span>{isThinking && <LiveElapsed startedAt={live?.phaseStartedAt} />}<PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /></summary><MessageBody message={message} history={history} showSource={!compact} /></details>;
 }
 
-function TriageVersionHistory({current, older, history}: {current: Message; older: Message[]; history?: HistoryReader}) {
-  const [opened, setOpened] = useState(false);
-  return <details className="triage-versions" onToggle={event => {
-    if (event.target === event.currentTarget && event.currentTarget.open) setOpened(true);
-  }}>
-    <summary>版本 {current.triageVersion!.number} · 查看旧版本（{older.length}）</summary>
-    {opened && <div className="triage-version-list">{older.map(version => <div key={version.id}>
-      <p className="triage-version-label">版本 {version.triageVersion!.number}{version.createdAt && <> · <time dateTime={version.createdAt}>{dateTime(version.createdAt)}</time></>}</p>
-      <MessageBody message={version} history={history} />
-    </div>)}</div>}
-  </details>;
-}
-
 export function MessageList({ messages, pending, empty, footer, footerVersion, userLabel = '你', history, onInspect, inspectedId, presentation = 'chat', older, live }: { live?: ExecutionLive; presentation?: 'chat' | 'execution'; inspectedId?: string; messages: Message[]; pending?: boolean; empty?: ReactNode; footer?: ReactNode; footerVersion?: string | null; userLabel?: string; history?: HistoryReader; onInspect?: (message: Message, trigger: HTMLButtonElement) => void; older?: OlderHistory }) {
   const disclosures = useRef(new Map<string, boolean>()).current;
   const brand = useAssistantBrand();
@@ -296,27 +283,7 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
   const ref = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const [showLatest, setShowLatest] = useState(false);
-  const {items, olderVersions} = useMemo(() => {
-    const groups = new Map<string, Message[]>();
-    for (const message of messages) {
-      const groupId = message.triageVersion?.groupId;
-      if (!groupId) continue;
-      const group = groups.get(groupId) ?? [];
-      group.push(message);
-      groups.set(groupId, group);
-    }
-    const olderVersions = new Map<string, Message[]>(), collapsed = new Set<string>();
-    for (const group of groups.values()) {
-      if (group.length < 2) continue;
-      group.sort((a, b) => b.triageVersion!.number - a.triageVersion!.number);
-      const [latest, ...older] = group;
-      olderVersions.set(latest.id, older);
-      for (const message of older) collapsed.add(message.id);
-    }
-    // Group after pairing tools so hiding an old source doesn't join adjacent runs.
-    const items = executionItems(messages).filter(item => item.kind !== 'message' || !collapsed.has(item.message.id));
-    return {items, olderVersions};
-  }, [messages]);
+  const items = useMemo(() => executionItems(messages), [messages]);
   // A prepend can extend the first tool group. Reuse its existing key so an
   // expanded group and its nested input/output disclosures stay open.
   const groupKeys = useRef(new Map<string, string>());
@@ -324,8 +291,7 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
     const next = new Map<string, string>();
     const keyed = items.map(item => {
       if (item.kind !== 'tool-group') {
-        const version = item.kind === 'message' && item.message.triageVersion;
-        return {item, key: version ? `triage:${version.groupId}` : item.kind === 'message' ? item.message.id : item.id};
+        return {item, key: item.kind === 'message' ? item.message.id : item.id};
       }
       const key = item.tools.map(tool => groupKeys.current.get(tool.id)).find(Boolean) || `group:${item.id}`;
       for (const tool of item.tools) next.set(tool.id, key);
@@ -437,7 +403,7 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
       {!messages.length ? (live?.active ? null : empty ?? <EmptyState title="暂无消息" />) : keyedItems.map(({item, key}) => {
         if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} disclosures={disclosures} />;
         if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} disclosures={disclosures} />;
-        const message = item.message, versions = olderVersions.get(message.id);
+        const message = item.message;
         return <article data-message-id={message.id} className={`message message-${message.role}${message.kind === 'scheduled-trigger' ? ' message-scheduled' : ''}${message.transient ? ' pi-live-message' : ''}${message.transient && live?.active && ((message.kind === 'thinking' && live.phase === 'thinking') || (message.kind !== 'thinking' && live.phase === 'text')) ? ' pi-model-streaming' : ''}${onInspect ? ' message-inspectable' : ''}`} key={key} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
           // The visually hidden native button makes the bubble keyboard accessible without adding a separate action label.
@@ -452,7 +418,7 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>}
           {message.kind === 'scheduled-trigger' && <div className="scheduled-message-origin" aria-label="定时触发"><RiTimeLine size={12} aria-hidden="true" /><span>由已安排任务发送</span></div>}
-          <div className="message-body">{message.kind === 'context-summary' && <div className="message-origin-label">上下文摘要</div>}{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <ThinkingMessage message={message} history={history} compact={compact} live={live} /> : <MessageBody key={message.id} message={message} history={history} showSource={!compact} />}{versions && <TriageVersionHistory current={message} older={versions} history={history} />}</div>
+          <div className="message-body">{message.kind === 'context-summary' && <div className="message-origin-label">上下文摘要</div>}{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <ThinkingMessage message={message} history={history} compact={compact} live={live} /> : <MessageBody key={message.id} message={message} history={history} showSource={!compact} />}</div>
         </article>;
       })}
       {live?.active && !(live.phase === 'thinking' && messages.some(message => message.transient && message.kind === 'thinking')) && <LivePhase live={live} />}

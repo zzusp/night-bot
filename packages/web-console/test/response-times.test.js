@@ -4,7 +4,7 @@ import {responseTiming,selectedResponseTiming} from '../server/response-times.js
 const source={sourceId:'s1',groupId:'room',messageId:'m1',version:2,receivedAt:'2026-11-09T00:00:00Z'}
 const notice=(extra={})=>({id:'n1',kind:'triage-reply',taskId:null,state:'delivered',createdAt:'2026-11-09T00:00:01Z',sendStartedAt:'2026-11-09T00:00:02Z',deliveredAt:'2026-11-09T00:00:03Z',payload:{conversationId:'room',sourceId:'s1',sourceRef:{messageId:'m1',messageVersion:2}},...extra})
 const message={messageId:'m1',messageVersion:2}
-const handling={triage:{state:'committed',decision:{needsHandling:true,reply:null}},event:{state:'consumed'}}
+const handling={event:{state:'consumed'}}
 test('首答严格按会话、来源及消息版本关联，不套用同批其他消息的回复',()=>{
  const notices=[notice({id:'other',payload:{...notice().payload,sourceId:'other'}}),notice({id:'old-version',payload:{...notice().payload,sourceRef:{messageId:'m1',messageVersion:1}}}),notice({id:'foreign',payload:{...notice().payload,conversationId:'foreign'}}),notice({id:'other-message',payload:{...notice().payload,sourceRef:{messageId:'other',messageVersion:2}}})]
  assert.equal(responseTiming(message,[source],notices,handling).status,'awaiting-reply')
@@ -37,11 +37,12 @@ test('发送尝试、未知回读、无回执与异常时间不能生成首次�
 
 test('只有明确无需处理及回复才无首答，其余区分处理、回复与历史不足',()=>{
  const triage=decision=>({triage:{state:'committed',decision},event:{state:'consumed'}})
- assert.equal(responseTiming(message,[source],[],triage({needsHandling:false,reply:null})).status,'no-reply')
+ assert.equal(responseTiming(message,[source],[],{event:{state:'consumed',noTaskDisposition:{outcome:'context-only'}}}).status,'no-reply')
+ assert.equal(responseTiming(message,[source],[],{triage:{state:'committed',decision:{needsHandling:false}}}).status,'unavailable','old triage-only states do not become active Web handling stages')
  assert.equal(responseTiming(message,[source],[],triage({needsHandling:false,reply:'已准备短答'})).status,'awaiting-reply')
  assert.equal(responseTiming(message,[source],[],handling).status,'awaiting-reply')
  assert.equal(responseTiming(message,[source],[],{...handling,event:{state:'pending'}}).status,'awaiting-handling')
- assert.equal(responseTiming(message,[source],[],{triage:{state:'pending'}}).status,'awaiting-handling')
+ assert.equal(responseTiming(message,[source],[],{triage:{state:'pending'}}).status,'unavailable')
  assert.equal(responseTiming(message,[source],[]).status,'unavailable')
  assert.equal(responseTiming(message,[source],[notice({deliveredAt:null})],handling).status,'unconfirmed')
 })
@@ -94,13 +95,13 @@ test('selected timing fails closed for missing/ambiguous versions and scopes; so
 })
 
 
-test('分诊与Router只用真实Host跨度，首答先于轮结束时展示已观测交集',()=>{
+test('只展示Router真实Host跨度并隐藏旧分诊，首答先于轮结束时展示已观测交集',()=>{
  const end='2026-11-09T00:00:04Z'
  const stages=[{stage:'triage',startedAt:source.receivedAt,completedAt:'2026-11-09T00:00:01Z'},
   {stage:'router',startedAt:'2026-11-09T00:00:01Z',completedAt:end,shared:true}]
  const value=responseTiming(message,[{...source,routedAt:'2026-11-09T00:00:00.950Z',stages}],[notice()])
  assert.equal(value.durationMs,3000)
- assert.equal(value.steps.find(row=>row.kind==='stage-triage-completed').durationMs,1000)
+ assert.ok(!value.steps.some(row=>row.kind.includes('triage')||row.label.includes('分诊')))
  const router=value.steps.find(row=>row.kind==='stage-router-completed')
  assert.equal(router.durationMs,2000);assert.equal(router.at,notice().deliveredAt)
  assert.match(router.label,/截至回复可见/);assert.equal(router.shared,true)
@@ -108,7 +109,7 @@ test('分诊与Router只用真实Host跨度，首答先于轮结束时展示已�
  assert.equal(stages[1].completedAt,end,'投影不修改存储的真实结束时间')
 })
 
-test('历史缺失、未关闭、负跨度与首答后开始的分诊/Router不生成估计耗时',()=>{
+test('历史缺失、未关闭、负跨度与首答后开始的记录不生成估计耗时',()=>{
  for(const span of [{stage:'triage',startedAt:source.receivedAt},
   {stage:'router',startedAt:'2026-11-09T00:00:02Z',completedAt:'2026-11-09T00:00:01Z'},
   {stage:'router',completedAt:'2026-11-09T00:00:02Z'}]){
@@ -119,7 +120,7 @@ test('历史缺失、未关闭、负跨度与首答后开始的分诊/Router不�
  const after=responseTiming(message,[{...source,stages:[{stage:'router',startedAt:'2026-11-09T00:00:04Z',completedAt:'2026-11-09T00:00:05Z'}]}],[notice()])
  assert.equal(after.steps.some(row=>row.kind==='stage-router-completed'),false)
  const historical=responseTiming(message,[{...source,routedAt:'2026-11-09T00:00:01Z',routeReceipt:{kind:'triage'}}],[notice()])
- assert.equal(historical.steps.find(row=>row.kind==='triage-completed').durationMs,undefined)
+ assert.ok(!historical.steps.some(row=>row.kind.includes('triage')))
 })
 
 
@@ -133,7 +134,7 @@ test('Router starts at its observed Host preparation boundary before the clipped
  assert.equal(start.label,'Router 开始准备（批次共享）')
  assert.equal(start.at,time(26000));assert.equal(start.timingType,'milestone');assert.equal(start.durationMs,undefined)
  assert.equal(end.at,time(29000));assert.equal(end.durationMs,3000);assert.equal(end.timingType,'span');assert.equal(end.clipped,true)
- assert.equal(value.steps.find(row=>row.kind==='stage-triage-completed').durationMs,28900)
+ assert.ok(!value.steps.some(row=>row.kind.includes('triage')))
  assert.equal(value.durationMs,29000,'overlapping spans are not added or repartitioned')
  assert.ok(value.steps.indexOf(start)<value.steps.indexOf(end))
  assert.equal(stages[1].completedAt,time(93000),'the original completed span remains unchanged')

@@ -28,7 +28,7 @@ export function sourceStageMetric(source,stage){
 }
 export function stageTiming(message,sources,groupId){
  const matches=sources.filter(row=>row.groupId===groupId&&row.messageId===message.messageId&&row.version===(message.messageVersion??1))
- if(matches.length!==1)return {receivedAt:null,triage:metric('missing'),router:metric('missing')}
+ if(matches.length!==1)return {receivedAt:null,router:metric('missing')}
  const source=matches[0]
- return {receivedAt:instant(source.receivedAt)===null?null:source.receivedAt,triage:sourceStageMetric(source,'triage'),router:sourceStageMetric(source,'router')}
+ return {receivedAt:instant(source.receivedAt)===null?null:source.receivedAt,router:sourceStageMetric(source,'router')}
 }
