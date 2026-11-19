@@ -140,7 +140,16 @@ for(const continueTask of [true,false,'router-outage','router-busy'])test('an un
     assert.equal(resumed,false,'inspection is durable while Router inference is still held')
     release.resolve()
   }
-  if(outage){await h.service.whenIdle().catch(()=>{});assert.equal((await h.query('task.get',{taskId:'inspect-e2e'})).inspection.pending,true);outage=false}
+  if(outage){
+    await h.service.whenIdle().catch(()=>{})
+    assert.equal((await h.query('task.get',{taskId:'inspect-e2e'})).inspection.pending,true)
+    const conversationId=h.host.ctx.channels.identity(channelMessage('inspection-work')).sessionId,requests=h.requests.length
+    await h.service.recover();await h.service.whenIdle()
+    assert.equal(h.requests.length,requests,'a committed model error is not automatically replayed')
+    const {proposal}=await h.service.inspectRouterBatch({conversationId})
+    outage=false
+    await h.service.resumeRouterBatch(proposal)
+  }
   else await h.service.whenIdle()
   for(let i=0;i<3;i++){await h.service.recover();await h.service.whenIdle()}
   const task=await h.query('task.get',{taskId:'inspect-e2e'})

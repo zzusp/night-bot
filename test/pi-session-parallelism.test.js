@@ -34,6 +34,7 @@ test('conversation projection stages overlap with exact source/version links, de
 test('actual Router read tools overlap through Pi and Host leases; writer barrier and capacity remain enforced', {timeout:10000},async t=>{
  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve());let active=0,peak=0,reads=0,writes=0
  const f=await officialToolsFixture(t,async({ctx,owner})=>{
+  owner.admission={current:async()=>undefined}
   const query=async kind=>{
    if(kind==='router.get')return {generation:1,phase:'active'}
    if(['router.reply-history','router.source-history'].includes(kind)){
