@@ -1,11 +1,13 @@
 import {investigationBudget,diagnosticCompactionSettings,diagnosticOutputTokens} from '../src/feedback/investigation-budget.js'
 import {formatDiagnosticReport} from '../src/feedback/pi-session.js'
 import {createChainEvidence} from '../src/feedback/chain-evidence.js'
+import {hostFeedback} from '../src/feedback/service.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {mkdtemp,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
+import {setTimeout as delay} from 'node:timers/promises'
 import {ModelRuntime} from '@earendil-works/pi-coding-agent'
 import {InMemoryCredentialStore,InMemoryModelsStore,createAssistantMessageEventStream} from '@earendil-works/pi-ai'
 import {diagnoseWithPi} from '../src/feedback/pi-session.js'
@@ -133,4 +135,51 @@ test('evidence tails are preserved and every dropped or unknown citation is expl
  const missing=result.split('## 未附证据')[1]
  for(const row of observations)assert.ok(result.includes('### '+row.ref+' ·')||missing.includes(row.ref),'citation must be attached or listed missing: '+row.ref)
  assert.match(missing,/E999/)
+})
+async function hostDiagnosis(t,reply){
+ const root=await mkdtemp(join(tmpdir(),'feedback-host-'));t.after(()=>rm(root,{recursive:true,force:true}))
+ const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false})
+ const model=runtime.getModels().find(m=>m.provider==='openai');await runtime.setRuntimeApiKey(model.provider,'test-only')
+ let attempts=0,tokenReads=0;const warnings=[]
+ runtime.registerProvider(model.provider,{api:model.api,streamSimple:(_model,context,options)=>{
+  const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),usage,...reply(attempts++,context,options)}
+  queueMicrotask(()=>{stream.push(message.stopReason==='error'?{type:'error',reason:'error',error:message}:{type:'done',reason:message.stopReason,message});stream.end(message)});return stream
+ }})
+ const profile={models:[model]},services={nativePiProvider:{profiles:()=>new Map([[model.provider,profile]]),official:{resolve:async()=>({modelRuntime:runtime,model,requestOptions:{maxRetries:5}})}},credentials:{redactionValues:async()=>['PRIVATE_INPUT'],resolveCurrent:()=>{tokenReads++;throw Error('unexpected GitHub credential access')}},launchEnvironment:{redactionValues:()=>[]}}
+ const service=hostFeedback({get:key=>services[key],logger:{warn:value=>warnings.push(value)}},{model:{provider:model.provider,model:model.id}},{installRoot:root,runtime:join(root,'runtime')})
+ t.after(()=>service.close())
+ const {revision,model:selection}=service.metadata(),{id}=service.collect('browser',{title:'页面报错',description:'PRIVATE_INPUT',model:selection,revision})
+ let view
+ for(let i=0;i<250;i++){view=service.read('browser',id);if(view.state!=='collecting')break;await delay(20)}
+ assert.notEqual(view.state,'collecting')
+ return {view,warnings,attempts,tokenReads:()=>tokenReads,service}
+}
+const timedOut={stopReason:'error',errorMessage:'Request timed out.',content:[]}
+test('real Pi recovers consecutive timeouts in one diagnosis without replaying its tool',async t=>{
+ const requests=[]
+ const {view,warnings,attempts,tokenReads}=await hostDiagnosis(t,(step,context,options)=>{
+  requests.push({maxRetries:options.maxRetries,messages:context.messages.map(row=>row.role)})
+  if(step===2)return runtimeCall(step)
+  if(step===5)return {stopReason:'stop',content:[{type:'text',text:'恢复完成，证据 E1。'}]}
+  return timedOut
+ })
+ assert.equal(attempts,6);assert.equal(view.state,'ready');assert.match(view.body,/恢复完成/);assert.match(view.body,/### E1 ·/)
+ assert.ok(requests.every(row=>row.maxRetries===0),'no nested provider retry budget')
+ assert.deepEqual(requests.map(row=>row.messages.filter(role=>role==='toolResult').length),[0,0,0,1,1,1])
+ assert.ok(requests.every(row=>row.messages.filter(role=>role==='user').length===1),'no new prompt or session per retry')
+ assert.deepEqual(warnings,[]);assert.equal(tokenReads(),0)
+})
+test('three consecutive model timeouts fail collection and leave one safe Host warning',async t=>{
+ const {view,warnings,attempts,service,tokenReads}=await hostDiagnosis(t,()=>timedOut)
+ assert.equal(attempts,3);assert.equal(view.state,'failed');assert.equal(view.error,'FEEDBACK_COLLECTION_FAILED')
+ assert.equal(warnings.length,1);assert.match(warnings[0],/^feedback collection failed /)
+ const {elapsedMs,...context}=JSON.parse(warnings[0].slice('feedback collection failed '.length))
+ assert.ok(Number.isSafeInteger(elapsedMs)&&elapsedMs>=0)
+ assert.deepEqual(context,{reportId:view.id,stage:'diagnose',code:'FEEDBACK_MODEL_TIMEOUT'})
+ await assert.rejects(service.submit('browser',view.id,{confirm:true,title:view.title,body:view.body}),{code:'FEEDBACK_NOT_READY'});assert.equal(tokenReads(),0)
+})
+test('permanent model error is not retried and its raw response is not logged',async t=>{
+ const {view,warnings,attempts}=await hostDiagnosis(t,()=>({stopReason:'error',errorMessage:'Unauthorized: PRIVATE_VENDOR_RESPONSE',content:[]}))
+ assert.equal(attempts,1);assert.equal(view.state,'failed');assert.equal(warnings.length,1)
+ assert.match(warnings[0],/FEEDBACK_MODEL_FAILED/);assert.doesNotMatch(warnings[0],/PRIVATE_|Unauthorized/)
 })

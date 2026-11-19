@@ -183,3 +183,23 @@ test('catalog snapshot row and serialized byte budgets reject broad queries with
  const bytes=createChainEvidence({title:'目标',getSchedule:()=>({catalog:async()=>large})})
  assert.equal((await bytes('discover',undefined,{target:'schedules'})).failures[0].reason,'FEEDBACK_CATALOG_BUDGET_EXCEEDED')
 })
+test('transient discovery read is attempted three times without restarting another source or retaining a failed page',async()=>{
+ const {tasks}=fixture();let pageReads=0,catalogReads=0
+ const page=tasks.observerGroupPage
+ tasks.observerGroupPage=(...args)=>{if(++pageReads<3)throw Object.assign(new Error('PRIVATE_SQLITE_BODY'),{code:'ERR_SQLITE_ERROR',errcode:261});return page(...args)}
+ const collect=createChainEvidence({application:{tasks},description:'原消息首答很慢',getSchedule:()=>({catalog:async()=>{catalogReads++;return []}})})
+ const result=await collect('discover');assert.equal(pageReads,3);assert.equal(catalogReads,1);assert.equal(result.candidates.length,1);assert.deepEqual(result.failures,[])
+ assert.equal((await collect('discover')).candidates.length,1);assert.equal(pageReads,3);assert.equal(catalogReads,1)
+})
+test('exhausted transient evidence read stays a source gap; permanent and cancelled reads do not retry',async()=>{
+ const {tasks}=fixture();let pageReads=0
+ const blocked=code=>Object.assign(new Error('PRIVATE_READ_ERROR'),{code})
+ const collect=createChainEvidence({application:{tasks},description:'核对测试事项',getSchedule:()=>({catalog:async()=>[{id:'schedule',sessionId:'session',title:'核对测试事项',status:'active'}]})})
+ tasks.observerGroupPage=async()=>{pageReads++;throw blocked('ETIMEDOUT')}
+ let result=await collect('discover');assert.equal(pageReads,3);assert.equal(result.scheduleCandidates.length,1);assert.equal(result.failures[0].reason,'ETIMEDOUT');assert.doesNotMatch(JSON.stringify(result),/PRIVATE_READ_ERROR/)
+ tasks.observerGroupPage=async()=>{pageReads++;throw blocked('EACCES')}
+ result=await collect('discover');assert.equal(pageReads,4);assert.equal(result.failures[0].reason,'EVIDENCE_QUERY_FAILED')
+ const controller=new AbortController()
+ tasks.observerGroupPage=async()=>{pageReads++;setImmediate(()=>controller.abort());throw blocked('EBUSY')}
+ await assert.rejects(collect('discover',controller.signal),{name:'AbortError'});assert.equal(pageReads,5)
+})

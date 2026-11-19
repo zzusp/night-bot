@@ -11,9 +11,17 @@ import {launchEnvironmentOf} from '../native-environment.js'
 const fail=(code,status=400)=>{throw Object.assign(new Error(code),{code,status})}
 const validText=(value,max)=>typeof value==='string'&&value.trim().length>0&&value.length<=max
 const target='zzusp/night-bot'
+const collectionErrors=new Set(['FEEDBACK_MODEL_CHANGED','FEEDBACK_CONTEXT_WINDOW_INVALID','FEEDBACK_MODEL_FAILED','FEEDBACK_MODEL_EMPTY','FEEDBACK_MODEL_TIMEOUT','FEEDBACK_MODEL_ABORTED','CREDENTIAL_REDACTION_HOST_ONLY'])
+function collectionFailureCode(error,deadline){
+ if(deadline.aborted)return 'FEEDBACK_DIAGNOSIS_DEADLINE'
+ if(collectionErrors.has(error?.code))return error.code
+ if(collectionErrors.has(error?.message))return error.message
+ if(error?.name==='TimeoutError')return 'FEEDBACK_STAGE_TIMEOUT'
+ return 'FEEDBACK_COLLECTION_FAILED'
+}
 /** Ephemeral, browser-session-bound previews; no automatic retry of external
  * creates. A transport failure is unknown, never permission to send again. */
-export function createFeedbackService({model,modelConsent=()=>({revision:'default',endpoint:'配置的模型服务'}),resolveModel,getSecrets=async()=>[],evidence,createEvidence,diagnose=diagnoseWithPi,paths,getToken,fetchImpl=fetch,now=Date.now}){
+export function createFeedbackService({model,modelConsent=()=>({revision:'default',endpoint:'配置的模型服务'}),resolveModel,getSecrets=async()=>[],evidence,createEvidence,diagnose=diagnoseWithPi,paths,getToken,fetchImpl=fetch,now=Date.now,onCollectionFailure=()=>{}}){
  const reports=new Map(),operations=new Set();let closed=false
  const track=fn=>{const promise=fn();operations.add(promise);promise.finally(()=>operations.delete(promise)).catch(()=>{});return promise}
  const metadata=()=>{try{return {target,model:model().provider+'/'+model().model,...modelConsent()}}catch{return {target,model:null,revision:null,endpoint:null}}}
@@ -39,16 +47,26 @@ export function createFeedbackService({model,modelConsent=()=>({revision:'defaul
    if(reports.size>=16)fail('FEEDBACK_LIMIT',429)
    const controller=new AbortController(),r={id:randomUUID(),owner,title:'',state:'collecting',expires:now()+30*60*1000,controller,additionalSecrets};reports.set(r.id,r)
    r.timer=setTimeout(()=>{r.controller.abort();reports.delete(r.id)},30*60*1000);r.timer.unref?.()
-   r.done=(async()=>{try{
-    const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(investigationBudget.timeoutMs)]),secrets=[...(r.manual?[]:await getSecrets()),...r.additionalSecrets]
+   const started=performance.now(),deadline=AbortSignal.timeout(investigationBudget.timeoutMs)
+   const signal=AbortSignal.any([controller.signal,deadline])
+   r.done=(async()=>{let stage='prepare-input';try{
+    const secrets=[...await getSecrets(),...r.additionalSecrets]
     signal.throwIfAborted();r.title=redactFeedback(input.title.trim(),secrets)
     const description=redactFeedback(input.description.trim(),secrets)
+    stage='resolve-model'
     const resolved=await resolveModel({...selection,signal});signal.throwIfAborted();if(input.revision!==modelConsent().revision)fail('FEEDBACK_MODEL_CHANGED',409)
+    stage='prepare-evidence'
     const scopedEvidence=createEvidence?createEvidence({title:input.title,description:input.description,secrets}):evidence
     const prefix=`## 问题描述\n${description}\n\n## AI 诊断\n`,reportCharacters=Math.min(investigationBudget.reportCharacters,48000-prefix.length)
+    stage='diagnose'
     const result=await diagnose({resolved,paths,title:r.title,description,evidence:scopedEvidence,signal,secrets,reportCharacters});signal.throwIfAborted()
+    stage='format-preview'
     r.body=prefix+limitDiagnosticText(redactFeedback(result,secrets,{maxLength:Infinity}),reportCharacters,'诊断草稿');r.state='ready'
-   }catch{if(r.state!=='cancelled'){r.state='failed';r.error='FEEDBACK_COLLECTION_FAILED'}}})()
+   }catch(error){
+    if(r.state==='cancelled')return
+    r.state='failed';r.error='FEEDBACK_COLLECTION_FAILED'
+    if(!controller.signal.aborted)onCollectionFailure({reportId:r.id,stage,code:collectionFailureCode(error,deadline),elapsedMs:Math.round(performance.now()-started)})
+   }})()
    return view(r)
   },
   read(owner,id){return view(get(owner,id))},
@@ -90,6 +108,7 @@ export function hostFeedback(ctx,config,paths){
  const selection=()=>roleModelSelection(ctx,'task',legacyRoleModelSelection(config,'task'))
  const modelConsent=()=>{const chosen=selection(),profile=ctx.get('nativePiProvider')?.profiles().get(chosen.provider);if(!profile)fail('FEEDBACK_MODEL_UNAVAILABLE',503);if(!generations.has(profile))generations.set(profile,randomUUID());const selected=profile.models.find(m=>m.id===chosen.model);let endpoint='配置的模型服务';try{endpoint=new URL(selected?.baseUrl??profile.baseURL).origin}catch{};return {revision:generations.get(profile)+':'+chosen.provider+':'+chosen.model,endpoint}}
  return createFeedbackService({paths,model:selection,modelConsent,
+  onCollectionFailure:failure=>ctx.logger.warn('feedback collection failed '+JSON.stringify(failure)),
   resolveModel:selection=>ctx.get('nativePiProvider').official.resolve(selection),
   getSecrets:async()=>[...(await ctx.get('credentials')?.redactionValues?.()??[]),...(launchEnvironmentOf(ctx).redactionValues?.()??[])],
   getToken:()=>ctx.get('credentials')?.resolveCurrent?.('GITHUB_TOKEN')?.value??launchEnvironmentOf(ctx).getFrom('GITHUB_TOKEN',['process'])?.value,
