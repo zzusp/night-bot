@@ -1,5 +1,5 @@
 import {readPiLiveOutput} from './runtime/pi-live-output.js'
-import {nativeStore} from './runtime/pi-native-store.js'
+import {nativeStore,fileStamp} from './runtime/pi-native-store.js'
 import {decodePiJournal,piJournalFilename} from './runtime/pi-journal.js'
 import { Service } from '@deepseek-ai/cordis'
 import { SessionManager, buildSessionProjection, convertToLlm } from '@earendil-works/pi-coding-agent'
@@ -16,7 +16,6 @@ const READ_CACHE_BYTES = 32 * 1024 * 1024
 const digest = value => createHash('sha256').update(value).digest('hex')
 const fail = code => Object.assign(new Error(code), { code })
 const clean = value => structuredClone(value)
-const fileStamp = info => JSON.stringify([info.dev,info.ino,info.size,info.mtimeMs,info.ctimeMs])
 
 async function processIdentity(pid = process.pid) {
   if (process.platform !== 'linux') return null
@@ -74,7 +73,7 @@ async function load(path,id,codec,requireComplete=false) {
   const bytes=await readFile(path).catch(error=>{if(error.code==='ENOENT')throw new SessionPersistenceNotFoundError(id);throw error})
   const after=await lstat(path)
   if(fileStamp(before)!==fileStamp(after)||before.isSymbolicLink()||!before.isFile()||before.nlink!==1)throw fail('PI_SESSION_CHANGED')
-  return {...decode(bytes,id,codec,requireComplete),journalDigest:fileStamp(after)+':'+digest(bytes)}
+  return {...decode(bytes,id,codec,requireComplete),fileStamp:fileStamp(after),journalDigest:fileStamp(after)+':'+digest(bytes)}
 }
 function decode(bytes,id,codec,requireComplete=false){
   const result=decodePiJournal(bytes,id,{codec,requireComplete})
@@ -116,6 +115,7 @@ export default class PiSessionPersistence extends Service {
     const path=this.path(id),info=await lstat(path).catch(error=>{if(error.code==='ENOENT')return;throw error})
     if(!info){if(allowMissing)return;throw new SessionPersistenceNotFoundError(id)}
     if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1)throw fail('PI_SESSION_PATH_UNSAFE')
+    return info
   }
   path(id){const filename=piJournalFilename(id);return this.taskRoutes?.get(id)??join(this.config.root,filename)}
   async createNative(header,options={}) {
@@ -126,9 +126,9 @@ export default class PiSessionPersistence extends Service {
     try {
       try{await stat(path);throw new SessionAlreadyExistsError(header.id)}catch(error){if(error.code!=='ENOENT')throw error}
       options.signal?.throwIfAborted()
-      const manager=SessionManager.inMemory(header.cwd);manager.newSession({id:header.id})
+      const manager=SessionManager.inMemory(header.cwd,{id:header.id})
       manager.appendCustomEntry('night.header',{header:this.ctx.get('portablePaths')?.header(header)??header,storage:{engine:'pi-native',version:1}})
-      return nativeStore({backend:this,path,header,manager,lease,options})
+      return nativeStore({backend:this,path,header,initial:[manager.getHeader(),...manager.getEntries()],lease,options})
     }catch(error){await lease.close();throw error}
   }
   readLive(id) {
@@ -205,8 +205,7 @@ export default class PiSessionPersistence extends Service {
       const data=await load(path,id,this.ctx.get('portablePaths'),true)
       if(data.format!=='pi-native-v1')throw fail('PI_SESSION_NATIVE_UPGRADE_REQUIRED')
       options.signal?.throwIfAborted()
-      const manager=SessionManager.inMemory(data.header.cwd,undefined,[data.piHeader,...data.entries])
-      return nativeStore({backend:this,path,header:data.header,manager,lease,data,options})
+      return nativeStore({backend:this,path,header:data.header,initial:[data.piHeader,...data.entries],lease,data,options})
     }catch(error){await lease.close();throw error}
   }
   async stat(id,options={}){options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED');await this.checkedFile(id,true);if(this.writers.has(id))return this.writers.get(id).snapshot();try{const data=await load(this.path(id),id,this.ctx.get('portablePaths'));return sessionStat(data)}catch(error){if(error.name==='SessionPersistenceNotFoundError')return undefined;throw error}}

@@ -9,7 +9,7 @@ import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestTe
 test('retrospective skill publication during Router assessment preserves one admitted batch and drains four later messages',{timeout:nativeTestTimeout(90000)},async t=>{
  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
  let armed=false,raced=false,taskTurns=0,reviewTurns=0,completionEvent,routerSessionId
- const queried=new Set(),batches=new Map()
+ const queried=new Set(),batches=new Map(),learnedScopes=new Map()
  const h=await residentRouterHost(t,async body=>{
   if(requestText(body).some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION'))){
    reviewTurns++
@@ -44,6 +44,7 @@ test('retrospective skill publication during Router assessment preserves one adm
  const original=reflection.officialResources.bind(reflection)
  reflection.officialResources=async(skills,options)=>{
   const value=await original(skills,options)
+  if(value.has('learned-verify'))learnedScopes.set(options.scope.id,options.scope.metadata.runtimeOwner)
   if(armed&&!raced&&options.scope?.metadata.runtimeOwner==='conversation-router'){
    raced=true;entered.resolve();await release.promise
    await h.host.ctx.agents.withoutInitiator(()=>reflection.review({store:h.store,ownerActorId:'owner',model:h.config.model},completionEvent))
@@ -60,7 +61,11 @@ test('retrospective skill publication during Router assessment preserves one adm
  }finally{release.resolve()}
  await h.service.whenIdle()
  assert.equal(raced,true);assert.equal(taskTurns,1);assert.equal(reviewTurns,1)
- assert.equal((await h.query('task.get',{taskId:'skill-race-task'})).status,'completed')
+ const task=await h.query('task.get',{taskId:'skill-race-task'})
+ assert.equal(task.status,'completed')
+ assert.ok([...learnedScopes.values()].includes('channel-triage'),'real triage resolves the learned skill in a batch')
+ assert.equal(learnedScopes.get(routerSessionId),'conversation-router','real Router resolves the learned skill in a batch')
+ assert.ok(learnedScopes.has(task.sessionId),'the real task execution session resolves the learned skill in a batch')
  assert.equal((await h.query('router.inbox',{conversationId})).length,0)
  assert.equal(h.results.filter(result=>result.name==='resident_task_query'&&!result.result.isError).length,1,'the completed query tool must not be replayed')
  const journal=await h.host.ctx.sessionPersistence.readNative(routerSessionId,{requireComplete:true})

@@ -323,6 +323,8 @@ for (const audience of ['all', 'members']) test(`native due ${audience} report s
   assert.ok(record,JSON.stringify({tools:h.toolResults,alerts:h.service.listAlerts(),errors:errors.map(error=>error.message)}));assert.equal(record.status, 'active'); assert.equal(confirmation.state, 'delivered')
   assert.equal(sends.length, 1); assert.equal(dueTurns, 0)
   await t.step(async () => h.close()); await t.step(async () => boot())
+  // 到期前的等待不占用生成报告的验证窗口。
+  await t.step(async () => waitUntil(() => Date.now() >= Date.parse(scheduleInput.at), 'restored schedule reaches its due time'))
   await t.step(async () => waitUntil(() => h.residentStore.getPlatformSchedule(record.sessionId)?.outcome === 'replied', 'scheduled report prepared after native cold restore')
     .catch(error => { t.diagnostic(JSON.stringify({ tools: h.toolResults.slice(-4), errors: errors.map(value => value.message) })); throw error }))
   await t.step(async () => waitUntil(async () => (await h.ctx.schedule.catalog()).find(item => item.id === record.id)?.status === 'inactive', 'original native report commits its delivery'))
