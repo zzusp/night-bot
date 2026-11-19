@@ -1180,3 +1180,21 @@ test('task list HTTP defaults to ten rows and preserves explicit page limits',as
  assert.equal(calls[1].limit,25);assert.equal(calls[1].offset,20)
  assert.equal((await f.fetchApi('/api/tasks?limit=101')).status,400)
 })
+
+test('channel Router operator messages require authenticated CSRF scope and never enter channel receive',async t=>{
+ const f=await fixture(t),calls=[]
+ f.app.tasks.sendRouterOperatorMessage=async args=>{calls.push(args);return {requestId:args.requestId,status:'accepted',webOnly:true}}
+ f.app.tasks.routerOperatorRequest=async args=>args.requestId==='known'?{status:'accepted',webOnly:true}:null
+ const path='/api/conversations/room-one/router/messages',body={requestId:'known',text:'Synthetic question'}
+ assert.equal((await f.fetchApi(path,{method:'POST',body})).status,401)
+ await f.login()
+ assert.equal((await f.fetchApi(path,{method:'POST',body,headers:{'x-csrf-token':'wrong'}})).status,403)
+ assert.equal((await f.fetchApi('/api/conversations/foreign/router/messages',{method:'POST',body})).status,404)
+ assert.equal((await f.fetchApi(path,{method:'POST',body:{...body,actorId:'impersonated'}})).status,400)
+ assert.equal((await f.fetchApi(path,{method:'POST',body:{...body,text:' '}})).status,400)
+ assert.equal(calls.length,0)
+ const result=await f.fetchApi(path,{method:'POST',body});assert.equal(result.status,202)
+ assert.deepEqual(calls,[{conversationId:'room-one',requestId:'known',text:'Synthetic question'}]);assert.equal(f.received.length,0)
+ assert.equal((await f.fetchApi('/api/conversations/room-one/router/requests/known')).status,200)
+ assert.equal((await f.fetchApi('/api/conversations/room-one/router/requests/missing')).status,404)
+})

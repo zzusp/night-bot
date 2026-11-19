@@ -187,7 +187,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
     if(failure)throw failure
   }
-  const targetCommandKinds=new Set(['source.record','source.record-direct','source.acceptHistory','task.create','task.reopen','task.revise','task.supplement','task.claim','task.dialogue.add','router.plan','router.task-action','notification.prepare','notification.start'])
+  const targetCommandKinds=new Set(['source.record','source.record-direct','source.acceptHistory','task.create','task.reopen','task.revise','task.supplement','task.claim','task.dialogue.add','router.plan','router.task-action','router.operator.enqueue','router.operator.reply','notification.prepare','notification.start'])
   const command = async (kind,args,id) => {
     if(!targetCommandKinds.has(kind))return commitCommand(kind,args,id)
     const groupId=args.groupId??args.conversationId??args.source?.groupId??args.conversation?.conversationId??args.payload?.conversationId??taskCache.get(args.taskId)?.groupId??(args.taskId?(await query('task.get',{taskId:args.taskId}))?.groupId:undefined)??(args.notificationId?(notificationCache.get(args.notificationId)??await query('notification.get',{notificationId:args.notificationId}))?.payload?.conversationId:undefined)
@@ -1833,6 +1833,21 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   const api = {
     withChannelTargetSwitch,
+    async sendRouterOperatorMessage({conversationId,requestId,text}){
+      if(closed)fail('TASK_SESSION_CLOSED')
+      if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
+      if(!config.webActorId)fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
+      ctx.get('channels').assertGroupTarget(conversationId)
+      if(!residentStore.getGroup(conversationId))fail('ROUTER_OPERATOR_CONVERSATION_NOT_FOUND')
+      const receipt=await command('router.operator.enqueue',{conversationId,actorId:config.webActorId,requestId,text})
+      void hostScheduler(()=>residentRouter.schedule(conversationId)).catch(error=>recordRouterFailure(conversationId,error))
+      return receipt.result
+    },
+    async routerOperatorRequest({conversationId,requestId}){
+      if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
+      ctx.get('channels').assertGroupTarget(conversationId)
+      return query('router.operator.request',{conversationId,requestId,actorId:config.webActorId})
+    },
     async inspectRouterBatch(args){
       if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
       return hostScheduler(()=>residentRouter.inspectRouterBatch(args))

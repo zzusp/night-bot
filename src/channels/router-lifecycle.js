@@ -10,6 +10,7 @@ import {residentOperationId} from './resident-router-business.js'
 
 const fail=(code,recoveryReason)=>{throw Object.assign(new Error(code),{code,...recoveryReason?{recoveryReason}:{}})}
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
+const operatorInput=event=>{if(event.kind!=='operator.message')return event;const {operatorReply,...input}=event;return input}
 const withoutTiming=source=>{if(!source)return source;const {stages,...value}=source;return value}
 const triageDeliveryFields=new Set('state ack ackedAt deliveredAt deliveryError dispatchToken evidenceRef lastReadbackError nextAttemptAt readbackAttemptCount receipt recoveryToken sendAttemptCount sendPermit sendStartedAt updatedAt'.split(' '))
 const triageReplyIdentity=reply=>reply?.kind==='triage-reply'?Object.fromEntries(Object.entries(reply).filter(([key])=>!triageDeliveryFields.has(key))):reply
@@ -28,8 +29,8 @@ function comparableRouterPacket(packet){
 export const sameRouterPacket=(left,right)=>isDeepStrictEqual(comparableRouterPacket(left),comparableRouterPacket(right))
 export function routerPacketViews(row,batch){
     const id=`router-input:${hash([row.id,batch.map(event=>event.id)])}`
-    const body={conversationId:row.id,generation:row.generation,events:batch.map(event=>({...event,...event.source?{source:withoutTiming(event.source)}:{}}))}
-    const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id),...traceSourcesMetadata(batch.filter(event=>event.kind==='source.message'&&event.source).map(event=>event.source)),...traceTaskEventsMetadata(batch)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:body.events.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
+    const body={conversationId:row.id,generation:row.generation,events:batch.map(event=>({...operatorInput(event),...event.source?{source:withoutTiming(event.source)}:{}}))}
+    const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id),...(batch.every(event=>event.kind==='operator.message')?{webOnly:true}:{}),...traceSourcesMetadata(batch.filter(event=>event.kind==='source.message'&&event.source).map(event=>event.source)),...traceTaskEventsMetadata(batch)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:body.events.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
     // Bind the compact view to every immutable ledger field, including fields
     // omitted from model text. Delivery progress alone may change during recovery.
     const identityBody={...body,events:body.events.map(event=>({...event,...event.triageReply?{triageReply:triageReplyIdentity(event.triageReply)}:{}}))}
@@ -206,7 +207,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
             }
           }
           await validate()
-          const receipt=await settle({conversationId,generation:row.generation,...args,operationId},'router-settle-recovery:'+hash([row.activeSessionId,call.callEntryId,call.callId]))
+          const receipt=await settle({conversationId,generation:row.generation,...args,...admittedPacket.source.webOnly?{webOnly:true}:{},operationId},'router-settle-recovery:'+hash([row.activeSessionId,call.callEntryId,call.callId]))
           await validate();return receipt
         })}catch(error){
           try{await handle.dispose()}catch(cleanup){throw new AggregateError([error,cleanup],'Router settlement recovery cleanup failed')}
@@ -292,19 +293,20 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
   async function prepareResume(row,handle,packet){
     const conversationId=row.id,ids=packet.source.eventIds
     if(!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)fail('ROUTER_PACKET_ID_CONFLICT')
-    const inbox=await query('router.inbox',{conversationId,limit:30});assertOpen()
+    const pendingInbox=await query('router.inbox',{conversationId,limit:30});assertOpen()
+    const inbox=pendingInbox.filter(event=>(event.kind==='operator.message')===(packet.source.webOnly===true))
     const pendingCount=await query('router.inbox-count',{conversationId});assertOpen()
     // 不漏掉分页外的后续取消；联合续轮仍受原批次消息数与编码预算约束。
-    if(pendingCount!==inbox.length||inbox.filter(event=>event.kind==='source.message').length>15||!isDeepStrictEqual(ids,inbox.slice(0,ids.length).map(event=>event.id))||routerModelBatch(row,inbox).length!==inbox.length)fail('ROUTER_RESUME_BATCH_STALE')
+    if(pendingCount!==pendingInbox.length||inbox.filter(event=>['source.message','operator.message'].includes(event.kind)).length>15||!isDeepStrictEqual(ids,inbox.slice(0,ids.length).map(event=>event.id))||routerModelBatch(row,inbox).length!==inbox.length)fail('ROUTER_RESUME_BATCH_STALE')
     if(!routerPacketViews(row,inbox.slice(0,ids.length)).some(value=>sameRouterPacket(value,packet)))fail('ROUTER_PACKET_ID_CONFLICT')
     const supplements=inbox.length>ids.length?[routerPacketViews(row,inbox.slice(ids.length))[0]]:[]
-    const snapshot=routerPacketViews(row,inbox)[0],allIds=inbox.map(event=>event.id)
+    const snapshot=routerPacketViews(row,pendingInbox)[0],allIds=inbox.map(event=>event.id)
     const validate=async()=>{
       assertOpen()
       const current=await query('router.get',{conversationId});assertOpen()
       if(!current||current.phase!=='active'||current.generation!==row.generation||current.activeSessionId!==row.activeSessionId||agents.get(row.activeSessionId)!==handle.agent||handle.agent.lifecycle.signal.aborted)fail('ROUTER_RESUME_STALE')
       const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
-      if(await query('router.inbox-count',{conversationId})!==allIds.length||!sameRouterPacket(routerPacketViews(current,pending)[0],snapshot))fail('ROUTER_RESUME_BATCH_STALE')
+      if(await query('router.inbox-count',{conversationId})!==pendingInbox.length||!sameRouterPacket(routerPacketViews(current,pending)[0],snapshot))fail('ROUTER_RESUME_BATCH_STALE')
     }
     await validate();assertOpen()
     return {inbox,supplements,allIds,validate,inboxDigest:hash(comparableRouterPacket(snapshot))}
