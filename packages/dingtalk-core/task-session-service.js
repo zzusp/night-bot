@@ -1,3 +1,4 @@
+import {createRouterReadonlyLookups} from '../../src/channels/router-readonly-lookup.js'
 import {interruptedTimingEvidence} from '../../src/tasks/observer-durations.js'
 import {mapIndependentReads} from '../../src/runtime/parallel-read.js'
 import {inspectionVersion,taskInspectionReason,inspectionHoldsExecution} from '../../src/tasks/inspection.js'
@@ -130,7 +131,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   },readback:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readback',notification):originalNotifications.readback(notification),sendFile:(notification,file)=>{if(scheduleNotificationCancelled(notification))cancelNotificationBeforeSend();return ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('sendFile',notification,file):originalNotifications.sendFile?.(notification,file)},readbackFile:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readbackFile',notification):originalNotifications.readbackFile?.(notification)}
   notifications = withTaskFileNotifications(notifications, deliveryFiles)
   const inflightTasks = new Map(), inflightExecutions = new Map(), inflightGroups = new Map(), inflightNotifications = new Map()
-  let nativeDws, residentRouter
+  let nativeDws, residentRouter, readonlyLookups
   const admissions = new Map(), admissionHolds = new Set(), admissionGroups = new Map(), targetCommands = new Map()
   const sourceProjections = new Set(), notificationSends = new Set(), notificationReadbacks = new Set()
   const failures = new Map(), taskSlots = new Set(), messageRecoveryFlights = new Set()
@@ -938,10 +939,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,
     readTasks:readPlatformTasks,appendOutbox:prepareDirectPlatformReply,
     notify:undefined})
+  readonlyLookups=createRouterReadonlyLookups({ctx,query,command,models:()=>roleModels('router'),schedule:groupId=>kickGroup(groupId)})
   residentRouter=await openRouterLifecycle({ctx,store,root,settle:(args,id)=>command('router.settle',args,id),recordStage:recordResidentStage,models:()=>roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
     const platformPages=new Map()
     return registerResidentRouterTools(agentCtx,binding,{
-    query,command,responsibilityFor,applyTaskAction:applyDirectTaskAction,prepareReply:(args,exec)=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args,exec)},
+    query,command,responsibilityFor,startLookup:args=>readonlyLookups.submit(args),applyTaskAction:applyDirectTaskAction,prepareReply:(args,exec)=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args,exec)},
     platformQuery:async(groupId,args)=>{
       const key=JSON.stringify([args.state??'all',args.day??null,args.limit??50])
       let snapshot=platformPages.get(key)
@@ -1507,6 +1509,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           failures.delete(outbound.outboundId)
         }catch(error){failures.set(outbound.outboundId,{id:outbound.outboundId,code:error.code??error.message})}
       }
+      await readonlyLookups.recover()
       await residentRouter.recover({wait:waitForRouter})
       syncRouterFailures()
 
@@ -2011,6 +2014,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       await attempt(()=>detachIngress?.())
       await attempt(()=>reflection?.whenIdle())
       await attempt(()=>nativeDws.close())
+      await attempt(()=>readonlyLookups.close())
       const counts = () => ({ observationPending: observationQueue.pending, tasks: inflightTasks.size, executions: inflightExecutions.size, groups: inflightGroups.size,
         notifications: inflightNotifications.size, admissions: admissions.size, sourceProjections: sourceProjections.size,
         scheduling: !!scheduling, recovering: !!recovering, notificationScan: !!notificationScan })
