@@ -337,6 +337,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(q.kind==='router.task-index')return queryTaskIndex(db,q,{dependenciesReady})
     if(q.kind==='router.reply-history')return queryReplyHistory(db,q)
     if(q.kind==='router.source-history')return querySourceHistory(db,q)
+    if(q.kind==='router.source-latest'){const source=read('sources',q.sourceId,true);return !!source&&source.groupId===q.conversationId&&source.version===q.messageVersion&&latest(source)}
     if(q.kind==='router.source-current')return queryCurrentSource(db,q)
     if(q.kind==='triage.pending')return rows('triage').filter(row=>row.state==='pending'&&(!q.conversationId||row.conversationId===q.conversationId)).map(row=>read('sources',row.sourceId)).filter(row=>!row.routed&&!row.authorizationRevoked&&!row.triageHold&&!row.archiveRestoreHold&&latest(row)).slice(0,bounded(q.limit))
     if(q.kind==='router.upgrade-held')return {sources:rows('sources').filter(row=>row.triageHold&&(!q.conversationId||row.groupId===q.conversationId)),audit:rows('router_upgrade_audit').filter(row=>!q.conversationId||row.conversationId===q.conversationId)}

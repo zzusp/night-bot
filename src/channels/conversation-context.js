@@ -1,3 +1,4 @@
+import {mapIndependentReads} from '../runtime/parallel-read.js'
 import {routerTaskSummary} from './router-task-view.js'
 
 const fail=code=>{throw Object.assign(new Error(code),{code})}
@@ -39,14 +40,16 @@ export function queryReplyHistory(db,{conversationId,sourceId,taskId,notificatio
 }
 
 /** Facts are separate from immutable admitted business packets. */
-export async function conversationContext(query,conversationId,{sources=[],taskIds=[],router=false}={}){
+export async function conversationContext(query,conversationId,{sources=[],taskIds=[],router=false,readConcurrency=1}={}){
  const sourceIds=new Set(sources.map(source=>source.sourceId)),tasks=new Set(taskIds)
- for(const source of sources)if(source.quote?.messageId){const current=await query('router.source-current',{conversationId,sourceId:source.sourceId});if(current?.quote?.currentSourceId)sourceIds.add(current.quote.currentSourceId)}
- for(const sourceId of sourceIds)for(const link of await query('router.source-links',{sourceId}))if(link.conversationId===conversationId)tasks.add(link.taskId)
- const replies=[]
- for(const sourceId of sourceIds)replies.push({sourceId,...await query('router.reply-history',{conversationId,sourceId})})
- for(const taskId of tasks)replies.push({taskId,...await query('router.reply-history',{conversationId,taskId})})
- return {asOf:new Date().toISOString(),historicalReferenceOnly:true,...router?{taskIndex:await query('router.task-index',{conversationId,sourceIds:[...sourceIds],taskIds:[...tasks]})}:{},replyIndex:replies}
+ const quoted=await mapIndependentReads(sources.filter(source=>source.quote?.messageId),readConcurrency,source=>query('router.source-current',{conversationId,sourceId:source.sourceId}))
+ for(const current of quoted)if(current?.quote?.currentSourceId)sourceIds.add(current.quote.currentSourceId)
+ const links=await mapIndependentReads([...sourceIds],readConcurrency,sourceId=>query('router.source-links',{sourceId}))
+ for(const rows of links)for(const link of rows)if(link.conversationId===conversationId)tasks.add(link.taskId)
+ const selectors=[...[...sourceIds].map(sourceId=>({sourceId})),...[...tasks].map(taskId=>({taskId}))]
+ const reads=[...router?[()=>query('router.task-index',{conversationId,sourceIds:[...sourceIds],taskIds:[...tasks]})]:[],...selectors.map(selector=>async()=>({...selector,...await query('router.reply-history',{conversationId,...selector})}))]
+ const values=await mapIndependentReads(reads,readConcurrency,read=>read())
+ return {asOf:new Date().toISOString(),historicalReferenceOnly:true,...router?{taskIndex:values[0]}:{},replyIndex:values.slice(router?1:0)}
 }
 
 export const currentContextPolicy='Host 当前账本投影（不是新交办或授权）：prepared仅表示已冻结，unknown需查询原通知，delivered才表示已确认送达。任务向需求提出者发出的提问和任务状态回复也纳入回复索引；同一问题已有通知时查原通知状态，不换措辞重复提问。同一承接不重复发送；实际进度追问应回答新事实或具体阻断。状态以本轮索引或只读查询为准，不以旧摘要推断；分页剩余内容按需查询，通知预览不是完整正文。'
