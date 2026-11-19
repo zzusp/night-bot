@@ -36,7 +36,7 @@ test('Web operator shares the channel Router but cannot borrow its writes or ext
  assert.equal((await h.query('router.inbox',{conversationId})).length,0)
  assert.equal((await h.query('task.list')).length,0);assert.equal((await h.query('notification.list')).length,0);assert.equal(h.sent.length,0)
  assert.equal(batches.flat().length,2);assert.equal(batches[0][0].operator.actorId,'owner');assert.equal(batches[0][0].operator.destination,'web')
- const triages=h.requests.slice(before).filter(body=>requestTools(body).includes('channel_triage_submit'));assert.equal(triages.length,1,'only actual channel message enters triage')
+ const triages=h.requests.slice(before).filter(body=>requestTools(body).includes('channel_triage_submit'));assert.equal(triages.length,0,'channel message enters Router directly')
  const history=JSON.stringify(h.requests.slice(before));assert.match(history,/ROUTER_OPERATOR_READ_ONLY/);assert.match(history,/ROUTER_OPERATOR_EVENT_FORBIDDEN/)
  assert.equal((await h.service.routerOperatorRequest({conversationId,requestId:'web-one'})).status,'accepted')
  await assert.rejects(h.service.sendRouterOperatorMessage({conversationId:'foreign',requestId:'bad',text:'No access'}))

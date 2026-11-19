@@ -32,6 +32,7 @@ test('direct Router keeps silent background in the original bounded session, ans
  await h.receive(background);await h.service.whenIdle()
  assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
  const conversationId=h.host.ctx.channels.identity(background).sessionId,first=await h.query('router.get',{conversationId})
+ await assert.rejects(h.service.retryMessageProcessing({groupId:conversationId,phase:'triage'}),{code:'TOPIC_ROUTING_RETIRED'})
  assert.equal(await h.host.ctx.sessionPersistence.stat(triageSessionId(conversationId)),undefined)
  await h.receive(channelMessage('ask',{text:'ASK what label was supplied? Query only.'}));await h.service.whenIdle()
  assert.equal(h.sent.length,1);assert.equal((await h.query('notification.list'))[0].kind,'router-reply')
@@ -107,16 +108,16 @@ test('new explicit history goes directly to Router; existing queued legacy decis
  await h.receive(seed);await h.service.whenIdle()
  const conversationId=h.host.ctx.channels.identity(seed).sessionId,source=(await h.query('source.list'))[0]
  await h.store.command({id:'old-source',kind:'source.record-direct',args:{source:{sourceId:'old-queued',groupId:conversationId,messageId:'old-queued',version:1,actorId:source.actorId,channel:source.channel,text:'Synthetic legacy background',resources:[]},conversation:{conversationId}}})
- await h.store.command({id:'old-triage',kind:'triage.commit',args:{conversationId,dispositions:[{sourceId:'old-queued',messageVersion:1,needsHandling:true,reason:'Legacy committed decision'}]}})
+ await h.store.command({id:'old-triage',kind:'triage.commit',args:{conversationId,dispositions:[{sourceId:'old-queued',messageVersion:1,needsHandling:true,reason:'Legacy committed decision',reply:'Legacy frozen reply.',handoff:{assignment:'uncertain',summary:'Legacy background requiring Router review'}}]}})
  const original=(await h.query('router.inbox',{conversationId}))[0]
  await h.store.command({id:'new-explicit-history',kind:'source.acceptHistory',args:{sourceId:'new-history',groupId:conversationId,messageId:'history',version:1,actorId:source.actorId,channel:source.channel,text:'Synthetic newly accepted historical source',resources:[],timestamp:'2026-11-19T00:00:00Z',authorizationRef:`message-retry:${conversationId}:history:1`}})
  assert.equal((await h.query('router.source-status',{sourceId:'new-history'})).triage,null)
  const before=observed.length;await h.restart();await h.service.whenIdle()
  assert.deepEqual(observed.slice(before).map(event=>event.sourceId),['old-queued','new-history'])
  const legacy=(await h.query('router.batch-events',{conversationId,eventIds:[original.id]}))[0]
- assert.equal(legacy.id,original.id);assert.equal(legacy.triageReplyId,original.triageReplyId)
- assert.equal(await h.query('router.inbox-count',{conversationId}),0);assert.equal(h.sent.length,0)
- const count=h.requests.length;await h.restart();await h.service.whenIdle();assert.equal(h.requests.length,count)
+ assert.equal(legacy.id,original.id);assert.equal(legacy.triageReplyId,original.triageReplyId);assert.equal(legacy.triageDecisionId,original.triageDecisionId);assert.equal(legacy.triageReply.payload.text,'Legacy frozen reply.');assert.equal(legacy.triageConclusion.assignment,'uncertain')
+ assert.equal(await h.query('router.inbox-count',{conversationId}),0);assert.equal(h.sent.length,1,'only the retained legacy frozen reply is delivered')
+ const count=h.requests.length;await h.restart();await h.service.whenIdle();assert.equal(h.requests.length,count);assert.equal(h.sent.length,1)
 })
 
 test('direct Router cannot quietly consume an unanswered query as handled-inline or omit its disposition',{timeout:nativeTestTimeout(30000)},async t=>{
@@ -127,7 +128,7 @@ test('direct Router cannot quietly consume an unanswered query as handled-inline
   if(step++===0)delete value.args.noTaskDispositions
   else if(step===2)value.args.noTaskDispositions.forEach(item=>item.outcome='handled-inline')
   return value
- })
+ },{strictModelDecisions:true})
  await h.receive(channelMessage('needs-disposition',{text:'Synthetic source without a task'}));await h.service.whenIdle()
  for(const code of ['ROUTER_SOURCE_DISPOSITION_REQUIRED','ROUTER_DIRECT_REPLY_REQUIRED'])assert.ok(h.results.some(row=>row.name==='resident_router_settle'&&row.result.isError&&JSON.stringify(row.result).includes(code)))
  assert.equal(h.sent.length,0)
@@ -149,4 +150,20 @@ test('direct reply lost receipt is read back on restart without repeating the or
  if(current.state!=='delivered')await h.service.retryNotification({groupId:current.payload.conversationId,notificationId:current.id,expectedToken:taskNotificationRecovery(current).expectedToken})
  await h.service.whenIdle();assert.equal((await h.query('notification.get',{notificationId:unknown.id})).state,'delivered')
  await h.receive(original);await h.service.whenIdle();assert.equal(h.sent.length,1);assert.equal((await h.query('source.list')).length,1)
+})
+
+test('an explicit Router acknowledgement alone cannot settle direct handling as an actual answer',{timeout:nativeTestTimeout(30000)},async t=>{
+ let step=0
+ const h=await residentRouterHost(t,body=>{
+  const input=checked(body);if(!input)return {text:'No work'}
+  if(isSettleResult(body)&&step>=4)return {text:'Done'}
+  const event=input.events.find(event=>event.source)
+  if(step++===0)return {tool:'resident_router_reply',args:{operationId:'explicit-ack',sourceId:event.sourceId,messageVersion:event.messageVersion,replyPurpose:'acknowledgement',text:'Synthetic acknowledgement only'}}
+  if(step===2)return settle(input,'handled-inline')
+  if(step===3)return {tool:'resident_router_reply',args:{operationId:'actual-answer',sourceId:event.sourceId,messageVersion:event.messageVersion,replyPurpose:'direct-answer',text:'Synthetic actual answer'}}
+  return settle(input,'handled-inline')
+ })
+ await h.receive(channelMessage('ack-is-not-answer',{text:'Synthetic query requiring an actual answer'}));await h.service.whenIdle()
+ assert.ok(h.results.some(row=>row.name==='resident_router_settle'&&row.result.isError&&JSON.stringify(row.result).includes('ROUTER_DIRECT_REPLY_REQUIRED')))
+ assert.ok(h.results.some(row=>row.name==='resident_router_settle'&&!row.result.isError));assert.equal(h.sent.length,2)
 })

@@ -63,7 +63,7 @@ test('retrospective skill publication during Router assessment preserves one adm
  assert.equal(raced,true);assert.equal(taskTurns,1);assert.equal(reviewTurns,1)
  const task=await h.query('task.get',{taskId:'skill-race-task'})
  assert.equal(task.status,'completed')
- assert.ok([...learnedScopes.values()].includes('channel-triage'),'real triage resolves the learned skill in a batch')
+ assert.ok(![...learnedScopes.values()].includes('channel-triage'),'no retired triage session is created')
  assert.equal(learnedScopes.get(routerSessionId),'conversation-router','real Router resolves the learned skill in a batch')
  assert.ok(learnedScopes.has(task.sessionId),'the real task execution session resolves the learned skill in a batch')
  assert.equal((await h.query('router.inbox',{conversationId})).length,0)

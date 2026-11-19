@@ -48,7 +48,7 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
   }
   const readConcurrency=()=>agentCtx.get('officialAgentFactory')?.parallelReadLimit??1
   const currentSources=async(actor,events)=>{
-    const values=await mapIndependentReads((events??await currentEvents(actor)).filter(event=>event.sourceId),readConcurrency(),async event=>await query('router.source-latest',{conversationId,sourceId:event.sourceId,messageVersion:event.messageVersion})?source(event.sourceId,event.messageVersion):null)
+    const values=await mapIndependentReads((events??await currentEvents(actor)).filter(event=>event.sourceId),readConcurrency(),async event=>{try{return await source(event.sourceId,event.messageVersion)}catch(error){if(event.directRouter&&error.code==='ROUTER_SOURCE_STALE')return null;throw error}})
     return values.filter(original=>original&&!original.authorizationRevoked&&!original.triageHold&&!original.archiveRestoreHold)
   }
   agentCtx.get('memory')?.bindRecallSources(scopeOf(agentCtx),async actor=>(await currentSources(actor)).map(original=>({actor:memoryHash(original.actorId),messageId:original.sourceId,conversationId})))

@@ -28,7 +28,7 @@ test('按最早可靠送达计时，定时安排确认早于到点提醒，批�
  assert.equal(value.durationMs,3000);assert.equal(value.replyPreview,'已安排定时提醒');assert.ok(value.steps.some(row=>row.label.includes('批次共享')))
  assert.equal(responseTiming(message,[source],[reminder]).durationMs,180000,'若此前确实没有回复，到点提醒本身也可作为第一条已送达回复')
 })
-test('发送尝试、未知回读、无回执与异常时间不能生成首答耗时',()=>{
+test('发送尝试、未知回读、无回执与异常时间不能生成首次回复耗时',()=>{
  assert.equal(responseTiming(message,[source],[notice({state:'unknown'}),notice({id:'later',kind:'status',taskId:'task-one',deliveredAt:'2026-11-09T00:00:04Z'})]).durationMs,null)
  assert.equal(responseTiming(message,[source],[notice({state:'unknown'})]).status,'unconfirmed');assert.equal(responseTiming(message,[source],[notice({state:'failed'})]).status,'failed');assert.equal(responseTiming(message,[source],[notice({state:'prepared'})]).status,'pending')
  const missing=responseTiming(message,[source],[],handling);assert.equal(missing.durationMs,null);assert.equal(missing.status,'awaiting-reply');assert.match(missing.reason,/尚未找到/)
@@ -118,7 +118,7 @@ test('历史缺失、未关闭、负跨度与首答后开始的分诊/Router不�
  }
  const after=responseTiming(message,[{...source,stages:[{stage:'router',startedAt:'2026-11-09T00:00:04Z',completedAt:'2026-11-09T00:00:05Z'}]}],[notice()])
  assert.equal(after.steps.some(row=>row.kind==='stage-router-completed'),false)
- const historical=responseTiming(message,[{...source,routedAt:'2026-11-09T00:00:01Z'}],[notice()])
+ const historical=responseTiming(message,[{...source,routedAt:'2026-11-09T00:00:01Z',routeReceipt:{kind:'triage'}}],[notice()])
  assert.equal(historical.steps.find(row=>row.kind==='triage-completed').durationMs,undefined)
 })
 
@@ -141,7 +141,7 @@ test('Router starts at its observed Host preparation boundary before the clipped
 })
 
 test('missing Router starts stay unknown; open spans expose only their real start without a guessed duration',()=>{
- const historical=responseTiming(message,[{...source,routedAt:'2026-11-09T00:00:01Z'}],[notice()])
+ const historical=responseTiming(message,[{...source,routedAt:'2026-11-09T00:00:01Z',routeReceipt:{kind:'triage'}}],[notice()])
  assert.equal(historical.steps.some(row=>row.kind==='stage-router-started'),false)
  const value=responseTiming(message,[{...source,stages:[{stage:'router',startedAt:'2026-11-09T00:00:01Z'}]}],[notice()])
  assert.equal(value.steps.find(row=>row.kind==='stage-router-started').at,'2026-11-09T00:00:01Z')
@@ -149,4 +149,30 @@ test('missing Router starts stay unknown; open spans expose only their real star
  assert.equal(value.steps.find(row=>row.kind==='stage-router-completed').timingType,'span')
  const invalid=responseTiming(message,[{...source,stages:[{stage:'router',completedAt:'2026-11-09T00:00:02Z'}]}],[notice()])
  assert.equal(invalid.steps.some(row=>row.kind==='stage-router-started'),false)
+})
+
+test('直入 Router 的新消息不伪造分诊阶段，静默结清与待办状态按 Router 收据显示',()=>{
+ const original={...source,routedAt:'2026-11-09T00:00:00.500Z',routeReceipt:{kind:'router',eventId:'direct-event'}}
+ const pending=responseTiming(message,[original],[],{event:{state:'pending',directRouter:true}})
+ assert.equal(pending.status,'awaiting-handling');assert.doesNotMatch(pending.reason,/分诊/)
+ assert.ok(pending.steps.some(step=>step.kind==='router-enqueued'&&step.label==='已交给 Router'))
+ assert.ok(!pending.steps.some(step=>step.kind.includes('triage')||step.label.includes('分诊')))
+ for(const outcome of ['context-only','not-assigned']){
+  const silent=responseTiming(message,[original],[],{event:{state:'consumed',noTaskDisposition:{outcome}}})
+  assert.equal(silent.status,'no-reply');assert.equal(silent.durationMs,null);assert.match(silent.reason,/Router/)
+ }
+ const missingReply=responseTiming(message,[original],[],{event:{state:'consumed'}})
+ assert.equal(missingReply.status,'awaiting-reply','no receipt must not be inferred as a silent disposition')
+ const delivered=responseTiming(message,[original],[notice({kind:'router-reply'})],{event:{state:'consumed'}})
+ assert.equal(delivered.status,'confirmed');assert.equal(delivered.durationMs,3000)
+})
+
+test('新直入来源的首次实际回复不把旧分诊收悉或显式 acknowledgement 当成答复',()=>{
+ const original={...source,routeReceipt:{kind:'router',eventId:'direct-event'}}
+ const ack=notice({id:'ack',kind:'router-reply',deliveredAt:'2026-11-09T00:00:01Z',payload:{...notice().payload,replyPurpose:'acknowledgement'}})
+ const actual=notice({id:'answer',kind:'router-reply'})
+ const value=responseTiming(message,[original],[ack,notice({id:'old-triage'}),actual],{event:{state:'consumed'}})
+ assert.equal(value.status,'confirmed');assert.equal(value.durationMs,3000);assert.equal(value.steps.filter(step=>step.kind==='reply-visible').length,1)
+ assert.equal(responseTiming(message,[original],[ack],{event:{state:'consumed'}}).status,'awaiting-reply')
+ assert.equal(responseTiming(message,[source],[ack]).durationMs,1000,'historical timing is not rewritten')
 })

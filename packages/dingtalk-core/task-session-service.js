@@ -1878,10 +1878,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     async updateMessageRoutingHold(){fail('TOPIC_ROUTING_RETIRED')},
     async retryMessageProcessing(args){
       ctx.get('channels').assertGroupTarget(args.groupId)
-      if(!['triage','router'].includes(args.phase))fail('TOPIC_ROUTING_RETIRED')
+      if(args.phase!=='router')fail('TOPIC_ROUTING_RETIRED')
       const source=await query('source.get',{sourceId:args.sourceId})
       if(!source||source.groupId!==args.groupId||source.messageId!==args.messageId||source.version!==args.messageVersion)fail('MESSAGE_RETRY_STALE')
-      if(args.phase==='triage'&&source.routed)fail('MESSAGE_RETRY_STALE')
       await kickGroup(args.groupId)
       return {groupId:args.groupId,sourceId:source.sourceId,phase:args.phase,status:'attempted'}
     },
@@ -1914,7 +1913,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           authorizationRef: `message-retry:${groupId}:${messageId}:${message.messageVersion ?? 1}` }, `retry-source:${sourceId}`)
       }
       // Recover a partially accepted explicit retry without changing any message facts.
-      // Retry only pending durable triage/Router work; never reopen Topic units.
+      // Retry only pending durable Router work; never reopen Topic units.
       await kickGroup(groupId)
       await recover()
       return { groupId, messageId, recoveryRequested: true }

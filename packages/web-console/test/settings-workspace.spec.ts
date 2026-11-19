@@ -13,7 +13,7 @@ test('设置分类保留草稿、共享选择器与凭据保护',async({page})=>
  await selectOption(page.getByLabel('模型路由',{exact:true}),'fixture-model');
  await page.getByLabel('API 地址',{exact:true}).fill('https://draft.example.invalid/v1');
  await page.getByRole('tab',{name:'模型分工',exact:true}).click();
- await expect(page.getByLabel('一级分诊模型',{exact:true})).toBeVisible();
+ await expect(page.getByLabel('Router模型',{exact:true})).toBeVisible();
  await page.getByRole('tab',{name:'模型与 API',exact:true}).click();
  await expect(page.getByLabel('API 地址',{exact:true})).toHaveValue('https://draft.example.invalid/v1');
  await page.getByRole('tab',{name:'访问凭据',exact:true}).click();

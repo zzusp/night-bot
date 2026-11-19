@@ -117,7 +117,7 @@ test('actual Host exposes only the official runtime plus metadata routes',async 
  t.after(()=>hook.deregister())
  const source=`export const inject=['officialAgentFactory'];export function apply(ctx){ctx.provide('preloadGateChecked',true)}`
  host=await createHost({stateDir:join(root,'state'),workspaceDir:join(root,'work'),model:{provider:'fixture',model:'m'},providers:{...declaration(base),triage:{api:'anthropic-messages',baseURL:'http://127.0.0.1:1',models:[{id:'triage'}]}},roleModels:{triage:{provider:'triage',model:'triage'}}},{environmentOptions:{cwd:root,home:root,inherited:{FIXTURE_KEY:'host-scoped-fixture-key'}},extraPlugins:[{name:'data:text/javascript,'+encodeURIComponent(source)}]})
- assert.equal(host.ctx.get('preloadGateChecked'),true);assert.ok(order.includes('@earendil-works/pi-ai/api/openai-completions'));assert.ok(order.includes('@earendil-works/pi-ai/api/anthropic-messages'))
+ assert.equal(host.ctx.get('preloadGateChecked'),true);assert.ok(order.includes('@earendil-works/pi-ai/api/openai-completions'));assert.ok(!order.includes('@earendil-works/pi-ai/api/anthropic-messages'),'retired triage selection must not preload a protocol')
  const api=host.ctx.nativePiProvider;assert.equal(host.ctx.get('llm'),undefined);assert.equal(host.ctx.get('llmRetry'),undefined);assert.equal(api.adapter,undefined);assert.equal(host.ctx.nativeModelRoutes.stream,undefined);assert.ok(api.profiles);assert.ok(api.official instanceof OfficialPiModelRuntime)
  const resolved=await api.official.resolve({provider:'fixture',model:'m'}),message=await resolved.modelRuntime.streamSimple(resolved.model,{messages:[{role:'user',content:'host-direct',timestamp:1}]}).result()
  assert.equal(message.content[0].text,'HOST_OFFICIAL_RUNTIME')

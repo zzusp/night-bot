@@ -18,9 +18,7 @@ test('persistent idle Router retains committed business history across messages'
  const options={conversationId,readRouter:()=>h.query('router.get',{conversationId}),readRotations:()=>h.query('router.rotations',{conversationId}),persistence:h.host.ctx.sessionPersistence}
  const page=await routerSessionView(options)
  const triage=await triageSessionView({conversationId,persistence:h.host.ctx.sessionPersistence})
- assert.equal(triage.status,'ready');assert.equal(triage.scope,'current-triage-session-context')
- assert.ok(triage.items.some(row=>row.text===input.text));assert.ok(triage.items.some(row=>row.toolName==='channel_triage_submit'&&row.text.includes('real Router execution projection')))
- assert.doesNotMatch(JSON.stringify(triage),/一级分诊请求：|channel-triage-history|backgroundOnly/)
+ assert.equal(triage.items.length,0,'new ingress never creates a triage session')
  assert.deepEqual(rotations,[]);assert.equal(router.generation,1)
  const snapshot=await h.host.ctx.sessionPersistence.readNative(router.activeSessionId,{requireComplete:true})
  assert.equal(page.scope,'current-router-session-context');assert.equal(page.sessionId,router.activeSessionId);assert.equal(page.generation,router.generation)
@@ -39,9 +37,7 @@ test('persistent idle Router retains committed business history across messages'
   const login=await fetch(web.origin+'/api/login',{method:'POST',headers:{origin:web.origin,'content-type':'application/json'},body:JSON.stringify({token:(await readFile(web.credentialPath,'utf8')).trim()})});assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0]
   const api=async path=>{const r=await fetch(web.origin+path,{headers:{origin:web.origin,cookie}});return {status:r.status,body:await r.json()}}
   const root='/api/conversations/'+conversationId
-  const actualTriage=await api(root+'/triage/session?stream=1&limit=200');assert.equal(actualTriage.status,200);assert.ok(actualTriage.body.items.some(row=>row.text===input.text))
-  const sourceRow=actualTriage.body.items.find(row=>row.text===input.text)
-  const triageBody=await api(root+'/triage/session/messages/'+sourceRow.id+'?revision='+actualTriage.body.revision);assert.equal(triageBody.status,200);assert.equal(triageBody.body.text,input.text)
+  const actualTriage=await api(root+'/triage/session?stream=1&limit=200');assert.equal(actualTriage.status,200);assert.equal(actualTriage.body.items.length,0)
   assert.equal((await api('/api/conversations/foreign/triage/session')).status,404)
   const actual=await api(root+'/session');assert.equal(actual.status,200);assert.equal(actual.body.scope,'current-router-session-context');assert.ok(actual.body.items.length>0)
   const created=await h.service.createTask({requestId:'scoped-runtime-task',title:'真实渠道任务',objective:'只核对本地输入',channel:input})

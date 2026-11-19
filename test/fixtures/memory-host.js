@@ -4,7 +4,7 @@ import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {createHost} from '../../src/host.js'
 import {randomUUID} from 'node:crypto'
-export async function memoryHost(t,decide=()=>undefined,{callIdPrefix='',background=false,portable=true,dingtalkProfileRunner,hostConfig={},inheritedEnvironment={},replyQuality=acceptScriptedReplyQuality}={}){
+export async function memoryHost(t,decide=()=>undefined,{callIdPrefix='',background=false,portable=true,dingtalkProfileRunner,hostConfig={},inheritedEnvironment={},replyQuality=acceptScriptedReplyQuality,strictModelDecisions=false}={}){
   const root=await mkdtemp(join(tmpdir(),'night-memory-wire-')),requests=[],errors=[];let host
   const server=createServer(async(req,res)=>{
     req.setEncoding('utf8')
@@ -15,6 +15,17 @@ export async function memoryHost(t,decide=()=>undefined,{callIdPrefix='',backgro
     else{
       const selection=JSON.stringify(body.messages).includes('NIGHT_BOT_REFLECTION_SELECT')
       decision=scriptedAdmissionDecisions(body,selection?scriptedAdmissionSelection(body):await decide(body)??scriptedSkillGeneration(body))
+    }
+    // Normal legacy scripted models used bare settle for no further action.
+    // Supply only the explicit new direct-source disposition; negative Host
+    // contract cases opt out. No production result or scope is rewritten.
+    if(!strictModelDecisions&&decision?.tool==='resident_router_settle'){
+      const texts=body.messages.flatMap(message=>typeof message.content==='string'?[message.content]:(message.content??[]).filter(part=>part.type==='text').map(part=>part.text))
+      const lines=texts.flatMap(text=>text.split('\n')).filter(text=>text.startsWith('Router 请求：'))
+      const events=[...new Map(lines.flatMap(line=>JSON.parse(line.slice('Router 请求：'.length)).events).map(event=>[event.id,event])).values()]
+      const provided=decision.args.noTaskDispositions??[]
+      const direct=events.filter(event=>event.directRouter&&event.source&&decision.args.eventIds?.includes(event.id)&&!provided.some(item=>item.eventId===event.id))
+      if(direct.length)decision={...decision,args:{...decision.args,noTaskDispositions:[...provided,...direct.map(event=>({eventId:event.id,outcome:'context-only',sourceQuote:event.source.text,reason:'Synthetic model explicitly finishes this background source without further action'}))]}}
     }
     if(decision?.error){res.writeHead(400,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:decision.error,type:'invalid_request_error'}}));return}
     res.writeHead(200,{'content-type':'text/event-stream'})

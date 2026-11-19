@@ -13,12 +13,12 @@ async function remove(page:Page,id:string){await manager(page).getByRole('button
 test('同一路由模型新增编辑删除、三角色真实保存与引用保护',async({page})=>{
  await login(page);
  await add(page,'catalog-first','列表模型一');await add(page,'catalog-second','列表模型二');
- for(const label of ['一级分诊','Router','任务执行'])await role(page,label,'catalog-first');
+ for(const label of ['Router','任务执行'])await role(page,label,'catalog-first');
  await expect(manager(page).getByRole('button',{name:'删除模型 catalog-first',exact:true})).toBeDisabled();
  await manager(page).getByRole('button',{name:'编辑模型 catalog-first',exact:true}).click();await expect(page.getByLabel('模型 ID',{exact:true})).toHaveAttribute('readonly','');
  await page.getByLabel('模型显示名称（可选）',{exact:true}).fill('已使用模型的新名称');await manager(page).getByRole('button',{name:'保存模型',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'确认保存',exact:true}).click();await expect(manager(page).getByText('模型已保存。正常重启后生效，不中断当前执行。',{exact:true})).toBeVisible();
- await page.reload();await page.getByRole('tab',{name:'模型分工',exact:true}).click();await expect(page.getByLabel('一级分诊模型',{exact:true})).toHaveAttribute('data-value','catalog-first');await page.getByRole('tab',{name:'模型与 API',exact:true}).click();await expect(manager(page).getByText('已使用模型的新名称',{exact:true})).toBeVisible();
- for(const label of ['一级分诊','Router','任务执行'])await role(page,label,'fixture');
+ await page.reload();await page.getByRole('tab',{name:'模型分工',exact:true}).click();await expect(page.getByLabel('Router模型',{exact:true})).toHaveAttribute('data-value','catalog-first');await page.getByRole('tab',{name:'模型与 API',exact:true}).click();await expect(manager(page).getByText('已使用模型的新名称',{exact:true})).toBeVisible();
+ for(const label of ['Router','任务执行'])await role(page,label,'fixture');
  await expect(manager(page).getByRole('button',{name:'删除模型 catalog-first',exact:true})).toBeEnabled();
  await manager(page).getByRole('button',{name:'编辑模型 catalog-second',exact:true}).click();await page.getByLabel('模型 ID',{exact:true}).fill('catalog-renamed');await manager(page).getByRole('button',{name:'保存模型',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'确认保存',exact:true}).click();await expect(manager(page).getByRole('button',{name:'编辑模型 catalog-renamed',exact:true})).toBeEnabled();
  const deletion=manager(page).getByRole('button',{name:'删除模型 catalog-renamed',exact:true});await deletion.click();await expect(page.getByRole('dialog').getByRole('button',{name:'取消',exact:true})).toBeFocused();await page.keyboard.press('Escape');await expect(deletion).toBeFocused();

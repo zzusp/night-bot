@@ -93,13 +93,14 @@ test('real reply tool and quoted-source index use delivered ledger state after c
   const input=requestEnvelope(body,'Router 请求：'),source=input.events.find(event=>event.source)?.source
   if(!source)return {text:'Done.'}
   const step=steps.get(source.messageId)??0;steps.set(source.messageId,step+1)
+  if(source.messageId==='original'&&step===0)return {tool:'resident_router_reply',args:{operationId:'frozen-original',sourceId:source.sourceId,messageVersion:source.version,text:'Frozen accepted reply.'}}
   if(source.messageId==='lookup'&&step===0){assert.match(JSON.stringify(body.messages.filter(message=>message.role==='system')),/Frozen accepted reply/);return {tool:'resident_reply_query',args:{notificationId:notice.id}}}
   if(source.messageId==='lookup'&&step===1){const raw=body.messages.at(-1).content;assert.ok(raw.startsWith('{'),raw);const result=JSON.parse(raw);assert.equal(result.replies[0].text,'Frozen accepted reply.');assert.equal(result.replies[0].state,'delivered');queried=true}
-  if(step<2)return {tool:'resident_router_settle',args:{operationId:'reply-settle-'+source.messageId,eventIds:input.events.map(event=>event.id),noTaskDispositions:input.events.filter(event=>event.source).map(event=>({eventId:event.id,outcome:'handled-inline',reason:'Isolated history lookup only; no business execution requested',sourceQuote:event.source.text}))}}
+  if(step<2)return {tool:'resident_router_settle',args:{operationId:'reply-settle-'+source.messageId,eventIds:input.events.map(event=>event.id),noTaskDispositions:input.events.filter(event=>event.source).map(event=>({eventId:event.id,outcome:'context-only',reason:'Isolated history lookup only; no business execution requested',sourceQuote:event.source.text}))}}
   return {text:'Done.'}
  })
  await h.receive(channelMessage('original'));await h.service.whenIdle()
- notice=(await h.query('notification.list')).find(row=>row.kind==='triage-reply');assert.equal(notice.state,'delivered')
+ notice=(await h.query('notification.list')).find(row=>row.kind==='router-reply');assert.equal(notice.state,'delivered')
  await h.restart()
  await h.receive(channelMessage('lookup',{text:'核实此前已回复的内容',quotedMessage:{messageId:'original',senderId:'alice',text:'Original request original'}}));await h.service.whenIdle()
  assert.equal(queried,true);assert.equal(h.sent.length,1,'history lookup never resends the frozen reply')
@@ -124,7 +125,7 @@ test('real Router sees the automatically sent requester question on waiting and 
     assert.match(JSON.stringify(body.messages.filter(message=>message.role==='system')),/不换措辞重复提问/)
     checks++
    }
-   if(step<2)return {tool:'resident_router_settle',args:{operationId:'settle-'+key,eventIds:input.events.map(event=>event.id),...source?.messageId==='lookup'?{noTaskDispositions:[{eventId:input.events[0].id,outcome:'handled-inline',reason:'Read the existing question; do not send a duplicate.',sourceQuote:source.text}]}:{}}}
+   if(step<2)return {tool:'resident_router_settle',args:{operationId:'settle-'+key,eventIds:input.events.map(event=>event.id),...source?.messageId==='lookup'?{noTaskDispositions:[{eventId:input.events[0].id,outcome:'context-only',reason:'Read the existing question; do not send a duplicate.',sourceQuote:source.text}]}:{}}}
    return {text:'Settled.'}
   }
   if(tools.includes('task_result'))return {tool:'task_result',args:{decision:{action:'wait',summary:'The exact address is missing.',question,audience:'requester',evidence:['The local input has no address.'],limitations:[]}}}

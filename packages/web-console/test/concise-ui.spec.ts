@@ -111,7 +111,7 @@ for (const width of [1440, 390]) test(`表单与弹窗保留安全边界、错�
 test('设置卡不为已删除说明和空反馈留白，角色保存确认保持可取消', async ({page}) => {
   await login(page, '/#/settings');
   const appearance = page.locator('.settings-card').filter({has: page.getByRole('heading', {name: '助手外观', exact: true})});
-  const role = page.locator('.settings-card').filter({has: page.getByRole('heading', {name: '一级分诊', exact: true})});
+  const role = page.locator('.settings-card').filter({has: page.getByRole('heading', {name: 'Router', exact: true})});
   const workLog = page.locator('.settings-card').filter({has: page.getByRole('heading', {name: '每日工作日志', exact: true})});
   await expect(appearance.locator('.field-help')).toHaveCount(0);
   await expect(role.locator('[id$="-help"]')).toHaveCount(0);
@@ -125,11 +125,11 @@ test('设置卡不为已删除说明和空反馈留白，角色保存确认保�
     }
   }
   await page.getByRole('tab', {name: '模型分工', exact: true}).click();
-  await role.getByRole('button', {name: '保存一级分诊配置', exact: true}).click();
-  const confirm = page.getByRole('dialog', {name: '保存一级分诊配置', exact: true});
+  await role.getByRole('button', {name: '保存Router配置', exact: true}).click();
+  const confirm = page.getByRole('dialog', {name: '保存Router配置', exact: true});
   await expect(confirm).toContainText('正常重启后生效');
   await expect(confirm.getByRole('button', {name: '取消', exact: true})).toBeFocused();
   await layout(page, confirm);
   await page.keyboard.press('Escape');
-  await expect(role.getByRole('button', {name: '保存一级分诊配置', exact: true})).toBeFocused();
+  await expect(role.getByRole('button', {name: '保存Router配置', exact: true})).toBeFocused();
 });

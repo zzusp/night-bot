@@ -129,7 +129,7 @@ test('headless CLI captures shutdown while HTTP is listening but startup recover
  // Gate the real application exactly after listen, before recovery completes.
  // No production test-only switch or sleep-dependent scheduling is needed.
  await writeFile(preload,`import {registerHooks} from 'node:module';
- registerHooks({load(url,context,next){const result=next(url,context);if(url.endsWith('/src/application.js'))return {...result,source:String(result.source).replace('  await tasks.recover();',\`  process.send({type:'fixture-http-listening'});await new Promise(resolve=>{const release=message=>{if(message?.type==='fixture-release-startup'){process.off('message',release);resolve()}};process.on('message',release)});await tasks.recover();\`)};return result}});`)
+ registerHooks({load(url,context,next){const result=next(url,context);if(url.endsWith('/src/application.js'))return {...result,source:String(result.source).replace('await tasks.recover({waitForRouter:false});',\`  process.send({type:'fixture-http-listening'});await new Promise(resolve=>{const release=message=>{if(message?.type==='fixture-release-startup'){process.off('message',release);resolve()}};process.on('message',release)});await tasks.recover();\`)};return result}});`)
  const child=spawn(process.execPath,['--import',preload,'bin/night-bot.js',path],{cwd:process.cwd(),stdio:['ignore','pipe','pipe','ipc']})
  let output='';child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b)
  const exited=once(child,'close');t.after(async()=>{if(child.exitCode===null&&child.signalCode===null){if(child.connected)child.send({type:'fixture-release-startup'});child.kill('SIGTERM')}await exited;await rm(root,{recursive:true,force:true})})
