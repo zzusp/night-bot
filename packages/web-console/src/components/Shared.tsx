@@ -201,13 +201,13 @@ function ToolActivity({ item, history, compact = false, disclosures }: { item: T
     }}>
       <summary className={running ? 'pi-tool-shimmer' : undefined}>
         <span key={state} className={`pi-tool-status${completionCue ? ' pi-motion-cue' : ''}${running ? ' is-running' : failed ? ' is-error' : result ? ' is-complete' : ''}`} aria-hidden="true">{running ? <PiIcon path={mdiLoading} size={14} /> : failed ? <PiIcon path={mdiAlertCircle} size={14} /> : result ? <PiIcon path={mdiCheck} size={14} /> : <span>·</span>}</span>
-        <span className="pi-tool-title">{summaryHidden ? message.toolName || '工具' : toolSummary(item)}</span>
+        <span className="pi-tool-title">{summaryHidden ? message.toolName || '工具' : toolSummary(item)}{failed && <span className="sr-only"> · 失败</span>}</span>
         {!result && <span className="pi-tool-state">{states[state]?.[0] || state}</span>}
         <PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} />
       </summary>
       {opened && <div className={`pi-tool-body${['read', 'bash', 'pwsh'].includes(message.toolName || '') ? ' pi-specialized-tool' : ''}`}>
         <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain formatText={['read', 'bash', 'pwsh'].includes(message.toolName || '') ? text => toolInputPresentation(message.toolName!, text) : undefined} onUnavailable={() => setSummaryHidden(true)} /> : <span className="execution-tool-missing">{item.inputElsewhere ? '输入见上方调用。' : '本页无输入记录。'}</span>}</section>
-        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出</h4><MessageBody message={output} history={history} plain formatText={message.toolName === 'read' ? (text, offset) => readOutputPresentation(text, offset, item.call?.text) : text => plainOutputPresentation(text)} onUnavailable={() => setSummaryHidden(true)} /></section>)}
+        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出{output.isError ? ' · 失败' : ''}</h4><MessageBody message={output} history={history} plain formatText={!output.isError && message.toolName === 'read' ? (text, offset) => readOutputPresentation(text, offset, item.call?.text) : text => plainOutputPresentation(text)} onUnavailable={() => setSummaryHidden(true)} /></section>)}
         {!result && <section className="tool-part"><h4>输出</h4><span className="execution-tool-missing">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</span></section>}
       </div>}
     </details>
@@ -227,7 +227,7 @@ function ToolActivity({ item, history, compact = false, disclosures }: { item: T
       {opened && <>
         <section className="tool-part"><h4>输入</h4>{item.call ? <MessageBody message={item.call} history={history} plain />
           : <p className="message-scope">{item.inputElsewhere ? '见上方调用。' : '本页无输入记录。'}</p>}</section>
-        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain formatText={message.toolName === 'read' ? (text, offset) => readOutputPresentation(text, offset, item.call?.text) : text => plainOutputPresentation(text)} onUnavailable={() => setSummaryHidden(true)} /></section>)}
+        {item.results.map(output => <section className="tool-part" key={output.id}><h4>输出 {output.isError || output.status === 'error' ? '· 失败' : ''}</h4><MessageBody message={output} history={history} plain formatText={!output.isError && message.toolName === 'read' ? (text, offset) => readOutputPresentation(text, offset, item.call?.text) : text => plainOutputPresentation(text)} onUnavailable={() => setSummaryHidden(true)} /></section>)}
         {!result && <section className="tool-part"><h4>输出</h4><p className="message-scope">{item.resultStatus ? '见下方结果。' : '尚无结果。'}</p></section>}
       </>}
     </details></div>
