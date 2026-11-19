@@ -485,6 +485,29 @@ test('drain failure agrees with board state and upgrades existing active/archive
  assert.equal(queries.some(sql=>/CREATE|ALTER|DROP/.test(sql)),false)
 })
 
+test('current blocking inspection overrides a claimed wake in existing task indexes', async t => {
+ const {taskBoardState}=await import('../packages/dingtalk-core/task-message-projections.js')
+ const {db,put,page}=fixture(t,{archives:true})
+ installObserverArchivePagination(db)
+ // Emulate an installed index whose triggers did not consider inspection state.
+ for(const {name,sql} of db.prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger'").all()){
+  const old=sql.replace(/ WHEN json_extract\(t\.body,'\$\.inspection\.pending'\)=1[\s\S]*?THEN 'waiting'\n/g,'')
+  if(old!==sql){db.exec('DROP TRIGGER '+name);db.exec(old)}
+ }
+ const revision={requirementRevision:1,controlRevision:2,contextRevision:3}
+ const base={taskId:'held',status:'active',control:'active',drained:true,...revision}
+ const inspection={...revision,pending:true,reason:'host-restart'}
+ put('tasks','held',{...base,inspection});put('wakes','wake',{taskId:'held',state:'claimed'})
+ assert.equal(page({collection:'tasks',state:'running'}).total,1)
+ assert.equal(installObserverArchivePagination(db),true)
+ for(const [value,expected] of [[inspection,'waiting'],[{...inspection,controlRevision:1},'running'],[{...inspection,reason:'wait-overdue'},'running'],[{...inspection,pending:false},'running']]){
+  const task={...base,inspection:value}
+  put('tasks','held',task)
+  assert.equal(taskBoardState(task,[],true),expected)
+  assert.equal(page({collection:'tasks',state:expected}).items[0].taskId,'held')
+ }
+})
+
 test('exact task timing page never includes another task or excludes archived identity', t => {
  const {put,page}=fixture(t,{archives:true});
  put('tasks','new',{taskId:'new',status:'active',control:'active',drained:true,updatedAt:'2026-01-02T00:00:00Z'});

@@ -12,6 +12,10 @@ const taskState = indexed => `CASE
  WHEN json_extract(t.body,'$.control')='cancelled' THEN 'cancelled'
  WHEN json_extract(t.body,'$.control')='paused' OR EXISTS(SELECT 1 FROM json_each(t.body,'$.humanRequests') h WHERE json_extract(h.value,'$.status')='waiting-reply') THEN 'waiting'
  WHEN json_extract(t.body,'$.sessionFailure.code')='TASK_SESSION_DRAIN_FAILED' THEN 'waiting'
+ WHEN json_extract(t.body,'$.inspection.pending')=1 AND json_extract(t.body,'$.inspection.reason')<>'wait-overdue'
+  AND json_extract(t.body,'$.inspection.requirementRevision')=json_extract(t.body,'$.requirementRevision')
+  AND json_extract(t.body,'$.inspection.controlRevision')=json_extract(t.body,'$.controlRevision')
+  AND coalesce(json_extract(t.body,'$.inspection.contextRevision'),0)=coalesce(json_extract(t.body,'$.contextRevision'),0) THEN 'waiting'
  WHEN json_extract(t.body,'$.drained')=0 THEN 'running'
  WHEN coalesce(json_type(t.body,'$.lastDecision'),'null')='null' AND EXISTS(SELECT 1 FROM dynamic_wakes w WHERE json_extract(w.body,'$.taskId')=t.id AND json_extract(w.body,'$.state')!='acked') THEN 'running'
  WHEN json_extract(t.body,'$.lastDecision.action')='blocked' OR length(trim(coalesce(json_extract(t.body,'$.lastDecision.question'),'')))>0 THEN 'waiting'
@@ -49,7 +53,7 @@ function migrateExecutionControl(db) {
 export function installObserverArchivePagination(db) {
  if (!tableExists(db,'observer_task_index') || !tableExists(db,'dynamic_archived_tasks') || !tableExists(db,'dynamic_archived_executions')) return false
  const indexed=hasExecutionControl(db), installed=db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='observer_archived_execution_delete'").get(), active=db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='observer_task_delete'").get()
- if(installed&&installed.sql.includes('e.drained')===indexed&&installed.sql.includes('$.sessionFailure.code')&&active?.sql.includes('dynamic_archived_tasks'))return true
+ if(installed&&installed.sql.includes('e.drained')===indexed&&installed.sql.includes('$.sessionFailure.code')&&installed.sql.includes('$.inspection.pending')&&active?.sql.includes('dynamic_archived_tasks'))return true
  const taskRows = id => [ ['dynamic_tasks',`WHERE t.id=${id}`], ['dynamic_archived_tasks',`WHERE t.id=${id} AND NOT EXISTS(SELECT 1 FROM dynamic_tasks live WHERE live.id=t.id)`] ]
  const reconcileTask = id => `DELETE FROM observer_task_index WHERE id=${id} AND NOT EXISTS(SELECT 1 FROM dynamic_tasks WHERE id=${id}) AND NOT EXISTS(SELECT 1 FROM dynamic_archived_tasks WHERE id=${id});`+taskRows(id).map(([table,where])=>refreshTask(where,table,indexed)).join('')
  const reconcileRefs = id => `DELETE FROM observer_task_topics WHERE task_id=${id}; DELETE FROM observer_human_index WHERE task_id=${id};`+taskRows(id).map(([table,where])=>`
