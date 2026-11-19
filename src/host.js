@@ -61,9 +61,11 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     // 已接纳的配置保存先排空，安装锁持续持有到原子提交结束。
     await Promise.allSettled([...configurationCalls])
     await attempt(()=>ctx.get('errorFeedback')?.close())
-    await attempt(()=>permissionService?.close())
     await attempt(()=>ctx.get('application')?.close?.())
     await attempt(()=>ctx.get('officialAgentFactory')?.close())
+    // Session teardown may still validate its exact cwd or cancel a pending
+    // approval. Keep that dependency alive until every owner has joined.
+    await attempt(()=>permissionService?.close())
     // Cordis 仅记录 effect 清理错误；须显式等待原 Job/进程 join 的真实结果。
     await attempt(()=>ctx.get('jobs')?.disposeAll())
     await attempt(()=>ctx.get('subprocess')?.disposeManagedProcesses())

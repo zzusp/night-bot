@@ -506,11 +506,11 @@ test('legacy prepared replyRequest and cold unknown retain original payload byte
 })
 
 
-for(const format of ['legacy','neutral','compact'])test(`cold Router resumes an exact ${format} pending packet before a later event without changing its body or replaying either batch`,{timeout:nativeTestTimeout(60000)},async t=>{
+for(const format of ['legacy','neutral','compact','conclusion'])test(`cold Router resumes an exact ${format} pending packet before a later event without changing its body or replaying either batch`,{timeout:nativeTestTimeout(60000)},async t=>{
   const batches=[];let injected=false,legacyPacket
   const h=await residentRouterHost(t,body=>{
     const summary=handoff(body);if(summary)return summary
-    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true,...format==='conclusion'?{handoff:{assignment:'explicit',summary:'本批明确只读交办，先匹配已有事项。'}}:{}}))
     if(requestTools(body).includes('resident_router_settle')){
       const input=router(body)
       if(body.messages.at(-1)?.role!=='tool')batches.push(structuredClone(input))
@@ -527,7 +527,7 @@ for(const format of ['legacy','neutral','compact'])test(`cold Router resumes an 
         if(injected)throw Object.assign(Error('TEST_ROUTER_ENQUEUE_INTERRUPTED'),{code:'TEST_ROUTER_ENQUEUE_INTERRUPTED'})
         if(!injected){
           const input=JSON.parse(packet.content[0].text.slice('Router 请求：'.length))
-          if(format!=='compact'){
+          if(!['compact','conclusion'].includes(format)){
             input.events=(await h.query('router.inbox',{conversationId:input.conversationId})).filter(event=>packet.source.eventIds.includes(event.id))
             if(format==='neutral')input.events=input.events.map(event=>({...event,source:conversationSource(event.source)}))
             delete packet.source.modelViewVersion;delete packet.source.ledgerIdentity
@@ -556,6 +556,8 @@ for(const format of ['legacy','neutral','compact'])test(`cold Router resumes an 
   assert.equal(stored.entries.filter(entry=>entry.type==='message'&&entry.message.role==='assistant').length,0);assert.equal(batches.length,0)
   assert.equal((await h.query('router.inbox',{conversationId})).length,1)
   const originalBody=JSON.parse(legacyPacket.content[0].text.slice('Router 请求：'.length)),source=originalBody.events[0].source
+  if(format==='conclusion')assert.equal(originalBody.events[0].triageConclusion.assignment,'explicit')
+  else assert.equal(originalBody.events[0].triageConclusion,undefined)
   if(format==='legacy'){assert.equal(source.groupId,conversationId);assert.equal(Object.hasOwn(source,'conversationId'),false)}
   else if(format==='neutral')assert.equal(source.conversationId,conversationId)
   else {assert.equal(source.groupId,undefined);assert.equal(source.routeReceipt,undefined);assert.equal(legacyPacket.source.modelViewVersion,1)}

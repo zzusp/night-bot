@@ -2,7 +2,7 @@ import {executionTaskBrief,executionContext,retainExecutionPacket} from './execu
 import {traceSourcesMetadata} from '../runtime/pi-agent-observation.js'
 import {finishTaskBusinessInputs,holdTaskBusinessInputs} from '../runtime/pi-business-notices.js'
 import {taskToolInputOrigin,unresolvedTaskInputOrigins,taskEffectIntentOrigin} from './input-origin.js'
-import {communicationGuidanceIndex,communicationGuidanceReadTool,conversationSource} from '../channels/message-safety.js'
+import {channelReplyWritingPrompt,communicationGuidanceIndex,communicationGuidanceReadTool,conversationSource} from '../channels/message-safety.js'
 import {preflightPiFileMutation,isPiFileObservationalTool,isPiFileMutationNotStarted} from '../pi-file-tool-registration.js'
 import {isNativeSearchObservationalTool} from '../native-tool-fs-search.js'
 import {unresolvedNativeJobReceipts,isJobOutcomeUncertain,jobReceiptKinds} from '../runtime/job-ledger.js'
@@ -23,11 +23,13 @@ const instructions=`You are the sole execution session for this task. Router has
 
 Keep each action tied to the current objective. Choose work that advances a required outcome, verifies it, or removes a blocker. Investigate an uncertainty only if resolving it can change a necessary decision or establish a required finding. Once the evidence supports the next authorized step, take it. When the current brief is satisfied and required outcomes are verified, submit the result instead of pursuing unrelated leads.
 
+Act on available materials, configuration, code and read-only indexes: clue-backed hypotheses warrant minimal, time-bounded, low-risk checks within existing authorization, without prior proof. Batch independent safe checks when supported; try another grounded path after failure, distinguish inference from fact, and ask only for minimum blockers when no safe path remains. For an explicitly requested read-only database query, temporarily switch only the database name after trusted evidence confirms the same trusted endpoint and account authorization for the target; verify identity read-only first. Shared production membership is insufficient: no guessed credentials, cross-host reuse, privilege expansion, enumerating trial targets, or secret persistence/exposure.
+
 Judge completion by the result the user requested, not by what was attempted or the end of a turn. If the current context is sufficient and no further action or verification is needed, submit task_result directly without unnecessary tools. Verify consequential outcomes with appropriate evidence: scheduling or acceptance is not proof of the outcome, and an internal record is not proof of delivery. If a failed attempt matters to the result, verify its assumptions and continue with the most useful authorized step; do not repeat a denied call or widen permissions.
 
 For diagnosis, start from the original report and supplied materials. Follow the most specific observed symptom or error through the relevant path in the affected environment and version; do not use another version as proof of what happened. Prioritize explanations supported by case-specific evidence and choose checks that can confirm or rule them out. Keep unverified hypotheses separate from findings; do not give the requester a list of guesses to sort out. A failed tool or access path does not establish a gap in the user's report.
 
-Run short checks in the foreground with the configured default timeout instead of forcing a 1000ms background handoff. Batch independent read-only queries when the tool supports it. For a genuinely long job, use its completion notification or a blocking job_output wait instead of repeated immediate polls; a completed terminal receipt needs no extra status-only polling. These choices never remove required evidence, cancellation or drain checks. Never replay a recorded invocation. Independent calls may intentionally use identical arguments when the current authorized objective requires repeated actions. Unknown effects require reconciliation; do not claim success. Submit task_result with verified summary/evidence/limitations. For wait or blocked with a question: ${humanInputRule} Ask for the missing fact or decision in language suitable for the original conversation, whether the gap is business or technical. Omit audience. Do not include or ask for credentials, raw private logs or internal identifiers; keep investigation details in evidence. The Host routes the question; answering it does not approve a tool call or expand access. Task completion does not depend on notification delivery or the separate tool-free retrospective. Do not send channel messages yourself.`
+Run short checks in the foreground with the configured default timeout instead of forcing a 1000ms background handoff. Batch independent read-only queries when the tool supports it. For a genuinely long job that can overlap other authorized independent work, submit it in the background, do that independent work first, and only when its result is needed use its completion notification or a blocking job_output wait instead of repeated immediate polls; a completed terminal receipt needs no extra status-only polling. These choices never remove required evidence, cancellation or drain checks. Never replay a recorded invocation. Independent calls may intentionally use identical arguments when the current authorized objective requires repeated actions. Unknown effects require reconciliation; do not claim success. Submit task_result with verified summary/evidence/limitations. For wait or blocked with a question: ${humanInputRule} Ask for the missing fact or decision in language suitable for the original conversation, whether the gap is business or technical. Omit audience. Do not include or ask for credentials, raw private logs or internal identifiers; keep investigation details in evidence. The Host routes the question; answering it does not approve a tool call or expand access. Task completion does not depend on notification delivery or the separate tool-free retrospective. Do not send channel messages yourself.`
 function effectState(receipts){
   const intents=new Map()
   for(const receipt of receipts){
@@ -134,7 +136,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
         if(uncertain()||uncertainJob)systemPrompt.section({name:'task:effect-readback',order:1,text:'历史调用结果仍未知。当前会话可以读取原证据、核验并以 wait/blocked 汇报；不得重放旧调用、执行新副作用或宣称完成。该限制针对尚未结清的效果，不要求额外的新目标许可。'})
         if(input.task?.archiveRestore?.reviewRequired)systemPrompt.section({name:'task:restore-review',order:1,text:'原档案恢复仍待操作者核验。会话可读取原材料并汇报 wait/blocked；外部效果、写入和完成保持待审，不自动交付。Router 调度不代替档案恢复的业务效果核验。'})
         if(typeof groupResponsibility==='string'&&groupResponsibility.trim())systemPrompt.section({name:'task:group-responsibility',order:1,interpolate:false,text:'Configured conversation responsibility: '+groupResponsibility+'. Apply within the current task and source authorization only; this configuration grants no new permissions or cross-conversation access.'})
-        systemPrompt.section({name:'task:reply-scope',order:1,text:communicationGuidanceIndex})
+        systemPrompt.section({name:'task:reply-scope',order:1,text:input.task.conversationId?channelReplyWritingPrompt:communicationGuidanceIndex})
         if(input.humanReview)systemPrompt.section({name:'task:human-review',order:1,text:'本轮只读核对人工业务答复。读取原待答问题、候选来源的完整原文和引用，核对真实作者的业务角色、权限、对应事项和全部限制；模型摘要与推断不是授权。事实追问使用 task_result(wait, replySourceId)，以 summary/evidence/limitations 记录事实，保持原问题待答，不为回复事实追问解除实施限制。只有真实来源已回答同一问题、角色与条件证据齐备时，才用 task_human_resolve 记录原答复；SQL再次核验来源及版本。解除成功后本轮仍保持只读并以无新问题的 wait 结束，由下一普通轮在原有授权范围继续。不得在本轮执行写入、命令、记忆写入、委派、扩大目标或完成任务。'})
         if(input.dialogue)systemPrompt.section({name:'task:dialogue',order:1,text:'本轮仅只读回答当前任务对话。以 task_result 的 wait 和 summary 给出基于已有证据的答复，不执行外部效果，不创建新问题，不完成或扩大原任务。'})
         const reviewTool=exec=>isObservational(exec)
@@ -185,7 +187,9 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
           if(decision.action==='complete'&&(jobs.list(actor.id).some(job=>['running','stopping'].includes(job.status))||unresolvedNativeJobReceipts(await actor.receipts.read(),actor.id).length))throw fail('TASK_NOT_QUIESCENT')
           // A read-only resumed report cannot erase the Host's unresolved-effect diagnostic.
           if(effectHold())decision={...decision,limitations:[...new Set([...decision.limitations,effectHold()])],evidence:[...decision.evidence,...effectReferences(actor).map(row=>`Unresolved effect: ${row.toolName}; intentEntryId=${row.intentEntryId}`)]}
-          const result=await submit(decision,binding);entry.submitted=true;exec.concludeTurn();await finishTaskBusinessInputs(actor);return {received:true,...result}
+          const result=await submit(decision,binding,exec)
+          if(result?.ok===false){entry.reviewFailure=result.code;return result}
+          entry.submitted=true;exec.concludeTurn();await finishTaskBusinessInputs(actor);return {received:true,...result}
         }})
         // Capture business read capabilities before agent-created listeners
         // can replace a same-named registration. File tools are mounted by the
@@ -224,7 +228,7 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
       if(!entry.submitted&&effectHold())throw fail(effectHold())
       if(!entry.submitted&&await current()){
         const native=entry.handle.agent.piSession.messages.findLast(message=>message.role==='assistant')
-        throw Object.assign(fail(native?.stopReason==='error'?'TASK_PI_PROVIDER_ERROR':'TASK_SESSION_NO_SUBMISSION'),{phase:'decision',...native?.stopReason?{nativeAssistantStopReason:native.stopReason}:{}})
+        throw Object.assign(fail(native?.stopReason==='error'?'TASK_PI_PROVIDER_ERROR':entry.reviewFailure??'TASK_SESSION_NO_SUBMISSION'),{phase:'decision',...native?.stopReason?{nativeAssistantStopReason:native.stopReason}:{}})
       }
       return {status:entry.submitted?'submitted':'cancelled'}
     }catch(cause){

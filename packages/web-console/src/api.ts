@@ -64,6 +64,7 @@ export interface Message {
   transient?: boolean;
   id: string; role: 'user' | 'assistant' | 'tool'; text: string; createdAt?: string;
   status?: string; senderName?: string; requestId?: string; taskIds?: string[];
+  failure?: {reason: string; code?: string};
   kind?: string; toolName?: string; callId?: string; isError?: boolean; redacted?: boolean; truncated?: boolean;
   source?: MessageSource; textTotal?: number; textNextOffset?: number | null;
 }

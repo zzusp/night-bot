@@ -147,3 +147,16 @@ test('turn-end cancellation does not reopen resource reads after memory completi
  assert.equal(f.bridge.policyFailure,reason);assert.equal(f.requests.length,1);assert.equal(reads,1)
  await assert.rejects(f.bridge.refreshResources(),error=>error===reason);assert.equal(reads,1)
 })
+
+test('shared parallel policy follows native tool capability across generic, triage and Router contexts without adding tools',async t=>{
+ for(const compactionRole of [undefined,'channel-triage','conversation-router']){
+  let enabled=true
+  const f=await fixture(t,{compactionRole,hasTools:()=>enabled})
+  await f.session.prompt('first scoped run')
+  assert.match(text(f.requests[0]),/工具调用按数据与资源依赖安排/)
+  assert.match(text(f.requests[0]),/不忙轮询/)
+  assert.deepEqual(f.session.getActiveToolNames(),[])
+  const empty=await fixture(t,{compactionRole,hasTools:()=>false});await empty.session.prompt('no tools')
+  assert.doesNotMatch(text(empty.requests[0]),/工具调用按数据与资源依赖安排/)
+ }
+})

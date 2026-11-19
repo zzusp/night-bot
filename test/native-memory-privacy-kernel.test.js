@@ -1,22 +1,35 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {join} from 'node:path'
+import {join,dirname} from 'node:path'
+import {mkdir,readFile,writeFile} from 'node:fs/promises'
+import {entryPath} from '../src/memory/layered-format.js'
 import {memoryHost} from './fixtures/memory-host.js'
 import {hash} from '../src/memory/format.js'
 
-test('actual full-access model shell cannot read another principal raw Markdown or original state',{skip:process.platform!=='linux',timeout:20000},async t=>{
+test('bound actors share Bot memory through the admitted index while ask shell cannot read raw shared memory or retained private history',{skip:process.platform!=='linux',timeout:20000},async t=>{
   let command,attempt=false
-  const f=await memoryHost(t,()=>{if(attempt){attempt=false;return {tool:'bash',args:{command,description:'isolated privacy probe'}}}})
-  const a=await f.agent('private-owner',{actorId:'alice'}),b=await f.agent('private-reader',{actorId:'bob'})
-  await f.say(a.agent,'记住 facts/value：KERNEL_PRIVATE_MARKER')
-  const scope=await f.host.ctx.memory.scope(a.agent,{}),path=join(f.host.ctx.memory.store.directory(scope),'topics',hash('facts')+'.md')
+  const f=await memoryHost(t,()=>{if(attempt){attempt=false;return {tool:'bash',args:{command,description:'isolated raw-memory privacy probe'}}}})
+  const a=await f.agent('memory-owner',{actorId:'alice'}),b=await f.agent('memory-reader',{actorId:'bob'})
+  await f.say(a.agent,'记住 facts/value：KERNEL_SHARED_MEMORY_MARKER')
+  const scope=await f.host.ctx.memory.scope(a.agent,{}),other=await f.host.ctx.memory.scope(b.agent,{})
+  assert.equal(scope.kind,'bot');assert.equal(other.id,scope.id);assert.notEqual(other.actor,scope.actor)
+  const path=join(f.host.ctx.memory.store.directory(scope),entryPath('facts','value'))
+  assert.match(await readFile(path,'utf8'),/KERNEL_SHARED_MEMORY_MARKER/,'the probe targets actual current layered Markdown, not a removed topics path')
+  const original=join(f.host.ctx.runtimePaths.memory,'v1','personal',hash('alice'),'topics',hash('facts')+'.md')
+  await mkdir(dirname(original),{recursive:true});await writeFile(original,'RETAINED_PRIVATE_HISTORY_MARKER')
+  // A legacy native preset cannot override the authenticated application mode.
   await b.agent.ctx.get('permissionPresets').set(b.agent,'danger-full-access')
-  const script='const fs=require("node:fs");try{process.stdout.write(fs.readFileSync(process.argv[1],"utf8"))}catch(e){process.stdout.write("PRIVATE_READ_BLOCKED:"+e.code)}'
+  assert.equal(f.host.ctx.get('toolPermissions').mode,'ask')
+  const script='const fs=require("node:fs");for(const path of process.argv.slice(1)){try{console.log(fs.readFileSync(path,"utf8"))}catch{console.log("PRIVATE_READ_BLOCKED")}}'
   const quote=value=>"'"+value.replaceAll("'","'\\''")+"'"
-  command=[process.execPath,'-e',script,path].map(quote).join(' ')
-  attempt=true;await f.say(b.agent,'read the privacy fixture from a real shell')
-  const last=JSON.stringify(f.requests.at(-1));assert.doesNotMatch(last,/KERNEL_PRIVATE_MARKER/)
-  assert.match(last,/PRIVATE_READ_BLOCKED/,'the real program must execute under the privacy kernel mask')
+  command=[process.execPath,'-e',script,path,original].map(quote).join(' ')
+  attempt=true;await f.say(b.agent,'Read the shared fixture through its normal index; probe raw application files with the real shell.')
+  const request=f.requests.at(-1),last=JSON.stringify(request),tool=JSON.stringify(request.messages.filter(message=>message.role==='tool').at(-1))
+  assert.match(last,/KERNEL_SHARED_MEMORY_MARKER/,'shared recall is available to the second authenticated actor')
+  assert.doesNotMatch(last,/RETAINED_PRIVATE_HISTORY_MARKER/,'old private history is never imported into shared recall')
+  assert.equal((tool.match(/PRIVATE_READ_BLOCKED/g)??[]).length,2,'the actual shell must reject both raw files')
+  assert.doesNotMatch(tool,/KERNEL_SHARED_MEMORY_MARKER|RETAINED_PRIVATE_HISTORY_MARKER/)
+  assert.equal(await readFile(original,'utf8'),'RETAINED_PRIVATE_HISTORY_MARKER')
 })
 
 for(const preset of ['workspace-write','danger-full-access','read-only'])test('portable '+preset+' shell confines business writes to its installation workspace',{skip:process.platform!=='linux',timeout:20000},async t=>{

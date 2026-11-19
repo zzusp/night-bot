@@ -1,0 +1,11 @@
+case,scope,round-1,round-2,round-3
+routing-suite,完整路由套件,FAIL_208_PASS_3_FAIL,NOT_RERUN_FULL,NOT_RERUN_FULL
+writing-and-fail-closed,规范进入分诊写作以及失败不冻结,NOT_RECORDED,PASS,PASS
+router-draft-and-edit,原会话改写与等待复核期间来源改版,NOT_RECORDED,PASS,PASS
+requester-question,需求提出者提问改写后送达并复用任务会话,NOT_RECORDED,PASS,PASS
+triage-cold-and-history,冷恢复与持续会话保持历史隔离和去重,FAIL_TEST_ASSERTIONS,PASS,PASS
+frozen-and-unknown,原冻结正文/摘要不变及未知读回,PASS,PASS,PASS
+orphan-workspace-fixture,忙碌Router的遗留孤儿任务用例,FAIL_WORKSPACE_NOT_READY,REPRODUCED_ON_MAIN,NOT_RERUN
+source-guards,清单和导入及Pi运行守卫,NOT_RECORDED,PASS,PASS
+reflection-fixture,共享脚本模型保留任务复盘入口及冷恢复,NOT_RUN,NOT_RUN,PASS_3
+live-copy-and-latency,真实UAT自然度和实际时延及送达,NOT_RUN,NOT_RUN,NOT_RUN

@@ -184,6 +184,32 @@ test('absolute-root Host uses owned instruction and skill roots instead of the o
  }finally{await handle?.dispose();await host?.close()}
 })
 
+test('warm learned resource refresh reads one shared authorization view per validation phase',async t=>{
+ const {default:Reflection}=await import('../src/memory/reflection.js'),{MarkdownMemoryStore}=await import('../src/memory/store.js'),{memoryScope}=await import('../src/memory/scope.js'),{atomicWrite}=await import('../src/runtime/files.js')
+ const f=await fixture(t);let transactions=0
+ const store=new MarkdownMemoryStore(f.paths.memory,{onRead:name=>{if(name==='pending.json')transactions++}});t.after(()=>store.close())
+ const binding={actorId:'human-a',projects:[]},scope=memoryScope(binding)
+ f.ctx.memory.store=store;f.ctx.memory.binding=async()=>binding
+ const reflection=new Reflection(f.ctx,{enabled:false})
+ await store.remember(scope,{topic:'experience',key:'evidence',text:'verified task evidence',source:{sessionId:'session',messageId:'message'}})
+ const skill={active:true,supports:[{taskId:'task',memoryKey:'evidence'}],taskIds:['task'],memoryKeys:['evidence'],steps:['Read current evidence'],applicability:'Local tasks',revision:1}
+ const entries=Object.fromEntries(Array.from({length:12},(_,i)=>['verify-'+i,skill]))
+ await atomicWrite(join(reflection.directory(scope),'state.json'),JSON.stringify({version:1,reviews:{},skills:entries}))
+ const resources=await f.resolve(f.a),cold=await resources.context.skills(f.a.actor)
+ assert.equal(cold.length,12)
+ transactions=0
+ assert.deepEqual(await resources.context.skills(f.a.actor),cold)
+ assert.equal(transactions,6,'warm refresh loads two state/index/state views for the whole batch')
+ const index=store.index.bind(store);let views=0
+ store.index=async(...args)=>{
+  const result=await index(...args)
+  if(args[1]?.topic==='experience'&&++views===2)await atomicWrite(join(reflection.directory(scope),'state.json'),JSON.stringify({version:1,reviews:{},skills:{}}))
+  return result
+ }
+ assert.deepEqual(await resources.context.skills(f.a.actor),[],'a persisted revocation during the final evidence lookup discards the entire old batch')
+ assert.equal(views,2)
+})
+
 // Mutations happen at exact provider-read boundaries, without timers or model runs.
 test('skill refresh retries a real learned body revision change and publishes only current content',async t=>{
  const {default:Reflection}=await import('../src/memory/reflection.js'),{MarkdownMemoryStore}=await import('../src/memory/store.js'),{memoryScope}=await import('../src/memory/scope.js'),{atomicWrite}=await import('../src/runtime/files.js')
@@ -194,14 +220,15 @@ test('skill refresh retries a real learned body revision change and publishes on
  await store.remember(scope,{topic:'experience',key:'evidence',text:'verified task evidence',source:{sessionId:'session',messageId:'message'}})
  const skill={active:true,supports:[{taskId:'task',memoryKey:'evidence'}],taskIds:['task'],memoryKeys:['evidence'],steps:['Read current evidence'],applicability:'Local tasks',revision:1}
  await atomicWrite(join(reflection.directory(scope),'state.json'),JSON.stringify({version:1,reviews:{},skills:{verify:skill}}));f.ctx.skills.invalidateCache()
- const original=reflection.skill.bind(reflection);let reads=0
- reflection.skill=async(...args)=>{
+ const original=reflection.officialResources.bind(reflection);let reads=0
+ reflection.officialResources=async(...args)=>{
   const value=await original(...args)
   if(++reads===1)await atomicWrite(join(reflection.directory(scope),'state.json'),JSON.stringify({version:1,reviews:{},skills:{verify:{...skill,revision:2,steps:['Read updated evidence']}}}))
   return value
  }
  const resources=await f.resolve(f.a),published=await resources.context.skills(f.a.actor)
- assert.equal(published.length,1);assert.equal(reads,5)
+ assert.equal(published.length,1);assert.equal(reads,5);const cache=join(resources.agentDir,'skills'),files=(await Promise.all((await readdir(cache)).map(dir=>readdir(join(cache,dir))))).flat()
+ assert.deepEqual(files,['SKILL.md'],'stale content is never written when the write-side recheck detects the change')
  const body=await readFile(published[0].filePath,'utf8')
  assert.match(body,/NIGHT_LEARNED_SCOPE=bot\/[^;]+;revision=2;key=verify;fingerprint=[a-f0-9]{64}/)
  assert.match(body,/Read updated evidence/)
