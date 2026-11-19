@@ -7,14 +7,12 @@ export function assertSharedCommunicationGuidance(initial,loaded) {
   assert.ok(initial.tools.some(tool=>tool.function.name==='communication_guidance_read'),'native reader is available to each role')
   const prompt=initial.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
   assert.equal(prompt.split(communicationGuidanceIndex).length-1,1,'one shared index per role')
-  assert.doesNotMatch(prompt,/默认用 ELI5|NIGHT_TASK_PUBLIC_COMMUNICATION|接手或停止跟进就确认停下|问进度只给/,'full guidance is loaded on demand')
+  assert.doesNotMatch(prompt,/默认 ELI5 方式交流|NIGHT_TASK_PUBLIC_COMMUNICATION/,'full guidance is loaded on demand')
   const values=loaded.messages.filter(message=>message.role==='tool').flatMap(message=>typeof message.content==='string'?[message.content]:(message.content??[]).filter(part=>part.type==='text').map(part=>part.text))
   const guidance=values.map(text=>{try{return JSON.parse(text)}catch{return null}}).find(value=>value?.id==='communication/v1')
   assert.deepEqual(guidance,{id:'communication/v1',content:taskPublicCommunicationInstructions},'each role reads exactly the same current guideline version')
-  assert.ok(guidance.content.includes('交流时遵循其要求：“默认用 ELI5 的方式和我说话，如果我要求则深入讲解”。'))
-  assert.match(guidance.content,/默认用口语、少术语，必要术语随手解释，保留理解和行动所必需的准确名词，不幼稚化，也不限定句数/)
+  assert.ok(guidance.content.includes('接活就接住，问进度就说做到哪、还差什么，对方接手就确认停下。默认 ELI5 方式交流，不复述、不汇报过程，追问时再展开。'))
   assert.doesNotMatch(guidance.content,/与当前用户本人交流|面向第三方的正文仍按/)
-  assert.match(guidance.content,/先判断对方这条消息要什么，只回足以满足这个意图的重点/)
   // Reference replies are acceptance examples, not outputs from a real model.
   // These assertions verify only that all roles receive the general principles.
   for(const sample of intentCases)for(const anchor of sample.policyAnchors)assert.ok(guidance.content.includes(anchor),sample.intent+' principle is shared')
