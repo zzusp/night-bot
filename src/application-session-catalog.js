@@ -21,7 +21,7 @@ export default class ApplicationSessionCatalog extends Service {
   return this.merge(stored,this.liveHeader(id))
  }
  async listHeaders(){
-  const rows=await this.ctx.sessionPersistence.list(),headers=new Map(rows.map(row=>[row.header.id,structuredClone(row.header)]))
+  const rows=await this.ctx.sessionPersistence.list({isolateRouterFailures:true}),headers=new Map(rows.map(row=>[row.header.id,structuredClone(row.header)]))
   for(const actor of this.ctx.agents.list()){const live=this.liveHeader(actor.id);headers.set(actor.id,this.merge(headers.get(actor.id),live))}
   return [...headers.values()]
  }

@@ -1,3 +1,4 @@
+import {projectInterruptedRouterCalls} from './pi-router-recovery-view.js'
 import {SAFE_TOOL_PARALLELISM_POLICY} from './parallel-read.js'
 import {CONTEXT_RETENTION_POLICY} from './context-retention-policy.js'
 import {roleCompactionExtension} from './pi-role-compaction.js'
@@ -44,11 +45,11 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
   })))
   pi.on('context',guarded(async(event,ctx)=>{
    if(['channel-triage','conversation-router'].includes(compactionRole))await measurePhase('memory-before-request',()=>memory?.refreshPrompt?.(actor()))
-   if(!memory?.filter)return
+   if(!memory?.filter)return compactionRole==='conversation-router'?{messages:projectInterruptedRouterCalls(event.messages)}:undefined
    const current=actor(),projection=ctx.sessionManager.buildSessionProjection()
    const request=createPiProjectionRequest(projection,event.messages)
    const result=await measurePhase('context-projection',()=>memory.filter(current,request,ctx))
-   return {messages:result.messages}
+   return {messages:compactionRole==='conversation-router'?projectInterruptedRouterCalls(result.messages):result.messages}
   }))
   if(['channel-triage','conversation-router'].includes(compactionRole))pi.on('context_with_system',guarded(async event=>{
    const current=actor(),sections=await systemPrompt?.officialSections(current)??{},policy=await memory?.prompt?.(current);assertActive(current)

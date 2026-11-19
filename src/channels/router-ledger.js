@@ -319,6 +319,17 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       }
       write('conversations',conversation);return changed({conversation})
     })
+    if(kind==='router.handoff.recover'){
+      const row=conversationOf(a)
+      if(a.sessionId!==row.activeSessionId||a.generation!==row.generation)fail('ROUTER_GENERATION_STALE')
+      const pending=rows('router_inbox').filter(item=>item.conversationId===row.id&&item.state==='pending')
+      if(!pending.length)fail('ROUTER_EVENTS_REQUIRED')
+      const prior=rows('router_rotations').find(rotation=>rotation.candidateSessionId===row.activeSessionId&&rotation.recovery&&rotation.cutoff===row.cursor)
+      if(prior)fail('ROUTER_RECOVERY_OWNER_UNAVAILABLE')
+      const recovery={oldSessionId:row.activeSessionId,reason:required(a.reason),unknownSourceIds:[...new Set(pending.map(event=>event.sourceId).filter(Boolean))]}
+      const rotation={id:required(a.handoffId),conversationId:row.id,oldGeneration:row.generation,oldSessionId:row.activeSessionId,cutoff:row.cursor,requiredSourceIds:recovery.unknownSourceIds,state:'summarized',recovery,handoff:{recovery}}
+      row.phase='handoff';row.rotationId=rotation.id;write('router_rotations',rotation);write('conversations',row);return changed({conversation:row,rotation})
+    }
     if(kind==='router.handoff.begin'){
       const row=conversationOf(a)
       if(row.cursor<=row.lastHandoffCursor || rows('router_inbox').some(item=>item.conversationId===row.id&&item.state==='pending'))fail('ROUTER_NOT_IDLE')

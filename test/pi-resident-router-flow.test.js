@@ -852,11 +852,11 @@ test('cold recovery resumes a committed Router query result with newer cancellat
   const unpairedCommit=entries.findLastIndex((entry,i)=>i<queryIndex&&entry.type==='custom'&&entry.customType==='night.commit')
   const unpaired=lines.slice(0,unpairedCommit+2).join('\n')+'\n'
   assert.ok(decodePiJournal(Buffer.from(unpaired),row.activeSessionId,{requireComplete:true}).entries.findLast(e=>e.type==='message').message.content.some(block=>block.type==='toolCall'&&block.id===checkpoint.message.toolCallId))
-  const requests=h.requests.length
+  let requests=h.requests.length
   await writeFile(file,unpaired)
   await h.restart()
-  await assert.rejects(h.service.inspectRouterBatch({conversationId}),{code:'PI_ROUTER_RESUME_CHECKPOINT_INVALID'})
-  assert.equal(h.requests.length,requests);assert.equal(await readFile(file,'utf8'),unpaired)
+  await assert.rejects(h.service.inspectRouterBatch({conversationId}),{code:'PI_ROUTER_RESUME_EFFECT_UNRESOLVED'})
+  assert.ok(h.requests.length>requests,'cold wake may inspect unresolved calls without replaying them');assert.ok((await readFile(file,'utf8')).startsWith(unpaired));requests=h.requests.length
   const inbox=await h.query('router.inbox',{conversationId}),source=await h.query('source.get',{sourceId:inbox[0].sourceId})
   await h.store.command({id:'fixture-query-later-source',kind:'source.record-direct',args:{source:{sourceId:'query-later-source',groupId:conversationId,messageId:'query-later-message',actorId:source.actorId,channel:source.channel,version:1,text:'Cancel the remaining operation.',resources:[]},conversation:{conversationId}}})
   await h.store.command({id:'fixture-query-later-triage',kind:'triage.commit',args:{conversationId,dispositions:[{sourceId:'query-later-source',messageVersion:1,needsHandling:true,reason:'Later cancellation'}]}})
@@ -1586,7 +1586,7 @@ for(const variant of ['other-tool','wrong-events','stale-source'])test('cold Rou
  assert(call&&cutAt);const prefix=full.subarray(0,cutAt);await writeFile(file,prefix)
  const before={attempts,requests:h.requests.length,sent:h.sent.length}
  await h.restart();await h.service.whenIdle().catch(()=>{})
- assert.equal(attempts,before.attempts);assert.equal(h.requests.length,before.requests);assert.equal(h.sent.length,before.sent)
+ assert.equal(attempts,before.attempts);if(variant==='other-tool')assert.ok(h.requests.length>before.requests,'Router may inspect unknown history without redispatch');else assert.equal(h.requests.length,before.requests);assert.equal(h.sent.length,before.sent)
  const stored=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
  assert.equal(stored.entries.filter(e=>e.type==='message'&&e.message.role==='toolResult'&&e.message.toolCallId===call.id).length,0)
  assert((await readFile(file)).subarray(0,prefix.length).equals(prefix))

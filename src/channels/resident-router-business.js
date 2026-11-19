@@ -1,3 +1,4 @@
+import {unresolvedRouterCalls} from '../runtime/pi-router-recovery-view.js'
 import {mapIndependentReads} from '../runtime/parallel-read.js'
 import {instructionInputParameters,STANDING_TOPIC} from '../memory/standing-instructions.js'
 import {conversationContext,currentContextPolicy} from './conversation-context.js'
@@ -244,7 +245,21 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
     {name:'platform_schedule_delete',description:'真实取消当前conversation已建排期，停止后续触发并阻止旧排期未发出的平台回复；返回cancelled才确认。不能撤回已经开始或完成的不可逆外发。',parameters:{type:'object',additionalProperties:false,required:['operationId','sourceId','messageVersion','scheduleId'],properties:{...identity,scheduleId:string}},execute:async args=>platformScheduleDelete({...args,source:await source(args.sourceId,args.messageVersion),conversationId,requestId:residentOperationId(conversationId,args.operationId)})},
     {name:'platform_schedule_submit',description:'创建平台定时事项：at为一次性（须时区偏移），every_seconds为持续间隔（每10分钟用600），二者必须且只能选一项。不要把“每/定期/直到完成”降为一次性at或链式单次提醒。持续检查指定工作直到完成时先确定本conversation真实taskIds，提供stopWhen:{taskIds:[...]}；完成仅指这些任务当前版本有完成记录，等待/失败不是完成。prompt保留原检查范围与汇报要求，不创建空检查任务。返回scheduled后才确认安排。',parameters:{type:'object',additionalProperties:false,required:['operationId','sourceId','messageVersion','title','prompt'],properties:{...identity,title:{type:'string',minLength:1,maxLength:120},prompt:{type:'string',minLength:1,maxLength:8000},at:string,every_seconds:{type:'integer',minimum:60},stopWhen:{type:'object',additionalProperties:false,required:['taskIds'],properties:{taskIds:{type:'array',minItems:1,maxItems:30,items:string}}}}},execute:async args=>{const original=await source(args.sourceId,args.messageVersion);return platformSchedule({...args,source:original,conversationId,requestId:residentOperationId(conversationId,args.operationId)})}},
   ]
-  for(const tool of tools){const execute=tool.execute;agentCtx.get('tools').register({...tool,output,execute:async(args,exec)=>{await current(exec);return execute(args,exec)}})}
+  for(const tool of tools){const execute=tool.execute;agentCtx.get('tools').register({...tool,output,execute:async(args,exec)=>{
+    await current(exec)
+    if(!tool.isConcurrencySafe?.()&&tool.name!=='resident_router_settle'){
+      const rotations=await query('router.rotations',{conversationId})
+      const held=new Set(rotations.filter(rotation=>rotation.recovery).flatMap(rotation=>rotation.recovery.unknownSourceIds))
+      if(args.sourceId&&held.has(args.sourceId))fail('ROUTER_PRIOR_SESSION_EFFECT_UNKNOWN')
+      if(args.taskId){const task=await query('task.get',{taskId:args.taskId});if(task?.sourceRefs?.some(id=>held.has(id)))fail('ROUTER_PRIOR_SESSION_EFFECT_UNKNOWN')}
+      const history=exec.agent.piSession.sessionManager.getBranch().filter(entry=>entry.type==='message').map(entry=>entry.message)
+      // The current fresh call is not historical. Unresolved original operations
+      // remain no-replay even if the model invents a new operationId.
+      const unknown=unresolvedRouterCalls(history.slice(0,history.findLastIndex(message=>message.role==='assistant')))
+      if(unknown.some(call=>call.name===tool.name&&(call.arguments.operationId===args.operationId||call.arguments.sourceId&&call.arguments.sourceId===args.sourceId&&call.arguments.messageVersion===args.messageVersion||call.arguments.taskId&&call.arguments.taskId===args.taskId&&call.arguments.kind===args.kind)))fail('ROUTER_PRIOR_EFFECT_UNRESOLVED')
+    }
+    return execute(args,exec)
+  }})}
   const names=[...tools.map(tool=>tool.name),...['skill','memory_index','memory_read','memory_search','memory_status'].filter(name=>agentCtx.get('tools').get(name,scopeOf(agentCtx)))]
   agentCtx.get('tools').restrict({allow:names.filter(name=>agentCtx.get('tools').view(scopeOf(agentCtx)).restrictableNames.has(name))})
   agentCtx.get('tools').guard(exec=>names.includes(exec.name)?undefined:'ROUTER_TOOL_FORBIDDEN')
