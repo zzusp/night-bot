@@ -161,6 +161,34 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     return result
   }
   function command(kind, a, commandId) {
+    if(kind==='router.lookup.submit'){
+      conversationOf(a);sourceOf(a)
+      return operation(a,()=>{
+        if(!Array.isArray(a.taskIds)||!a.taskIds.length||a.taskIds.length>3||new Set(a.taskIds).size!==a.taskIds.length)fail('ROUTER_LOOKUP_ARGUMENT_INVALID')
+        for(const taskId of a.taskIds){const task=read('tasks',required(taskId),true);if(!task||task.groupId!==a.conversationId)fail('ROUTER_LOOKUP_TASK_SCOPE')}
+        const pending=rows('router_actions').filter(row=>row.result?.lookup?.state==='pending')
+        if(pending.length>=2||pending.some(row=>row.conversationId===a.conversationId))fail('ROUTER_LOOKUP_CAPACITY')
+        const id=`router-action:${hash([a.conversationId,a.operationId])}`
+        return changed({lookup:{id,conversationId:a.conversationId,sourceId:a.sourceId,messageVersion:a.messageVersion,taskIds:a.taskIds,state:'pending',createdAt:new Date().toISOString(),deadlineAt:new Date(Date.now()+30000).toISOString()}})
+      })
+    }
+    if(kind==='router.lookup.complete'){
+      const row=read('router_actions',required(a.lookupId)),lookup=row.result?.lookup
+      if(!lookup||row.conversationId!==a.conversationId)fail('ROUTER_LOOKUP_SCOPE')
+      if(lookup.state!=='pending')return changed({lookup})
+      if(!['completed','failed','timed-out','interrupted'].includes(a.status))fail('ROUTER_LOOKUP_RESULT_INVALID')
+      const source=read('sources',lookup.sourceId,true)
+      const fresh=source&&source.groupId===a.conversationId&&source.version===lookup.messageVersion&&latest(source)&&!source.retracted&&!source.authorizationRevoked&&!source.triageHold&&!source.archiveRestoreHold
+      lookup.state=fresh?a.status:'discarded';lookup.completedAt=new Date().toISOString()
+      if(a.status==='completed'&&fresh){
+        if(typeof a.summary!=='string'||!a.summary.trim()||a.summary.length>4000||!Array.isArray(a.limitations)||a.limitations.length>4||a.limitations.some(text=>typeof text!=='string'||text.length>300)||!Array.isArray(a.snapshots)||a.snapshots.length!==lookup.taskIds.length||new Set(a.snapshots.map(row=>row.taskId)).size!==lookup.taskIds.length)fail('ROUTER_LOOKUP_RESULT_INVALID')
+        for(const snap of a.snapshots){const task=read('tasks',snap.taskId,true);if(!lookup.taskIds.includes(snap.taskId)||!task||task.groupId!==a.conversationId)fail('ROUTER_LOOKUP_SCOPE');if(task.requirementRevision!==snap.requirementRevision||task.controlRevision!==snap.controlRevision||(task.contextRevision??0)!==snap.contextRevision||(task.runSequence??0)!==snap.runSequence||task.status!==snap.status||(task.leaseEpoch??0)!==snap.leaseEpoch)lookup.state='stale'}
+        if(lookup.state==='completed')lookup.result={summary:a.summary,limitations:a.limitations,snapshots:a.snapshots}
+      }
+      write('router_actions',row)
+      const event=fresh?enqueue(a.conversationId,'lookup:'+lookup.id,{kind:'router.lookup.completed',lookupResult:{lookupId:lookup.id,sourceId:lookup.sourceId,messageVersion:lookup.messageVersion,state:lookup.state,completedAt:lookup.completedAt,...lookup.result??{}}}):undefined
+      return changed({lookup,...event?{event}:{}})
+    }
     if(kind==='router.operator.enqueue'){
       const requestId=required(a.requestId),actorId=required(a.actorId)
       if(typeof a.text!=='string'||!a.text.trim()||a.text.length>8000)fail('ROUTER_OPERATOR_TEXT_INVALID')
@@ -337,9 +365,13 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
           const matches=Array.isArray(decisions)?decisions.filter(item=>item.eventId===row.id):[]
           if(matches.length!==1)fail('ROUTER_SOURCE_DISPOSITION_REQUIRED')
           const decision=matches[0], original=read('sources',row.sourceId)
-          if(decision.sourceQuote!==original.text || !['handled-inline','clarification','not-assigned',...(row.directRouter?['context-only']:[])].includes(decision.outcome) || typeof decision.reason!=='string' || !decision.reason.trim())fail('ROUTER_SOURCE_DISPOSITION_INVALID')
+          if(decision.sourceQuote!==original.text || !['handled-inline','clarification','not-assigned',...(row.directRouter?['context-only','async-query']:[])].includes(decision.outcome) || typeof decision.reason!=='string' || !decision.reason.trim())fail('ROUTER_SOURCE_DISPOSITION_INVALID')
           if(decision.outcome==='clarification' && (!Array.isArray(decision.missingInformation)||!decision.missingInformation.length||decision.missingInformation.some(value=>typeof value!=='string'||!value.trim())))fail('ROUTER_CLARIFICATION_INFORMATION_REQUIRED')
           if(row.directRouter&&decision.outcome==='handled-inline'&&!rows('notifications').some(notice=>notice.kind==='router-reply'&&notice.payload?.replyPurpose!=='acknowledgement'&&notice.payload?.conversationId===a.conversationId&&notice.payload.sourceId===row.sourceId&&notice.payload.sourceVersion===row.messageVersion&&notice.state!=='failed'))fail('ROUTER_DIRECT_REPLY_REQUIRED')
+          if(decision.outcome==='async-query'){
+            const lookup=typeof decision.lookupId==='string'?read('router_actions',decision.lookupId,true)?.result?.lookup:null
+            if(!lookup||lookup.conversationId!==a.conversationId||lookup.sourceId!==row.sourceId||lookup.messageVersion!==row.messageVersion)fail('ROUTER_LOOKUP_RECEIPT_REQUIRED')
+          }
           if(decision.outcome==='clarification') {
             const notification=typeof decision.notificationId==='string'?read('notifications',decision.notificationId,true):null
             if(notification?.kind!=='router-reply'||notification.payload?.conversationId!==a.conversationId||notification.payload.sourceId!==row.sourceId||notification.payload.sourceVersion!==row.messageVersion||notification.state==='failed')fail('ROUTER_CLARIFICATION_RECEIPT_REQUIRED')
@@ -405,6 +437,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(q.kind==='router.upgrade-held')return {sources:rows('sources').filter(row=>row.triageHold&&(!q.conversationId||row.groupId===q.conversationId)),audit:rows('router_upgrade_audit').filter(row=>!q.conversationId||row.conversationId===q.conversationId)}
     if(q.kind==='router.source-status')return {triage:read('triage',`triage:${q.sourceId}`,true),event:rows('router_inbox').find(row=>row.sourceId===q.sourceId)??null}
     if(q.kind==='router.get')return read('conversations',q.conversationId,true)
+    if(q.kind==='router.lookup.pending')return rows('router_actions').map(row=>row.result?.lookup).filter(row=>row?.state==='pending')
     if(q.kind==='router.action')return read('router_actions',`router-action:${hash([required(q.conversationId),required(q.operationId)])}`,true)
     if(q.kind==='router.list')return rows('conversations')
     if(q.kind==='router.operator.request'){const event=rows('router_inbox').find(row=>row.conversationId===q.conversationId&&row.kind==='operator.message'&&row.operator?.requestId===q.requestId&&row.operator.actorId===q.actorId);return event?{requestId:q.requestId,eventId:event.id,status:'accepted',webOnly:true}:null}
