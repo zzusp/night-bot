@@ -178,11 +178,11 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(lookup.state!=='pending')return changed({lookup})
       if(!['completed','failed','timed-out','interrupted'].includes(a.status))fail('ROUTER_LOOKUP_RESULT_INVALID')
       const source=read('sources',lookup.sourceId,true)
-      const fresh=source&&source.groupId===a.conversationId&&source.version===lookup.messageVersion&&latest(source)&&!source.authorizationRevoked&&!source.triageHold&&!source.archiveRestoreHold
+      const fresh=source&&source.groupId===a.conversationId&&source.version===lookup.messageVersion&&latest(source)&&!source.retracted&&!source.authorizationRevoked&&!source.triageHold&&!source.archiveRestoreHold
       lookup.state=fresh?a.status:'discarded';lookup.completedAt=new Date().toISOString()
       if(a.status==='completed'&&fresh){
         if(typeof a.summary!=='string'||!a.summary.trim()||a.summary.length>4000||!Array.isArray(a.limitations)||a.limitations.length>4||a.limitations.some(text=>typeof text!=='string'||text.length>300)||!Array.isArray(a.snapshots)||a.snapshots.length!==lookup.taskIds.length||new Set(a.snapshots.map(row=>row.taskId)).size!==lookup.taskIds.length)fail('ROUTER_LOOKUP_RESULT_INVALID')
-        for(const snap of a.snapshots){const task=read('tasks',snap.taskId,true);if(!lookup.taskIds.includes(snap.taskId)||!task||task.groupId!==a.conversationId)fail('ROUTER_LOOKUP_SCOPE');if(task.requirementRevision!==snap.requirementRevision||task.controlRevision!==snap.controlRevision||(task.contextRevision??0)!==snap.contextRevision||(task.runSequence??0)!==snap.runSequence)lookup.state='stale'}
+        for(const snap of a.snapshots){const task=read('tasks',snap.taskId,true);if(!lookup.taskIds.includes(snap.taskId)||!task||task.groupId!==a.conversationId)fail('ROUTER_LOOKUP_SCOPE');if(task.requirementRevision!==snap.requirementRevision||task.controlRevision!==snap.controlRevision||(task.contextRevision??0)!==snap.contextRevision||(task.runSequence??0)!==snap.runSequence||task.status!==snap.status||(task.leaseEpoch??0)!==snap.leaseEpoch)lookup.state='stale'}
         if(lookup.state==='completed')lookup.result={summary:a.summary,limitations:a.limitations,snapshots:a.snapshots}
       }
       write('router_actions',row)
