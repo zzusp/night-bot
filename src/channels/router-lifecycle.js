@@ -154,10 +154,10 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     }else fail('ROUTER_RECOVERY_BLOCKED')
   }
 
-  async function replaceOwner(row,reason,handle){
+  async function replaceOwner(row,reason,handle,unknownEventIds,unknownTaskIds,unknownSourceIds){
     if(handle){await handle.dispose();handles.delete(row.activeSessionId)}
     if(agents.get(row.activeSessionId))fail('ROUTER_RESUME_BUSY')
-    await command('router.handoff.recover',{conversationId:row.id,generation:row.generation,sessionId:row.activeSessionId,handoffId:'router-recovery:'+hash([row.id,row.generation]),reason})
+    await command('router.handoff.recover',{conversationId:row.id,generation:row.generation,sessionId:row.activeSessionId,handoffId:'router-recovery:'+hash([row.id,row.generation]),reason,...unknownEventIds===undefined?{}:{unknownEventIds,...unknownTaskIds===undefined?{}:{unknownTaskIds},...unknownSourceIds===undefined?{}:{unknownSourceIds}}})
     row=await query('router.get',{conversationId:row.id});await recoverConversation(row)
     return query('router.get',{conversationId:row.id})
   }
@@ -233,8 +233,8 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         // the consumed prefix or weaken the ordinary continuation's identity guard.
         if(admittedPacket.source.eventIds.some(id=>!inbox.some(event=>event.id===id))){
           try{
-            await checkPartialSettlement(row,handle,admittedPacket,failed?.id)
-            row=await replaceOwner(row,'ROUTER_BATCH_PARTIALLY_SETTLED',handle);handle=undefined;continue
+            const isolation=await checkPartialSettlement(row,handle,admittedPacket,failed?.id)
+            row=await replaceOwner(row,isolation?'ROUTER_BATCH_ISOLATED':'ROUTER_BATCH_PARTIALLY_SETTLED',handle,isolation?admittedPacket.source.eventIds:[],isolation?.unknownTaskIds,isolation?.unknownSourceIds);handle=undefined;continue
           }catch(error){
             if(/^(?:PI_ROUTER_RESUME_|ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT|ROUTER_EVENT_SCOPE)/.test(error.code??''))fail('ROUTER_BATCH_UNSETTLED',error.code)
             throw error
@@ -253,7 +253,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         if(consumedWithSupplements||branch.some(entry=>entry.customType==='night.router-resume-claim'&&entry.details?.packetId===admittedPacket.id)){
           const known=new Set(branch.filter(entry=>entry.customType==='night.business-input').flatMap(entry=>entry.details?.source?.eventIds??[]))
           if(!inbox.some(event=>!known.has(event.id)))fail('ROUTER_BATCH_UNSETTLED')
-          row=await replaceOwner(row,'ROUTER_CONTINUATION_FAILED',handle);handle=undefined;continue
+          row=await replaceOwner(row,'ROUTER_CONTINUATION_FAILED',handle,admittedPacket.source.eventIds);handle=undefined;continue
         }
         const inspection=inbox.some(event=>event.kind==='task.inspection')
         if(!unexpectedStop&&(failed?.message?.role!=='assistant'||failed.message.stopReason!=='aborted'&&!(inspection&&['error','stop'].includes(failed.message.stopReason))))fail('ROUTER_BATCH_UNSETTLED',errors.get(conversationId)?.recoveryReason)
@@ -329,11 +329,24 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     if(!routerPacketViews(row,original).some(value=>sameRouterPacket(value,packet)))fail('ROUTER_PACKET_ID_CONFLICT')
     // Strict native validation retains unknown/missing/error tool-result fences.
     // This is not the relaxed wake-only inference path.
-    await handle.checkRouterBatch({packet,failedEntryId})
+    let isolation
+    try{await handle.checkRouterBatch({packet,failedEntryId})}
+    catch(error){
+      if(error.code!=='PI_ROUTER_RESUME_EFFECT_UNRESOLVED')throw error
+      let fresh=false
+      for(const event of await query('router.inbox',{conversationId,limit:30})){
+        const source=event.source
+        if(!ids.includes(event.id)&&event.kind==='source.message'&&source&&!source.authorizationRevoked&&!source.retracted&&!source.triageHold&&!source.archiveRestoreHold&&await query('router.source-latest',{conversationId,sourceId:source.sourceId,messageVersion:source.version})){fresh=true;break}
+      }
+      if(!fresh)throw error
+      // This is not effect-complete recovery: exact paired old failures remain
+      // unknown and fenced. Only independent later sources can gain a new owner.
+      isolation=await handle.checkRouterBatch({packet,failedEntryId,isolationOnly:true})
+    }
     const current=await query('router.get',{conversationId}),pending=await query('router.inbox',{conversationId,limit:30})
     if(!current||current.phase!=='active'||current.generation!==row.generation||current.activeSessionId!==row.activeSessionId||current.cursor!==row.cursor||agents.get(row.activeSessionId)!==handle.agent||handle.agent.lifecycle.signal.aborted)fail('ROUTER_RESUME_STALE')
     if(!isDeepStrictEqual(remaining.map(event=>event.id),pending.slice(0,remaining.length).map(event=>event.id))||!isDeepStrictEqual(events,await query('router.batch-events',{conversationId,eventIds:ids})))fail('ROUTER_RESUME_BATCH_STALE')
-    assertOpen()
+    assertOpen();return isolation
   }
   async function prepareResume(row,handle,packet){
     const conversationId=row.id,ids=packet.source.eventIds

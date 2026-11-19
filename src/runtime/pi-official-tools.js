@@ -1,3 +1,4 @@
+import {recordRouterNotStarted} from './router-preexecution-proof.js'
 import {setPiLiveToolValidation,withdrawPiLiveTool} from './pi-live-output.js'
 import {createHash} from 'node:crypto'
 import {snapshotJsonValue,deepFreeze} from '../native-values.js'
@@ -91,7 +92,7 @@ export function createPiOfficialTools({registry,owner,businessAudit,maxParallelT
   ...outputSchema===undefined?{}:{outputSchema},
   // Official Pi invokes this before its permissive coercion pass. Preserve the
   // captured raw JSON type contract and never default or coerce model inputs.
-  prepareArguments(input){const args=snapshotJsonValue(input);const issues=args===undefined?['arguments must be lossless JSON']:validateJsonSchemaValue(schema.parameters,args,'');if(issues.length)throw new ToolArgsError(issues);return deepFreeze(args)},
+  prepareArguments(input){const args=snapshotJsonValue(input);const issues=args===undefined?['arguments must be lossless JSON']:validateJsonSchemaValue(schema.parameters,args,'');if(issues.length){const error=new ToolArgsError(issues);recordRouterNotStarted(owner,{toolName:schema.name,args:input,content:[{type:'text',text:error.message}],stage:'schema-validation'});throw error;}return deepFreeze(args)},
   executionMode:'parallel',replay:'never',
   async execute(callId,args,signal,onUpdate){
    const operation=async()=>{
@@ -104,6 +105,7 @@ export function createPiOfficialTools({registry,owner,businessAudit,maxParallelT
     // All durable effect receipts must settle inside this awaited pipeline. An
     // unawaited SDK event/result observer is not a receipt or an admission proof.
     const result=await registry.execute({agent:owner,name:schema.name,callId,arguments:args,signal:combined,businessAudit,onPartialValidator:check=>setPiLiveToolValidation(owner,callId,check),onPartialWithdraw:()=>withdrawPiLiveTool(owner,callId),onPartial:async result=>{if(combined.aborted||concluded||fenced||!businessAudit.isLive())return;await onUpdate?.(result)}})
+    if(registry.isProvenRouterNotStarted?.(result,owner,callId,schema.name,args)){recordRouterNotStarted(owner,{toolName:schema.name,callId,args,content:result.content,stage:'router-guard'});await businessAudit.flush()}
     if(result.concludesTurn)concluded=true
     if(result.additionalContexts?.length){
      try{
