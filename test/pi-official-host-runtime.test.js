@@ -199,3 +199,27 @@ for(const uncertain of [false,true])test(`默认应用 HTTP 将任务待处理�
  assert.deepEqual(await app.tasks.store.query({kind:'task.list'}),before,'读取分类不能改变任务决定、排空或旧效果')
  assert.equal(f.requests.length,0,'健康读取和冷启动不触发模型或任务重试')
 })
+
+
+test('Host shutdown retains exact working-directory metadata authority until application and official owners drain',async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();let observed=false,closeCalls=0,permissionClosed=false
+ t.after(()=>release.resolve())
+ const f=await memoryHost(t,undefined,{hostConfig:{permissionMode:'full'}}),ctx=f.host.ctx
+ const h=await f.agent('shutdown-directory-owner',{actorId:'fixture-owner'})
+ const permissions=ctx.get('toolPermissions'),cwd=h.agent.ctx.get('workingDirectory').get(h.agent),closePermissions=permissions.close.bind(permissions)
+ permissions.close=async()=>{await closePermissions();if(!permissionClosed){permissionClosed=true;assert.throws(()=>permissions.canStatWorkingDirectory({actor:h.agent,path:cwd}),{code:'PERMISSION_CALL_INACTIVE'})}}
+ ctx.provide('application',{close:async()=>{
+  closeCalls++;entered.resolve();await release.promise
+  assert.equal(permissions.canStatWorkingDirectory({actor:h.agent,path:cwd}),true)
+  const info=await h.agent.ctx.get('fs').statWorkingDirectory(h.agent,cwd,new AbortController().signal)
+  assert.equal(info.type,'directory');observed=true
+ }})
+ const closing=f.host.close();assert.equal(f.host.close(),closing)
+ await entered.promise
+ const {createHost}=await import('../src/host.js')
+ try{await assert.rejects(createHost(f.config,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}}),{code:'NIGHT_DATA_IN_USE'})}finally{release.resolve()}
+ await closing
+ assert.equal(observed,true);assert.equal(closeCalls,1);assert.equal(f.requests.length,0)
+ assert.equal(permissionClosed,true);assert.equal(h.agent.lifecycle.signal.aborted,true)
+ await f.close();await f.boot();await f.close()
+})

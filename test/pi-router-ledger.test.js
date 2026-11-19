@@ -46,7 +46,7 @@ async function fixture(t) {
       requirementRevision:b.requirementRevision,controlRevision:b.controlRevision,
       arrangementRevision:dependency.arrangementRevision,decision:'satisfied',evidence:['proof:a'],...extra}
   }
-  return {get store(){return store},command,query,plan,complete,evaluation,conversationId,sourceId,generation,
+  return {get store(){return store},dbPath:config.dbPath,command,query,plan,complete,evaluation,conversationId,sourceId,generation,
     async reopen(){await store.close();store=await openDynamicTaskStore({...config,initialize:false})}}
 }
 
@@ -636,4 +636,40 @@ for(const wait of ['user','external-event','future-time'])test('24-hour '+wait+'
   await f.command('router.settle',{...settle,operationId:'settle-stale-only',eventIds:[latest.id]})
   assert.equal((await f.query('task.get',{taskId:'a'})).contextRevision,changed.contextRevision)
   for(const control of ['paused','cancelled']){await f.command('task.control',{taskId:'a',control});t.mock.timers.tick(WAIT_REVIEW_INTERVAL_MS);assert.equal(taskInspectionReason(await f.query('task.get',{taskId:'a'})),undefined)}
+})
+
+
+test('new triage conclusions are frozen, bound, reply-independent and idempotent across restart; legacy rows stay unchanged',async t=>{
+ const f=await fixture(t)
+ const sources=[]
+ for(const [index,assignment,reply,needsHandling] of [[0,'explicit',true,true],[1,'uncertain',false,true],[2,'explicit',true,false],[3,null,false,true]]){
+  const source={sourceId:'handoff-'+index,groupId:f.conversationId,messageId:'handoff-message-'+index,version:1,actorId:'alice',text:'Synthetic original '+index,quote:{messageId:'quote',actorId:'bob',text:'Original quote'},resources:[{id:'synthetic-attachment',name:'reference.txt'}]}
+  await f.command('source.record-direct',{source,conversation:{conversationId:f.conversationId}})
+  sources.push({sourceId:source.sourceId,messageVersion:1,needsHandling,reason:'Independent triage assessment',...reply?{reply:'我先核对一下。'}:{},...assignment?{handoff:{assignment,summary:'分诊参考：核对已有事项，保留受话对象的不确定性。'}}:{}})
+ }
+ await f.command('triage.commit',{conversationId:f.conversationId,dispositions:sources})
+ const before=await f.query('router.inbox',{conversationId:f.conversationId})
+ assert.equal(before.length,3);assert.equal(before[0].triageConclusion.assignment,'explicit');assert.equal(before[1].triageConclusion.assignment,'uncertain')
+ assert.equal(before[0].triageReply.payload.text,'我先核对一下。');assert.equal(before[1].triageReply,undefined)
+ assert.equal(before[2].triageConclusion,undefined);assert.equal(Object.hasOwn(before[2],'triageDecisionId'),false)
+ assert.equal(before[0].source.quote.text,'Original quote');assert.equal(before[0].source.resources[0].name,'reference.txt')
+ await f.command('triage.commit',{conversationId:f.conversationId,dispositions:sources});await f.reopen()
+ assert.deepEqual(await f.query('router.inbox',{conversationId:f.conversationId}),before)
+ assert.equal((await f.query('notification.list')).filter(n=>n.kind==='triage-reply').length,2)
+ await assert.rejects(f.command('triage.commit',{conversationId:'foreign',dispositions:[sources[0]]}),/ROUTER_CONVERSATION_SCOPE/)
+ await assert.rejects(f.command('triage.commit',{dispositions:[{...sources[0],messageVersion:2}]}),/ROUTER_SOURCE_STALE/)
+ await assert.rejects(f.command('triage.commit',{dispositions:[{...sources[0],handoff:{...sources[0].handoff,summary:'Changed'}}]}),/ROUTER_TRIAGE_CONFLICT/)
+ const {DatabaseSync}=await import('node:sqlite'),db=new DatabaseSync(f.dbPath);t.after(()=>db.close())
+ const legacyId='triage:handoff-3',legacy=db.prepare('SELECT body FROM dynamic_triage WHERE id=?').get(legacyId).body,changedLegacy=JSON.parse(legacy)
+ changedLegacy.decision.handoff={assignment:'explicit',summary:'Must not enrich an already queued legacy packet'}
+ db.prepare('UPDATE dynamic_triage SET body=? WHERE id=?').run(JSON.stringify(changedLegacy),legacyId)
+ assert.deepEqual((await f.query('router.inbox',{conversationId:f.conversationId}))[2],before[2])
+ db.prepare('UPDATE dynamic_triage SET body=? WHERE id=?').run(legacy,legacyId)
+ const id=before[0].triageDecisionId,original=JSON.parse(db.prepare('SELECT body FROM dynamic_triage WHERE id=?').get(id).body)
+ for(const edit of [r=>r.conversationId='foreign',r=>r.messageVersion=2,r=>r.decision.sourceId='foreign',r=>r.decision.needsHandling=false]){
+  const altered=structuredClone(original);edit(altered);db.prepare('UPDATE dynamic_triage SET body=? WHERE id=?').run(JSON.stringify(altered),id)
+  await assert.rejects(f.query('router.inbox',{conversationId:f.conversationId}),/ROUTER_TRIAGE_BINDING_INVALID/)
+ }
+ db.prepare('UPDATE dynamic_triage SET body=? WHERE id=?').run(JSON.stringify(original),id)
+ assert.deepEqual(await f.query('router.inbox',{conversationId:f.conversationId}),before)
 })
