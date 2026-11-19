@@ -221,12 +221,25 @@ export default class PiSessionPersistence extends Service {
       const bytes=await readFile(path),newline=bytes.indexOf(10),header=JSON.parse(bytes.toString('utf8',0,newline<0?bytes.length:newline))
       if(this.path(header.id)!==path)throw fail('PI_SESSION_FILENAME_MISMATCH')
       options.signal?.throwIfAborted();if(this.closed)throw fail('PI_PERSISTENCE_CLOSED')
-      return this.writers.get(header.id)?.snapshot()??sessionStat(decode(bytes,header.id,this.ctx.get('portablePaths')))
+      try{return this.writers.get(header.id)?.snapshot()??sessionStat(decode(bytes,header.id,this.ctx.get('portablePaths')))}catch(error){
+        if(!options.isolateRouterFailures)throw error
+        // Only a checksum-verified committed prefix can identify a damaged
+        // Router. No inferred header grants workspace or session authority.
+        const lines=bytes.toString('utf8').split('\n');let offset=0;const commits=[]
+        for(const line of lines){offset+=Buffer.byteLength(line)+1;let entry;try{entry=JSON.parse(line)}catch{break}if(entry.type==='custom'&&entry.customType==='night.commit')commits.push(offset)}
+        for(const end of commits.toReversed())try{
+          const trusted=decode(bytes.subarray(0,end),header.id,this.ctx.get('portablePaths'))
+          if(trusted.header.runtimeOwner!=='conversation-router')throw error
+          this.ctx.logger?.warn('ROUTER_SESSION_ISOLATED:'+header.id+':'+(error.code??'PI_SESSION_READ_FAILED'))
+          return null
+        }catch(cause){if(cause===error)throw error}
+        throw error
+      }
     }
     // 每份日志只读一次；小批并行隐藏磁盘延迟，失败也先排空本批 I/O。
     for(let offset=0;offset<names.length;offset+=8){
       const batch=await Promise.allSettled(names.slice(offset,offset+8).map(inspect))
-      for(const row of batch){if(row.status==='rejected')throw row.reason;result.push(row.value)}
+      for(const row of batch){if(row.status==='rejected')throw row.reason;if(row.value)result.push(row.value)}
     }
     for(const id of this.taskRoutes?.keys()??[]){const item=await this.stat(id,options);if(item)result.push(item)}
     const ids=new Set(result.map(item=>item.header.id))

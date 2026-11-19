@@ -210,15 +210,24 @@ export class OfficialAgentFactory {
     if(inputs.length!==1||!isDeepStrictEqual(input.details,{packetId:packet.id,source:packet.source})||!isDeepStrictEqual(input.content,packet.content)||branch.findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')?.id!==input.id)throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
     return {entries,branch,messages,input}
    }
-   const routerCheckpoint=(packet,failedEntryId,claim)=>{
+   const routerCheckpoint=(packet,failedEntryId,claim,wakeOnly=false)=>{
     const {entries,branch,messages,input}=routerInputCheckpoint(packet)
     const failure=branch.find(entry=>entry.id===failedEntryId),claims=entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.router-resume-claim'&&entry.details?.failedEntryId===failedEntryId)
     if(claim===undefined&&claims.length)throw fail('PI_ROUTER_RESUME_CHECKPOINT_USED')
     const snapshot=store.snapshot(),tail=claim===undefined?-1:-2
     if(claim!==undefined&&(claims.length!==1||!isDeepStrictEqual(claims[0].details,claim)||messages.at(-1)?.id!==claims[0].id||entries.length!==snapshot.nativeEntryCount))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
-    if(failure?.type!=='message'||messages.at(tail)?.id!==failedEntryId||branch.indexOf(input)>=branch.indexOf(failure))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+    const inputOnly=failure?.id===input.id&&failure.type==='custom_message'
+    if((failure?.type!=='message'&&!inputOnly)||messages.at(tail)?.id!==failedEntryId||branch.indexOf(input)>branch.indexOf(failure))throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
     const terminal=failure.message
-    if(terminal.role==='toolResult'){
+    if(inputOnly){
+     // Cold death before the first response: the durable input is the checkpoint,
+     // never a fabricated aborted assistant message or a replayed business input.
+     if(entries.length!==snapshot.nativeEntryCount||branch.at(-1)?.id!==entries.at(-1)?.id)throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+    }else if(wakeOnly){
+     // Waking inference is not a proof of effect completion. Original calls stay
+     // in the journal; only the read-only provider view removes unmatched calls.
+     if(entries.length!==snapshot.nativeEntryCount||branch.at(-1)?.id!==entries.at(-1)?.id)throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
+    }else if(terminal.role==='toolResult'){
      // 只在已提交的只读调用批次之后开启新轮；内存尾部不能成为检查点。
      if(entries.length!==snapshot.nativeEntryCount||branch.at(-1)?.id!==entries.at(-1)?.id)throw fail('PI_ROUTER_RESUME_CHECKPOINT_INVALID')
      const through=messages.slice(0,claim===undefined?messages.length:-1)
@@ -239,10 +248,10 @@ export class OfficialAgentFactory {
      const message=entry.message
      // Pi 1.5.0 在 aborted 生成后直接结束，未派发的调用不冒充未知效果；此前调用仍须真实结果。
      if(message.role==='assistant'&&!(entry.id===failedEntryId&&message.stopReason==='aborted'))for(const block of message.content)if(block.type==='toolCall'){if(calls.has(block.id))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED');calls.set(block.id,block.name)}
-     if(message.role==='toolResult'){if(!calls.has(message.toolCallId)||calls.get(message.toolCallId)!==message.toolName||message.isError)throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED');calls.delete(message.toolCallId)}
+     if(message.role==='toolResult'){if(!calls.has(message.toolCallId)||calls.get(message.toolCallId)!==message.toolName||message.isError&&!wakeOnly)throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED');calls.delete(message.toolCallId)}
     }
     const receipts=entries.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit').map(entry=>entry.data)
-    if(calls.size||unresolvedNativeJobReceipts(receipts,id).length||receipts.some(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent'))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
+    if(!wakeOnly&&(calls.size||unresolvedNativeJobReceipts(receipts,id).length||receipts.some(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent')))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
     return {conversationId:store.header.conversationId,generation:store.header.generation,sessionId:id,packetId:packet.id,inputEntryId:input.id,failedEntryId,checkpointRevision:store.snapshot().revision}
    }
    const handle={actor,agent:actor,session:bundle.session,
@@ -262,7 +271,7 @@ export class OfficialAgentFactory {
      if(routerContinuing||routerFrozen||maintenanceCount||admission.paused||pending.size)throw fail('PI_ROUTER_RESUME_BUSY')
      return routerCheckpoint(packet,failedEntryId)
     },
-    resumeRouterBatch({packet,failedEntryId,supplements=[]},validate){
+    resumeRouterBatch({packet,failedEntryId,supplements=[],wakeOnly=false},validate){
      active();check()
      if(ownerCtx.agents.currentInitiator?.()!==undefined)throw fail('PI_ROUTER_RESUME_HOST_ONLY')
      if(routerContinuing||routerFrozen||maintenanceCount||admission.paused||pending.size||!bundle.session.isIdle)throw fail('PI_ROUTER_RESUME_BUSY')
@@ -273,18 +282,18 @@ export class OfficialAgentFactory {
       if(next.source.kind!=='conversation-router'||next.source.conversationId!==packet.source.conversationId||next.source.generation!==packet.source.generation||next.id===packet.id||!next.source.eventIds?.length)throw fail('PI_ROUTER_RESUME_SCOPE')
       for(const id of next.source.eventIds){if(eventIds.has(id))throw fail('PI_ROUTER_RESUME_INPUT_INVALID');eventIds.add(id)}
      }
-     routerCheckpoint(packet,failedEntryId)
+     routerCheckpoint(packet,failedEntryId,undefined,wakeOnly)
      routerContinuing=true
      const authorizeResume=async()=>{active();check();await validate();active();for(const input of [packet,...supplements])if(await authorize(input,actor)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED');active()}
      const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,async()=>{
-      await authorizeResume();routerCheckpoint(packet,failedEntryId)
+      await authorizeResume();routerCheckpoint(packet,failedEntryId,undefined,wakeOnly)
       routerFrozen=true;admission.pause()
       const hold=await drain('maintenance')
       active();await hold.resume?.();active();check();admission.resume();routerFrozen=false
       routerResumeCheck=async()=>{await authorizeResume();routerResumeCheck=undefined}
       return bundle.resumeRouterBatch(packet,async()=>{
-       await store.commit();await authorizeResume();return routerCheckpoint(packet,failedEntryId)
-      },async proof=>{routerCheckpoint(packet,failedEntryId,proof);await authorizeResume()},supplements)
+       await store.commit();await authorizeResume();return routerCheckpoint(packet,failedEntryId,undefined,wakeOnly)
+      },async proof=>{routerCheckpoint(packet,failedEntryId,proof,wakeOnly);await authorizeResume()},supplements)
      }))
      pending.add(operation)
      void operation.finally(()=>{routerResumeCheck=undefined;routerContinuing=false;pending.delete(operation)}).catch(()=>{})

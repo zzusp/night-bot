@@ -1435,7 +1435,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       }), attempted)
     }
   }
-  function recordRouterFailure(id,error){failures.set('router:'+id,{id:'router:'+id,conversationId:id,code:error.code??error.message})}
+  function recordRouterFailure(id,error){failures.set('router:'+id,{id:'router:'+id,conversationId:id,code:error.recoveryReason??error.code??error.message})}
   function syncRouterFailures(){
     for(const [id,error]of residentRouter.errors)recordRouterFailure(id,error)
     for(const [id,error]of failures)if(id==='router:'+error.conversationId&&!residentRouter.errors.has(error.conversationId))failures.delete(id)
@@ -1470,7 +1470,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const estimates=interruptedTimingEvidence(task,stored,windows)
     if(estimates.length)await command('observer.timing.record',{taskId:task.taskId,sessionId:task.sessionId,estimates},'observer-timing:'+hash([task.sessionId,estimates]))
   }
-  async function recover() {
+  async function recover({waitForRouter=true}={}) {
     if (closed) return { failures: [] }
     // Inspection must keep recording incidents while a previous recovery waits
     // on a busy Router. Its cadence guard is claimed before the first await.
@@ -1524,7 +1524,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           failures.delete(outbound.outboundId)
         }catch(error){failures.set(outbound.outboundId,{id:outbound.outboundId,code:error.code??error.message})}
       }
-      await residentRouter.recover()
+      await residentRouter.recover({wait:waitForRouter})
       syncRouterFailures()
       for (const source of await query('source.list')) {
         if (!source.routed) void kickGroup(source.groupId)
