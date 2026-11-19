@@ -1126,8 +1126,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           },
           submit: async (decision,submittedBinding,exec) => {
             const replyBinding={...submittedBinding}
-            if(task.conversationId&&decision.audience==='topic')decision={...decision,audience:'requester'}
-            if (decision.question?.trim() && decision.audience === undefined) decision = { ...decision, audience: 'operator' }
+            const hasQuestion = !!decision.question?.trim()
+            if (hasQuestion && decision.audience === 'operator') {
+              const code = 'TASK_CONVERSATION_QUESTION_PUBLIC_REQUIRED'
+              throw Object.assign(new Error(`${code}: 请省略 audience，重新提交不含私密内容的问题。有真实 IM 来源时会在原会话提问，否则留在 Web。`), { code })
+            }
+            if ((task.conversationId && decision.audience === 'topic') || (hasQuestion && decision.audience === undefined)) {
+              decision = { ...decision, audience: 'requester' }
+            }
             if (decision.question?.trim() && decision.executionIds) for (const id of decision.executionIds) {
               const execution = await query('execution.get', { executionId: id })
               if (execution?.taskId !== taskId) fail('TASK_EXECUTION_SCOPE_MISMATCH')
@@ -1136,11 +1142,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             }
             if (humanReview && (decision.action !== 'wait' || decision.question?.trim())) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
             if (decision.replySourceId !== undefined && (!humanReview || decision.action !== 'wait' || !humanReview.sourceIds.includes(decision.replySourceId))) fail('DYNAMIC_HUMAN_REVIEW_SOURCE_INVALID')
-            const publicInternalIds = decision.question?.trim() && decision.audience !== 'requester' || dialogue || decision.replySourceId !== undefined ? await replyInternalIds(task, sources) : []
-            if (decision.question?.trim() && decision.audience !== 'requester') {
-              // 人工问题和已尝试事项会外发；evidence 保留在内部账本，不拿调试 ID 当用户操作入口。
-              for (const text of [task.title, decision.question, ...(decision.attemptedActions ?? [])]) assertConversationReply(text, publicInternalIds)
-            }
+            const publicInternalIds = hasQuestion || dialogue || decision.replySourceId !== undefined ? await replyInternalIds(task, sources) : []
+            if (hasQuestion) assertConversationReply(decision.question, publicInternalIds)
+            if (hasQuestion && decision.audience === 'topic') for (const text of [task.title, ...(decision.attemptedActions ?? [])]) assertConversationReply(text, publicInternalIds)
             if (dialogue || decision.replySourceId !== undefined) assertConversationReply(decision.summary, publicInternalIds)
             if (dialogue) {
               if (decision.action !== 'wait' || decision.question?.trim()) fail('TASK_DIALOGUE_REPLY_ONLY')
@@ -1182,7 +1186,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
               const topicFacts=!task.conversationId&&(replyBindings.length>0||!!task.replyBindings?.length||!!task.topicRefs?.length)
               await command('task.wait', { binding:replyBinding, ...decision, topicFacts, replyBindings, ...(humanReply ? { humanReply } : {}), ...(decision.question?.trim() ? { humanRequest: {
                 requestId: `human-${hash([taskId, binding.requirementRevision, binding.controlRevision, binding.leaseEpoch])}`,
-                reason: decision.summary, audience: decision.audience ?? 'operator', ...(decision.executionIds ? { executionIds: decision.executionIds } : {}), attemptedActions: decision.attemptedActions ?? [] } } : {}) }, `wait:${taskId}:${binding.leaseEpoch}`)
+                reason: decision.summary, audience: decision.audience, ...(decision.executionIds ? { executionIds: decision.executionIds } : {}), attemptedActions: decision.attemptedActions ?? [] } } : {}) }, `wait:${taskId}:${binding.leaseEpoch}`)
               if (decision.question?.trim()) {
                 const current = await requireTask(taskId)
                 await queueHumanRequest(current, current.humanRequests.findLast(request => request.status === 'waiting-reply'))
@@ -1277,24 +1281,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     void deliverNotifications()
   }
   async function queueHumanRequest(task, request) {
-    if (!request) return
-    if (request.topicFactIds?.length) return
-    if (request.audience === 'topic') return // 归属 Topic 负责选择联系人与原群回复，绝不退回默认私聊。
-    if (request.audience === 'requester') {
-      const source = await requesterReplySource(task)
-      return queueReply(task, source, { summary: request.question, evidence: [], limitations: [] },
-        `question:${task.taskId}:${request.requestId}`, 'question', request)
-    }
-    if (!config.operatorUserId) return // 未配置/登录时仍保留Web人工介入，不能转发给需求提出人。
-    const notificationId = `operator-request:${request.requestId}`
-    const text = ['【需要协助处理】', `事项：${task.title}`,
-      request.question, ...(request.attemptedActions?.length ? ['已尝试：', ...request.attemptedActions] : []),
-      '请在人工介入页答复，或引用本消息回复处理结果。'].join('\n\n')
-    assertConversationReply(text, [request.requestId, notificationId, ...await replyInternalIds(task)])
-    await command('notification.prepare', { notificationId, taskId: task.taskId, requirementRevision: request.requirementRevision,
-      kind: 'question', payload: { text, audience: 'operator', humanRequestId: request.requestId,
-        recipientUserId: config.operatorUserId, fact: { taskId: task.taskId }, kind: 'question' } }, `prepare-notification:${notificationId}`)
-    void deliverNotifications()
+    // 历史私信只由既有出箱继续对账，不从等待记录新建通知。
+    if (request?.audience !== 'requester' || request.topicFactIds?.length) return
+    const source = await requesterReplySource(task)
+    return queueReply(task, source, { summary: request.question, evidence: [], limitations: [] },
+      `question:${task.taskId}:${request.requestId}`, 'question', request)
   }
   function deliverNotifications(attempted = new Set()) {
     if (closed) return Promise.resolve()
@@ -1690,7 +1681,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       restartResolutions: proofs.filter(({ proof }) => proof.kind === 'native-host-restart-isolated').map(({ operationId, proof }) => ({ operationId,
         operationDigest: proof.operationDigest, isolationDigest: hash(proof.isolation), outcome: 'unknown', partialEffectsPossible: true, noReplay: true,
         unblocksRecovery: true, isolationReceiptId: proof.isolation.receiptId })) }
-    const source = { sourceId, groupId: task.groupId, messageId: sourceId, actorId: config.webActorId,
+    const source = { sourceId, groupId: task.groupId ?? 'task:'+task.taskId, messageId: sourceId, actorId: config.webActorId,
       text: args.reply, timestamp: '', channel: 'web',
       ...(allResolutions.length || artifactScopeCorrection || executionPermissionCorrection ? { requestIdentity: { humanRequestId: args.humanRequestId,
         ...(executionPermissionCorrection ? { executionPermissionCorrectionRequest: args.executionPermissionCorrection, executionPermissionCorrection } : {}),

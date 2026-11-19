@@ -1109,7 +1109,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       const reviewedReply = reviewed && ['requester', 'topic'].includes(request.audience) && source.channel === 'im'
         && task.sourceRefs.includes(source.sourceId) && Date.parse(source.timestamp) >= Date.parse(request.createdAt)
         && Date.parse(source.timestamp) <= Date.parse(stamp)
-      if (source.groupId !== task.groupId || !(reviewed ? reviewedReply : webReply || privateReply || requesterReply)) fail('DYNAMIC_HUMAN_RESPONSE_FORBIDDEN')
+      const replyScope = !reviewed && webReply ? task.groupId ?? 'task:'+task.taskId : task.groupId
+      if (source.groupId !== replyScope || !(reviewed ? reviewedReply : webReply || privateReply || requesterReply)) fail('DYNAMIC_HUMAN_RESPONSE_FORBIDDEN')
       if (reviewed) {
         const evidence = array(a.evidence).map(item => text(item, 'evidence'))
         if (!evidence.length) fail('DYNAMIC_ARGUMENT_INVALID', 'evidence')

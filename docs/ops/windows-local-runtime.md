@@ -245,7 +245,7 @@ Windows 短暂共享占用导致的原子替换 `EPERM` / `EACCES` / `EBUSY` 在
 
 ### 隔离准备
 
-1. 默认保持 `channelPlugins:[]` 或实例 `enabled:false`。公开配置只接受 `dingtalk_*`：`dingtalk_listen:false` 关闭监听，`dingtalk_writes_authorized:false` 关闭发送，两者不能代替禁用实例。`enabled:true` 即会核对登录与目标，即使监听关闭也可能调用 DWS；未获连接授权不启用。额外 `dingtalk_operator_notifications` 默认关闭，不扩大到 operator 私聊。
+1. 默认保持 `channelPlugins:[]` 或实例 `enabled:false`。公开配置只接受 `dingtalk_*`：`dingtalk_listen:false` 关闭监听，`dingtalk_writes_authorized:false` 关闭发送，两者不能代替禁用实例。`enabled:true` 即会核对登录与目标，即使监听关闭也可能调用 DWS；未获连接授权不启用。额外 `dingtalk_operator_notifications` 默认关闭，不扩大到 operator 私聊。普通任务补问不依赖此配置：已授权发送且有真实 IM 来源时引用原消息；纯 Web 问题保留在 Web。升级不为历史未发送的私密问题新建通知，已生成的出箱仍沿原回执核对。
 2. Windows 明确用 `dingtalk_account_mode:"system"` 和 `dingtalk_profile:"YOUR_PROFILE"`。system 是当前 OS 用户账号存储，不要求 LocalSystem 或管理员。复用已核实的已有登录态，不执行登录、切换账号、重置、凭据复制/导出或改注册表。多个实例/profile 可能共享账号存储，不能声明账号隔离；Windows 显式 private 请求拒绝。
 3. 每个实例只绑定一个目标，使用唯一 `channelId`。群聊设 `dingtalk_conversation_type:"chat-room"` 与群 ID 或群名；私聊另建实例，设 `"chat"` 与 userId 或姓名，不填群目标。`dingtalk_name` 是渠道名称，`dingtalk_prompt` 是该会话职责、设定与规范，`""` 清空、缺省未指定；不再使用 `groups[].responsibility`、`config.responsibility`、`directChats` 或旧无前缀字段。多群/私聊使用多个实例，职责与四角色消费见 [渠道职责配置](../CHANNELS.md#渠道职责配置)。
 

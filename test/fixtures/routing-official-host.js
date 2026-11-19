@@ -29,7 +29,16 @@ export async function nativeTaskHost(root,decide,options={}){
     try{
      signal?.throwIfAborted();callOptions.signal?.throwIfAborted()
      const compaction=request.tools.length===0&&getCurrentSystemPrompt(normalizeContext(context).messages).startsWith('You are a context summarization assistant.')
-     if(compaction){
+     const replyQuality=request.tools.length===0&&getCurrentSystemPrompt(normalizeContext(context).messages).startsWith('NIGHT_BOT_REPLY_QUALITY_REVIEW')
+     if(replyQuality){
+      // The real tool-free gate still runs; this scripted provider explicitly
+      // accepts its bounded prose candidates, separately from business turns.
+      const content=request.messages.findLast(message=>message.role==='user').content
+      const {candidates}=JSON.parse(typeof content==='string'?content:content.filter(part=>part.type==='text').map(part=>part.text).join(''))
+      if(!Array.isArray(candidates))throw Error('Explicit reply review candidates required')
+      auxiliaryRequests.push(structuredClone({...request,purpose:'reply-quality'}))
+      result={role:'assistant',provider:model.provider,model:model.id,api:model.api,content:[{type:'text',text:JSON.stringify({decisions:candidates.map(({index})=>({index,issues:[]}))})}],usage,timestamp:Date.now(),stopReason:'stop'}
+     }else if(compaction){
       if(typeof options.compactionSummary!=='string'||!options.compactionSummary.trim())throw Error('Official compaction fixture requires an explicit summary response')
       auxiliaryRequests.push(structuredClone({...request,purpose:'compaction'}))
       result={role:'assistant',provider:model.provider,model:model.id,api:model.api,content:[{type:'text',text:options.compactionSummary}],usage,timestamp:Date.now(),stopReason:'stop'}

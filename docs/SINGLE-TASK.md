@@ -18,7 +18,7 @@ model request after completion, not another execution session.
 
 执行会话负责取证、验证假设和决定是否补问。排查先读原始反馈与已有材料，沿最具体的现象或报错核对现场环境、版本和调用路径；区分已证事实、待验证假设和取证限制。某个工具或访问路径失败不代表用户漏报，也不应中断其他可继续的授权工作。
 
-只有信息或决定尚未提供、无法通过受权入口自行取得，且确实阻断必要步骤时，执行才用 `task_result` 的 `wait` / `blocked` 提出具体问题，并记录已核对的证据和被阻断的步骤。确需协助的技术运行问题面向操作者；只有必须由反馈人补充的业务问题才面向反馈人。Router 安排任务、评估结果，并按既有规则判断收到的补充是否足以恢复；不逐次审核等待理由、不指挥具体排查或替执行补证。这是执行模型的提示约束，不改变等待、权限或交付协议。
+只有信息或决定尚未提供、无法通过受权入口自行取得，且确实阻断必要步骤时，执行才用 `task_result` 的 `wait` / `blocked` 提出具体问题，并记录已核对的证据和被阻断的步骤。普通任务的业务或技术问题都写成适合原会话的简短提问，省略 `audience`；Host 复用真实 IM 来源通知，不要求配置操作者。内部证据、凭据和私有日志不进入问题正文；无可用 IM 来源时在 Web 留待处理。已有私信请求及其回执不转换、不补发。Router 判断同会话的真实补充是否足以恢复；回答问题不批准工具调用、不扩大任务权限。
 
 ## 执行生命周期
 
@@ -40,7 +40,7 @@ resumed by the ordinary conversation/reminder controller.
 
 仅有 Web 来源的 `createTask` 即使关联 `groupId`，也允许在任务内持久保存 `requester` / `waiting-reply` 问题；`groupId` 不创造真实 IM 来源、引用、成员身份或群交付许可。没有真实群来源时不发群、不回退操作者私聊，也不能宣称已通知；旧 Topic 错误码不构成拒绝整个 Web 提问的合同。有权 Web 答复仍校验已认证 `webActor`、原任务及 `humanRequestId`、当前要求/控制版本 CAS，持久记录真实新来源后沿原执行 session 续办。
 
-未关联 `groupId` 的 Web 任务也可由配置的 `webActor` 补充上下文、修订或重开：新输入沿用创建时的 `task:<taskId>` 来源作用域，不要求订阅群，也不将该作用域注册为渠道群。关联 `groupId` 的任务仍校验原群订阅；版本 CAS、稳定请求去重和原执行 session 续办规则不变，取消仍直接走任务控制；这些入口均不创造 IM 来源、群身份或外发许可。
+未关联 `groupId` 的 Web 任务也可由配置的 `webActor` 答复等待问题、补充上下文、修订或重开：新输入沿用创建时的 `task:<taskId>` 来源作用域，不要求订阅群，也不将该作用域注册为渠道群。关联 `groupId` 的任务仍校验原群订阅；版本 CAS、稳定请求去重和原执行 session 续办规则不变，取消仍直接走任务控制；这些入口均不创造 IM 来源、群身份或外发许可。
 
 Task workspaces are `data/workspaces/tasks/<task-id>/`, with materials, work,
 outputs and temporary task-local material separated inside that owner directory.
