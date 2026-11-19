@@ -357,7 +357,19 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(!pending.length)fail('ROUTER_EVENTS_REQUIRED')
       const prior=rows('router_rotations').find(rotation=>rotation.candidateSessionId===row.activeSessionId&&rotation.recovery&&rotation.cutoff===row.cursor)
       if(prior)fail('ROUTER_RECOVERY_OWNER_UNAVAILABLE')
-      const recovery={oldSessionId:row.activeSessionId,reason:required(a.reason),unknownSourceIds:[...new Set(pending.map(event=>event.sourceId).filter(Boolean))]}
+      const scope=a.unknownEventIds===undefined?pending:(()=>{
+        if(!Array.isArray(a.unknownEventIds)||a.unknownEventIds.length>30||new Set(a.unknownEventIds).size!==a.unknownEventIds.length)fail('ROUTER_ARGUMENT_INVALID')
+        return a.unknownEventIds.map(id=>{const event=read('router_inbox',required(id),true);if(!event||event.conversationId!==row.id)fail('ROUTER_EVENT_SCOPE');return event})
+      })()
+      // Earlier recovery rows retain their original restrictions. A new message
+      // outside the frozen checkpoint is not evidence of an old unknown effect.
+      if(a.unknownTaskIds!==undefined&&!Array.isArray(a.unknownTaskIds)||a.unknownSourceIds!==undefined&&!Array.isArray(a.unknownSourceIds))fail('ROUTER_ARGUMENT_INVALID')
+      const taskIds=[...new Set([...scope.map(event=>event.taskId??event.taskEvent?.taskId).filter(Boolean),...(a.unknownTaskIds??[])])]
+      if(taskIds.length>100||taskIds.some(id=>typeof id!=='string'))fail('ROUTER_ARGUMENT_INVALID')
+      const tasks=taskIds.map(id=>read('tasks',id,true)).filter(task=>task?.groupId===row.id||task?.conversationId===row.id)
+      const sources=[...scope.map(event=>event.sourceId).filter(Boolean),...tasks.flatMap(task=>task.sourceRefs??[]),...(a.unknownSourceIds??[])]
+      if(sources.length>500||sources.some(id=>typeof id!=='string'))fail('ROUTER_ARGUMENT_INVALID')
+      const recovery={oldSessionId:row.activeSessionId,reason:required(a.reason),unknownSourceIds:[...new Set(sources)],unknownTaskIds:tasks.map(task=>task.taskId)}
       const rotation={id:required(a.handoffId),conversationId:row.id,oldGeneration:row.generation,oldSessionId:row.activeSessionId,cutoff:row.cursor,requiredSourceIds:recovery.unknownSourceIds,state:'summarized',recovery,handoff:{recovery}}
       row.phase='handoff';row.rotationId=rotation.id;write('router_rotations',rotation);write('conversations',row);return changed({conversation:row,rotation})
     }
