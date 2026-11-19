@@ -5,7 +5,7 @@ import {contentSnapshot} from './previous.js'
 import {learnedSkillSupported} from './evolution.js'
 import {generateLearnedSkill,loadBundledCreator} from './skill-generation.js'
 import {isDeepStrictEqual} from 'node:util'
-import {officialReflectionText} from './reflection-inference.js'
+import {officialReflectionText,reflectionInputFits} from './reflection-inference.js'
 import {reflectionInput} from './reflection-input.js'
 import {assignReflectionMemoryKeys,reflectionMemoryKey,reviewMemoryKeys,reviewLessonMemoryKey,reflectionRetrySupported} from './reflection-keys.js'
 import {Service} from '@deepseek-ai/cordis'
@@ -79,7 +79,7 @@ export default class Reflection extends Service {
           const official=this.host.get('nativePiProvider')?.official
           if(typeof official?.resolve!=='function')throw failure('REFLECTION_OFFICIAL_MODEL_REQUIRED')
           const resolved=await official.resolve({...source.model,signal:inferenceSignal},source.credentials===undefined?undefined:{credentials:source.credentials})
-          const admission=await reflectionAdmission(this,scope,initial,input,(value,instructions)=>officialReflectionText(resolved,value,{signal:inferenceSignal,groupResponsibility:source.responsibilityFor?.(task.groupId)??'',instructions:instructions??ADMISSION_PROMPT}))
+          const admission=await reflectionAdmission(this,scope,initial,input,(value,instructions)=>officialReflectionText(resolved,value,{signal:AbortSignal.any([signal,AbortSignal.timeout(30000)]),groupResponsibility:source.responsibilityFor?.(task.groupId)??'',instructions:instructions??ADMISSION_PROMPT}),{fits:reflectionInputFits(resolved,source.responsibilityFor?.(task.groupId)??'')})
           snapshot=admission.index
           const output=JSON.parse(admission.raw)
           output.lessons=admitReflectionLessons(output,admission)

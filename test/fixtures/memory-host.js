@@ -57,7 +57,7 @@ export function scriptedSkillGeneration(body){
 // never supplies admission decisions or treats these fixture judgments as proof.
 function scriptedAdmissionSelection(body){
  const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content),catalog=input.catalog;
- const memoryIds=catalog.memories.slice(0,4).map(e=>e.id),skillKeys=catalog.skills.slice(0,6-memoryIds.length).map(e=>e.key);
+ const memoryIds=[...new Set(catalog.memories.map(e=>e.id))],skillKeys=[...new Set(catalog.skills.map(e=>e.key))];
  return {text:JSON.stringify({memoryIds,skillKeys,installedIds:[]})};
 }
 function scriptedAdmissionDecisions(body,decision){
@@ -66,7 +66,7 @@ function scriptedAdmissionDecisions(body,decision){
  if(!input.details||!Array.isArray(value.lessons))return decision;
  for(const lesson of value.lessons){
   const old=input.details.memories.find(e=>e.topic==='experience'&&e.key===lesson.key),prior=input.details.skills.find(e=>e.key===lesson.key);
-  const judgment={when:'When the evidenced local scenario recurs',changes:'Choose an evidence-backed action before writing',reason:'Fixture judgment based on supplied completion evidence'};
+  const judgment={category:'Evidence-first local changes',boundaries:'Only within the current objective and authorization; verify the original evidence',when:'When the evidenced local scenario recurs',changes:'Choose an evidence-backed action before writing',reason:'Fixture judgment based on supplied completion evidence'};
   lesson.memory??={action:old?(old.writable?'update':'skip'):'new',key:lesson.key,expectedRevision:old?.revision??0,...judgment};
   lesson.skillDecision??=lesson.skill?.evidenceBacked&&lesson.skill.applicability!=='Not established'?{action:prior?'update':'new',key:lesson.key,expectedRevision:prior?.revision??0,...judgment}:{action:'skip',reason:'No qualifying skill'};
  }

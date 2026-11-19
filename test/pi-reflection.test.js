@@ -219,7 +219,7 @@ test('任务 Skill 保留完整指引，经实际 creator 生成；缺证据判�
   const state=await r.state(memoryScope({actorId:'owner'})),report=Object.values(state.reviews)[0]
   assert.equal(report.status,'done',r.lastError)
   if(scenario==='guidance'){
-   const value=state.skills['inspect-first'];assert.equal(value.guidance,guidance);assert.equal(value.body,guidance);assert.ok(value.body.length>2048);assert.ok(value.generation.creator.callId)
+   const value=state.skills['inspect-first'];assert.ok(value.guidance.startsWith(guidance));assert.equal(value.body,value.guidance);assert.match(value.body,/适用类别：Evidence-first local changes/);assert.match(value.body,/必要边界：/);assert.ok(value.body.length>2048);assert.ok(value.generation.creator.callId)
    assert.match(f.requests.find(body=>JSON.stringify(body.messages).includes('NIGHT_BOT_TASK_REFLECTION')).messages[0].content,/正向.*反向/)
   }else{assert.deepEqual(state.skills,{});assert.equal(report.lessons[0].skill,undefined);assert.equal(f.requests.filter(body=>JSON.stringify(body.messages).includes('NIGHT_BOT_SKILL_GENERATION')).length,0)}
  })
