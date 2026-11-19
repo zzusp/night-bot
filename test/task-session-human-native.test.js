@@ -54,6 +54,7 @@ for (const operatorUserId of [undefined,'legacy-operator']) test(`环境资料�
   const h=await fixture(t,request=>routeTask(request)??[humanRequest({reason:'需要核实环境归属',question,evidence:['仅内部证据'],attemptedActions:['仅内部排查过程']})],{config:{operatorUserId}})
   const task=await createGroupTask(h,'environment-source','只读核对生产服务的错误数')
   assert.equal(task.humanRequests[0].status,'waiting-reply')
+  assert.ok(h.auxiliaryRequests.some(request=>request.purpose==='reply-quality'),'the original-conversation question must pass the real prose-review gate')
   const notices=()=>h.sent.filter(item=>item.taskId===task.taskId&&item.kind==='question')
   assert.equal(notices().length,1)
   const [notice]=notices()
