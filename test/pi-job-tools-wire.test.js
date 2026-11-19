@@ -19,3 +19,26 @@ test('actual Pi native job completion wakes an idle owner with one durable bound
  done.resolve({status:'completed'});await eventually(()=>f.requests.length===3);await parent.whenIdle();assert.equal(f.requests.length,3)
  const delivered=await notices(f,parent.id);assert.equal(delivered.length,1);assert.ok(Buffer.byteLength(delivered[0].content[0].text)<=100);assert.match(delivered[0].content[0].text,/job_output/);assert.ok(JSON.stringify(f.requests[2]).includes(id));assert.ok(f.requests[2].messages.some(message=>(typeof message.content==='string'?message.content:Array.isArray(message.content)?message.content.filter(part=>part.type==='text').map(part=>part.text).join(''):'').includes(delivered[0].content[0].text)));assert.equal((await parent.receipts.read()).find(receipt=>receipt.domain==='job'&&receipt.kind==='settled'&&receipt.payload.jobId===id).payload.label,'idle owned job');assert.equal(f.host.ctx.jobs.read(id,parent.id).result,undefined)
 })
+
+test('real native background script overlaps authorized independent work before terminal state without output polling or child execution',{timeout:30000},async t=>{
+ let parent,jobId,probe=false,terminalAtProbe
+ const f=await subagentFixture(t,(_body,f)=>{
+  if(f.requests.length===1)return {tools:[{id:'start-script',name:'bash',args:{command:JSON.stringify(process.execPath)+' -e '+JSON.stringify("process.stdout.write('fixture-ready\\n');setInterval(()=>{},1000)"),description:'Synthetic owned background overlap probe',run_in_background:true}}]}
+  if(f.requests.length===2)return {tools:[{id:'independent-read',name:'background_independent_read',args:{}}]}
+  if(f.requests.length===3)return {tools:[{id:'stop-script',name:'job_kill',args:{job_id:jobId,reason:'Synthetic overlap verified'}}]}
+  return {text:'Synthetic overlap complete'}
+ },{permissionMode:'full'})
+ f.host.ctx.tools.register({name:'background_independent_read',description:'Read only the current synthetic owner job state',parameters:{type:'object',properties:{},additionalProperties:false},isConcurrencySafe:()=>true,output:{schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},execute(_args,exec){
+  const jobs=f.host.ctx.jobs.list(exec.agent.id);assert.equal(jobs.length,1);jobId=jobs[0].id
+  terminalAtProbe=['completed','failed','killed'].includes(jobs[0].status);assert.equal(terminalAtProbe,false);probe=true;return {observed:true}
+ }})
+ parent=await parentOf(f,'background-overlap-owner')
+ await prompt(parent,'Run this isolated background script, inspect independent evidence, then cancel the same owned job')
+ assert.equal(probe,true);assert.equal(terminalAtProbe,false)
+ await f.host.ctx.jobs.wait(jobId,10000,parent.id)
+ assert.equal(f.host.ctx.jobs.get(jobId,parent.id).status,'killed')
+ const entries=await native(f,parent.id),calls=entries.filter(e=>e.type==='message'&&e.message.role==='assistant').flatMap(e=>e.message.content.filter(p=>p.type==='toolCall').map(p=>p.name))
+ assert.deepEqual(calls,['bash','background_independent_read','job_kill']);assert.equal(calls.includes('job_output'),false)
+ assert.match(JSON.stringify(f.requests[0].messages.filter(m=>m.role==='system')),/真正依赖结果时再等待/)
+ assert.equal(f.requests.length,4)
+})

@@ -144,3 +144,10 @@ test('Router resume batch capacity counts all supplemental packets together',asy
  await assert.rejects(f.worker.beforeInput([{content:'a'.repeat(240000)},{content:'b'.repeat(240000)}]),{code:'PI_CONTEXT_INPUT_TOO_LARGE'})
  assert.equal(f.state.foreground,0)
 })
+
+for(const ownerAborted of [false,true])test('SDK cancellation preserves owner reason only when the owner is aborted: '+ownerAborted,async t=>{
+ const f=fixture(t,{tokens:450000}),sdkError=new Error('Compaction cancelled'),reason=new Error('owner stopped')
+ f.session.compact=async()=>{if(ownerAborted)f.signal.abort(reason);throw sdkError}
+ await assert.rejects(f.worker.beforeInput({content:[{type:'text',text:'next'}]}),error=>error===(ownerAborted?reason:sdkError))
+ assert.equal(f.state.commits,0);assert.equal(f.appends.length,0)
+})

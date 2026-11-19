@@ -1,3 +1,4 @@
+import {SAFE_TOOL_PARALLELISM_POLICY} from '../runtime/parallel-read.js'
 import {investigationBudget,diagnosticCompactionSettings,diagnosticOutputTokens} from './investigation-budget.js'
 import {createAgentSession,DefaultResourceLoader,SettingsManager,SessionManager} from '@earendil-works/pi-coding-agent'
 import {join} from 'node:path'
@@ -7,7 +8,7 @@ import {diagnosticSections,diagnosticPrompt,diagnosticToolDescription,diagnostic
  * tool allowlist, not by asking a full-access shell agent to behave read-only. */
 export async function diagnoseWithPi({resolved,paths,title,description,evidence,signal,secrets=[],reportCharacters=investigationBudget.reportCharacters}){
  const cwd=paths.installRoot,agentDir=join(paths.runtime,'feedback'),settingsManager=SettingsManager.inMemory({packages:[],compaction:diagnosticCompactionSettings(resolved.model),retry:{enabled:false}})
- const resourceLoader=new DefaultResourceLoader({cwd,agentDir,settingsManager,extensionFactories:[{name:'feedback-private-context',factory:pi=>{pi.on('before_agent_start',event=>{event.systemPromptOptions.cwd='[安装目录]'})}}],noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,systemPrompt:diagnosticPrompt,appendSystemPrompt:[]})
+ const resourceLoader=new DefaultResourceLoader({cwd,agentDir,settingsManager,extensionFactories:[{name:'feedback-private-context',factory:pi=>{pi.on('before_agent_start',event=>{event.systemPromptOptions.cwd='[安装目录]'})}}],noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,systemPrompt:diagnosticPrompt+'\n'+SAFE_TOOL_PARALLELISM_POLICY,appendSystemPrompt:[]})
  await resourceLoader.reload();signal.throwIfAborted()
  let calls=0,bytes=0,budgetExceeded=false,summarizing=false;const observations=[]
  const tool={name:'diagnosis_evidence',label:'调查现场证据',description:diagnosticToolDescription,parameters:diagnosticToolParameters(),async execute(_id,args){

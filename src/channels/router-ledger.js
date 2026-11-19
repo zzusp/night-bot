@@ -1,3 +1,4 @@
+import {triageHandoff,routerTriageConclusion} from './triage-conclusion.js'
 import {inspectionIsCurrent,taskWaitIdentity,MIN_WAIT_RECHECK_MS} from '../tasks/inspection.js'
 import {queryTaskIndex,queryReplyHistory} from './conversation-context.js'
 import {createHash} from 'node:crypto'
@@ -49,6 +50,13 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     const row = {id,conversationId,eventId,...payload,state:'pending',createdAt:new Date().toISOString()}
     write('router_inbox',row)
     return row
+  }
+  function triageConclusion(event,source){
+    if(event.triageDecisionId===undefined)return undefined // Never backfill old/in-flight packets.
+    const row=read('triage',event.triageDecisionId,true),decision=row?.decision
+    if(!row||row.id!==`triage:${event.sourceId}`||row.state!=='committed'||row.conversationId!==event.conversationId||row.sourceId!==event.sourceId||row.messageVersion!==event.messageVersion||decision?.sourceId!==row.sourceId||decision.messageVersion!==row.messageVersion||decision.needsHandling!==true)fail('ROUTER_TRIAGE_BINDING_INVALID')
+    const value={decisionId:row.id,conversationId:row.conversationId,sourceId:row.sourceId,messageVersion:row.messageVersion,...triageHandoff(decision.handoff)}
+    return routerTriageConclusion({...event,source,triageConclusion:value})
   }
   function dependenciesReady(task) {
     return rows('dependencies').filter(row => row.taskId === task.taskId).every(row => {
@@ -182,9 +190,9 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if (!Array.isArray(a.dispositions) || !a.dispositions.length || a.dispositions.length > 15 || new Set(a.dispositions.map(row=>row.sourceId)).size !== a.dispositions.length) fail('ROUTER_TRIAGE_INVALID')
       const dispositions=[],notifications=[],routerEvents=[]
       for (const item of a.dispositions) {
-        const source = sourceOf(item), id = `triage:${source.sourceId}`, prior = read('triage',id,true)
+        const source = sourceOf({...item,...a.conversationId===undefined?{}:{conversationId:a.conversationId}}), id = `triage:${source.sourceId}`, prior = read('triage',id,true)
         if (typeof item.needsHandling !== 'boolean' || typeof item.reason !== 'string' || item.reply !== undefined && item.reply !== null && typeof item.reply !== 'string') fail('ROUTER_TRIAGE_INVALID')
-        const decision = {sourceId:source.sourceId,messageVersion:source.version,needsHandling:item.needsHandling,reply:item.reply?.trim() || null,reason:item.reason}
+        const decision = {sourceId:source.sourceId,messageVersion:source.version,needsHandling:item.needsHandling,reply:item.reply?.trim() || null,reason:item.reason,...item.handoff===undefined?{}:{handoff:triageHandoff(item.handoff)}}
         if (prior?.state === 'committed') { if (digest(prior.decision) !== digest(decision)) fail('ROUTER_TRIAGE_CONFLICT'); dispositions.push(prior); continue }
         let notification
         if (decision.reply) {
@@ -193,7 +201,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
           notification.payloadDigest = digest(notification.payload)
           write('notifications',notification); notifications.push(notification)
         }
-        if (decision.needsHandling) routerEvents.push(enqueue(source.groupId,`source:${source.sourceId}`,{kind:'source.message',sourceId:source.sourceId,messageVersion:source.version,triageReplyId:notification?.id ?? null}))
+        if (decision.needsHandling) routerEvents.push(enqueue(source.groupId,`source:${source.sourceId}`,{kind:'source.message',sourceId:source.sourceId,messageVersion:source.version,triageReplyId:notification?.id ?? null,...decision.handoff?{triageDecisionId:id}:{}}))
         const row = {id,conversationId:source.groupId,sourceId:source.sourceId,messageVersion:source.version,state:'committed',decision,notificationId:notification?.id ?? null,commandId}
         write('triage',row); dispositions.push(row)
         source.routed=true;source.routedAt=new Date().toISOString();source.routeReceipt={kind:'triage',decisionId:id};write('sources',source)
@@ -337,6 +345,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(q.kind==='router.task-index')return queryTaskIndex(db,q,{dependenciesReady})
     if(q.kind==='router.reply-history')return queryReplyHistory(db,q)
     if(q.kind==='router.source-history')return querySourceHistory(db,q)
+    if(q.kind==='router.source-latest'){const source=read('sources',q.sourceId,true);return !!source&&source.groupId===q.conversationId&&source.version===q.messageVersion&&latest(source)}
     if(q.kind==='router.source-current')return queryCurrentSource(db,q)
     if(q.kind==='triage.pending')return rows('triage').filter(row=>row.state==='pending'&&(!q.conversationId||row.conversationId===q.conversationId)).map(row=>read('sources',row.sourceId)).filter(row=>!row.routed&&!row.authorizationRevoked&&!row.triageHold&&!row.archiveRestoreHold&&latest(row)).slice(0,bounded(q.limit))
     if(q.kind==='router.upgrade-held')return {sources:rows('sources').filter(row=>row.triageHold&&(!q.conversationId||row.groupId===q.conversationId)),audit:rows('router_upgrade_audit').filter(row=>!q.conversationId||row.conversationId===q.conversationId)}
@@ -345,7 +354,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(q.kind==='router.action')return read('router_actions',`router-action:${hash([required(q.conversationId),required(q.operationId)])}`,true)
     if(q.kind==='router.list')return rows('conversations')
     if(q.kind==='router.pending-conversations')return [...new Set([...rows('router_inbox').filter(row=>row.state==='pending').map(row=>row.conversationId),...rows('conversations').filter(row=>row.phase!=='active').map(row=>row.id)])]
-    if(q.kind==='router.inbox')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').slice(0,bounded(q.limit,30)).map(row=>({...row,source:row.sourceId?read('sources',row.sourceId):undefined,triageReply:row.triageReplyId?read('notifications',row.triageReplyId):undefined,taskEvent:row.taskEventId?readEvent(row.taskEventId):undefined}))
+    if(q.kind==='router.inbox')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').slice(0,bounded(q.limit,30)).map(row=>{const source=row.sourceId?read('sources',row.sourceId):undefined,conclusion=triageConclusion(row,source);return {...row,source,triageReply:row.triageReplyId?read('notifications',row.triageReplyId):undefined,taskEvent:row.taskEventId?readEvent(row.taskEventId):undefined,...conclusion?{triageConclusion:conclusion}:{}}})
     if(q.kind==='router.pending-completion')return rows('router_inbox').some(row=>row.conversationId===q.conversationId&&row.state==='pending'&&row.taskEventId&&readEvent(row.taskEventId)?.kind==='task.completed')
     if(q.kind==='router.inbox-count')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').length
     if(q.kind==='router.dependencies')return rows('dependencies').filter(row=>(!q.conversationId||row.conversationId===q.conversationId)&&(!q.taskId||row.taskId===q.taskId||row.prerequisiteTaskId===q.taskId))
