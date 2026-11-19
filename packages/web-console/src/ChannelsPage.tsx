@@ -1,3 +1,4 @@
+import type {Drafts} from './chat-drafts';
 import {BoardSelect} from './components/BoardSelect';
 import {ReadErrorScope, ReadErrorOutlet, ReadErrorVisibility} from './components/ReadErrors';
 import { useEffect, useLayoutEffect, useId, useRef, useState, type FormEvent, type Ref } from 'react';
@@ -328,7 +329,7 @@ function ChannelCardHealth({ item }: { item: Channel }) {
   </span>;
 }
 
-export default function ChannelsPage({ id }: { id?: string }) {
+export default function ChannelsPage({ id, drafts }: { id?: string; drafts?: Drafts }) {
   const endpoint = id ? `/conversations/${encodeURIComponent(id)}` : '';
   const channels = useResource<{ items: Channel[] }>('/channels', 10000);
   const conversations = useResource<{ items: Conversation[] }>('/conversations', 5000);
@@ -341,7 +342,7 @@ export default function ChannelsPage({ id }: { id?: string }) {
   const selected = conversations.data?.items.find(item => item.id === id);
   const query = useChannelMessages(id);
   const items = (conversations.data?.items || []).filter(item => (!channel || channel === item.channelId) && `${item.name} ${item.channelId}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
-  if (id) return <ConversationFrame endpoint={endpoint || undefined} channel label={`${selected?.name || '渠道会话'} · ${conversationType(selected?.type)}`}>
+  if (id) return <ConversationFrame drafts={drafts} endpoint={endpoint || undefined} channel label={`${selected?.name || '渠道会话'} · ${conversationType(selected?.type)}`}>
     {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data} />}
     {query.loading && !query.data ? <Loading /> : !query.data && query.error ? null : <ConversationMessages endpoint={endpoint} accessError={query.error} accessUpdatedAt={query.updatedAt} onRefresh={query.refresh} key={id} older={query.older} messages={query.data?.items || []} userLabel="渠道成员" empty={<EmptyState title="暂无消息" />} />}
   </ConversationFrame>;

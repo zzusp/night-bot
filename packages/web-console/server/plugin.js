@@ -533,6 +533,23 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if (triageSession[3]) return send(response, 200, await triageSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(triageSession[3])}))
       return send(response, 200, await triageSessionView({...options, ...sessionOptions(url.searchParams)}))
     }
+    const routerMessage=/^\/api\/conversations\/([^/]+)\/router\/(messages|requests\/([^/]+))$/.exec(path)
+    if(routerMessage){
+      const conversationId=executionContext('conversations',decodeURIComponent(routerMessage[1])),context=channels.groupContext(conversationId)
+      if(!context||context.channelId===channelId)fail('ROUTER_OPERATOR_TARGET_FORBIDDEN',403)
+      const tasks=application().tasks
+      if(request.method==='POST'&&routerMessage[2]==='messages'){
+        const body=await jsonBody(request,['requestId','text'],32768)
+        if(typeof body.requestId!=='string'||!/^[a-zA-Z0-9-]{1,128}$/.test(body.requestId)||typeof body.text!=='string'||!body.text.trim()||body.text.length>8000)fail('ROUTER_OPERATOR_INPUT_INVALID',400)
+        try{return send(response,202,await tasks.sendRouterOperatorMessage({conversationId,requestId:body.requestId,text:body.text}))}catch(error){if(error.code==='ROUTER_OPERATOR_REQUEST_CONFLICT')fail(error.code,409);throw error}
+      }
+      if(request.method==='GET'&&routerMessage[3]){
+        const value=await tasks.routerOperatorRequest({conversationId,requestId:decodeURIComponent(routerMessage[3])})
+        if(!value)fail('ROUTER_OPERATOR_REQUEST_NOT_FOUND',404)
+        return send(response,200,value)
+      }
+      fail('NOT_FOUND',404)
+    }
     const chatSession = /^\/api\/(chat|conversations)\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && chatSession) {
       const conversationId = executionContext(chatSession[1], decodeURIComponent(chatSession[2]))

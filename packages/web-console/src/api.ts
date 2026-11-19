@@ -180,6 +180,7 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
 
 export function errorText(error: unknown) {
   if (error instanceof ApiError) {
+    if(error.code==='ROUTER_OPERATOR_REQUEST_CONFLICT')return '这次请求编号已对应另一条消息。草稿已保留，请重新发送。';
     if (error.code === 'SESSION_PAGE_STALE') return '执行上下文已改变，已暂停续读。重新获取后查看当前记录。';
     if (error.code === 'SESSION_COMMIT_PENDING') return '新记录正在提交，完成后会自动更新。';
     if (error.code === 'SETTINGS_VERSION_CONFLICT') return '设置已被修改，未覆盖新版本。草稿已保留，请重新读取设置后再编辑。';

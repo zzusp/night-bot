@@ -98,7 +98,7 @@ function sampleSession(task, historyRounds = 0) {
   }
 }
 
-export async function startPreview({port = 3080, empty = false, replyDelayMs = 500, dingtalkHealth = {healthy: true}, dingtalkBindingActive = false, dist, historyRounds = 0, sessionRecords = false, persistenceOverride, configureTasks} = {}) {
+export async function startPreview({port = 3080, empty = false, replyDelayMs = 500, dingtalkHealth = {healthy: true}, dingtalkBindingActive = false, dist, historyRounds = 0, sessionRecords = false, routerOperator = false, persistenceOverride, configureTasks} = {}) {
   const root = await mkdtemp(join(tmpdir(), 'night-web-browser-fixture-'))
   const paths = runtimePaths({installRoot:root,dataDir:'data'})
   await prepareRuntimePaths(paths)
@@ -164,6 +164,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
     if (!snapshot) throw Object.assign(Error('unknown fixture session'), {name:'SessionPersistenceNotFoundError'})
     return snapshot
   }}
+  const routerRequests=new Map(),routerAttempts=[];let routerFailed=false
   const app = {
     config: {channelPlugins: empty ? [] : [
       {type: 'web-console', channelId: CHANNEL_ID, enabled: true},
@@ -176,6 +177,20 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
       {type: 'fixture-custom', channelId: 'custom-adapter', enabled: true},
     ]},
     tasks: {
+      async sendRouterOperatorMessage(args){
+        routerAttempts.push(structuredClone(args))
+        if(!routerOperator)throw Error('Router preview not enabled')
+        if(routerOperator.failOnce&&!routerFailed){routerFailed=true;throw Error('Synthetic unavailable response')}
+        if(routerRequests.has(args.requestId))return routerRequests.get(args.requestId)
+        await delay(routerOperator.delayMs??100)
+        const sessionId=`fixture-router-${args.conversationId}`,snapshot=snapshots.get(sessionId),stamp=Date.now().toString(36)
+        const rows=[{id:'operator-'+stamp,message:{role:'custom',customType:'night.business-input',details:{source:{kind:'conversation-router',conversationId:args.conversationId,generation:1,webOnly:true}},content:[{type:'text',text:'Router 请求：'+JSON.stringify({conversationId:args.conversationId,generation:1,events:[{id:'web-'+stamp,kind:'operator.message',operator:{destination:'web',actorId:'fixture-operator',requestId:args.requestId,text:args.text}}]})}]}},
+          {id:'operator-call-'+stamp,message:{role:'assistant',content:[{type:'toolCall',name:'resident_operator_reply',id:'reply-'+stamp,arguments:{eventId:'web-'+stamp,text:'合成数据回复：只在这个网页显示。'}}]}},
+          {id:'operator-result-'+stamp,message:{role:'toolResult',toolName:'resident_operator_reply',toolCallId:'reply-'+stamp,content:[{type:'text',text:JSON.stringify({result:{accepted:true,webOnly:true,text:'合成数据回复：只在这个网页显示。'}})}]}}]
+        snapshot.entries.push(...rows.map(row=>({id:row.id})));snapshot.context.projection.entries.push(...rows.map(row=>({sourceEntry:{id:row.id,timestamp:new Date().toISOString()},messages:[row.message]})))
+        const receipt={requestId:args.requestId,status:'accepted',webOnly:true};routerRequests.set(args.requestId,receipt);return receipt
+      },
+      async routerOperatorRequest(args){return routerRequests.get(args.requestId)??null},
       store: {async query(query) {
         if (query.kind === 'task.list') return tasks.filter(task => task.groupId === query.groupId).map(task => ({taskId: task.taskId, groupId: task.groupId, title: task.title, state: task.state, updatedAt: task.updatedAt}))
         if (query.kind === 'task.get') {const task = tasks.find(task => task.taskId === query.taskId); return task && {taskId: task.taskId, groupId: task.groupId, sessionId: task.session.sessionId, sessionBound: task.session.sessionBound !== false}}
@@ -295,7 +310,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
     throw error
   }
   let closing
-  return {origin: web.origin, token: FIXTURE_TOKEN, received, async close() {
+  return {origin: web.origin, token: FIXTURE_TOKEN, received, routerAttempts, routerRequests, async close() {
     return closing ??= (async () => {
       await Promise.allSettled([...replies])
       await web.close()

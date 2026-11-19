@@ -201,6 +201,7 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
   const identity={operationId:string,sourceId:string,messageVersion:integer}
   const tools=[
     communicationGuidanceReadTool(),
+    {name:'resident_operator_reply',description:'回复当前 Web 操作者消息，只写入本 Router 的网页记录，不发送到外部渠道。eventId 必须来自当前 operator.message；每条消息仅冻结一次回复；已有回复时返回原正文，不替换。随后结清该事件。',parameters:{type:'object',additionalProperties:false,required:['eventId','text'],properties:{eventId:string,text:{type:'string',minLength:1,maxLength:8000}}},execute:(args,exec)=>command('router.operator.reply',{conversationId,generation,...args},residentOperationId(conversationId,JSON.stringify(['operator-reply',generation,args.eventId,args.text])))},
     ...routerMemoryReconciliation(agentCtx,binding,{query,current}),
     {name:'resident_task_query',isConcurrencySafe:()=>true,description:'读取本conversation事项，不跨群。detail=index分页读取当前任务索引；detail=progress必须指定taskId，读当前执行的持久进度，cursor翻更早条目，区分模型意图与工具结果，不唤醒任务。默认返回限长摘要和当前版本，列表默认10项；摘要不含完整request、补充历史或完成证据。评估依赖、附件交付或核对原始要求前，必须指定taskId和detail=full读取完整单项及依赖，不用摘要推断证据。',parameters:{type:'object',additionalProperties:false,properties:{taskId:string,detail:{enum:['index','summary','full','progress']},cursor:string,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:100}}},execute:async(args,exec)=>{
       if(args.detail==='index'){const events=await currentEvents(exec.agent),result=await query('router.task-index',{conversationId,sourceIds:(await currentSources(exec.agent,events)).map(source=>source.sourceId),taskIds:events.map(event=>event.taskId).filter(Boolean),offset:args.offset,limit:args.limit});await current(exec);return result}
@@ -247,6 +248,20 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
   ]
   for(const tool of tools){const execute=tool.execute;agentCtx.get('tools').register({...tool,output,execute:async(args,exec)=>{
     await current(exec)
+    const admitted=await exec.agent.admission.current(),packets=(admitted?.messages??[])
+    const webOnly=packets.some(packet=>packet.source.webOnly===true)
+    if(webOnly){
+      if(!packets.every(packet=>packet.source.kind==='conversation-router'&&packet.source.webOnly===true))fail('ROUTER_OPERATOR_BATCH_MIXED')
+      const events=await currentEvents(exec.agent)
+      if(!events.length||events.some(event=>event.kind!=='operator.message'||event.operator?.destination!=='web'))fail('ROUTER_OPERATOR_BATCH_MIXED')
+      const ids=new Set(events.map(event=>event.id))
+      if(tool.name==='resident_operator_reply'){if(!ids.has(args.eventId))fail('ROUTER_OPERATOR_EVENT_FORBIDDEN');return execute(args,exec)}
+      if(tool.name==='resident_router_settle'){
+        if(args.eventIds.some(id=>!ids.has(id)))fail('ROUTER_OPERATOR_EVENT_FORBIDDEN')
+        return command('router.settle',{conversationId,generation,...args,webOnly:true,operationId:residentOperationId(conversationId,args.operationId)})
+      }
+      if(!['communication_guidance_read','resident_task_query','resident_source_query','resident_source_get','resident_reply_query','resident_skill_query','platform_task_query','platform_schedule_list','platform_config_query'].includes(tool.name))fail('ROUTER_OPERATOR_READ_ONLY')
+    }else if(tool.name==='resident_operator_reply')fail('ROUTER_OPERATOR_EVENT_FORBIDDEN')
     if(!tool.isConcurrencySafe?.()&&tool.name!=='resident_router_settle'){
       const rotations=await query('router.rotations',{conversationId})
       const held=new Set(rotations.filter(rotation=>rotation.recovery).flatMap(rotation=>rotation.recovery.unknownSourceIds))
@@ -260,6 +275,7 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
     }
     return execute(args,exec)
   }})}
+  agentCtx.get('systemPrompt').section({name:'router-web-operator',order:155,text:'operator.message 是已认证 Web 操作者在此 Router 的网页对话，不是渠道成员消息或群授权。仅当当前批次为 operator.message 时只查询和对话，不得创建/改变任务、写记忆/Skill、安排排期或向渠道外发；普通渠道批次保持原职责和权限。Web 批次使用 resident_operator_reply(eventId,text) 回复每条网页消息，随后 resident_router_settle 结清；不要调用 resident_router_reply。历史群聊授权不能用于本批。'})
   const names=[...tools.map(tool=>tool.name),...['skill','memory_index','memory_read','memory_search','memory_status'].filter(name=>agentCtx.get('tools').get(name,scopeOf(agentCtx)))]
   agentCtx.get('tools').restrict({allow:names.filter(name=>agentCtx.get('tools').view(scopeOf(agentCtx)).restrictableNames.has(name))})
   agentCtx.get('tools').guard(exec=>names.includes(exec.name)?undefined:'ROUTER_TOOL_FORBIDDEN')

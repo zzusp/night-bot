@@ -150,6 +150,22 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     return result
   }
   function command(kind, a, commandId) {
+    if(kind==='router.operator.enqueue'){
+      const requestId=required(a.requestId),actorId=required(a.actorId)
+      if(typeof a.text!=='string'||!a.text.trim()||a.text.length>8000)fail('ROUTER_OPERATOR_TEXT_INVALID')
+      const event=enqueue(required(a.conversationId),'operator:'+hash([actorId,requestId]),{kind:'operator.message',operator:{requestId,actorId,text:a.text,destination:'web'}})
+      if(digest(event.operator)!==digest({requestId,actorId,text:a.text,destination:'web'}))fail('ROUTER_OPERATOR_REQUEST_CONFLICT')
+      return changed({requestId,eventId:event.id,status:'accepted',webOnly:true})
+    }
+    if(kind==='router.operator.reply'){
+      conversationOf(a)
+      const event=read('router_inbox',required(a.eventId))
+      if(event.conversationId!==a.conversationId||event.kind!=='operator.message'||event.operator?.destination!=='web'||event.state!=='pending')fail('ROUTER_OPERATOR_EVENT_FORBIDDEN')
+      if(typeof a.text!=='string'||!a.text.trim()||a.text.length>8000)fail('ROUTER_OPERATOR_TEXT_INVALID')
+      const reused=!!event.operatorReply
+      event.operatorReply??={text:a.text,actorId:event.operator.actorId,createdAt:new Date().toISOString()};write('router_inbox',event)
+      return changed({accepted:true,webOnly:true,reused,text:event.operatorReply.text})
+    }
     if(kind==='router.recovery-attempt'){
       const row=read('conversations',a.conversationId)
       if(row.generation!==a.generation)fail('ROUTER_GENERATION_STALE')
@@ -279,6 +295,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       for(const eventId of new Set(a.eventIds)){
         const row=rows('router_inbox').find(item=>item.conversationId===a.conversationId&&(item.id===eventId||item.eventId===eventId))
         if(!row)fail('ROUTER_EVENT_SCOPE')
+        if(row.kind==='operator.message'){if(a.webOnly!==true||row.operator?.destination!=='web'||!row.operatorReply)fail('ROUTER_OPERATOR_REPLY_REQUIRED')}else if(a.webOnly===true)fail('ROUTER_OPERATOR_BATCH_MIXED')
         if(row.state==='consumed')continue
         const event=row.taskEventId?readEvent(row.taskEventId):null
         if(event?.kind==='task.inspection'&&event.reason==='wait-overdue'){
@@ -364,6 +381,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(q.kind==='router.get')return read('conversations',q.conversationId,true)
     if(q.kind==='router.action')return read('router_actions',`router-action:${hash([required(q.conversationId),required(q.operationId)])}`,true)
     if(q.kind==='router.list')return rows('conversations')
+    if(q.kind==='router.operator.request'){const event=rows('router_inbox').find(row=>row.conversationId===q.conversationId&&row.kind==='operator.message'&&row.operator?.requestId===q.requestId&&row.operator.actorId===q.actorId);return event?{requestId:q.requestId,eventId:event.id,status:'accepted',webOnly:true}:null}
     if(q.kind==='router.pending-conversations')return [...new Set([...rows('router_inbox').filter(row=>row.state==='pending').map(row=>row.conversationId),...rows('conversations').filter(row=>row.phase!=='active').map(row=>row.id)])]
     if(q.kind==='router.inbox')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').slice(0,bounded(q.limit,30)).map(row=>{const source=row.sourceId?read('sources',row.sourceId):undefined,conclusion=triageConclusion(row,source);return {...row,source,triageReply:row.triageReplyId?read('notifications',row.triageReplyId):undefined,taskEvent:row.taskEventId?readEvent(row.taskEventId):undefined,...conclusion?{triageConclusion:conclusion}:{}}})
     if(q.kind==='router.pending-completion')return rows('router_inbox').some(row=>row.conversationId===q.conversationId&&row.state==='pending'&&row.taskEventId&&readEvent(row.taskEventId)?.kind==='task.completed')

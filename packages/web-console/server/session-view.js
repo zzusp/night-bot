@@ -120,7 +120,7 @@ const toolInputs = {
   resident_task_action: {kind: toolEnum(['supplement', 'revise', 'reopen', 'control', 'arrange']), control: toolEnum(['active', 'paused', 'cancelled']),
     text: toolString, objective: toolString, title: toolString, requirements: toolStrings, reason: toolString, sameGoal: toolBoolean, dependencies: toolDependencies},
   resident_dependency_evaluate: {decision: toolEnum(['satisfied', 'continue', 'wait']), evidence: toolStrings},
-  resident_router_reply: {text: toolString, replyToSource: toolBoolean}, resident_router_settle: {},
+  resident_operator_reply: {text: toolString}, resident_router_reply: {text: toolString, replyToSource: toolBoolean}, resident_router_settle: {},
   platform_task_query: {state: toolEnum(['running', 'completed', 'all']), day: toolString, ...toolPage},
   platform_config_query: {}, platform_schedule_submit: {title: toolString, prompt: toolString, at: toolString},
   model_content_read: toolPage,
@@ -140,7 +140,7 @@ const toolOutputs = {
   resident_task_plan: {...toolReceipt, result: toolObject({tasks: toolArray(toolTask), dependencies: toolDependencies})},
   resident_task_action: {...toolReceipt, task: toolTask, result: toolObject({task: toolTask})},
   resident_dependency_evaluate: {...toolReceipt, result: toolObject({decision: toolEnum(['satisfied', 'continue', 'wait']), evidence: toolStrings})},
-  resident_router_reply: toolReceipt, resident_router_settle: toolReceipt,
+  resident_operator_reply: {result:toolObject({accepted:toolBoolean,webOnly:toolBoolean,reused:toolBoolean,text:toolString})}, resident_router_reply: toolReceipt, resident_router_settle: toolReceipt,
   platform_config_query: {timeZone: toolString, concurrency: toolNumber}, platform_schedule_submit: toolReceipt,
 }
 
@@ -158,9 +158,9 @@ function toolInput(name, args) {
 // The input has already passed the tool field allowlist. Receipts decide whether
 // this text becomes a message; raw journal arguments are never used here.
 function businessResultText(name, input) {
-  if (name !== 'task_result' && name !== 'resident_router_reply') return null
+  if (name !== 'task_result' && name !== 'resident_router_reply' && name !== 'resident_operator_reply') return null
   const value = JSON.parse(input)
-  if (name === 'resident_router_reply') return value.text?.trim() || null
+  if (name === 'resident_router_reply' || name === 'resident_operator_reply') return value.text?.trim() || null
   const decision = value.decision
   if (!decision || !['complete', 'wait', 'blocked'].includes(decision.action) || !decision.summary?.trim()) return null
   const summary = decision.summary.trim(), question = decision.question?.trim()
@@ -282,7 +282,7 @@ function scheduledPrompts(content, source) {
 
 async function projectEntries(snapshot, identity, secrets, calls = new Map(), resultMessages = true) {
   const {taskId, sessionId, conversationId, generation, triage} = identity
-  const items = [], sources = new Set()
+  const items = [], sources = new Set(), operatorReplies = new Set()
   let processed = 0
   const opaque = (...parts) => digest(JSON.stringify([sessionId, ...parts]))
   const add = (entry, suffix, role, value, extra = {}, message) => {
@@ -323,7 +323,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           // 厂商 ID 可跨轮重用；未配对的重复 ID 不能猜测归属。
           const selected = toolInput(block.name, block.arguments)
           const resultText = businessResultText(block.name, selected.text)
-          if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(resultText ? {resultText} : {})})
+          if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(block.name==='resident_operator_reply'&&typeof block.arguments?.eventId==='string'?{operatorEventKey:opaque('operator-reply',block.arguments.eventId)}:{}), ...(resultText ? {resultText} : {})})
           add(entry, 'call-' + index + '-' + blockIndex, 'tool', selected.text, {kind: 'tool-call', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), callId, status: 'result-unrecorded'}, message)
         }
       } else if (message.role === 'toolResult') {
@@ -339,8 +339,10 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           let receipt
           try { receipt = JSON.parse(selected.text) } catch { /* no successful receipt */ }
           const taskResult = taskId && call.name === 'task_result' && receipt?.received === true && receipt.accepted !== false
+          const operatorReply = !taskId && !triage && call.name === 'resident_operator_reply' && receipt?.result?.accepted === true && receipt.result.webOnly === true && !operatorReplies.has(call.operatorEventKey)
+          if(operatorReply)operatorReplies.add(call.operatorEventKey)
           const routerReply = !taskId && !triage && call.name === 'resident_router_reply' && receipt?.accepted !== false
-          if (taskResult || routerReply) add(entry, 'business-result-' + index, 'assistant', call.resultText, {kind: taskResult ? 'task-result' : 'router-reply', callId}, message)
+          if (taskResult || routerReply || operatorReply) add(entry, 'business-result-' + index, 'assistant', operatorReply?receipt.result.text:call.resultText, {kind: taskResult ? 'task-result' : 'router-reply', callId}, message)
         }
       } else if (message.role === 'user') {
         add(entry, 'user-' + index, 'user', texts(message.content), {kind: 'source'}, message)
@@ -380,6 +382,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           try {if (!content.startsWith(prefix)) throw new Error(); input = JSON.parse(content.slice(prefix.length))} catch {fail('SESSION_SOURCE_INVALID', 503)}
           if (input.conversationId !== conversationId || input.generation !== generation || !Array.isArray(input.events)) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
           input.events.forEach((event, n) => {
+            if(event.kind==='operator.message'){if(event.operator?.destination!=='web')fail('SESSION_SOURCE_IDENTITY_INVALID',503);sourceText(entry,'router-operator-'+index+'-'+n,{sourceId:event.id,version:1,text:event.operator.text});return}
             if (!event.source) return
             const row = event.source
             if ((row.conversationId ?? row.groupId) !== conversationId) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)

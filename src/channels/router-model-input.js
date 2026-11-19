@@ -9,6 +9,7 @@ const pick=(value,keys)=>Object.fromEntries(keys.filter(key=>value[key]!==undefi
  */
 export function routerModelEvent(event){
   const view=pick(event,['id','kind','sourceId','messageVersion','taskId','taskEventId'])
+  if(event.kind==='operator.message')view.operator=pick(event.operator,['requestId','actorId','text','destination'])
   if(event.source){
     const source=conversationSource(event.source)
     view.source=pick(source,['sourceId','conversationId','messageId','version','actorId','senderName','channel','text','quote','resources','timestamp','retracted','authorizationRevoked','triageHold','archiveRestoreHold'])
@@ -37,11 +38,12 @@ export function routerModelBatch(row,inbox){
   const batch=[]
   let users=0
   for(const event of inbox){
-    if(event.kind==='source.message'&&users>=15)break
+    if(batch.length&&(event.kind==='operator.message')!==(batch[0].kind==='operator.message'))break
+    if(['source.message','operator.message'].includes(event.kind)&&users>=15)break
     const candidate=[...batch,event]
     if(batch.length&&Buffer.byteLength(JSON.stringify(routerModelBody(row,candidate)))>131072)break
     batch.push(event)
-    if(event.kind==='source.message')users++
+    if(['source.message','operator.message'].includes(event.kind))users++
   }
   return batch
 }
