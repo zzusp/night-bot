@@ -292,42 +292,29 @@ test('triage always sees the writing rules and reads examples through a bounded 
 });
 
 
-test('triage keeps new replies unfrozen when the reviewer is unavailable or returns an invalid batch',{timeout:nativeTestTimeout(30000)},async t=>{
+test('triage commits and delivers the first reply even when the separate reply reviewer is unavailable',{timeout:nativeTestTimeout(30000)},async t=>{
  let attempts=0,reviews=0;
- const good='好，我先核对一下。', bad='已收到您的需求，将开展排查并持续跟进。';
+ const reply='好，我先核对一下。';
  const h=await residentRouterHost(t,body=>{
-  const input=triageInput(body);
   if(!requestTools(body).includes('channel_triage_submit'))return {text:'No task created'};
-  const journal=JSON.stringify(body.messages.filter(row=>row.role==='tool'));
-  if(attempts>0)assert.match(journal,/REPLY_QUALITY_UNAVAILABLE/);
-  const reply=attempts++<2?bad:good;
-  return triageReply(input,()=>({needsHandling:false,reply}));
- },{hostOptions:{replyQuality:async({candidates},body)=>{
-  assert.deepEqual(requestTools(body),[]);
-  assert.equal((await h.query('triage.pending')).length,1);
-  assert.deepEqual(await h.query('notification.list'),[]);
-  assert.deepEqual(h.sent,[]);
-  assert.equal(candidates[0].purpose,'triage-first-reply');
-  if(++reviews===1)return {error:'fixture unavailable'};
-  if(reviews===2)return {text:'{"decisions":[{"index":1,"issues":[]}]}' };
-  assert.equal(candidates[0].text,good);
-  return {text:'{"decisions":[{"index":0,"issues":[]}]}' };
- }}});
+  attempts++;
+  return triageReply(triageInput(body),()=>({needsHandling:false,reply}));
+ },{hostOptions:{replyQuality:()=>{reviews++;return {error:'fixture unavailable'};}}});
  await h.receive(channelMessage('triage-review',{text:'刚才查的是不是另一个实例？'}));await h.service.whenIdle();
- assert.equal(reviews,3);assert.deepEqual(h.sent.map(row=>row.text),[good]);
- const [receipt]=await h.query('notification.list');assert.equal(receipt.state,'delivered');assert.equal(receipt.payload.text,good);
+ assert.equal(attempts,1);assert.equal(reviews,0);assert.deepEqual(h.sent.map(row=>row.text),[reply]);
+ const [receipt]=await h.query('notification.list');assert.equal(receipt.state,'delivered');assert.equal(receipt.payload.text,reply);
  assert.deepEqual(await h.query('triage.pending'),[]);
 });
 
 
-test('an edited source cannot freeze or send a draft whose review was in flight',{timeout:nativeTestTimeout(60000)},async t=>{
+test('an edited source cannot freeze or send a first reply generated from the superseded version',{timeout:nativeTestTimeout(60000)},async t=>{
  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve());
- const h=await residentRouterHost(t,body=>triageReply(triageInput(body),source=>({needsHandling:false,reply:source.version===1?'我先核对。':'按更正后的范围核对。'})),
- {hostOptions:{replyQuality:async({candidates})=>{
-   if(candidates[0].sourceText==='请核对东区'){entered.resolve();await release.promise}
-   return {text:'{"decisions":[{"index":0,"issues":[]}]}' };
- }}});
- const original=channelMessage('edited-in-review',{text:'请核对东区'});
+ const h=await residentRouterHost(t,async body=>{
+  const input=triageInput(body);
+  if(input.messages.some(source=>source.version===1)){entered.resolve();await release.promise;}
+  return triageReply(input,source=>({needsHandling:false,reply:source.version===1?'我先核对。':'按更正后的范围核对。'}));
+ });
+ const original=channelMessage('edited-during-triage',{text:'请核对东区'});
  await h.receive(original);await entered.promise;
  await h.receive({...original,messageVersion:2,text:'更正：请核对西区'});
  release.resolve();await h.service.whenIdle();

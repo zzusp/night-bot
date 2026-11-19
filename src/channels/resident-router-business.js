@@ -22,7 +22,7 @@ const output={schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JS
 export const residentOperationId=(conversationId,key)=>'router-operation:'+createHash('sha256').update(JSON.stringify([conversationId,key])).digest('hex')
 
 /** One durable Pi session per authenticated conversation; each input batch is fenced. */
-export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,commit,reviewReplies,recordStage,observe,query}){
+export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,commit,recordStage,observe,query}){
   const handles=new Map(),entries=new Map()
   let closed=false
   const idFor=triageSessionId
@@ -58,19 +58,7 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
             }
             current.sealed=true
             try{
-              const replies=decision.dispositions.filter(item=>item.reply)
-              if([...current.requiredReplies].some(sourceId=>!replies.some(item=>item.sourceId===sourceId)))return {ok:false,code:'REPLY_QUALITY_REVISION_REQUIRED',message:'已有待复核回复，请改写并提交，不要省略。'}
-              if(replies.length){
-                const drafts=replies.map(item=>({text:item.reply,sourceText:current.messages.find(source=>source.sourceId===item.sourceId).text,purpose:'triage-first-reply'}))
-                const rejected=await current.measurePhase('triage-reply-review',()=>reviewReplies(exec,drafts))
-                exec.signal.throwIfAborted()
-                active(conversationId)
-                if(rejected){
-                  current.reviewFailure=rejected.code
-                  for(const item of replies)current.requiredReplies.add(item.sourceId)
-                  return {...rejected,...rejected.revisions?{revisions:rejected.revisions.map(({index,feedback})=>({sourceId:replies[index].sourceId,feedback}))}:{}}
-                }
-              }
+              exec.signal.throwIfAborted()
               const result=await current.measurePhase('triage-commit',()=>commit(conversationId,decision,current.messages))
               current.submitted=true
               exec.concludeTurn()
@@ -111,7 +99,7 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
     if(closed)fail('TRIAGE_CLOSED')
     if(entries.has(conversationId))fail('TRIAGE_BATCH_BUSY')
     if(!messages.length||messages.length>TRIAGE_BATCH_LIMIT)fail('TRIAGE_BATCH_LIMIT')
-    const sessionId=idFor(conversationId),requestId='triage:'+randomUUID(),snapshot=structuredClone(messages),entry={messages:snapshot,packets:new Map(),requiredReplies:new Set(),sealed:false,superseded:false,submitted:false}
+    const sessionId=idFor(conversationId),requestId='triage:'+randomUUID(),snapshot=structuredClone(messages),entry={messages:snapshot,packets:new Map(),sealed:false,superseded:false,submitted:false}
     entries.set(conversationId,entry)
     try{entry.background=await recentSourceBackground(query,conversationId,snapshot)}catch{entry.background={backgroundOnly:true,status:'unavailable',sources:[]};ctx.logger?.warn?.('Triage optional history unavailable')}
     if(closed){entries.delete(conversationId);fail('TRIAGE_CLOSED')}
@@ -128,7 +116,7 @@ export function createChannelTriage({ctx,root,models,legacy,responsibilityFor,co
       const initial=packet()
       try{await measurePhase('input-enqueue',()=>handle.enqueue(initial));await handle.deliver(initial.id);await handle.whenIdle()}
       catch(error){if(!entry.superseded&&!(entry.submitted&&(error.code??error.message)==='TRIAGE_INACTIVE'))throw error}
-      if(!entry.submitted&&!entry.superseded)fail(entry.reviewFailure??'TRIAGE_NO_DISPOSITION')
+      if(!entry.submitted&&!entry.superseded)fail('TRIAGE_NO_DISPOSITION')
       completed=entry.submitted&&!entry.superseded
     }finally{
       try{await entry.cancellation}finally{try{

@@ -228,8 +228,17 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         const failed=branch.findLast(entry=>entry.type==='message'||entry.type==='custom_message'&&entry.customType==='night.business-input')
         const cold=coldSessions.delete(row.activeSessionId)
         const unexpectedStop=cold&&(failed?.id===admittedInput.id||failed?.message?.role==='toolResult'||failed?.message?.stopReason==='toolUse')
+        // 补充输入夹在原续办的 claim 和 turn 之间，不是新的续办起点。
+        const inputIndex=branch.indexOf(admittedInput)
+        const resumeTurn=branch.slice(inputIndex+1).find(entry=>entry.type==='custom_message'&&entry.customType==='night.router-resume-turn')
+        const resumeProof=resumeTurn?.details
+        let consumedWithSupplements=false
+        if(resumeProof?.sessionId===row.activeSessionId&&resumeProof.conversationId===row.id&&resumeProof.generation===row.generation){
+          const claimIndex=branch.findLastIndex((entry,index)=>index<inputIndex&&entry.type==='custom_message'&&entry.customType==='night.router-resume-claim'&&isDeepStrictEqual(entry.details,resumeProof))
+          consumedWithSupplements=claimIndex>0&&branch.some((entry,index)=>index<claimIndex&&entry.id===resumeProof.inputEntryId&&entry.type==='custom_message'&&entry.customType==='night.business-input'&&entry.details?.packetId===resumeProof.packetId)
+        }
         // A consumed continuation is not another automatic retry, even after reboot.
-        if(branch.some(entry=>entry.customType==='night.router-resume-claim'&&entry.details?.packetId===admittedPacket.id)){
+        if(consumedWithSupplements||branch.some(entry=>entry.customType==='night.router-resume-claim'&&entry.details?.packetId===admittedPacket.id)){
           const known=new Set(branch.filter(entry=>entry.customType==='night.business-input').flatMap(entry=>entry.details?.source?.eventIds??[]))
           if(!inbox.some(event=>!known.has(event.id)))fail('ROUTER_BATCH_UNSETTLED')
           row=await replaceOwner(row,'ROUTER_CONTINUATION_FAILED',handle);handle=undefined;continue

@@ -10,6 +10,8 @@ import {createRouterOperatorAuth,createRouterOperatorHttp} from '../src/channels
 import {hash} from '../src/memory/format.js'
 import {conversationSource} from '../src/channels/message-safety.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
+import {initializeMemoryTaskWorkspace} from './fixtures/memory-host.js'
+import {inspectionVersion} from '../src/tasks/inspection.js'
 import {residentRouterHost,channelMessage,requestEnvelope,requestText,requestTools,eventually} from './fixtures/resident-router-host.js'
 
 const triage=body=>requestEnvelope(body,'一级分诊请求：')
@@ -815,8 +817,8 @@ test('operator recovery binds the entire inbox and includes a newer cancellation
   assert.equal(h.sent.length,0)
 })
 
-test('cold recovery resumes a committed Router query result with newer cancellation without repeating the prior delivery',{timeout:nativeTestTimeout(60000)},async t=>{
-  let initialStep=0,recovering=false,combined
+for(const stopsAgain of [false,true])test(stopsAgain?'cold recovery recognizes a consumed continuation with supplements and drains newer events without replay':'cold recovery resumes a committed Router query result with newer cancellation without repeating the prior delivery',{timeout:nativeTestTimeout(60000)},async t=>{
+  let initialStep=0,recovering=false,replacement=false,combined
   const h=await residentRouterHost(t,body=>{
     if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
     if(!requestTools(body).includes('resident_router_settle'))return {text:'No other work'}
@@ -829,11 +831,12 @@ test('cold recovery resumes a committed Router query result with newer cancellat
     }
     const checkpoint=requestEnvelope(body,'Router 续办检查点：')
     if(body.messages.at(-1)?.role==='tool')return {text:'Committed disposition'}
-    if(input.events.some(event=>event.source?.messageId==='next-after-query-resume'))return settle(body,input)
+    if(replacement||input.events.some(event=>event.source?.messageId==='next-after-query-resume'))return settle(body,input)
     const packets=requestText(body).flatMap(text=>text.split('\n')).filter(line=>line.startsWith('Router 请求：')).map(line=>JSON.parse(line.slice('Router 请求：'.length)))
     combined=[...new Map(packets.flatMap(packet=>packet.events).map(event=>[event.id,event])).values()]
     assert.equal(checkpoint,undefined)
     assert.ok(requestText(body).includes('继续处理未完成的事项'))
+    if(stopsAgain)return {text:'The continuation ended without settling its input.'}
     return settle(body,{events:combined})
   })
   const original=channelMessage('committed-query-original'),conversationId=h.host.ctx.channels.identity(original).sessionId
@@ -863,7 +866,35 @@ test('cold recovery resumes a committed Router query result with newer cancellat
   await h.close();await h.host.close()
   await writeFile(file,prefix)
   recovering=true
-  await h.restart();await h.service.whenIdle()
+  await h.restart()
+  if(stopsAgain){
+    await h.service.whenIdle()
+    assert.ok(h.service.listAlerts().some(alert=>alert.detail==='ROUTER_BATCH_UNSETTLED'))
+    assert.equal((await h.query('router.get',{conversationId})).activeSessionId,row.activeSessionId)
+    const stopped=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
+    assert.ok(stopped.entries.some(entry=>entry.customType==='night.router-resume-turn'))
+    assert.equal(stopped.entries.filter(entry=>entry.customType==='night.router-resume-claim').length,1)
+    assert.equal(await h.query('router.inbox-count',{conversationId}),2)
+    const taskId='interrupted-after-router-resume'
+    const command=(kind,args)=>h.store.command({id:`fixture-resume-inspection:${kind}`,kind,args})
+    await command('task.create',{taskId,conversationId,groupId:conversationId,ownerActorId:source.actorId,request:'Check the interrupted task'})
+    await initializeMemoryTaskWorkspace(h.store,h.host.ctx.runtimePaths.workspaces,taskId)
+    await command('task.claim',{taskId})
+    await command('task.inspect',{taskId,expected:inspectionVersion(await h.query('task.get',{taskId}))})
+    const inspection=(await h.query('router.inbox',{conversationId})).find(event=>event.kind==='task.inspection')
+    assert.equal(inspection?.taskId,taskId)
+    replacement=true
+    await h.restart();await h.service.whenIdle()
+    assert.ok(h.requests.some(body=>router(body)?.events.some(event=>event.id===inspection.id)))
+    assert.equal(await h.query('router.inbox-count',{conversationId}),0)
+    assert.equal((await h.query('task.get',{taskId})).inspection.pending,true,'settlement alone must not authorize the task to run')
+    assert.equal((await h.query('router.get',{conversationId})).generation,row.generation+1)
+    const old=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
+    assert.deepEqual(old.entries,stopped.entries)
+    assert.equal(h.sent.length,1,'previously delivered reply must not be sent again')
+    return
+  }
+  await h.service.whenIdle()
   assert.ok(h.requests.length>requests,'cold startup actively continues without new ingress')
   const recovered=await h.host.ctx.sessionPersistence.readNative(row.activeSessionId,{requireComplete:true})
   const proposal=recovered.entries.find(entry=>entry.customType==='night.router-resume-claim').details
