@@ -1,3 +1,4 @@
+import {routerTriageConclusion} from './triage-conclusion.js'
 import {conversationSource} from './message-safety.js'
 
 const pick=(value,keys)=>Object.fromEntries(keys.filter(key=>value[key]!==undefined).map(key=>[key,value[key]]))
@@ -12,6 +13,8 @@ export function routerModelEvent(event){
     const source=conversationSource(event.source)
     view.source=pick(source,['sourceId','conversationId','messageId','version','actorId','senderName','channel','text','quote','resources','timestamp','retracted','authorizationRevoked','triageHold','archiveRestoreHold'])
   }else Object.assign(view,pick(event,['sourceId','messageVersion']))
+  const conclusion=routerTriageConclusion(event)
+  if(conclusion)view.triageConclusion=conclusion
   if(event.triageReply){
     const reply=event.triageReply
     // State must not be interpreted as a receipt: prepared/unknown is not sent.

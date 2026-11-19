@@ -262,6 +262,18 @@ for (const scenario of ['before-due', 'late-bridge', 'superseded']) test('Host n
 }))
 
 for (const audience of ['all', 'members']) test(`native due ${audience} report shares final delivery and recovers attachments after cold restart`, { ...({ skip: !available ? reason : false, timeout: 15000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
+  // Preserve real cold recovery without spending the observation budget on
+  // the reminder's artificial ten-second future. Only the business clock moves.
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() })
+  const waitFor = async (read, description) => {
+    const deadline = performance.now() + 10000
+    while (performance.now() < deadline) {
+      t.signal.throwIfAborted()
+      if (await read()) return
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    throw new Error('Timed out: ' + description)
+  }
   const root = await mkdtemp(join(tmpdir(), 'platform-scheduled-ledger-'))
   let h, originalTurns = 0, dueTurns = 0, initialize = true, filesReadable = false
   const dwsCalls = [], adapter = createDwsAdapter({ enabled: true, writesAuthorized: true, runner: { run: async args => { dwsCalls.push(args); return { exitCode: 0, stdout: '{"success":true}' } } } })
@@ -323,11 +335,16 @@ for (const audience of ['all', 'members']) test(`native due ${audience} report s
   assert.ok(record,JSON.stringify({tools:h.toolResults,alerts:h.service.listAlerts(),errors:errors.map(error=>error.message)}));assert.equal(record.status, 'active'); assert.equal(confirmation.state, 'delivered')
   assert.equal(sends.length, 1); assert.equal(dueTurns, 0)
   await t.step(async () => h.close()); await t.step(async () => boot())
-  await t.step(async () => waitUntil(() => h.residentStore.getPlatformSchedule(record.sessionId)?.outcome === 'replied', 'scheduled report prepared after native cold restore')
+  const [restoredRecord] = await t.step(async () => h.ctx.schedule.catalog())
+  assert.equal(restoredRecord.id, record.id); assert.equal(restoredRecord.sessionId, record.sessionId)
+  assert.equal(restoredRecord.scheduledAt, record.scheduledAt); assert.equal(restoredRecord.status, 'active')
+  assert.equal(record.scheduledAt, scheduleInput.at); assert.equal(dueTurns, 0)
+  await t.step(async () => { t.mock.timers.setTime(Date.parse(record.scheduledAt) + 1); h.ctx.schedule.start() })
+  await t.step(async () => waitFor(() => h.residentStore.getPlatformSchedule(record.sessionId)?.outcome === 'replied', 'scheduled report prepared after native cold restore')
     .catch(error => { t.diagnostic(JSON.stringify({ tools: h.toolResults.slice(-4), errors: errors.map(value => value.message) })); throw error }))
-  await t.step(async () => waitUntil(async () => (await h.ctx.schedule.catalog()).find(item => item.id === record.id)?.status === 'inactive', 'original native report commits its delivery'))
+  await t.step(async () => waitFor(async () => (await h.ctx.schedule.catalog()).find(item => item.id === record.id)?.status === 'inactive', 'original native report commits its delivery'))
   await t.step(async () => h.service.whenIdle())
-  await t.step(async () => waitUntil(async () => (await h.query('notification.list')).some(item => item.payload.artifact && item.ack && item.readbackAttemptCount > 0), 'first attachment has its original ACK and unconfirmed readback')
+  await t.step(async () => waitFor(async () => (await h.query('notification.list')).some(item => item.payload.artifact && item.ack && item.readbackAttemptCount > 0), 'first attachment has its original ACK and unconfirmed readback')
     .catch(async error => { t.diagnostic(JSON.stringify({ recovery: await h.service.recover(), errors: errors.map(value => value.stack) })); throw error }))
   const notices = await t.step(async () => h.query('notification.list')), report = notices.find(item => item.id !== confirmation.id)
   assert.equal(notices.length, 4); assert.equal(report.kind, 'platform-reply'); assert.equal(report.state, 'delivered')
@@ -353,7 +370,7 @@ for (const audience of ['all', 'members']) test(`native due ${audience} report s
   const pending = await t.step(async () => h.query('notification.get', { notificationId: firstFile.id }))
   await t.step(async () => h.service.retryNotification({ groupId: fixedMessage.groupId, notificationId: firstFile.id, expectedToken: taskNotificationRecovery(pending).expectedToken }))
   await t.step(async () => h.service.recover()); await t.step(async () => h.service.whenIdle())
-  await t.step(async () => waitUntil(async () => (await h.query('notification.list')).every(item => item.state === 'delivered'), 'remaining parts read back after restart').catch(async error=>{t.diagnostic(JSON.stringify({remaining:(await h.query('notification.list')).map(item=>({id:item.id,state:item.state,ack:item.ack,error:item.deliveryError,nextAttemptAt:item.nextAttemptAt})),alerts:h.service.listAlerts(),errors:errors.map(value=>value.stack)}));throw error}))
+  await t.step(async () => waitFor(async () => (await h.query('notification.list')).every(item => item.state === 'delivered'), 'remaining parts read back after restart').catch(async error=>{t.diagnostic(JSON.stringify({remaining:(await h.query('notification.list')).map(item=>({id:item.id,state:item.state,ack:item.ack,error:item.deliveryError,nextAttemptAt:item.nextAttemptAt})),alerts:h.service.listAlerts(),errors:errors.map(value=>value.stack)}));throw error}))
   assert.equal(sends.length, 4); assert.equal(dueTurns, 2)
   assert.equal(new Set(sends.map(item => item.id)).size, 4, 'no already sent item is resent')
   assert.ok((await t.step(async () => h.query('notification.list'))).every(item => item.state === 'delivered'))

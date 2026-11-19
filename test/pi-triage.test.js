@@ -15,7 +15,7 @@ test('一级分诊收到明确交办即承接，在 Router 未完成时可靠引
   let triageRequest,routerInput,planned=false
   const h=await residentRouterHost(t,async body=>{
     const summary=handoff(body);if(summary)return summary
-    if(requestTools(body).includes('channel_triage_submit')){triageRequest=body;const value=handling(triage(body),()=>acknowledgement);for(const row of value.args.dispositions)row.needsHandling=true;return value}
+    if(requestTools(body).includes('channel_triage_submit')){triageRequest=body;const value=handling(triage(body),()=>acknowledgement);for(const row of value.args.dispositions){row.needsHandling=true;row.handoff={assignment:'explicit',summary:'明确向助手交办只读排查，先匹配原事项，不修改配置。'}};return value}
     if(requestTools(body).includes('resident_router_settle')){
       routerInput=requestEnvelope(body,'Router 请求：');entered.resolve();await release.promise
       if(!planned){planned=true;const event=routerInput.events.find(event=>event.source);return {tool:'resident_task_plan',args:{operationId:'memory-investigation',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'memory-investigation',title:'Investigate memory alert',objective:'Read-only investigation',requirements:['Do not modify configuration']}],dependencies:[]}}}
@@ -37,6 +37,11 @@ test('一级分诊收到明确交办即承接，在 Router 未完成时可靠引
   const source=(await h.query('source.list'))[0],envelope=h.sent[0],conversationId=source.groupId
   assert.equal(envelope.replyToMessageId,original.messageId);assert.equal(envelope.text,acknowledgement)
   assert.equal(routerInput.events.find(event=>event.sourceId===source.sourceId).triageReply.payload.text,acknowledgement)
+  assert.equal(routerInput.events.find(event=>event.sourceId===source.sourceId).triageConclusion.assignment,'explicit')
+  assert.match(prompt,/无reply也提供/)
+  const routerPrompt=requestText(h.requests.find(body=>requestTools(body).includes('resident_router_settle'))).join('\n')
+  assert.match(routerPrompt,/不逐条重新分诊/)
+  assert.match(routerPrompt,/涉及敏感动作时再针对性核对/)
   assert.equal((await h.query('router.get',{conversationId})).cursor,0)
   assert.equal((await h.query('router.inbox',{conversationId})).length,1)
   release.resolve();await h.service.whenIdle()

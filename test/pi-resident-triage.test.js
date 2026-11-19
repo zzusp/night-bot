@@ -40,3 +40,13 @@ test('first-tier accepts exactly 15 original messages but cannot authorize an ov
   assert.throws(()=>validateTriageDecision(messages,{dispositions}),/TRIAGE_BATCH_LIMIT/)
   assert.throws(()=>validateTriageDecision(messages.slice(0,15),{dispositions:[...dispositions.slice(0,14),dispositions[15]]}),/TRIAGE_SOURCE_OUTSIDE_BATCH/)
 })
+
+test('triage handoff distinguishes explicit/uncertain, remains optional for old clients and bounds summaries',()=>{
+ const messages=[source(1)],base=decide(messages[0],true)
+ for(const assignment of ['explicit','uncertain']){
+  const handoff={assignment,summary:'本条需继续核对已有事项，受话对象以原文和引用为准。'}
+  assert.deepEqual(validateTriageDecision(messages,{dispositions:[{...base,handoff}]}).dispositions[0].handoff,handoff)
+ }
+ assert.equal(validateTriageDecision(messages,{dispositions:[base]}).dispositions[0].handoff,undefined)
+ for(const handoff of [{assignment:'authorized',summary:'No'}, {assignment:'explicit',summary:'x'.repeat(401)}, {assignment:'uncertain',summary:' '}, {assignment:'explicit',summary:'Clear',taskId:'injected'}])assert.throws(()=>validateTriageDecision(messages,{dispositions:[{...base,handoff}]}))
+})

@@ -27,13 +27,8 @@ export function decodePiJournal(bytes, id, {codec, requireComplete = false} = {}
       if (entry?.type!=='session'||entry.version!==3||entry.id!==id) throw failure('PI_SESSION_FORMAT_UNSUPPORTED')
       header=entry;continue
     }
-    if (!entry || typeof entry.id!=='string' || !entry.id || seen.has(entry.id) || entry.parentId!==null&&!seen.has(entry.parentId)) throw failure('PI_SESSION_TREE_CORRUPT')
-    if(entry.type==='custom'&&entry.customType==='night.header'){
-      if(entries.length||entry.data?.storage?.engine!=='pi-native'||entry.data.storage.version!==1)throw failure('PI_SESSION_FORMAT_UNSUPPORTED')
-    }
-    if(typeof entry.type!=='string'||typeof entry.timestamp!=='string')throw failure('PI_SESSION_ENTRY_INVALID')
-    if(entry.type==='custom'&&entry.customType==='night.audit'){validateNativeAudit(entry.data);validateAuditPathBindings(entry.data);auditCount++}
-    if(entry.type==='custom'&&entry.customType==='night.event')throw failure('PI_SESSION_NATIVE_HOST_EVENT_FORBIDDEN')
+    validatePiJournalEntry(entry,seen,entries.length===0)
+    if(entry.type==='custom'&&entry.customType==='night.audit')auditCount++
     entries.push(entry);seen.add(entry.id)
     if (entry.type==='custom'&&entry.customType==='night.commit') {
       const hash=digest((previousCommit===null?JSON.stringify(header)+'\n':'')+batch.map(e=>JSON.stringify(e)).join('\n'))
@@ -52,6 +47,16 @@ export function decodePiJournal(bytes, id, {codec, requireComplete = false} = {}
   const audit=committed.filter(e=>e.type==='custom'&&e.customType==='night.audit').map(e=>codec?.readAuditReceipt?.(e.data,{sourceHeader:metadata.header,logicalHeader})??e.data)
   return {format:'pi-native-v1',header:logicalHeader,audit,entries:committed,piHeader:header,committedBytes,totalBytes:bytes.length}
 
+}
+
+export function validatePiJournalEntry(entry,seen,first) {
+  if (!entry || typeof entry.id!=='string' || !entry.id || seen.has(entry.id) || entry.parentId!==null&&!seen.has(entry.parentId)) throw failure('PI_SESSION_TREE_CORRUPT')
+  if(entry.type==='custom'&&entry.customType==='night.header'){
+    if(!first||entry.data?.storage?.engine!=='pi-native'||entry.data.storage.version!==1)throw failure('PI_SESSION_FORMAT_UNSUPPORTED')
+  }
+  if(typeof entry.type!=='string'||typeof entry.timestamp!=='string')throw failure('PI_SESSION_ENTRY_INVALID')
+  if(entry.type==='custom'&&entry.customType==='night.audit'){validateNativeAudit(entry.data);validateAuditPathBindings(entry.data)}
+  if(entry.type==='custom'&&entry.customType==='night.event')throw failure('PI_SESSION_NATIVE_HOST_EVENT_FORBIDDEN')
 }
 
 /** Business envelopes only; Pi owns all conversation and context entry semantics. */

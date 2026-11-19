@@ -77,7 +77,7 @@ test('task verification reconciles an existing memory without a repeated memory 
    const input=requestText(body).toReversed().map(text=>{try{return JSON.parse(text)}catch{return null}}).find(value=>value?.task)
    const item=cases.find(row=>input.task.taskId==='verify-'+row.key)
    const ids=taskSessions.get(item.key)??new Set();ids.add(input.task.sessionId);taskSessions.set(item.key,ids)
-   if(!continued.has(item.key))return {tool:'task_result',args:{decision:{action:'wait',audience:'operator',question:'Provide the additional observation',summary:'Original report preserved; awaiting observation',evidence:['Original report is unverified'],limitations:['No validation result yet']}}}
+   if(!continued.has(item.key))return {tool:'task_result',args:{decision:{action:'wait',question:'Provide the additional observation',summary:'Original report preserved; awaiting observation',evidence:['Original report is unverified'],limitations:['No validation result yet']}}}
    return {tool:'task_result',args:{decision:{action:'complete',summary:item.summary,evidence:['Read-only verification: '+item.summary],limitations:item.decision==='update'?['Expansion is not established as the root cause']:[]}}}
   }
   return {text:JSON.stringify({lessons:[]})}

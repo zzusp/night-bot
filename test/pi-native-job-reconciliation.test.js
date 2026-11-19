@@ -13,6 +13,7 @@ import {apply as authority} from '../src/pi-authority.js'
 import {runtimePaths,prepareRuntimePaths} from '../src/runtime/paths.js'
 import {portablePaths} from '../src/runtime/portable.js'
 import {acquireLock} from '../src/runtime/files.js'
+import {nativeBusinessAuditKinds} from '../src/runtime/pi-business-state.js'
 import {admissionAuditKinds} from '../src/runtime/pi-business-admission.js'
 import {taskEffectBinding,taskEffectDigest,taskEffectInvocationKey,verifyTaskEffectClosures} from '../src/tasks/effect-reconciliation.js'
 import {singleTaskAuditKinds} from '../src/tasks/single-session.js'
@@ -21,7 +22,7 @@ import {taskAuditKinds} from '../src/tasks/session-audit.js'
 import {registerTaskSession} from '../src/tasks/session-routes.js'
 import {inspectNativeJob,reconcileNativeJob} from '../src/tasks/job-reconciliation.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
-import {initializeTaskDirectories} from '../packages/dingtalk-core/session-workspaces.js'
+import {initializeTaskDirectories,taskDirectories} from '../packages/dingtalk-core/session-workspaces.js'
 import {nativeRuntimeHost,nativeShell,latestInput,topicTaskCalls} from './fixtures/runtime-official-host.js'
 const exec=promisify(execFile),hash=bytes=>createHash('sha256').update(bytes).digest('hex')
 async function fixture(t,{effect=false}={}){
@@ -31,12 +32,20 @@ async function fixture(t,{effect=false}={}){
  const command=(kind,args,id=kind+':'+(++n))=>store.command({kind,args,id})
  await command('task.create',{taskId:'lost-job',groupId:'native-group',ownerActorId:'native-user',request:'Continue the original local objective; do not replay the old invocation'})
  let task=await store.query({kind:'task.get',taskId:'lost-job'})
- if(task.workspaceInitialization){const b={taskId:task.taskId,creationCommandId:task.workspaceInitialization.creationCommandId,sessionId:task.sessionId},begin=await command('task.workspace.begin',b,b.creationCommandId+':workspace-begin');const observation=await initializeTaskDirectories(paths.workspaces,begin.result.task);await command('task.workspace.finish',{...b,state:'ready',observation},b.creationCommandId+':workspace-finish')}
+ if(task.workspaceInitialization){const b={taskId:task.taskId,creationCommandId:task.workspaceInitialization.creationCommandId,sessionId:task.sessionId},begin=await command('task.workspace.begin',b,b.creationCommandId+':workspace-begin');const observation=await initializeTaskDirectories(paths.workspaces,begin.result.task);await command('task.workspace.finish',{...b,state:'ready',observation:observation.native},b.creationCommandId+':workspace-finish')}
  const {binding}= (await command('task.claim',{taskId:task.taskId})).result
  await command('task.sessionBound',{binding});await command('task.sessionFailed',{binding})
  task=await store.query({kind:'task.get',taskId:task.taskId});await store.close()
+ // Linux tasks have no Windows initialization transaction; materialize the
+ // current archive layout before writing this offline operator evidence.
+ await taskDirectories(paths.workspaces,task.taskId,{task})
+ // The historical session must retain the authenticated Host memory binding.
+ // Operator job closure cannot invent a missing authorization scope.
+ const seed=await nativeRuntimeHost(root,()=>[],{resident:true,permissionMode:'full'})
+ try{await seed.ctx.memory.bindSession(task.sessionId,{actorId:task.ownerActorId,groupId:task.groupId,groupWrite:true})}finally{await seed.close()}
  const ctx=new Context();authority(ctx);ctx.provide('portablePaths',portablePaths(paths));const routes=new Map();ctx.provide('taskSessionRoutes',routes)
- const route=await registerTaskSession(paths,routes,task),backend=new PiPersistence(ctx,{root:join(paths.state,'sessions')}),writer=await backend.createNative({version:4,id:task.sessionId,createdAt:Date.now(),isSeeded:false,cwd:route.root,agentPreset:'night-bot-task'},{auditKinds:{...jobReceiptKinds,...taskAuditKinds,...singleTaskAuditKinds,...admissionAuditKinds}})
+ const route=await registerTaskSession(paths,routes,task),backend=new PiPersistence(ctx,{root:join(paths.state,'sessions')}),writer=await backend.createNative({version:4,id:task.sessionId,createdAt:Date.now(),isSeeded:false,cwd:route.root,agentPreset:'night-bot-task'},{auditKinds:{...nativeBusinessAuditKinds,...jobReceiptKinds,...taskAuditKinds,...singleTaskAuditKinds,...admissionAuditKinds}})
+ writer.appendAudit({version:1,domain:'permission',kind:'selected',payload:{preset:'danger-full-access',sandbox:'danger-full-access',approval:'never'}})
  writer.appendAudit({version:1,domain:'task',kind:'identity',payload:{taskId:task.taskId,sessionId:task.sessionId}})
  const bound={version:1,jobId:'pwsh-lost-fixture',owner:task.sessionId,kind:'pwsh',label:'Original fixture producer; never replay',startedAt:1,toolCall:{callId:'old-call',rootCallId:'old-call',toolName:'pwsh'}}
  let intentEntryId
@@ -61,6 +70,7 @@ async function resumeFromOperatorAfterColdDrain(h,taskId){
  await h.service.recover();await h.service.whenIdle()
  const task=await h.query('task.get',{taskId})
  assert.equal(task.drained,true);assert.equal(task.sessionFailure,null)
+ assert.equal(h.requests.filter(request=>request.tools.some(tool=>tool.name==='task_result')).length,0,'restart alone must not clear a retained drain failure')
  assert.equal(task.inspection?.pending,true,'consuming the inspection does not authorize continuation')
  await h.service.appendTaskContext({taskId,requestId:'operator-cold-job-readback',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,
   progressImpact:'preserve',authorizationChange:'none',context:'Continue the original task using the retained operator readback; do not replay the old producer.'})
@@ -120,7 +130,7 @@ test('real Host cold drains and resumes the same task/session on operator input 
   if(!request.tools.some(tool=>tool.name==='task_result'))return topicTaskCalls(request)
   turns++;const input=latestInput(request);assert.equal(input.task.taskId,f.task.taskId)
   assert.equal(input.jobReconciliations.length,1);assert.equal(input.jobReconciliations[0].noReplay,true);assert.equal(input.jobReconciliations[0].exitStatus,'unknown')
-  return [{name:'task_result',args:{decision:{action:'wait',summary:'The original objective continued after readback; no old producer was replayed.',evidence:['original operator evidence'],limitations:['Old build exit remains unknown']}}}]
+  return [{name:'task_result',args:{decision:{action:'wait',summary:'The original objective continued after readback; no old producer was replayed.',question:'Review the retained unknown original exit before continuing the bounded objective.',evidence:['original operator evidence'],limitations:['Old build exit remains unknown']}}}]
  },{store,permissionMode:'full'})
  try{
   await resumeFromOperatorAfterColdDrain(h,f.task.taskId)
@@ -153,7 +163,7 @@ test('cold shell effect closes through real job CLI and Host readback, then a ne
  const h=await nativeRuntimeHost(f.root,async request=>{
   if(!request.tools.some(tool=>tool.name==='task_result'))return topicTaskCalls(request)
   if(phase==='continue'&&!shellIssued){shellIssued=true;return [{name:nativeShell,args:{description:'Run a new independent local shell after exact old-effect closure',command:'echo independent-shell-ok'}}]}
-  return [{name:'task_result',args:{decision:{action:'wait',summary:phase==='continue'?'Independent shell finished':'Original output retained; no old shell replay',evidence:['retained operator readback'],limitations:['Original exit and effects remain unknown']}}}]
+  return [{name:'task_result',args:{decision:{action:'wait',summary:phase==='continue'?'Independent shell finished':'Original output retained; no old shell replay',question:'Review the original unknown outcome before continuing.',evidence:['retained operator readback'],limitations:['Original exit and effects remain unknown']}}}]
  },{store,permissionMode:'full'})
  try{
   await resumeFromOperatorAfterColdDrain(h,f.task.taskId)

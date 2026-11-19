@@ -506,11 +506,11 @@ test('legacy prepared replyRequest and cold unknown retain original payload byte
 })
 
 
-for(const format of ['legacy','neutral','compact'])test(`cold Router resumes an exact ${format} pending packet before a later event without changing its body or replaying either batch`,{timeout:nativeTestTimeout(60000)},async t=>{
+for(const format of ['legacy','neutral','compact','conclusion'])test(`cold Router resumes an exact ${format} pending packet before a later event without changing its body or replaying either batch`,{timeout:nativeTestTimeout(60000)},async t=>{
   const batches=[];let injected=false,legacyPacket
   const h=await residentRouterHost(t,body=>{
     const summary=handoff(body);if(summary)return summary
-    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
+    if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true,...format==='conclusion'?{handoff:{assignment:'explicit',summary:'本批明确只读交办，先匹配已有事项。'}}:{}}))
     if(requestTools(body).includes('resident_router_settle')){
       const input=router(body)
       if(body.messages.at(-1)?.role!=='tool')batches.push(structuredClone(input))
@@ -527,7 +527,7 @@ for(const format of ['legacy','neutral','compact'])test(`cold Router resumes an 
         if(injected)throw Object.assign(Error('TEST_ROUTER_ENQUEUE_INTERRUPTED'),{code:'TEST_ROUTER_ENQUEUE_INTERRUPTED'})
         if(!injected){
           const input=JSON.parse(packet.content[0].text.slice('Router 请求：'.length))
-          if(format!=='compact'){
+          if(!['compact','conclusion'].includes(format)){
             input.events=(await h.query('router.inbox',{conversationId:input.conversationId})).filter(event=>packet.source.eventIds.includes(event.id))
             if(format==='neutral')input.events=input.events.map(event=>({...event,source:conversationSource(event.source)}))
             delete packet.source.modelViewVersion;delete packet.source.ledgerIdentity
@@ -556,6 +556,8 @@ for(const format of ['legacy','neutral','compact'])test(`cold Router resumes an 
   assert.equal(stored.entries.filter(entry=>entry.type==='message'&&entry.message.role==='assistant').length,0);assert.equal(batches.length,0)
   assert.equal((await h.query('router.inbox',{conversationId})).length,1)
   const originalBody=JSON.parse(legacyPacket.content[0].text.slice('Router 请求：'.length)),source=originalBody.events[0].source
+  if(format==='conclusion')assert.equal(originalBody.events[0].triageConclusion.assignment,'explicit')
+  else assert.equal(originalBody.events[0].triageConclusion,undefined)
   if(format==='legacy'){assert.equal(source.groupId,conversationId);assert.equal(Object.hasOwn(source,'conversationId'),false)}
   else if(format==='neutral')assert.equal(source.conversationId,conversationId)
   else {assert.equal(source.groupId,undefined);assert.equal(source.routeReceipt,undefined);assert.equal(legacyPacket.source.modelViewVersion,1)}
@@ -1024,7 +1026,7 @@ test('Router close cannot swallow an admission PAUSED failure produced before it
   await aborted.promise;trace.push({at:'release',code:prior.code,safe:prior.routerSafeToResume});t.diagnostic(JSON.stringify({pausedCloseTrace:trace}));release.resolve();await rejected;assert.equal(h.requests.length,1)
 })
 
-for(const audience of ['operator','requester'])test(`Router resumes a waiting task in its original Pi session after ${audience} information arrives`,{timeout:nativeTestTimeout(60000)},async t=>{
+for(const answerFrom of ['requester','same-conversation-member'])test(`Router resumes a waiting task in its original Pi session after an answer from ${answerFrom}`,{timeout:nativeTestTimeout(60000)},async t=>{
   const steps=new Map(),runs=[],seenInputs=[];let taskStep=0,writes=0,reads=0
   const h=await residentRouterHost(t,async body=>{
     const summary=handoff(body);if(summary)return summary
@@ -1034,9 +1036,9 @@ for(const audience of ['operator','requester'])test(`Router resumes a waiting ta
       if(!source)return settle(body,input)
       const step=steps.get(source.messageId)??0;steps.set(source.messageId,step+1)
       if(step===0){
-        if(source.messageId==='request')return {tool:'resident_task_plan',args:{operationId:'plan:'+audience,sourceId:source.sourceId,messageVersion:source.version,
-          tasks:[{taskId:'wait-resume-'+audience,title:'Verify the original proof',objective:'Read the original proof after the missing environment information arrives',requirements:['Keep the original session and verify the file']}],dependencies:[]}}
-        const task=await h.query('task.get',{taskId:'wait-resume-'+audience})
+        if(source.messageId==='request')return {tool:'resident_task_plan',args:{operationId:'plan:'+answerFrom,sourceId:source.sourceId,messageVersion:source.version,
+          tasks:[{taskId:'wait-resume-'+answerFrom,title:'Verify the original proof',objective:'Read the original proof after the missing environment information arrives',requirements:['Keep the original session and verify the file']}],dependencies:[]}}
+        const task=await h.query('task.get',{taskId:'wait-resume-'+answerFrom})
         return {tool:'resident_task_action',args:{operationId:'action:'+source.messageId,sourceId:source.sourceId,messageVersion:source.version,
           taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,
           ...(source.messageId==='answer'?{kind:'resume',humanRequestId:task.humanRequests.at(-1).requestId,expectedContextRevision:task.contextRevision??0,reason:'The original answer supplies the missing variable; continue verification'}:{kind:'supplement'}),text:source.text}}
@@ -1057,7 +1059,7 @@ for(const audience of ['operator','requester'])test(`Router resumes a waiting ta
       if(taskStep++===0){writes++;return {tool:'write',args:{path:'work/proof.txt',content:'original-session-proof'}}}
       assert.equal(input.task.humanRequests,undefined,'execution gets the current brief, not the historical human-request ledger')
       const hasAnswer=input.updates?.some(row=>row.text.includes('VERIFY_TARGET'))&&input.sources?.some(row=>row.text.includes('VERIFY_TARGET'))
-      if(!hasAnswer)return {tool:'task_result',args:{decision:{action:'wait',audience,question:'Which environment variable identifies the read-only target?',summary:'Waiting for the target variable name',evidence:['Original proof saved'],limitations:['Target variable name missing']}}}
+      if(!hasAnswer)return {tool:'task_result',args:{decision:{action:'wait',question:'Which environment variable identifies the read-only target?',summary:'Waiting for the target variable name',evidence:['Original proof saved'],limitations:['Target variable name missing']}}}
       if(reads++===0)return {tool:'read',args:{path:'work/proof.txt'}}
       assert.match(JSON.stringify(body),/original-session-proof/,'continuation reads the actual original file')
       return {tool:'task_result',args:{decision:{action:'complete',summary:'Original proof read after the Router continuation',evidence:['Original proof read: original-session-proof'],limitations:[]}}}
@@ -1065,8 +1067,8 @@ for(const audience of ['operator','requester'])test(`Router resumes a waiting ta
     return {text:'No other work'}
   })
   await h.receive(channelMessage('request',{text:'Verify the proof after obtaining the read-only target variable name.'}));await h.service.whenIdle()
-  const taskId='wait-resume-'+audience,waiting=await h.query('task.get',{taskId})
-  assert.equal(waiting.humanRequests.at(-1).status,'waiting-reply');assert.equal(waiting.drained,true)
+  const taskId='wait-resume-'+answerFrom,waiting=await h.query('task.get',{taskId})
+  assert.equal(waiting.humanRequests.at(-1).status,'waiting-reply');assert.equal(waiting.humanRequests.at(-1).audience,'requester');assert.equal(waiting.drained,true)
   const originalSession=waiting.sessionId,executionCalls=runs.length
   await h.receive(channelMessage('partial',{senderId:'bob',text:'The configuration is in the environment; the exact variable name is not yet supplied.'}));await h.service.whenIdle()
   const partial=await h.query('task.get',{taskId})
@@ -1097,7 +1099,7 @@ for(const audience of ['operator','requester'])test(`Router resumes a waiting ta
   assert.deepEqual(await h.query('wake.list',{taskId}),beforeWakes)
   await h.restart();await h.service.whenIdle()
   assert.equal(runs.length,executionCalls,'cold recovery preserves the unresolved wait and pending supplement')
-  await h.receive(channelMessage('answer',{senderId:audience==='operator'?'alice':'bob',text:'The existing read-only target is configured in VERIFY_TARGET; continue the original verification.'}));await h.service.whenIdle()
+  await h.receive(channelMessage('answer',{senderId:answerFrom==='requester'?'alice':'bob',text:'The existing read-only target is configured in VERIFY_TARGET; continue the original verification.'}));await h.service.whenIdle()
   const action=h.results.findLast(row=>row.name==='resident_task_action')
   assert.ok(action&&!action.result.isError,JSON.stringify(action?.result??h.service.listAlerts()))
   const completed=await h.query('task.get',{taskId})
@@ -1121,7 +1123,7 @@ for(const audience of ['operator','requester'])test(`Router resumes a waiting ta
   const results=persisted.entries.filter(row=>row.type==='message'&&row.message.role==='toolResult').map(row=>row.message)
   assert.equal(results.filter(row=>row.toolName==='write'&&!row.isError).length,1)
   assert.ok(results.some(row=>row.toolName==='read'&&!row.isError&&JSON.stringify(row.content).includes('original-session-proof')))
-  const calls=runs.length;await h.restart();await h.receive(channelMessage('answer',{senderId:audience==='operator'?'alice':'bob',text:'The existing read-only target is configured in VERIFY_TARGET; continue the original verification.'}));await h.service.whenIdle()
+  const calls=runs.length;await h.restart();await h.receive(channelMessage('answer',{senderId:answerFrom==='requester'?'alice':'bob',text:'The existing read-only target is configured in VERIFY_TARGET; continue the original verification.'}));await h.service.whenIdle()
   assert.equal(runs.length,calls,'committed original source and task completion are not replayed after restart')
   assert.equal(writes,1)
 })
@@ -1348,7 +1350,7 @@ test('Router schedules the same execution session across wait, stop, cancellatio
       const lease=input.task.leaseEpoch,step=turns.get(lease)??0;turns.set(lease,step+1)
       if(phase==='initial'){
         if(step===0){proofWrites++;return {tool:'write',args:{path:'work/router-proof.txt',content:'retained scheduling proof'}}}
-        return {tool:'task_result',args:{decision:{action:'wait',audience:'operator',question:'Await a Router decision',summary:'Original session is waiting',evidence:['Original proof written'],limitations:['Waiting']}}}
+        return {tool:'task_result',args:{decision:{action:'wait',question:'Await a Router decision',summary:'Original session is waiting',evidence:['Original proof written'],limitations:['Waiting']}}}
       }
       if(step===0)return {tool:'read',args:{path:'work/router-proof.txt'}}
       assert.match(JSON.stringify(body),/retained scheduling proof/)
@@ -1385,7 +1387,8 @@ test('Router schedules the same execution session across wait, stop, cancellatio
   assert.equal(proofWrites,1);assert.deepEqual([...new Set(owners)],[sessionId]);assert.equal((await h.query('task.list')).length,1)
   assert.ok(!h.results.some(row=>JSON.stringify(row.result).includes('TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED')))
   assert.ok(!(await h.query('source.list')).some(row=>row.requestIdentity?.effectAuthorization))
-  assert.deepEqual(h.sent,[],'Scheduling requires no external messages')
+  assert.deepEqual(h.sent.map(message=>message.text),['Await a Router decision'],
+    'Only the original question is sent; later scheduling never requires or sends another message')
 })
 
 for(const cut of ['prepared-only','journal-committed'])test(`Router resumes through an interrupted effect closure without a new operator grant: ${cut}`,{timeout:nativeTestTimeout(60000)},async t=>{

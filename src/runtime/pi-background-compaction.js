@@ -50,7 +50,9 @@ export function createBackgroundCompaction({session,store,admission,compact,comm
     settings.applyOverrides({compaction:{modelOverrides:{[key]:{keepRecentTokens}}}})
     try{await session.compact()}
     catch(error){
-     if(error?.name==='AbortError')signal?.throwIfAborted()
+     // Pi 1.5 also reports abortCompaction as an ordinary cancellation Error.
+     // Preserve the owning cancellation reason, not a replacement SDK error.
+     if(error?.name==='AbortError'||error?.message==='Compaction cancelled')signal?.throwIfAborted()
      // Pinned Pi 1.5 reports recent-only history as a no-op, not model failure.
      if(!['Nothing to compact (session too small)','Already compacted'].includes(error?.message))throw error
     }finally{settings.applyOverrides({compaction:{modelOverrides:{[key]:{keepRecentTokens:previous}}}})}

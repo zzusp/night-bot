@@ -170,7 +170,35 @@ function businessResultText(name, input) {
 const taskTextTools = new Set(['read', 'read_window', 'read_image', 'write', 'edit', 'find', 'grep', 'bash', 'pwsh',
   'job_output', 'job_list', 'job_kill', 'working_directory', 'todo_write', 'web_search', 'web_fetch'])
 
+// Only the Host envelope produced by pi-official-tools/native-tools lends a
+// classification. Never parse error text, tool JSON, arbitrary details or stack.
+// Exact name+code pairs are public vocabulary, not arbitrary error fields.
+const publicToolFailures = new Map([
+  ['ToolArgsError:INVALID_ARGS', '输入不符合要求，请检查参数。'],
+  ['ToolOutputError:INVALID_TOOL_OUTPUT', '返回结果格式不符合要求，请检查工具实现。'],
+  ['ToolNotFoundError:UNKNOWN_TOOL', '工具不可用，请检查工具配置。'],
+  ['ToolTimeoutError:TOOL_TIMEOUT', '调用超时，请先核对执行状态，避免重复操作。'],
+  ['AbortError:ABORTED', '调用已中断，请先核对执行状态。'],
+  ['AbortError:ABORTED_BEFORE_DISPATCH', '调用在执行前已取消。'],
+  ['AuthorizationDeclinedError:DECLINED', '本次操作未获批准，请核对授权。'],
+])
+function toolFailure(call, message) {
+  const fallback = {reason: '未记录失败原因'}
+  // Unknown/custom tool bodies cannot lend themselves the Host error contract.
+  if (!call || call.name !== message.toolName || !(Object.hasOwn(toolInputs, call.name) || call.name === 'resident_reply_query')) return fallback
+  const native = message.details?.nativeResult
+  if (native?.isError !== true) return fallback
+  const info = native.error?.info
+  if (!info || typeof info.name !== 'string' || typeof info.code !== 'string') return fallback
+  const reason = publicToolFailures.get(info.name + ':' + info.code)
+  return reason ? {reason, code: info.code} : fallback
+}
+
 function toolOutput(call, message, identity) {
+  if (message.isError === true) {
+    const failure = toolFailure(call, message)
+    return {toolName: message.toolName, text: failure.reason + (failure.code ? '\n错误码：' + failure.code : ''), redacted: true, failure}
+  }
   const hidden = {toolName: message.toolName, text: '此结果没有唯一配对的工具调用，正文未展示。', redacted: true}
   // 孤立、重复 ID 或名称冲突的结果保留事件，但不借 result.toolName 猜测公开权限。
   if (!call || call.name !== message.toolName) return hidden
@@ -304,7 +332,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
         const callId = call?.id ?? opaque(entry.id, 'orphan-result', index)
         calls.delete(nativeId)
         const selected = toolOutput(call, message, identity)
-        add(entry, 'result-' + index, 'tool', selected.text, {kind: 'tool-result', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), callId, isError: message.isError === true, status: message.isError ? 'error' : 'completed'}, message)
+        add(entry, 'result-' + index, 'tool', selected.text, {kind: 'tool-result', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), ...(selected.failure ? {failure: selected.failure} : {}), callId, isError: message.isError === true, status: message.isError ? 'error' : 'completed'}, message)
         // Only a committed, uniquely paired successful Host receipt presents a result.
         // Keep the original tool records and derive a separately pageable message.
         if (resultMessages && call?.resultText && !message.isError) {

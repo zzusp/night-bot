@@ -63,3 +63,23 @@ test('ledger binding rejects omitted-field and source-version tampering while de
  }
  assert.equal(routerPacketViews(row,[original]).length,3)
 })
+
+test('bound triage conclusion preserves originals with/without reply; identity guards reject cross-version and scope',()=>{
+ for(const assignment of ['explicit','uncertain'])for(const reply of [true,false]){
+  const value=event();if(!reply)delete value.triageReply
+  value.triageDecisionId='triage:'+value.sourceId
+  value.triageConclusion={decisionId:value.triageDecisionId,conversationId:'room',sourceId:value.sourceId,messageVersion:3,assignment,summary:'简短分诊结论，必要未决点保留。'}
+  const frozen=structuredClone(value),view=routerModelEvent(value),packet=routerPacketViews(row,[value])[0]
+  assert.deepEqual(view.triageConclusion,value.triageConclusion);assert.equal(view.triageReply!==undefined,reply)
+  assert.equal(view.source.text,value.source.text);assert.deepEqual(view.source.resources,value.source.resources);assert.equal(view.source.quote.text,value.source.quote.content)
+  assert.deepEqual(value,frozen)
+  for(const change of [v=>v.triageConclusion.sourceId='other',v=>v.triageConclusion.conversationId='other',v=>v.triageConclusion.messageVersion++,v=>v.triageDecisionId='other',v=>v.source.version++,v=>{v.source.conversationId='room';v.source.groupId='other'}]){
+   const changed=structuredClone(value);change(changed);assert.throws(()=>routerPacketViews(row,[changed]),{code:'ROUTER_TRIAGE_BINDING_INVALID'})
+  }
+  const changed=structuredClone(value);changed.triageConclusion.summary='Different decision';assert.equal(sameRouterPacket(packet,routerPacketViews(row,[changed])[0]),false)
+ }
+ // No automatic inference or enrichment for a legacy queued event.
+ const old=event();assert.equal(routerModelEvent(old).triageConclusion,undefined);const packet=routerPacketViews(row,[old])[0]
+ const later=structuredClone(old);later.source.stages={router:{start:'later'}};later.triageReply.state='delivered'
+ assert.equal(sameRouterPacket(packet,routerPacketViews(row,[later])[0]),true)
+})

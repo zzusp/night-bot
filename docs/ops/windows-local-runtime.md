@@ -106,7 +106,11 @@ API Key profile 使用声明的 `apiKeyEnv` 引用。可通过既有环境或 `n
 
 仅有注册、非 producer 终态、资源未排空或已标记不确定的作业，仍拒绝历史成功回读并维持 noReplay，按现有核验/结清流程处理。旧 journal 不补写输出或成功状态；新可选收据字段需要本版解码，不能用旧代码直接回滚读取。供应商 `session_expired` 需按实际提供方重新认证后使用正式续办入口；本改动不自动刷新凭据或重试副作用。
 
-## 学习技能生成故障
+## Pi 会话提交与技能刷新
+
+分诊、Router 和任务执行共用 Pi 写入器。活跃提交只处理新增记录；没有新记录且分支没变时，不读取日志正文。输入确认和新记录仍同步落盘。打开、恢复和离线证明保留完整校验。请勿在运行中编辑会话文件；文件身份、大小或时间戳异常会拒绝续写，应保留原日志排查。复测提交耗时看 `input-acknowledge`、`request-commit`，不要与父阶段重复相加。
+
+会话启动、请求前和轮末仍刷新技能。学习技能按批读取共享状态和支持证据，现有私有文件仍进行内容、路径和发布前授权复核。此改动无需迁移或调整配置，更新并正常重启后生效。复测耗时请对比同会话 `skills` 分项，不要把它与父级 `resources-*` 相加。
 
 新技能和正文更新必须通过本发行内置 `skill-creator` 生成，复盘自身仍无工具。`SKILL_CREATOR_UNAVAILABLE`、`SKILL_CREATOR_NOT_USED`、`SKILL_GENERATION_INCOMPLETE` 或 `SKILL_GENERATION_INVALID` 表示生成未完成，不是业务任务回滚。核对复盘报告或受管 `generationFailures` 的来源与错误，再检查发行内置资源和实际模型配置；不能手写 SKILL.md、补造 creator 收据或回退直接拼装求成功。已存在技能仅按已提交状态重建，不自动批量重生成；历史没有 creator 证据的版本继续按历史显示。参见 [自进化](../SELF-EVOLUTION.md#内置-creator-生成阶段)。
 
@@ -241,7 +245,7 @@ Windows 短暂共享占用导致的原子替换 `EPERM` / `EACCES` / `EBUSY` 在
 
 ### 隔离准备
 
-1. 默认保持 `channelPlugins:[]` 或实例 `enabled:false`。公开配置只接受 `dingtalk_*`：`dingtalk_listen:false` 关闭监听，`dingtalk_writes_authorized:false` 关闭发送，两者不能代替禁用实例。`enabled:true` 即会核对登录与目标，即使监听关闭也可能调用 DWS；未获连接授权不启用。额外 `dingtalk_operator_notifications` 默认关闭，不扩大到 operator 私聊。
+1. 默认保持 `channelPlugins:[]` 或实例 `enabled:false`。公开配置只接受 `dingtalk_*`：`dingtalk_listen:false` 关闭监听，`dingtalk_writes_authorized:false` 关闭发送，两者不能代替禁用实例。`enabled:true` 即会核对登录与目标，即使监听关闭也可能调用 DWS；未获连接授权不启用。额外 `dingtalk_operator_notifications` 默认关闭，不扩大到 operator 私聊。普通任务补问不依赖此配置：已授权发送且有真实 IM 来源时引用原消息；纯 Web 问题保留在 Web。升级不为历史未发送的私密问题新建通知，已生成的出箱仍沿原回执核对。
 2. Windows 明确用 `dingtalk_account_mode:"system"` 和 `dingtalk_profile:"YOUR_PROFILE"`。system 是当前 OS 用户账号存储，不要求 LocalSystem 或管理员。复用已核实的已有登录态，不执行登录、切换账号、重置、凭据复制/导出或改注册表。多个实例/profile 可能共享账号存储，不能声明账号隔离；Windows 显式 private 请求拒绝。
 3. 每个实例只绑定一个目标，使用唯一 `channelId`。群聊设 `dingtalk_conversation_type:"chat-room"` 与群 ID 或群名；私聊另建实例，设 `"chat"` 与 userId 或姓名，不填群目标。`dingtalk_name` 是渠道名称，`dingtalk_prompt` 是该会话职责、设定与规范，`""` 清空、缺省未指定；不再使用 `groups[].responsibility`、`config.responsibility`、`directChats` 或旧无前缀字段。多群/私聊使用多个实例，职责与四角色消费见 [渠道职责配置](../CHANNELS.md#渠道职责配置)。
 

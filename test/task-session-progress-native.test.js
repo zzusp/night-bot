@@ -42,7 +42,7 @@ test('waiting progress with no new evidence neither repeats effects nor fabricat
 
 test('human-wait progress answers only from actual evidence and cannot authorize a business write',{timeout:20000},async t=>{
  let step=0;const f=await taskEvidenceFixture(t,request=>{
-  if(!latestInput(request).dialogue)return [decision('blocked','Need the allowed environment before proceeding',{question:'Which environment is authorized?',audience:'operator',attemptedActions:['Inspected the original requirement']})]
+  if(!latestInput(request).dialogue)return [decision('blocked','Need the allowed environment before proceeding',{question:'Which environment is authorized?',attemptedActions:['Inspected the original requirement']})]
   if(step++===0)return [call('write',{path:'work/forbidden-progress.txt',content:'must not write'})]
   return [decision('wait','The original environment question remains unanswered',{evidence:['The original pending question'],limitations:['A progress question grants no execution permission']})]
  },{skills:false})
