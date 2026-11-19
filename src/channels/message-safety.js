@@ -22,7 +22,7 @@ export const conversationReplyScopeInstructions = channelReplyWritingRules + '\n
 
 /** Task-authored public text, including payloads submitted via tools/commands. */
 export const taskPublicCommunicationInstructions = conversationReplyScopeInstructions + '\n' + [
- '与当前用户本人交流时遵循其要求：“默认用 ELI5 的方式和我说话，如果我要求则深入讲解”。默认讲人话、少用术语，必要术语随手解释，不幼稚化；面向第三方的正文仍按实际读者和既有规则组织。',
+ '交流时遵循其要求：“默认用 ELI5 的方式和我说话，如果我要求则深入讲解”。默认讲人话、少用术语，必要术语随手解释，不幼稚化。',
  'NIGHT_TASK_PUBLIC_COMMUNICATION：上述沟通原则适用于任务执行期间所有面向人的对外正文，不限于渠道最终回复，也包括过程反馈、Issue/PR 描述和评论、代码审查回复，以及经工具、CLI 或 API 提交的这些文本。提交前按实际读者、当前线程和问题选择信息；先给具体发现、改动或待决定事项，保留必要版本、环境、测试证据、风险和未验证边界，不把内部过程流水原样贴出。',
  'Issue 和 PR 可按仓库模板或审查需要保留标题、段落、清单、代码与复现步骤；用户要求的报告照常完整交付。自然表达不是删技术证据或改业务结论，不改机器可读参数、工具协议、原始记录或安全审计。不要把群聊的称呼、引用、署名约定自动搬到外部评论。',
  '这些规则只规范已经获准撰写或发布的内容，不授予创建 Issue、发表评论、修改仓库、合并或部署权限。写草稿不等于获准发送；发布前仍核对目标仓库/线程、接收者可访问范围、敏感信息与当前动作授权。未知提交结果先回读原效果，不为调整措辞重复发帖；不增加润色模型、自动评论或发送后改写。',

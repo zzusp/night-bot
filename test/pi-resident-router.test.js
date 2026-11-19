@@ -1,3 +1,4 @@
+import {assertSharedCommunicationGuidance} from './fixtures/communication-guidance.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
@@ -212,14 +213,15 @@ test('optional history read failure does not block first-tier handling',{timeout
 })
 
 test('Router returns review feedback to its author and freezes only its revised text',{timeout:nativeTestTimeout(30000)},async t=>{
- let step=0;const answer='确认有一条空值误拦路径，但还不能证明是这次失败的根因。', draft='这次 UAT 失败的根因是空值误拦，已经修好了。', reviewed=[];
+ let initial;let step=0;const answer='确认有一条空值误拦路径，但还不能证明是这次失败的根因。', draft='这次 UAT 失败的根因是空值误拦，已经修好了。', reviewed=[];
  const h=await residentRouterHost(t,body=>{
   const tools=requestTools(body),input=triageInput(body);
   if(tools.includes('channel_triage_submit'))return triageReply(input,()=>({needsHandling:true}));
   if(!tools.includes('resident_router_reply'))return {text:'Settled'};
   const prompt=body.messages.filter(row=>row.role==='system').map(row=>row.content).join('\n');
   assert.match(prompt,/沟通规范索引/);assert.match(prompt,/NIGHT_NATURAL_CHANNEL_REPLY/);assert.doesNotMatch(prompt,/NIGHT_TASK_PUBLIC_COMMUNICATION/);
-  if(step===0){step++;return {tool:'communication_guidance_read',args:{}}}
+  if(step===0){initial=body;step++;return {tool:'communication_guidance_read',args:{}}}
+  assertSharedCommunicationGuidance(initial,body)
   assert.match(JSON.stringify(body.messages.filter(row=>row.role==='tool')),/本次事件根因分开/);
   const events=requestEnvelope(body,'Router 请求：').events,source=events.find(event=>event.source)?.source;
   const reply=text=>({tool:'resident_router_reply',args:{operationId:'natural-answer',sourceId:source.sourceId,messageVersion:source.version,text}});
@@ -276,11 +278,12 @@ test('Router progress quotes the original source without changing an old frozen 
 })
 
 test('triage always sees the writing rules and reads examples through a bounded native tool',{timeout:nativeTestTimeout(30000)},async t=>{
- let reads=0;
+ let reads=0,initial;
  const h=await residentRouterHost(t,body=>{
   const input=triageInput(body),prompt=JSON.stringify(body.messages.filter(row=>row.role==='system'));
   assert.match(prompt,/沟通规范索引/);assert.match(prompt,/NIGHT_NATURAL_CHANNEL_REPLY/);assert.doesNotMatch(prompt,/好，我看看是什么原因/);
-  if(reads++===0)return {tool:'communication_guidance_read',args:{}};
+  if(reads++===0){initial=body;return {tool:'communication_guidance_read',args:{}};}
+  assertSharedCommunicationGuidance(initial,body);
   assert.match(JSON.stringify(body.messages.filter(row=>row.role==='tool')),/NIGHT_NATURAL_CHANNEL_REPLY/);
   return triageReply(input,()=>({needsHandling:false,reply:'你好。'}));
  });
