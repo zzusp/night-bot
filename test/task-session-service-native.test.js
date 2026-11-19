@@ -9,13 +9,14 @@ import testRunner from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { createServer } from 'node:net'
 import { get as httpGet } from 'node:http'
 import { createHash } from 'node:crypto'
 import { available, reason, nativeShell, latestInput, topicTaskCalls, waitUntil } from './fixtures/runtime-official-host.js'
 import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
 import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
+import {taskFilePath} from '../packages/dingtalk-core/session-workspaces.js'
 import { taskNotificationRecovery } from '../packages/dingtalk-core/notification-delivery.js'
 import { DatabaseSync } from 'node:sqlite'
 import { openTaskResidentRuntime } from '../packages/dingtalk-core/task-resident-runtime.js'
@@ -350,12 +351,15 @@ test('official service cancellation stops the actual owned process, drains its o
  const h=await f.host(()=>++rounds===1?[call(nativeShell,{command:nativeShell==='pwsh'?`& ${quote(process.execPath)} -e ${quote(script)}`:[process.execPath,'-e',script].map(quote).join(' '),description:'Run the cancellable local process',timeoutMs:60000})]:[singleResult('complete','Late result must never complete a cancelled task')])
  const processService=h.ctx.get('subprocess'),spawn=processService.spawn,ranges=[];processService.spawn=function(...args){const handle=Reflect.apply(spawn,this,args);if(JSON.stringify(args).includes('process-started.txt')){const range={handle,settled:false};ranges.push(range);Promise.resolve(handle.done).then(()=>range.settled=true,()=>range.settled=true)}return handle};t.after(()=>{processService.spawn=spawn})
  await t.beginBusiness();const created=await h.service.createTask({groupId:'native-group',requestId:'cancel-actual',objective:'Run a cancellable local process'})
- const task=await waitUntil(async()=>{const row=await h.query('task.get',{taskId:created.taskId});if(!row.sessionId)return;try{const saved=await h.ctx.sessionPersistence.readNative(row.sessionId);return{row,cwd:saved.header.cwd,pid:Number(await readFile(join(saved.header.cwd,'work/process-started.txt'),'utf8'))}}catch(e){if(e.code!=='ENOENT'&&e.name!=='SessionPersistenceNotFoundError')throw e}},'actual process started')
+ // The live journal may change while the producer starts. Observe its actual
+ // marker at the Host-owned task path, then verify the strict journal after drain.
+ const started=taskFilePath(h.ctx.runtimePaths.workspaces,created.taskId,'work','process-started.txt'),cwd=dirname(dirname(started))
+ const task=await waitUntil(async()=>{const row=await h.query('task.get',{taskId:created.taskId});if(!row.sessionId)return;try{return{row,cwd,pid:Number(await readFile(started,'utf8'))}}catch(e){if(e.code!=='ENOENT')throw e}},'actual process started')
  assert.ok(Number.isSafeInteger(task.pid)&&task.pid>0);const cancelled=await h.service.cancelTask({taskId:created.taskId,requestId:'cancel-once',reason:'Stop the original process'});await h.service.whenIdle()
  const row=await h.query('task.get',{taskId:created.taskId});assert.equal(cancelled.control,'cancelled');assert.equal(row.status,'cancelled');assert.equal(row.drained,true)
  assert.equal(h.ctx.agents.get(row.sessionId),undefined);assert.equal(h.ctx.piAuthority.describe(row.sessionId),undefined);await assert.rejects(readFile(join(task.cwd,'work/process-late.txt')),{code:'ENOENT'})
  assert.ok(ranges.length>0,'the actual application process provider must launch');assert.ok(ranges.every(range=>range.settled),'cancel must await actual owned direct settlement');for(const range of ranges)assert.equal(await range.handle.waitForExit(),true,'cancel must join the owned provider range; namespace PIDs are not Host PIDs');processService.spawn=spawn
- const saved=await h.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true});assert.ok(saved.context.piMessages.some(m=>m.role==='assistant'&&m.content.some(b=>b.type==='toolCall'&&b.name===nativeShell)));assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-result').length,0)
+ const saved=await h.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true});assert.equal(saved.header.cwd,task.cwd);assert.ok(saved.context.piMessages.some(m=>m.role==='assistant'&&m.content.some(b=>b.type==='toolCall'&&b.name===nativeShell)));assert.equal(saved.audit.filter(r=>r.domain==='task'&&r.kind==='effect-result').length,0)
  const count=h.requests.length;await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,count);assert.equal((await h.query('task.events')).events.some(e=>e.kind==='task.completed'),false);assert.deepEqual(await h.query('execution.list'),[])
 }))
 

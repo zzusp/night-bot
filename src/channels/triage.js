@@ -1,11 +1,12 @@
 import {z} from 'zod'
 import {createHash} from 'node:crypto'
+import {TRIAGE_CONCLUSION_LIMIT,triageHandoff} from './triage-conclusion.js'
 import {checkedText} from '../memory/format.js'
 
 // Stable identity shared by the runtime owner and authorized read-only viewers.
 export const triageSessionId=conversationId=>'session-triage-'+createHash('sha256').update(JSON.stringify(['persistent-triage-v1',conversationId])).digest('hex')
 export const TRIAGE_BATCH_LIMIT=15
-const disposition=z.object({sourceId:z.string().min(1),messageVersion:z.number().int().positive(),needsHandling:z.boolean(),reply:z.string().min(1).max(1000).optional(),reason:z.string().min(1).max(2000)}).strict()
+const disposition=z.object({sourceId:z.string().min(1),messageVersion:z.number().int().positive(),needsHandling:z.boolean(),reply:z.string().min(1).max(1000).optional(),reason:z.string().min(1).max(2000),handoff:z.object({assignment:z.enum(['explicit','uncertain']),summary:z.string().min(1).max(TRIAGE_CONCLUSION_LIMIT)}).strict().optional()}).strict()
 export const triageDecisionSchema=z.object({dispositions:z.array(disposition).min(1).max(TRIAGE_BATCH_LIMIT)}).strict()
 export const triageParameters={type:'object',additionalProperties:false,required:['dispositions'],properties:{
   dispositions:{type:'array',minItems:1,maxItems:TRIAGE_BATCH_LIMIT,items:{type:'object',additionalProperties:false,
@@ -13,6 +14,7 @@ export const triageParameters={type:'object',additionalProperties:false,required
       sourceId:{type:'string'},messageVersion:{type:'integer',minimum:1},
       needsHandling:{type:'boolean',description:'是否需要Router继续处理；与当前是否回复分别判断。'},
       reply:{type:'string',minLength:1,maxLength:1000,description:'当前需要发送的简短回复。明确交办且需继续处理时，及时承接并说明会处理，不等Router或任务结果；无需回复才省略。'},
+      handoff:{type:'object',additionalProperties:false,required:['assignment','summary'],properties:{assignment:{enum:['explicit','uncertain'],description:'本批明确向助手交办为explicit；受话对象或交办关系尚不清楚为uncertain。不是权限判断。'},summary:{type:'string',minLength:1,maxLength:TRIAGE_CONCLUSION_LIMIT,description:'给Router的一条简短分诊结论，说明处理指向及必要未决点，不重述原文、不安排任务、不声称已执行。'}}},
       reason:{type:'string',minLength:1,maxLength:2000,description:'同时说明是否处理及回复或保持静默的依据。'},
     }},
   },
@@ -28,6 +30,7 @@ export function validateTriageDecision(messages,input){
     if(covered.has(item.sourceId))throw Error('TRIAGE_DUPLICATE_SOURCE')
     covered.add(item.sourceId)
     if(item.reply!==undefined)item.reply=checkedText(item.reply)
+    if(item.handoff!==undefined)item.handoff=triageHandoff(item.handoff)
   }
   if(messages.some(source=>!covered.has(source.sourceId)))throw Error('TRIAGE_BATCH_INCOMPLETE')
   return result
