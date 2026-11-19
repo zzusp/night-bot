@@ -1632,6 +1632,7 @@ for(const fault of [null,'missing-row','missing-receipt','changed-packet','unkno
     const summary=handoff(body);if(summary)return summary
     if(!requestTools(body).includes('resident_router_settle'))return {text:'No work'}
     const input=router(body)
+    if(input.events.some(event=>event.source?.messageId==='partial-register'))return body.messages.at(-1)?.role==='tool'?{text:'Synthetic registration complete'}:{tool:'resident_router_settle',args:{operationId:'registration-only',eventIds:input.events.map(event=>event.id),noTaskDispositions:input.events.map(event=>({eventId:event.id,outcome:'context-only',sourceQuote:event.source.text,reason:'Synthetic conversation registration only'}))}}
     if(!recovering){
       if(step++===0){originalIds=input.events.map(event=>event.id);assert.equal(originalIds.length,26);return {tool:'resident_router_settle',args:{operationId:'partial-twenty',eventIds:originalIds.slice(0,20)}}}
       if(step===2)return {tool:'resident_task_query',args:{detail:'index'}}
@@ -1704,7 +1705,7 @@ for(const fault of [null,'missing-row','missing-receipt','changed-packet','unkno
   assert.ok(settled.slice(20).every(event=>event.processedGeneration===row.generation+1))
   assert.equal(new Set(settled.map(event=>event.processedCursor)).size,26)
   const final=await h.query('router.get',{conversationId}),requests=h.requests.length
-  assert.equal(final.cursor,27)
+  assert.equal(final.cursor,28)
   await h.restart();await h.service.whenIdle()
   assert.equal(h.requests.length,requests,'restart must not replay any consumed event')
   assert.deepEqual(await h.query('router.get',{conversationId}),final)

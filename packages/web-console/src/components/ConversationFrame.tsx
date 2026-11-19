@@ -2,7 +2,7 @@ import {useId, useState, type ReactNode} from 'react';
 import {ExecutionHistory} from './ExecutionHistory';
 
 type View = 'dialogue' | 'triage' | 'router';
-const tabs: {id: View; label: string}[] = [{id: 'dialogue', label: '对话'}, {id: 'triage', label: '分诊'}, {id: 'router', label: '路由'}];
+const tabs: {id: View; label: string}[] = [{id: 'dialogue', label: '对话'}, {id: 'triage', label: '历史分诊'}, {id: 'router', label: '路由'}];
 
 // Keep the conversation mounted so drafts, pending sends and scroll survive a tab switch.
 // Only the selected internal journal polls; hiding it cancels the old reader.

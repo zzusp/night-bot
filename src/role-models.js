@@ -2,7 +2,7 @@ import {getSupportedThinkingLevels,clampThinkingLevel} from '@earendil-works/pi-
 import {resolvePiProfiles,thinkingLevels} from './pi-provider-catalog.js'
 import {failure} from './runtime/files.js'
 
-export const MODEL_ROLES=Object.freeze(['triage','router','task'])
+export const MODEL_ROLES=Object.freeze(['router','task'])
 export const ROLE_MODEL_ENV_NAMES=Object.freeze(Object.fromEntries(MODEL_ROLES.map(role=>[role,Object.freeze({
   provider:`NIGHT_BOT_${role.toUpperCase()}_PROVIDER`,model:`NIGHT_BOT_${role.toUpperCase()}_MODEL`,reasoningEffort:`NIGHT_BOT_${role.toUpperCase()}_REASONING_EFFORT`,
 })])))
@@ -34,6 +34,7 @@ export function validateRoleModels(config){
   if(roles===undefined)return config
   if(!object(roles))throw failure('NIGHT_BOT_ROLE_MODELS_INVALID')
   for(const [role,value]of Object.entries(roles)){
+    if(role==='triage')continue // Retained saved configuration is historical; never selected or run.
     if(!MODEL_ROLES.includes(role))throw failure('NIGHT_BOT_MODEL_ROLE_INVALID')
     if(!object(value)||Object.keys(value).some(key=>!fields.includes(key))||!text(value.provider)||!text(value.model))throw failure('NIGHT_BOT_ROLE_MODEL_INVALID:'+role)
     if(value.reasoningEffort!==undefined&&!thinkingLevels.includes(value.reasoningEffort))throw failure('UNSUPPORTED_REASONING_EFFORT')
@@ -73,7 +74,7 @@ export function mergeRoleModelSelection(base,patch){
 
 export function resolveRoleModels(config,environment=process.env){
   validateRoleModels(config)
-  const roles=structuredClone(config.roleModels??{})
+  const roles=structuredClone(Object.fromEntries(Object.entries(config.roleModels??{}).filter(([role])=>MODEL_ROLES.includes(role))))
   for(const role of MODEL_ROLES){
     const patch={}
     for(const [field,name]of Object.entries(ROLE_MODEL_ENV_NAMES[role])){

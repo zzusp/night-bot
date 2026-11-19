@@ -1982,7 +1982,9 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         source.routed=true;source.routedAt=stamp;source.routeReceipt=[];source.processingPending=false
       }
       if(source.requestIdentity?.effectAuthorization)fail('TASK_EFFECT_NEW_ACTION_RETIRED')
-      put('dynamic_sources', source); return changed({ source })
+      put('dynamic_sources', source)
+      if(explicitHistory&&['im','chat','chat-room'].includes(source.channel)&&!source.routed)return routerLedger.routeSource(source)
+      return changed({ source })
     }
     if (kind === 'source.enrich') {
       const source = get('dynamic_sources', a.sourceId)

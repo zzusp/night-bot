@@ -1,3 +1,4 @@
+// Historical triage journal/decision contracts only; new channel ingress does not run this model role.
 import {z} from 'zod'
 import {createHash} from 'node:crypto'
 import {TRIAGE_CONCLUSION_LIMIT,triageHandoff} from './triage-conclusion.js'

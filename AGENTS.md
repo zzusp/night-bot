@@ -16,11 +16,9 @@ fields and are not mechanically renamed or migrated; retained compatibility
 helpers for historical message/receipt formatting do not mean DWS is loaded or
 running, and other static-loading claims require test evidence.
 Each task has one execution session; no separate task Owner/coordinator or split
-execution team. First-tier triage keeps one durable Pi session per authenticated conversation,
-with a 500,000-token target context budget capped by the model window,
-60% idle background native compaction and 80% foreground native compaction fallback. It only decides per-source handling and optional
-short replies; it never splits, creates or controls tasks. Each authenticated
-conversation has one durable Router identity for task arrangement and result
+execution team. New authenticated channel messages go directly to their
+conversation Router; no first-tier model or automatic acknowledgement runs.
+Historical triage sessions remain read-only. Each authenticated conversation has one durable Router identity for task arrangement and result
 assessment, separate from task execution and tool-free retrospectives. Router is
 Bot's semantic decision-maker and directly maintains shared memory and managed
 learned Skills through short Host tools. Do not gate Router decisions by natural-
@@ -33,13 +31,13 @@ source. Closing a prior unknown effect must not impose any new-action grant on
 later independent calls or completion. Preserve exact old-call no-replay. Host
 still enforces authenticated conversation/Router identity, live generation,
 permissions, secrets, controlled paths, revisions and durable no-replay. Generic
-task memory tools do not inherit this Router-only write authority. Keep both
-triage and Router user-message batches at most 15; overflow queues. Preserve
+task memory tools do not inherit this Router-only write authority. Keep Router
+user-message batches at most 15; overflow queues. Preserve
 same-session steer, direct source/version/actor links, durable delivery
 deduplication and unknown-send readback. Task dependencies are Host-enforced;
 completion alone grants neither authorization nor dependent-task execution.
 Router retains its Pi session across idle periods; Pi native compaction owns context
-reduction with the same 500,000-token target and 60%/80% waterlines as triage.
+reduction with a 500,000-token target and 60%/80% waterlines.
 Small model windows retain native output headroom and may compact earlier. Retained pre-upgrade generation
 recovery must preserve committed history, one business owner and durable pending inputs. Topic is historical audit,
 not an active routing entity. See docs/CHANNELS.md.

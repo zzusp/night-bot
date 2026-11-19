@@ -84,7 +84,7 @@ test('strict CAS, malformed IDs, duplicate IDs, confirmation and check-only neve
 
 test('default, explicit roles, legacy task and environment references cannot be removed or renamed',async t=>{
  const f=await fixture(t)
- const variants=[{roleModels:{triage:{provider:'fixture',model:'second'}}},{roleModels:{router:{provider:'fixture',model:'second'}}},{roleModels:{task:{provider:'fixture',model:'second'}}},{resident:{taskSessions:{model:'second'}}},{}]
+ const variants=[{roleModels:{router:{provider:'fixture',model:'second'}}},{roleModels:{task:{provider:'fixture',model:'second'}}},{resident:{taskSessions:{model:'second'}}},{}]
  for(const patch of variants){
   const config={...f.config,...patch};await writeFile(f.file,JSON.stringify(config))
   const environment=Object.keys(patch).length?{}:{NIGHT_BOT_ROUTER_MODEL:{value:'second',source:'project-env'}}
@@ -230,9 +230,9 @@ test('model capability edits roundtrip through the shared CLI command and Pi for
  assert.deepEqual(modelCatalogView(config).providers[0].models[0].configuredReasoningEfforts,efforts)
  assert.deepEqual(modelCatalogView(config).providers[0].models[0].reasoningEfforts,['off','low','medium','high','xhigh'])
  const {saveRoleModelConfiguration}=await import('../src/settings/model-configuration.js')
- for(const role of ['triage','router','task'])await saveRoleModelConfiguration(f.file,{role,provider:'fixture',model:'initial',reasoningEffort:'high'})
+ for(const role of ['router','task'])await saveRoleModelConfiguration(f.file,{role,provider:'fixture',model:'initial',reasoningEffort:'high'})
  config=await f.read()
- for(const role of ['triage','router','task'])assert.equal(resolveRoleModels(config)[role].reasoningEffort,'high')
+ for(const role of ['router','task'])assert.equal(resolveRoleModels(config)[role].reasoningEffort,'high')
  const before=await readFile(f.file,'utf8')
  await assert.rejects(f.save({action:'edit',id:'initial',model:'initial',reasoningEfforts:false}),{code:'UNSUPPORTED_REASONING_EFFORT'})
  assert.equal(await readFile(f.file,'utf8'),before)
@@ -278,7 +278,7 @@ test('input and reasoning overrides save together and independently inherit with
 test('combined capability edits retain selected role depth and reject incompatible changes atomically',async t=>{
  const f=await fixture(t,{roleModels:{triage:{provider:'fixture',model:'second',reasoningEffort:'high'},router:{provider:'fixture',model:'second',reasoningEffort:'high'},task:{provider:'fixture',model:'second',reasoningEffort:'high'}}})
  await f.save({action:'edit',id:'second',model:'second',input:['image']})
- for(const role of ['triage','router','task'])assert.equal(resolveRoleModels(await f.read())[role].reasoningEffort,'high')
+ for(const role of ['router','task'])assert.equal(resolveRoleModels(await f.read())[role].reasoningEffort,'high')
  const before=await readFile(f.file,'utf8')
  for(const reasoningEfforts of [false,null,{low:'low'}]){
   await assert.rejects(f.save({action:'edit',id:'second',model:'second',input:['text'],reasoningEfforts}),{code:'UNSUPPORTED_REASONING_EFFORT'})

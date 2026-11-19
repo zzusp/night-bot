@@ -35,7 +35,7 @@ import { createStartupMetrics, createCloseObservation, observeClose } from './st
 import { createTaskSessionObservability, createTaskObservationQueue } from './task-session-observability.js'
 import { activeFixedUnits, fixedTopicIds, fixedUnitRequestId, platformScheduleSessionId, platformScheduleOutboundId } from './fixed-topics.js'
 import {openRouterLifecycle} from '../../src/channels/router-lifecycle.js'
-import {createChannelTriage,registerResidentRouterTools,residentOperationId} from '../../src/channels/resident-router-business.js'
+import {registerResidentRouterTools,residentOperationId} from '../../src/channels/resident-router-business.js'
 import {createPlatformSchedules} from './platform-schedule.js'
 import {platformTaskPage} from './fixed-topics.js'
 import { resolveTaskArtifactScope } from './task-artifact-scope.js'
@@ -936,15 +936,6 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,
     readTasks:readPlatformTasks,appendOutbox:prepareDirectPlatformReply,
     notify:undefined})
-  const triage=createChannelTriage({ctx,root,query,recordStage:recordResidentStage,models:()=>roleModels('triage'),legacy,responsibilityFor,
-    observe:(groupId,record)=>observationQueue.enqueue(record,{runtimeOwner:'channel-triage',groupId}),
-    commit:async(groupId,decision)=>{
-    const receipt=await command('triage.commit',decision,'triage:'+hash(decision.dispositions))
-    for(const notification of receipt.result?.notifications??[])notificationCache.set(notification.id,notification)
-    void deliverNotifications()
-    void hostScheduler(()=>residentRouter.schedule(groupId)).catch(error=>recordRouterFailure(groupId,error))
-    return receipt.result
-  }})
   residentRouter=await openRouterLifecycle({ctx,store,root,settle:(args,id)=>command('router.settle',args,id),recordStage:recordResidentStage,models:()=>roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
     const platformPages=new Map()
     return registerResidentRouterTools(agentCtx,binding,{
@@ -964,21 +955,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     platformScheduleDelete:args=>platformSchedules.delete({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},{scheduleId:args.scheduleId}),
     platformSchedule:args=>platformSchedules.submit({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},args),
   })}})
-  const rerouteGroups=new Set()
-  function kickGroup(groupId,source){
+  function kickGroup(groupId){
     if(closed)return Promise.resolve()
     try{ctx.get('channels').assertGroupTarget(groupId)}catch(error){return Promise.reject(error)}
-    if(inflightGroups.has(groupId)){rerouteGroups.add(groupId);void hostScheduler(async()=>triage.append(groupId,source?[source]:await query('triage.pending',{conversationId:groupId,limit:15}))).catch(error=>failures.set(groupId,{id:groupId,code:error.code??error.message}));return inflightGroups.get(groupId)}
-    const work=track(inflightGroups,groupId,async()=>{
-      do{
-        rerouteGroups.delete(groupId)
-        const pending=await query('triage.pending',{conversationId:groupId,limit:15})
-        if(pending.length){await triage.run(groupId,pending);failures.delete(groupId)}
-        if((await query('triage.pending',{conversationId:groupId,limit:15})).length)rerouteGroups.add(groupId)
-      }while(!closed&&rerouteGroups.has(groupId))
-      void hostScheduler(()=>residentRouter.schedule(groupId)).catch(error=>recordRouterFailure(groupId,error))
-    })
-    void work.catch(error=>failures.set(groupId,{id:groupId,code:error.code??error.message}))
+    const work=hostScheduler(()=>residentRouter.schedule(groupId))
+    void work.catch(error=>recordRouterFailure(groupId,error))
     return work
   }
   function ingest(message,notificationIdentityChecked=false){
@@ -1031,7 +1012,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const args={...rawSource,sourceId:currentSourceId,version,receivedAt:previous?.receivedAt??receivedAt,channel:'im'}
     const context=ctx.get('channels').groupContext(message.groupId)
     const conversation={conversationId:message.groupId,type:message.channelType??'chat-room',channelAccountId:message.channelId??'legacy-channel',...message.channelType==='chat'?{peerId:actorId}:{}}
-    const stored=await command('source.record-direct',{source:args,conversation},`source-direct:${currentSourceId}`)
+    const stored=await command('source.record-direct',{source:args,conversation,routeDirect:true},`source-direct:${currentSourceId}`)
     if(stored.result.ignored)return {accepted:false,sourceId:currentSourceId,processing:'quarantined',reason:stored.result.reason}
     if (!previous) {
       const completedAt = new Date().toISOString()
@@ -1526,9 +1507,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       }
       await residentRouter.recover({wait:waitForRouter})
       syncRouterFailures()
-      for (const source of await query('source.list')) {
-        if (!source.routed) void kickGroup(source.groupId)
-      }
+
 
       for (const task of await query('task.list')) void kickTask(task.taskId)
 
@@ -1757,7 +1736,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }catch(error){
     closed=true
     stopInboxProjection?.()
-    await Promise.allSettled([Promise.all([triage.close(),residentRouter.close(),platformSchedules.close()]),taskSessions.close()])
+    await Promise.allSettled([Promise.all([residentRouter.close(),platformSchedules.close()]),taskSessions.close()])
     stopObservation?.();await observationQueue.close()
     await observerGroupPage?.close()
     if(!suppliedStore)await store.close()
@@ -2036,7 +2015,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         scheduling: !!scheduling, recovering: !!recovering, notificationScan: !!notificationScan })
       // 任一资源关闭失败仍需等待其它关闭，最后保留全部真实异常。
       await attempt(()=>observeClose(closeTrace, 'service.topic.close', async()=>{
-        const results=await Promise.allSettled([()=>triage.close(),()=>residentRouter.close(),()=>platformSchedules.close()].map(action=>Promise.resolve().then(action)))
+        const results=await Promise.allSettled([()=>residentRouter.close(),()=>platformSchedules.close()].map(action=>Promise.resolve().then(action)))
         const failures=results.filter(result=>result.status==='rejected').map(result=>result.reason)
         if(failures.length)throw new AggregateError(failures,'Conversation shutdown failed')
       }, counts))

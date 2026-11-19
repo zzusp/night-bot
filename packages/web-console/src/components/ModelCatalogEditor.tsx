@@ -10,7 +10,7 @@ import {ProviderApiEditor} from './ProviderApiEditor';
 import {SecretEditor} from './SecretEditor';
 
 const pageSize=10;
-const referenceLabels:Record<string,string>={default:'默认模型','role:triage':'一级分诊','role:router':'Router','role:task':'任务执行','legacy:task':'任务默认配置','runtime:task':'当前任务默认配置','environment:triage':'分诊环境变量','environment:router':'Router 环境变量','environment:task':'执行环境变量'};
+const referenceLabels:Record<string,string>={default:'默认模型','role:triage':'历史分诊（停用）','role:router':'Router','role:task':'任务执行','legacy:task':'任务默认配置','runtime:task':'当前任务默认配置','environment:triage':'旧分诊环境变量（停用）','environment:router':'Router 环境变量','environment:task':'执行环境变量'};
 const referenceText=(values:string[])=>values.map(value=>referenceLabels[value]??'已有模型配置').join('、');
 const reasoningLevels=['minimal','low','medium','high','xhigh','max'] as const;
 const reasoningLabels:Record<string,string>={minimal:'最低',low:'低',medium:'中',high:'高',xhigh:'极高',max:'最高'};

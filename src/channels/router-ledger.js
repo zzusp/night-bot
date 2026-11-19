@@ -51,6 +51,13 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     write('router_inbox',row)
     return row
   }
+  function routeSource(source){
+    if(source.routed)return changed({source})
+    sourceOf({sourceId:source.sourceId,messageVersion:source.version,conversationId:source.groupId})
+    const event=enqueue(source.groupId,`source:${source.sourceId}`,{kind:'source.message',sourceId:source.sourceId,messageVersion:source.version,directRouter:true})
+    source.routed=true;source.routedAt=new Date().toISOString();source.routeReceipt={kind:'router',eventId:event.id};write('sources',source)
+    return changed({source,routerEvents:[event]})
+  }
   function triageConclusion(event,source){
     if(event.triageDecisionId===undefined)return undefined // Never backfill old/in-flight packets.
     const row=read('triage',event.triageDecisionId,true),decision=row?.decision
@@ -200,6 +207,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         return changed({source:read('sources',source.sourceId)})
       }
       if (source.routed) return result
+      if(a.routeDirect===true)return routeSource(source)
       const conversationId = a.conversation?.conversationId ?? source.groupId
       if (conversationId !== source.groupId) fail('ROUTER_CONVERSATION_SCOPE')
       const id = `triage:${source.sourceId}`
@@ -236,6 +244,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     }
     if (kind === 'router.plan') return operation(a,()=>{
       conversationOf(a);const source=sourceOf(a,true)
+      if(source.routeReceipt?.kind==='router')sourceOf(a)
       if (!Array.isArray(a.tasks) || !a.tasks.length || !Array.isArray(a.dependencies ?? [])) fail('ROUTER_PLAN_INVALID')
       const created=[]
       for (const input of a.tasks) {
@@ -323,13 +332,14 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         // authority. Require an explicit source-grounded no-task decision when
         // an acknowledged source has no durable task action. Never infer intent
         // by matching reply text, or automatically create work from triage.
-        if(row.sourceId && row.triageReplyId && !rows('source_links').some(link=>link.conversationId===a.conversationId&&link.sourceId===row.sourceId&&link.messageVersion===row.messageVersion)) {
+        if(row.sourceId && (row.triageReplyId || row.directRouter) && !rows('source_links').some(link=>link.conversationId===a.conversationId&&link.sourceId===row.sourceId&&link.messageVersion===row.messageVersion)) {
           const decisions=a.noTaskDispositions
           const matches=Array.isArray(decisions)?decisions.filter(item=>item.eventId===row.id):[]
           if(matches.length!==1)fail('ROUTER_SOURCE_DISPOSITION_REQUIRED')
           const decision=matches[0], original=read('sources',row.sourceId)
-          if(decision.sourceQuote!==original.text || !['handled-inline','clarification','not-assigned'].includes(decision.outcome) || typeof decision.reason!=='string' || !decision.reason.trim())fail('ROUTER_SOURCE_DISPOSITION_INVALID')
+          if(decision.sourceQuote!==original.text || !['handled-inline','clarification','not-assigned',...(row.directRouter?['context-only']:[])].includes(decision.outcome) || typeof decision.reason!=='string' || !decision.reason.trim())fail('ROUTER_SOURCE_DISPOSITION_INVALID')
           if(decision.outcome==='clarification' && (!Array.isArray(decision.missingInformation)||!decision.missingInformation.length||decision.missingInformation.some(value=>typeof value!=='string'||!value.trim())))fail('ROUTER_CLARIFICATION_INFORMATION_REQUIRED')
+          if(row.directRouter&&decision.outcome==='handled-inline'&&!rows('notifications').some(notice=>notice.kind==='router-reply'&&notice.payload?.conversationId===a.conversationId&&notice.payload.sourceId===row.sourceId&&notice.payload.sourceVersion===row.messageVersion&&notice.state!=='failed'))fail('ROUTER_DIRECT_REPLY_REQUIRED')
           if(decision.outcome==='clarification') {
             const notification=typeof decision.notificationId==='string'?read('notifications',decision.notificationId,true):null
             if(notification?.kind!=='router-reply'||notification.payload?.conversationId!==a.conversationId||notification.payload.sourceId!==row.sourceId||notification.payload.sourceVersion!==row.messageVersion||notification.state==='failed')fail('ROUTER_CLARIFICATION_RECEIPT_REQUIRED')
@@ -404,5 +414,5 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     conversationOf({conversationId,generation})
     sourceOf({conversationId,sourceId,messageVersion})
   }
-  return {command,query,dependenciesReady,taskEvent,taskMutation,assertReplySource}
+  return {command,query,dependenciesReady,taskEvent,taskMutation,assertReplySource,routeSource}
 }
