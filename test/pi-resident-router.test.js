@@ -67,7 +67,7 @@ test('conversation task questions use original requester and preserve the origin
     assert.deepEqual(requestTools(body),[]);
     assert.equal(candidates.length,1);
     const [candidate]=candidates;
-    assert.equal(candidate.purpose,'task-requester-question');
+    assert.equal(candidate.purpose,'task-requester-question');assert.equal(Object.hasOwn(candidate,'routerReply'),false,'Router-only timing policy does not change task questions');
     const activeTasks=(await h.query('task.list')).filter(task=>!task.drained);assert.equal(activeTasks.length,1);const reviewedTask=activeTasks[0];assert.equal(reviewedTask.humanRequests.length,0);
     assert.equal((await h.query('notification.list',{taskId:reviewedTask.taskId})).length,0);
     reviewed.push(candidate.text);
@@ -195,3 +195,39 @@ test('an edited source cannot freeze or send a direct Router reply generated fro
  const [receipt,...rest]=await h.query('notification.list');assert.equal(rest.length,0);
  assert.equal(receipt.payload.sourceRef.messageVersion,2);assert.equal(receipt.state,'delivered');
 });
+
+for(const outcome of ['stage','clarification','blocker'])test('Router rejects acknowledgement-only prose then sends '+outcome+' without another review stage',{timeout:nativeTestTimeout(40000)},async t=>{
+ const drafts=['好，我来查。','收到，接下来会查询。'],answers={stage:'当前任务索引是空的，没有等待事项。',clarification:'需要核对哪个环境？现有资料没有指定目标。',blocker:'目标环境现在不可用，暂时无法核对结果。'}
+ let h,step=0;const reviews=[]
+ h=await residentRouterHost(t,async body=>{
+  const input=requestEnvelope(body,'Router 请求：')
+  if(!requestTools(body).includes('resident_router_settle')||!input)return {text:'No work'}
+  const event=input.events.find(event=>event.source),args={sourceId:event.sourceId,messageVersion:event.messageVersion}
+  if(step===0){
+   // Exercise the Host port as well as the model schema: new explicit ACKs
+   // cannot freeze even if a caller bypasses the model's enum validation.
+   const actor=h.host.ctx.agents.get((await h.query('router.get',{conversationId:input.conversationId})).activeSessionId)
+   const definition=h.host.ctx.tools.get('resident_router_reply',actor)
+   await assert.rejects(definition.execute({...args,operationId:'host-ack',replyPurpose:'acknowledgement',text:'Synthetic acknowledgement'}, {agent:actor,signal:actor.lifecycle.signal}),{code:'ROUTER_REPLY_REQUIRES_RESULT'})
+   assert.equal((await h.query('notification.list')).length,0)
+   assert.ok(!body.tools.find(tool=>tool.function.name==='resident_router_reply').function.parameters.properties.replyPurpose.enum.includes('acknowledgement'))
+  }
+  if(step<drafts.length){const index=step++;return {tool:'resident_router_reply',args:{...args,operationId:'prose-ack-'+index,...index?{replyPurpose:'direct-answer'}:{},text:drafts[index]}}}
+  if(step++===2){assert.equal((await h.query('notification.list')).length,0);assert.equal(h.sent.length,0);return {tool:'resident_task_query',args:{detail:'index'}}}
+  if(step===4)return {tool:'resident_router_reply',args:{...args,operationId:'verified-outcome',replyPurpose:outcome==='stage'?'task-update':'direct-answer',text:answers[outcome]}}
+  if(step===5)return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle-result',noTaskDispositions:[{eventId:event.id,outcome:'handled-inline',reason:'Answered with the available result or necessary missing information',sourceQuote:event.source.text}]}}
+  return {text:'Done'}
+ },{hostOptions:{replyQuality:async({candidates},body)=>{
+  const text=requestText(body).join('\n');assert.match(text,/仅当候选 routerReply=true/);assert.match(text,/事实与推断分开/);assert.match(text,/其他角色不套用/)
+  assert.equal(requestTools(body).length,0);assert.equal(candidates.length,1);assert.equal(candidates[0].routerReply,true)
+  const candidate=candidates[0];reviews.push(candidate.text)
+  if(drafts.includes(candidate.text)){assert.equal((await h.query('notification.list')).length,0);return {text:JSON.stringify({decisions:[{index:0,issues:['acknowledgement_only']}]})}}
+  return {text:JSON.stringify({decisions:[{index:0,issues:[]}]})}
+ }}})
+ await h.receive(channelMessage('result-'+outcome,{text:'查询当前状态。目标、证据和环境状态均以可取得资料为准。'}));await h.service.whenIdle()
+ assert.deepEqual(reviews,[...drafts,answers[outcome]]);assert.deepEqual(h.sent.map(row=>row.text),[answers[outcome]])
+ const records=await h.query('notification.list');assert.equal(records.length,1);assert.equal(records[0].state,'delivered')
+ assert.ok(h.requests.every(body=>!requestTools(body).includes('channel_triage_submit')))
+ const original=structuredClone(records[0]),count=h.requests.length;await h.restart();await h.service.whenIdle()
+ assert.equal(h.requests.length,count);assert.deepEqual(await h.query('notification.get',{notificationId:original.id}),original);assert.equal(h.sent.length,1)
+})

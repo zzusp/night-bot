@@ -876,6 +876,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if(previous.kind!==kind||hash(canonicalReplyRequest(request))!==hash(saved))fail('DYNAMIC_COMMAND_ID_CONFLICT')
       void deliverNotifications();return {notification:{...previous,payload:{...canonicalReplyRequest(p),...p.replyRequest?{replyRequest:canonicalReplyRequest(p.replyRequest)}:{}}}}
     }
+    // Frozen historical requests returned above retain their original receipt.
+    if(kind!=='platform-reply'&&args.replyPurpose==='acknowledgement')fail('ROUTER_REPLY_REQUIRES_RESULT')
     if(quoteSource){
       const {target}=conversationNotificationRouting(residentStore.getGroup(source.groupId).messages,{replyToMessageId,recipientActorIds:recipients,atAll:args.atAll})
       if(conversationMessageActorId(target)!==replyToActorId)fail('DYNAMIC_DIRECT_SOURCE_INVALID')
@@ -897,7 +899,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       recipientActorIds:recipients,atAll:args.atAll,artifactFiles,signature:legacy.getAgentConfig().replySignature,internalIds}).text:args.text
     assertConversationReply(text,internalIds)
     if(exec){
-      const rejected=await reviewReplies(exec,[{text:args.text,sourceText:source.text,purpose:selection?'task-delivery':args.replyPurpose??'router-reply'}])
+      const rejected=await reviewReplies(exec,[{text:args.text,sourceText:source.text,purpose:selection?'task-delivery':args.replyPurpose??'router-reply',routerReply:true}])
       if(rejected)return rejected
       exec.signal.throwIfAborted()
     }
