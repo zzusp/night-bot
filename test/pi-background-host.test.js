@@ -1,16 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools,eventually} from './fixtures/resident-router-host.js'
+import {routerCompactionTimes} from '../packages/web-console/server/router-compaction-times.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 
 test('real resident Router adopts detached native compaction, cold restores it and never replays settled input',{timeout:nativeTestTimeout(120000)},async t=>{
  let summaries=0,settles=0
  const h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
-  if(tools.includes('channel_triage_submit')){
-   const input=requestEnvelope(body,'一级分诊请求：')
-   return {tool:'channel_triage_submit',args:{dispositions:input.messages.map(message=>({sourceId:message.sourceId,messageVersion:message.version??message.messageVersion,needsHandling:true,reason:'Forward original source'}))}}
-  }
   if(tools.includes('resident_router_settle')){
    if(body.messages.at(-1)?.role==='tool')return {text:'Committed durable disposition. '+('Historical detail retained for compaction. '.repeat(1600))}
    const input=requestEnvelope(body,'Router 请求：');settles++
@@ -41,6 +38,13 @@ test('real resident Router adopts detached native compaction, cold restores it a
  assert.ok(summaries>0)
  await eventually(()=>phases.includes('background-compaction-adopted'),'background adoption observation')
  assert.ok(phases.includes('background-compaction'))
+ const timing=await eventually(async()=>{const value=await routerCompactionTimes(h.service,conversationId,8);return value.items.some(item=>item.compaction.status==='recorded')&&value},'real adopted compaction timing projection')
+ assert.ok(timing.items.every(item=>Number.isFinite(item.compaction.durationMs)&&item.compaction.durationMs>=0))
+ assert.equal(timing.items.filter(item=>item.compaction.status==='recorded').length,phases.filter(phase=>phase==='background-compaction-adopted').length,'each adopted compaction appears once')
+ assert.doesNotMatch(JSON.stringify(timing),/sourceId|spanId|summary|prior source events/)
+ const noInputRequests=h.requests.length
+ assert.deepEqual(await routerCompactionTimes(h.service,conversationId,8),timing,'same retained compaction is independently readable without any new input')
+ assert.equal(h.requests.length,noInputRequests)
  assert.equal(phases.includes('foreground-compaction'),false,'fixture stays below hard fallback; compaction is truly background')
  assert.match(entry.summary,/prior source events/)
  const stored=await h.host.ctx.sessionPersistence.readNative(sessionId)
@@ -49,7 +53,7 @@ test('real resident Router adopts detached native compaction, cold restores it a
  await h.restart()
  await h.receive(prior);await h.service.whenIdle()
  assert.equal(settles,originalCount,'cold duplicate does not repeat Router settle effect')
- assert.equal(h.requests.length,requests,'cold duplicate does not re-run triage or router')
+ assert.equal(h.requests.length,requests,'cold duplicate does not re-run Router')
  const cold=await h.host.ctx.sessionPersistence.readNative(sessionId)
  assert.ok(cold.entries.some(e=>e.id===entry.id),'native compaction survives strict journal reopening')
  await h.receive(channelMessage('after-background-restart'));await h.service.whenIdle()

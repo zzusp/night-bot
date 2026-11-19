@@ -1,6 +1,9 @@
 // Shared static system-prompt wording; detailed guidance remains on demand.
 export const communicationReplyPrinciple = '接活就接住，问进度就说做到哪、还差什么，对方接手就确认停下。默认 ELI5 方式交流，不复述、不汇报过程，追问时再展开。'
 
+// Router timing is distinct from generic task acceptance wording.
+export const routerReplyOutcomeRule = 'Router 先处理再回复：接住任务指开始处理，不先发送收悉、承诺或查询计划。取得可核实的阶段结论后再说新增结果；必要澄清、实际阻塞和最终结果也可回复，不必等长任务最终完成。只承接而没有新增结果或必要信息的正文不发送。'
+
 // Facts, audience and authority boundaries are separate from expression style.
 export const channelReplyWritingRules = [
  'NIGHT_NATURAL_CHANNEL_REPLY：事实与推断分开；只报告已实际发生且有证据的进展，不编造已执行或已完成动作；不把接纳、安排、执行、完成、验收和送达混为一谈。',

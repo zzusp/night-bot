@@ -1,8 +1,8 @@
 import {useId, useState, type ReactNode} from 'react';
 import {ExecutionHistory} from './ExecutionHistory';
 
-type View = 'dialogue' | 'triage' | 'router';
-const tabs: {id: View; label: string}[] = [{id: 'dialogue', label: '对话'}, {id: 'triage', label: '历史分诊'}, {id: 'router', label: '路由'}];
+type View = 'dialogue' | 'router';
+const tabs: {id: View; label: string}[] = [{id: 'dialogue', label: '对话'}, {id: 'router', label: '路由'}];
 
 // Keep the conversation mounted so drafts, pending sends and scroll survive a tab switch.
 // Only the selected internal journal polls; hiding it cancels the old reader.
@@ -25,7 +25,7 @@ export function ConversationFrame({label, channel = false, endpoint, children}: 
       </div>
       <div className="conversation-tab-content" role="tabpanel" id={`${prefix}-panel-dialogue`} aria-labelledby={`${prefix}-dialogue`} hidden={view !== 'dialogue'}>{children}</div>
       {tabs.slice(1).map(tab => <div key={tab.id} className="conversation-tab-content conversation-session-records" role="tabpanel" id={`${prefix}-panel-${tab.id}`} aria-labelledby={`${prefix}-${tab.id}`} hidden={view !== tab.id} tabIndex={0}>
-        {view === tab.id && <ExecutionHistory key={`${endpoint}:${tab.id}`} endpoint={`${endpoint}/${tab.id === 'triage' ? 'triage/session' : 'session'}`} router sessionKind={tab.id === 'triage' ? 'triage' : 'router'} controlsTarget={null} />}
+        {view === tab.id && <ExecutionHistory key={`${endpoint}:${tab.id}`} endpoint={`${endpoint}/session`} router sessionKind="router" controlsTarget={null} />}
       </div>)}
     </> : children}
   </section>;

@@ -11,7 +11,7 @@ import { Loading, Markdown, MessageList, Notice, Status } from './Shared';
 const unavailableRecord = new ApiError(503, 'SESSION_UNAVAILABLE');
 
 // 聊天与任务共用连续执行流、提交等待和版本冲突处理。
-export function ExecutionHistory({ endpoint, router = false, sessionKind, status, taskTitle, taskState, controlsTarget, conclusion, conclusionDuration, tokenTarget, taskError, taskRetry }: { tokenTarget?: HTMLElement | null; taskError?: Error | null; taskRetry?: () => void; conclusionDuration?: string | null; conclusion?: string | null; taskTitle?: string; taskState?: string; endpoint: string; router?: boolean; sessionKind?: 'triage' | 'router'; status?: string; controlsTarget?: HTMLElement | null }) {
+export function ExecutionHistory({ endpoint, router = false, sessionKind, status, taskTitle, taskState, controlsTarget, conclusion, conclusionDuration, tokenTarget, taskError, taskRetry }: { tokenTarget?: HTMLElement | null; taskError?: Error | null; taskRetry?: () => void; conclusionDuration?: string | null; conclusion?: string | null; taskTitle?: string; taskState?: string; endpoint: string; router?: boolean; sessionKind?: 'router'; status?: string; controlsTarget?: HTMLElement | null }) {
   const query = useExecutionStream(endpoint);
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
@@ -19,7 +19,7 @@ export function ExecutionHistory({ endpoint, router = false, sessionKind, status
   // A retry must not briefly reveal the revoked cache while its request is pending.
   useEffect(() => { if (!query.error) setDenied(false); }, [query.updatedAt]);
   const blocked = forbidden || denied;
-  const emptyTitle = sessionKind === 'triage' ? '没有旧版分诊记录' : sessionKind === 'router' ? '还没有路由记录' : '暂无会话记录';
+  const emptyTitle = sessionKind === 'router' ? '还没有路由记录' : '暂无会话记录';
   const sessionEmpty = !!sessionKind && !query.error && !blocked && (query.data?.status === 'pending' && query.data.reason === 'SESSION_NOT_STARTED' || query.data?.status === 'ready' && query.data.total === 0 && !query.data.items.length && !query.data.live?.items.length);
   const hasRecords = !blocked && query.data?.status === 'ready' && !!query.data.items.length;
   const readFailed = blocked || !!query.error && !hasRecords || query.data?.status === 'unavailable';
@@ -53,7 +53,7 @@ export function ExecutionHistory({ endpoint, router = false, sessionKind, status
     {!router && !blocked && query.data?.status === 'ready' && query.data.todos && <AgentProgress key={endpoint} items={query.data.todos.items} title={taskTitle} status={taskState} />}
 
     {query.loading && !query.data ? <Loading>{router ? '正在读取会话记录…' : '正在读取正式执行记录…'}</Loading>
-      : readFailed ? <Notice read source={!query.error ? endpoint : undefined} error={query.error ?? unavailableRecord} title={sessionKind === 'triage' ? '历史分诊记录加载失败' : sessionKind === 'router' ? '路由记录加载失败' : '执行记录加载失败'} onRetry={query.loading ? undefined : latest} />
+      : readFailed ? <Notice read source={!query.error ? endpoint : undefined} error={query.error ?? unavailableRecord} title={sessionKind === 'router' ? '路由记录加载失败' : '执行记录加载失败'} onRetry={query.loading ? undefined : latest} />
       : sessionEmpty ? <EmptyState title={emptyTitle} />
       : query.data?.status === 'pending' ? <EmptyState title={query.data.reason === 'SESSION_NOT_STARTED' ? router ? emptyTitle : '执行尚未开始' : '执行记录正在提交'} />
       : <MessageList key={`${endpoint}:${query.epoch}:${readerEpoch}`} messages={[...(query.data?.items || []), ...(!query.error && query.data?.status === 'ready' ? query.data.live?.items || [] : [])]} live={!query.error && query.data?.status === 'ready' ? query.data.live : undefined} userLabel="用户" presentation="execution" older={{ hasMore: !!query.data?.before, loading: query.loadingOlder, error: query.olderError, disabled: !!query.error, onLoad: query.loadOlder }} history={query.data?.revision ? { endpoint, revision: query.data.revision, onRecover: recoverBody } : undefined}

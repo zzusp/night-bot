@@ -9,6 +9,7 @@ import {queryEvolutionUsage} from './evolution-usage.js'
 import {latestComparison} from '../../../src/memory/evolution-content.js'
 import {responseTiming,selectedResponseTiming} from './response-times.js'
 import {stageTiming} from './stage-times.js'
+import {routerCompactionTimes} from './router-compaction-times.js'
 import {createServer} from 'node:http'
 import {readFile, lstat, realpath} from 'node:fs/promises'
 import {fileURLToPath} from 'node:url'
@@ -16,7 +17,7 @@ import {resolve, join, relative, isAbsolute, sep} from 'node:path'
 import {accessCredential, browserSessions, controlledDirectory, digest, fail, jsonBody, requireLocalRequest, webListenOptions} from './security.js'
 import {openWebLedger} from './ledger.js'
 import {configuredChannels, conversationMessages, conversations, recentConversations, permissionsView, taskDialogueView, taskView, taskSummaryView} from './views.js'
-import {visibleText,taskSessionView,taskSessionMessageView,routerSessionView,routerSessionMessageView,triageSessionView,triageSessionMessageView} from './session-view.js'
+import {visibleText,taskSessionView,taskSessionMessageView,routerSessionView,routerSessionMessageView} from './session-view.js'
 
 export const inject = ['channels', 'runtimePaths', 'sessionPersistence']
 const defaultDist = fileURLToPath(new URL('../dist', import.meta.url))
@@ -473,7 +474,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const refs=messages.items.map(row=>({messageId:row.messageId,version:row.messageVersion??1}))
       const context=await store.query({kind:'observer.message-contexts',groupId:conversationId,messages:refs,messageIds:refs.map(row=>row.messageId)})
       const items=messages.items.map(row=>stageTiming(row,context.sources,conversationId))
-      return send(response,200,{...base,status:'ready',items})
+      return send(response,200,{...base,status:'ready',items,compactions:await routerCompactionTimes(app.tasks,conversationId,limit)})
     }
     const responseTimes = /^\/api\/(chat|conversations)\/([^/]+)\/response-times$/.exec(path)
     if (request.method === 'GET' && responseTimes) {
@@ -523,15 +524,6 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const options = {task, persistence: getSessionPersistence(), ...await sessionGuards(async()=>{const current=await store.query({kind:'task.get',taskId});if(taskIdentity(current)!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)})}
       if (chatTask[4]) return send(response, 200, await taskSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatTask[4])}))
       return send(response, 200, await taskSessionView({...options, ...sessionOptions(url.searchParams)}))
-    }
-    const triageSession = /^\/api\/(chat|conversations)\/([^/]+)\/triage\/session(?:\/messages\/([^/]+))?$/.exec(path)
-    if (request.method === 'GET' && triageSession) {
-      const kind = triageSession[1], id = decodeURIComponent(triageSession[2]), conversationId = executionContext(kind, id)
-      const options = {conversationId, persistence: getSessionPersistence(), ...await sessionGuards(async()=>{
-        if (executionContext(kind, id) !== conversationId) fail('SESSION_PAGE_STALE',409)
-      })}
-      if (triageSession[3]) return send(response, 200, await triageSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(triageSession[3])}))
-      return send(response, 200, await triageSessionView({...options, ...sessionOptions(url.searchParams)}))
     }
     const routerMessage=/^\/api\/conversations\/([^/]+)\/router\/(messages|requests\/([^/]+))$/.exec(path)
     if(routerMessage){

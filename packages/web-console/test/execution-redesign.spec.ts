@@ -306,7 +306,6 @@ test('Router 开始准备使用真实起点；时间点显示接收后经过时�
     { kind: 'reply-prepared', timingType: 'milestone', label: '回复已准备', at: at(25900) },
     { kind: 'stage-router-started', timingType: 'milestone', label: 'Router 开始准备', at: at(26000) },
     { kind: 'send-started', timingType: 'milestone', label: '开始发送', at: at(26100) },
-    { kind: 'stage-triage-completed', timingType: 'span', label: '消息分流（截至回复可见）', at: at(29000), durationMs: 28900 },
     { kind: 'stage-router-completed', timingType: 'span', label: 'Router 处理（截至回复可见）', clipped: true, shared: true, at: at(29000), durationMs: 3000 },
     { kind: 'reply-visible', timingType: 'milestone', label: '首条回复已确认可见', at: at(29000) },
   ] }

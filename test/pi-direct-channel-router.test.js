@@ -152,7 +152,7 @@ test('direct reply lost receipt is read back on restart without repeating the or
  await h.receive(original);await h.service.whenIdle();assert.equal(h.sent.length,1);assert.equal((await h.query('source.list')).length,1)
 })
 
-test('an explicit Router acknowledgement alone cannot settle direct handling as an actual answer',{timeout:nativeTestTimeout(30000)},async t=>{
+test('a new explicit Router acknowledgement is rejected before freezing and cannot settle as an answer',{timeout:nativeTestTimeout(30000)},async t=>{
  let step=0
  const h=await residentRouterHost(t,body=>{
   const input=checked(body);if(!input)return {text:'No work'}
@@ -165,5 +165,6 @@ test('an explicit Router acknowledgement alone cannot settle direct handling as 
  })
  await h.receive(channelMessage('ack-is-not-answer',{text:'Synthetic query requiring an actual answer'}));await h.service.whenIdle()
  assert.ok(h.results.some(row=>row.name==='resident_router_settle'&&row.result.isError&&JSON.stringify(row.result).includes('ROUTER_DIRECT_REPLY_REQUIRED')))
- assert.ok(h.results.some(row=>row.name==='resident_router_settle'&&!row.result.isError));assert.equal(h.sent.length,2)
+ assert.ok(h.results.some(row=>row.name==='resident_router_settle'&&!row.result.isError));assert.equal(h.sent.length,1)
+ assert.equal((await h.query('notification.list')).length,1);assert.equal(h.sent[0].text,'Synthetic actual answer')
 })

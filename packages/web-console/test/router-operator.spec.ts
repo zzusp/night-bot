@@ -8,7 +8,7 @@ for(const width of [1440,390])test(`渠道路由只读保留历史，普通 Web 
  await page.getByLabel('访问令牌',{exact:true}).fill(fixture.token);await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
  let routerPosts=0
  page.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/router/messages'))routerPosts++})
- for(const name of ['对话','历史分诊','路由']){
+ for(const name of ['对话','路由']){
   await page.getByRole('tab',{name,exact:true}).click()
   await expect(page.locator('.board-composer:visible')).toHaveCount(0)
   await expect(page.locator('.router-composer')).toHaveCount(0)

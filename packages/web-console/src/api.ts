@@ -60,7 +60,6 @@ export interface MessageBodyPage { messageId: string; text: string; offset: numb
 export interface HistoryReader { endpoint: string; revision: string; onRecover?: () => void }
 export interface Message {
   messageVersion?: number;
-  triageVersion?: { groupId: string; number: number };
   transient?: boolean;
   id: string; role: 'user' | 'assistant' | 'tool'; text: string; createdAt?: string;
   status?: string; senderName?: string; requestId?: string; taskIds?: string[];
@@ -237,7 +236,7 @@ export function operationErrorText(error: unknown) {
     ? '无法确认操作结果，请先核对当前状态；不会自动重试。' : text;
 }
 
-export type ModelRole = 'triage'|'router'|'task';
+export type ModelRole = 'router'|'task';
 export interface RoleModelSelection {provider:string;model:string;reasoningEffort?:string}
 export interface RoleModelState {
  role:ModelRole;saved:RoleModelSelection;savedExplicit:boolean;running:RoleModelSelection;nextStart:RoleModelSelection|null;environmentError?:boolean;

@@ -1,7 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {visibleText, taskSessionView, taskSessionMessageView, routerSessionView, triageSessionView, triageSessionMessageView} from '../server/session-view.js'
-import {triageSessionId} from '../../../src/channels/triage.js'
+import {visibleText, taskSessionView, taskSessionMessageView, routerSessionView} from '../server/session-view.js'
 
 const task = {taskId: 'task-one', session: {sessionId: 'pi-one', sessionBound: true}}
 const project = (id, message) => ({sourceEntry: {id, type: 'message', timestamp: '2026-11-07T02:00:00Z'}, messages: [message]})
@@ -120,34 +119,6 @@ test('Router 执行记录绑定真实会话与 generation，异步读取中换�
   await assert.rejects(routerSessionView(options), {code: 'SESSION_SOURCE_IDENTITY_INVALID'})
 })
 
-test('分诊来源版本按原消息关联，保留旧正文、独立消息和追加游标', async () => {
-  const conversationId = 'fixture-triage-room', sessionId = triageSessionId(conversationId)
-  const old = {sourceId:'private-source-1', messageId:'private-channel-msg-a', version:1, conversationId, text:'相同正文'}
-  const latest = {...old, sourceId:'private-source-2', version:2}
-  const distinct = {...old, sourceId:'private-source-3', messageId:'private-channel-msg-b'}
-  const legacy = {sourceId:'private-source-4', version:1, conversationId, text:'旧格式正文'}
-  const packet = (id, messages) => project(id, {role:'custom', customType:'night.business-input', details:{source:{kind:'channel-triage', conversationId}},
-    content:[{type:'text', text:'一级分诊请求：'+JSON.stringify({conversationId, messages})}]})
-  const entries = [packet('first', [old, distinct, legacy])]
-  const persistence = {readNative:async () => ({header:{id:sessionId, runtimeOwner:'channel-triage', conversationId},
-    entries:entries.map(row=>row.sourceEntry), context:{projection:{entries}}})}
-  const options = {conversationId, persistence, stream:true}
-  const first = await triageSessionView(options)
-  entries.push(packet('next', [old, latest]))
-  const delta = await triageSessionView({...options, checkpoint:first.checkpoint})
-  const older = await triageSessionView({...options, before:delta.items[0].id, checkpoint:delta.checkpoint})
-  assert.equal(delta.items.length, 1, '旧来源重复进入批次仍只投影一次')
-  assert.deepEqual(older.items, first.items, '追加版本不改变已读历史前缀')
-  const [v1, unrelated, legacyRow] = older.items, [v2] = delta.items
-  assert.equal(v1.triageVersion.number, 1)
-  assert.deepEqual(v2.triageVersion, {groupId:v1.triageVersion.groupId, number:2})
-  assert.notEqual(unrelated.triageVersion.groupId, v1.triageVersion.groupId)
-  assert.match(v1.triageVersion.groupId, /^[a-f0-9]{64}$/)
-  assert.equal(legacyRow.triageVersion, undefined)
-  assert.doesNotMatch(JSON.stringify([older,delta]), /private-(?:source|channel-msg)/)
-  const body = await triageSessionMessageView({conversationId, persistence, messageId:v1.id, revision:delta.revision})
-  assert.equal(body.text, old.text); assert.deepEqual(body.source, v1.source)
-})
 
 test('全部工具名称可见，业务命令和结果公开，未知字段、秘密与孤立结果不泄漏',async()=>{
  const value=snapshot(),call=(id,name,args)=>project('call-'+id,{role:'assistant',content:[{type:'toolCall',id,name,arguments:args}]}),result=(id,name,text)=>project('result-'+id,{role:'toolResult',toolName:name,toolCallId:id,isError:false,content:[{type:'text',text}]})
@@ -676,20 +647,20 @@ test('Router 多轮回复正文独立、顺序稳定、不按正文去重，错�
 });
 
 
-test('paired Host error classification exposes fixed reason/code only across task, Router and triage', async () => {
+test('paired Host error classification exposes fixed reason/code only across task and Router', async () => {
   const {toolTimeoutResult} = await import('../../../src/native-tool-timeout.js')
   const native = toolTimeoutResult(1)
   native.error.message = 'PRIVATE_EXCEPTION'; native.error.info.stack = 'PRIVATE_STACK'
-  for (const kind of ['task','router','triage']) {
-    const value=snapshot(), conversationId='fixture-conversation', sessionId=kind==='triage'?triageSessionId(conversationId):kind==='router'?'pi-router':'pi-one'
-    value.header={id:sessionId,...kind==='router'?{runtimeOwner:'conversation-router',conversationId,generation:1}:kind==='triage'?{runtimeOwner:'channel-triage',conversationId}:{}}
+  for (const kind of ['task','router']) {
+    const value=snapshot(), conversationId='fixture-conversation', sessionId=kind==='router'?'pi-router':'pi-one'
+    value.header={id:sessionId,...kind==='router'?{runtimeOwner:'conversation-router',conversationId,generation:1}:{}}
     value.context.projection.entries=[
       project('call',{role:'assistant',content:[{type:'toolCall',name:'resident_reply_query',id:'failed-call',arguments:{private:'PRIVATE_ARGS'}}]}),
       project('result',{role:'toolResult',toolName:'resident_reply_query',toolCallId:'failed-call',isError:true,details:{nativeResult:native,private:'PRIVATE_DETAILS'},content:[{type:'text',text:'PRIVATE_BODY with /private/path'}]}),
     ]
     const persistence={readNative:async()=>value}
     const options={conversationId,persistence}
-    const page=kind==='task'?await taskSessionView({task,persistence}):kind==='router'?await routerSessionView({...options,readRouter:async()=>({id:conversationId,activeSessionId:sessionId,generation:1,phase:'active'})}):await triageSessionView(options)
+    const page=kind==='task'?await taskSessionView({task,persistence}):await routerSessionView({...options,readRouter:async()=>({id:conversationId,activeSessionId:sessionId,generation:1,phase:'active'})})
     const result=page.items.find(row=>row.kind==='tool-result')
     assert.deepEqual(result.failure,{reason:'调用超时，请先核对执行状态，避免重复操作。',code:'TOOL_TIMEOUT'})
     assert.equal(result.text,'调用超时，请先核对执行状态，避免重复操作。\n错误码：TOOL_TIMEOUT')

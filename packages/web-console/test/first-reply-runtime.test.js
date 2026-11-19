@@ -49,7 +49,7 @@ test('真实 Host 直入 Router 的实际回复、未知投递与静默，经HTT
   const stageResult=await api(stageEndpoint+'?limit=3')
   assert.equal(stageResult.status,200);assert.equal(stageResult.body.items.length,3)
   assert.equal(stageResult.body.scope,'recent-message-host-stage-spans')
-  assert.ok(stageResult.body.items.every(item=>item.triage.status==='missing'&&item.router.durationMs>=0))
+  assert.ok(stageResult.body.items.every(item=>!Object.hasOwn(item,'triage')&&item.router.durationMs>=0))
   assert.doesNotMatch(JSON.stringify(stageResult.body),/FIRST_|messageId|sourceId|replyPreview/)
   assert.equal((await api('/api/conversations/foreign/stage-times')).status,404)
   for(const query of ['?limit=0','?limit=21','?offset=0','?selectedMessageId=reply-direct'])assert.equal((await api(stageEndpoint+query)).status,400)
@@ -65,7 +65,7 @@ test('真实 Host 直入 Router 的实际回复、未知投递与静默，经HTT
   const csrf=(await api('/api/session')).body.csrfToken,current=(await api('/api/chat-current')).body.conversationId
   const posted=await fetch(web.origin+'/api/chat',{method:'POST',headers:{origin:web.origin,cookie,'content-type':'application/json','x-csrf-token':csrf},body:JSON.stringify({conversationId:current,requestId:'web-first-answer',text:'WEB_FIRST'})});assert.equal(posted.status,202,await posted.text());await h.service.whenIdle()
   const webTiming=await api('/api/chat/'+current+'/response-times');assert.equal(webTiming.status,200);assert.equal(webTiming.body.items[0].status,'confirmed',JSON.stringify(webTiming.body));assert.ok(webTiming.body.items[0].durationMs>=0)
-  const webStages=await api('/api/chat/'+current+'/stage-times');assert.equal(webStages.status,200);assert.equal(webStages.body.items[0].triage.status,'missing');assert.ok(webStages.body.items[0].router.durationMs>=0)
+  const webStages=await api('/api/chat/'+current+'/stage-times');assert.equal(webStages.status,200);assert.equal(Object.hasOwn(webStages.body.items[0],'triage'),false);assert.ok(webStages.body.items[0].router.durationMs>=0)
   const webSelected=await api('/api/chat/'+current+'/response-times?selectedMessageId=web-first-answer');assert.equal(webSelected.body.items[0].messageId,'web-first-answer')
   const webChat=await api('/api/chat/'+current),webReply=webChat.body.messages.find(message=>message.role==='assistant');assert.ok(webReply)
   const webAssistant=await api('/api/chat/'+current+'/response-times?selectedMessageId='+encodeURIComponent(webReply.id));assert.equal(webAssistant.body.items[0].messageId,'web-first-answer')
@@ -80,7 +80,6 @@ test('Router Skill增改删的无提及最终回复经真实Web送达，清单�
  const h=await residentRouterHost(t,body=>{
   const tools=requestTools(body),handoff=requestEnvelope(body,'Router 交接请求：')
   if(handoff&&!tools.length)return {text:JSON.stringify({currentIntent:'以当前账本为准',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
-  if(tools.includes('channel_triage_submit')){const input=requestEnvelope(body,'一级分诊请求：');return {tool:'channel_triage_submit',args:{dispositions:input.messages.map(row=>({sourceId:row.sourceId,messageVersion:row.version??row.messageVersion,needsHandling:true,reason:'直接维护学习Skill，无需承接或任务'}))}}}
   if(tools.includes('resident_skill_mutate')){
    const input=requestEnvelope(body,'Router 请求：'),source=input?.events.find(row=>row.source)?.source
    if(!source)return {text:'等待输入'}

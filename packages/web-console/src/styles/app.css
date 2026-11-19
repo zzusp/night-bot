@@ -655,7 +655,7 @@ html, body, #root { width: 100%; min-width: 0; }
 
 @media (min-width: 1600px) { .main-frame { --message-inline-inset: 28px; } }
 
-/* Conversation, triage and Router reuse one bounded reading surface. */
+/* Conversation and Router reuse one bounded reading surface. */
 .conversation-with-tabs { position: relative; }
 .conversation-session-tabs { display: flex; flex: none; align-items: center; gap: 4px; min-height: 52px; padding: 8px 68px 8px 20px; }
 .conversation-session-tabs [role="tab"] { cursor: pointer; border: 0; border-radius: 8px; padding: 7px 14px; color: var(--board-muted); background: transparent; font: inherit; font-size: 13px; white-space: nowrap; }

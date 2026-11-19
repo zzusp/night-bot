@@ -1198,3 +1198,22 @@ test('channel Router operator messages require authenticated CSRF scope and neve
  assert.equal((await f.fetchApi('/api/conversations/room-one/router/requests/known')).status,200)
  assert.equal((await f.fetchApi('/api/conversations/room-one/router/requests/missing')).status,404)
 })
+
+test('compaction chart uses authenticated current Router events even with zero messages; old triage APIs are gone',async t=>{
+ let reads=0
+ const f=await fixture(t,{persistence:{readNative:async()=>{reads++;throw Error('old journal must not be opened')}}})
+ const router={id:'room-one',activeSessionId:'router-one',generation:1}
+ f.app.tasks.store={query:async q=>q.kind==='router.get'?router:{sources:[],notifications:[]}}
+ f.app.tasks.observerGroupPage=async()=>({items:[],total:0,nextOffset:null})
+ const calls=[]
+ f.app.tasks.listExecutionTrace=async filter=>{calls.push(filter);return {items:[{groupId:'room-one',sessionId:'router-one',runtimeOwner:'conversation-router',kind:'phase',phase:'foreground-compaction',spanId:'one',runId:'run',startedAt:1000,endedAt:4000,status:'observed',outcome:'completed'}],nextOffset:null}}
+ assert.equal((await f.fetchApi('/api/conversations/room-one/stage-times')).status,401)
+ await f.login()
+ for(const path of ['/api/conversations/room-one/triage/session','/api/conversations/room-one/triage/session/messages/old','/api/chat/old/triage/session'])assert.equal((await f.fetchApi(path)).status,404)
+ assert.equal(reads,0,'removed endpoints never read old journals')
+ const page=await f.fetchApi('/api/conversations/room-one/stage-times')
+ assert.equal(page.status,200);assert.deepEqual(page.body.items,[]);assert.equal(page.body.compactions.items.length,1)
+ assert.equal(page.body.compactions.items[0].receivedAt,new Date(4000).toISOString());assert.equal(page.body.compactions.items[0].compaction.durationMs,3000)
+ assert.doesNotMatch(JSON.stringify(page.body),/triage|sourceId|spanId|router-one/)
+ const count=calls.length;assert.equal((await f.fetchApi('/api/conversations/foreign/stage-times')).status,404);assert.equal(calls.length,count)
+})
