@@ -41,10 +41,10 @@ test('retrospective skill publication during Router assessment preserves one adm
  await store.remember(scope,{topic:'experience',key:'seed',text:'Initial local verification evidence',source:{sessionId:'seed-session',messageId:'seed-message'}})
  await atomicWrite(join(reflection.directory(scope),'state.json'),JSON.stringify({version:1,reviews:{},skills:{verify:{active:true,supports:[{taskId:'seed',memoryKey:'seed'}],taskIds:['seed'],memoryKeys:['seed'],steps:['Read local evidence'],applicability:'Local verification',revision:1}}}))
  h.host.ctx.skills.invalidateCache()
- const original=reflection.skill.bind(reflection)
- reflection.skill=async(candidate,actor)=>{
-  const value=await original(candidate,actor)
-  if(armed&&!raced&&actor?.metadata.runtimeOwner==='conversation-router'){
+ const original=reflection.officialResources.bind(reflection)
+ reflection.officialResources=async(skills,options)=>{
+  const value=await original(skills,options)
+  if(armed&&!raced&&options.scope?.metadata.runtimeOwner==='conversation-router'){
    raced=true;entered.resolve();await release.promise
    await h.host.ctx.agents.withoutInitiator(()=>reflection.review({store:h.store,ownerActorId:'owner',model:h.config.model},completionEvent))
    assert.equal(reflection.lastError,null,'the real retrospective must publish successfully')

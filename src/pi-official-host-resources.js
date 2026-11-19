@@ -1,6 +1,7 @@
 import {officialRetrySettings,officialRouterCompactionSettings,officialTriageCompactionSettings} from './runtime/pi-official-settings.js'
 import {SettingsManager} from '@earendil-works/pi-coding-agent'
 import {createHash} from 'node:crypto'
+import {isDeepStrictEqual} from 'node:util'
 import {isAbsolute,join,dirname,resolve} from 'node:path'
 import {lstat,realpath} from 'node:fs/promises'
 import {officialInstructionFiles} from './native-agent-instructions.js'
@@ -50,7 +51,7 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
   const agentDir=join(privateRoot,'pi-agents',hash(actor.id));await safePath(agentDir);await privateDirectory(agentDir);assertCurrent()
   if(!resolved.retrySettings)fail('PI_OFFICIAL_RETRY_SETTINGS_REQUIRED')
   const settingsManager=SettingsManager.inMemory({packages:[],retry:structuredClone(officialRetrySettings(resolved.retrySettings).retry),...(header.runtimeOwner==='conversation-router'?{compaction:officialRouterCompactionSettings(resolved.model,{outputReserveTokens:resolved.requestOptions?.maxTokens})}:header.runtimeOwner==='channel-triage'?{compaction:officialTriageCompactionSettings(resolved.model,{outputReserveTokens:resolved.requestOptions?.maxTokens})}:{})})
-  const registry=service(actorCtx,'tools'),systemPrompt=service(actorCtx,'systemPrompt'),skills=service(actorCtx,'skills'),memory=service(actorCtx,'memory')
+  const registry=service(actorCtx,'tools'),systemPrompt=service(actorCtx,'systemPrompt'),skills=service(actorCtx,'skills'),memory=service(actorCtx,'memory'),reflection=service(actorCtx,'reflection')
   // A mounted preset's narrower FS is the resource capability too. If that
   // selection is absent, never retry through a broader inherited filesystem.
   const presets=service(actorCtx,'agentPresets'),fs=typeof presets?.serviceFor==='function'?presets.serviceFor(actor,'fs'):service(actorCtx,'fs')
@@ -64,13 +65,16 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
    await safePath(canonical,{file:true});if(await realpath(canonical)!==canonical)fail('PI_OFFICIAL_RESOURCE_PATH_UNSAFE')
    assertCurrent();return {content,path:canonical}
   }
+  function validateSkill(summary,current){
+   if(!current||['name','provider','source','description'].some(key=>current[key]!==summary[key])||summary.path!==undefined&&current.path!==summary.path||['modelInvocable','userInvocable'].some(key=>current.invocation?.[key]!==summary.invocation?.[key])||typeof current.content!=='string')fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
+  }
   async function currentSkill(summary,{resource=false}={}){
    assertCurrent()
    let prepared,current
    if(resource&&typeof skills.officialResource==='function'){prepared=await withActor(()=>skills.officialResource(summary.name,{scope:actor,cwd,signal},readSkillFile));current=prepared?.skill}
    else current=await withActor(()=>skills.get(summary.name,{scope:actor,cwd,signal,resourceOnly:true}))
    assertCurrent()
-   if(!current||['name','provider','source','description'].some(key=>current[key]!==summary[key])||summary.path!==undefined&&current.path!==summary.path||['modelInvocable','userInvocable'].some(key=>current.invocation?.[key]!==summary.invocation?.[key])||typeof current.content!=='string')fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
+   validateSkill(summary,current)
    return resource?{current,fileValidated:prepared?.fileValidated===true}:current
   }
   async function skillFile(summary){
@@ -84,17 +88,24 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
     await safePath(path,{file:true});if(await realpath(path)!==path)fail('PI_OFFICIAL_RESOURCE_PATH_UNSAFE')
     await currentSkill(summary);return path
    }
-   // NativeSkills.get has already traversed the exact scoped provider (including
-   // Reflection's current memory catalog/revision). This is opaque authorized
-   // provider text, not a new skill renderer or a private memory path mapping.
-   const directory=join(agentDir,'skills',hash(current.provider+'\0'+current.name+'\0'+current.content)),path=join(directory,'SKILL.md')
+   const file=await prepareSkillCache(current)
+   const verified=await currentSkill(summary)
+   if(verified.content!==file.content)fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
+   await publishSkillCache(file)
+   const published=await currentSkill(summary)
+   if(published.content!==file.content)fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
+   assertCurrent();return file.path
+  }
+  async function prepareSkillCache({provider,name,content}){
+   const directory=join(agentDir,'skills',hash(provider+'\0'+name+'\0'+content)),path=join(directory,'SKILL.md')
    await safePath(path,{file:true});await privateDirectory(directory)
    const prior=await readRegular(path)
-   if(prior!==undefined&&prior!==current.content)fail('PI_OFFICIAL_RESOURCE_CACHE_CONFLICT')
-   const verified=await currentSkill(summary)
-   if(verified.content!==current.content)fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
-   assertCurrent();if(prior===undefined)await atomicWrite(path,current.content)
-   await safePath(path,{file:true});const published=await currentSkill(summary);if(published.content!==current.content)fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED');assertCurrent();return path
+   if(prior!==undefined&&prior!==content)fail('PI_OFFICIAL_RESOURCE_CACHE_CONFLICT')
+   return {path,content,missing:prior===undefined}
+  }
+  async function publishSkillCache({path,content,missing}){
+   assertCurrent();if(missing)await atomicWrite(path,content)
+   await safePath(path,{file:true})
   }
   async function skillResources(current){
    if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED')
@@ -107,8 +118,27 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
     assertCurrent()
     let revision=skills.revision
     try{
-     const snapshot=await withActor(()=>skills.snapshot({scope:actor,cwd,signal}));revision=skills.revision
-     const resources=await officialSkillResources(snapshot,{resolveFilePath:skillFile})
+     const options={scope:actor,cwd,signal}
+     const snapshot=await withActor(()=>skills.snapshot(options));revision=skills.revision
+     const readLearned=()=>withActor(()=>reflection.officialResources(skills,options))
+     const learned=snapshot.complete&&reflection?await readLearned():new Map(),learnedFiles=[]
+     const resources=await officialSkillResources(snapshot,{resolveFilePath:async summary=>{
+      if(!learned.has(summary.name))return skillFile(summary)
+      assertCurrent();const value=learned.get(summary.name);validateSkill(summary,value)
+      const file=await prepareSkillCache(value);learnedFiles.push(file);return file.path
+     }})
+     if(learnedFiles.length){
+      const verifyLearned=async()=>{
+       const current=await readLearned()
+       if(revision!==skills.revision||!isDeepStrictEqual(current,learned))fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
+       assertCurrent()
+      }
+      // Learned skills share a fresh authorization view per phase. Warm files
+      // need no write, but still require the final verification after mapping.
+      if(learnedFiles.some(file=>file.missing))await verifyLearned()
+      for(const file of learnedFiles)await publishSkillCache(file)
+      await verifyLearned()
+     }
      // Another parallel mapping may still be reading when a provider is
      // revoked. Do not publish the already mapped part of that old catalog.
      if(revision!==skills.revision)fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
