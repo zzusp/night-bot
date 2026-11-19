@@ -1,3 +1,4 @@
+import {isRouterPreexecutionFailure} from './runtime/router-preexecution-proof.js'
 import {partialPoliciesCompatible} from './runtime/tool-partial-policy.js'
 import {nativeCodeTransport} from './native-code-transport.js'
 import {captureToolSchema} from './runtime/tool-schema-value.js'
@@ -29,7 +30,7 @@ export default class NativeTools extends Service {
  static inject=['systemPrompt']
  static Config=z.object({mode:z.union(['native','ptc']).default('native'),maxParallelSubCalls:z.natural().min(1).default(10)})
  constructor(ctx,config={}){
-  super(ctx,'tools');this.config={mode:'native',maxParallelSubCalls:10,...config};if(!['native','ptc'].includes(this.config.mode)||!Number.isInteger(this.config.maxParallelSubCalls)||this.config.maxParallelSubCalls<1)throw new TypeError('Invalid native tool runtime configuration');this.global=layer();this.scoped=new Map();this.states=new WeakMap();this.canonical=new WeakMap();this.contracts=new WeakMap();this.permissionExecutions=new AsyncLocalStorage()
+  super(ctx,'tools');this.config={mode:'native',maxParallelSubCalls:10,...config};if(!['native','ptc'].includes(this.config.mode)||!Number.isInteger(this.config.maxParallelSubCalls)||this.config.maxParallelSubCalls<1)throw new TypeError('Invalid native tool runtime configuration');this.global=layer();this.scoped=new Map();this.states=new WeakMap();this.canonical=new WeakMap();this.preexecutionResults=new WeakMap();this.contracts=new WeakMap();this.permissionExecutions=new AsyncLocalStorage()
   ctx.systemPrompt.tools(context=>this.wireSchemas(context.scope))
   if(this.config.mode!=='native'){ctx.systemPrompt.section(this.collapseSection());ctx.systemPrompt.section(this.sdkSection())}
   this[TOOL_RUNTIME_SCHEDULER]={prepare:input=>this.prepare(input),dispatch:exec=>this.dispatch(exec),finalize:(exec,result)=>this.finalize(exec,result),finish:(exec,result)=>this.finish(exec,result)}
@@ -213,7 +214,7 @@ export default class NativeTools extends Service {
   const state=this.states.get(exec),wrapper=exec.signal,fused=fusedSignals(state.callerSignal,wrapper),signal=fused.signal
   if(signal.aborted){fused.close();return aborted(false)}
   exec.signal=signal
-  try{const definition=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);if(!definition)throw new ToolNotFoundError(exec.name);state.executionDefinition=definition;state.started=true;const result=this.success(exec,definition,await this.permissionExecutions.run(exec,()=>definition.execute(exec.arguments,exec)));return signal.aborted?aborted(true,result):result}catch(error){return failure(error)}finally{fused.close();exec.signal=wrapper}
+  try{const definition=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);if(!definition)throw new ToolNotFoundError(exec.name);state.executionDefinition=definition;state.started=true;const result=this.success(exec,definition,await this.permissionExecutions.run(exec,()=>definition.execute(exec.arguments,exec)));return signal.aborted?aborted(true,result):result}catch(error){if(isRouterPreexecutionFailure(error))state.routerNotStarted=true;return failure(error)}finally{fused.close();exec.signal=wrapper}
  }
  normalize(exec,result){if(this.canonical.get(result)===exec.token)return result;if(result.isError)return this.mark(exec,{isError:true,error:result.error,content:result.content,...result.meta===undefined?{}:{meta:result.meta},...result.additionalContexts===undefined?{}:{additionalContexts:result.additionalContexts}});const definition=this.resolveExecution(exec.name,exec.agent,exec.parent!==undefined);if(!definition)throw new ToolNotFoundError(exec.name);return this.mark(exec,{...this.success(exec,definition,result.value),...result.additionalContexts===undefined?{}:{additionalContexts:result.additionalContexts}})}
  async flushSession(agent,businessAudit){if(businessAudit){if(typeof businessAudit.isLive!=='function'||!businessAudit.isLive())throw new Error('Business tool actor is not live');await businessAudit.flush();if(!businessAudit.isLive())throw new Error('Business tool actor is not live');return}const sessions=this.ctx.get('sessions');if(agent&&sessions)await sessions.flush(agent.session)}
@@ -244,9 +245,11 @@ export default class NativeTools extends Service {
   try{result=this.materialize(candidate);const finalize=this.states.get(exec)?.finalizer;if(finalize){const content=finalize(exec,result);if(content!==undefined)result=this.materialize({...result,content})}}catch(error){result=this.materialize(failure(error))}
   this.ctx.get('toolPermissions')?.finish(exec)
   if(state)state.finished=true
+  if(state?.routerNotStarted&&result.isError)this.preexecutionResults.set(result,{agent:exec.agent,callId:exec.callId,name:exec.name,arguments:exec.arguments})
   Object.freeze(exec)
   for(const callback of this.ctx.events.dispatch('emit',[scopeTarget(this,exec.agent),'tools/result',exec,result]))try{Promise.resolve(callback(exec,result)).catch(error=>this.ctx.logger.warn(errorText(error)))}catch(error){this.ctx.logger.warn(errorText(error))}
   return result
  }
+ isProvenRouterNotStarted(result,agent,callId,name,args){const proof=this.preexecutionResults.get(result);return proof?.agent===agent&&proof.callId===callId&&proof.name===name&&JSON.stringify(proof.arguments)===JSON.stringify(args)}
  async execute(input){const prepared=await this.prepare(input);if(prepared.kind==='final-result')return this.finish(prepared.exec,prepared.result);if(prepared.kind==='post-result')return this.finalize(prepared.exec,prepared.result);const outcome=await this.dispatch(prepared.exec);return outcome.kind==='post-result'?this.finalize(prepared.exec,outcome.result):this.finish(prepared.exec,outcome.result)}
 }

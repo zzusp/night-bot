@@ -1,3 +1,4 @@
+import {routerPreexecutionFailure} from '../runtime/router-preexecution-proof.js'
 import {unresolvedRouterCalls} from '../runtime/pi-router-recovery-view.js'
 import {mapIndependentReads} from '../runtime/parallel-read.js'
 import {instructionInputParameters,STANDING_TOPIC} from '../memory/standing-instructions.js'
@@ -123,8 +124,12 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
     if(!tool.isConcurrencySafe?.()&&tool.name!=='resident_router_settle'&&tool.name!=='resident_task_lookup_async'){
       const rotations=await query('router.rotations',{conversationId})
       const held=new Set(rotations.filter(rotation=>rotation.recovery).flatMap(rotation=>rotation.recovery.unknownSourceIds))
-      if(args.sourceId&&held.has(args.sourceId))fail('ROUTER_PRIOR_SESSION_EFFECT_UNKNOWN')
-      if(args.taskId){const task=await query('task.get',{taskId:args.taskId});if(task?.sourceRefs?.some(id=>held.has(id)))fail('ROUTER_PRIOR_SESSION_EFFECT_UNKNOWN')}
+      const heldTasks=new Set(rotations.filter(rotation=>rotation.recovery).flatMap(rotation=>rotation.recovery.unknownTaskIds??[]))
+      const refuse=()=>{throw routerPreexecutionFailure('ROUTER_PRIOR_SESSION_EFFECT_UNKNOWN')}
+      if(args.sourceId&&held.has(args.sourceId))refuse()
+      const taskId=args.taskId??args.taskDelivery?.taskId
+      if(taskId){const task=await query('task.get',{taskId});if(heldTasks.has(taskId)||task?.sourceRefs?.some(id=>held.has(id)))refuse()}
+      if(args.dependencyId){const dependency=(await query('router.dependencies',{conversationId})).find(row=>row.id===args.dependencyId);if(dependency&&[dependency.taskId,dependency.prerequisiteTaskId].some(id=>heldTasks.has(id)))refuse()}
       const history=exec.agent.piSession.sessionManager.getBranch().filter(entry=>entry.type==='message').map(entry=>entry.message)
       // The current fresh call is not historical. Unresolved original operations
       // remain no-replay even if the model invents a new operationId.

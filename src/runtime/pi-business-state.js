@@ -8,6 +8,7 @@ const absolute=z.string().refine(isAbsolute)
 const policies=z.enum(['ask','never'])
 const artifact=z.strictObject({ownerId:z.string(),artifactRoot:absolute,sessionCwd:absolute})
 const schemas={
+ 'router-tool/not-started':z.strictObject({version:z.literal(1),sessionId:z.string().min(1),packetId:z.string().min(1),assistantEntryId:z.string().min(1),callId:z.string().min(1),toolName:z.string().min(1),argsHash:z.string().regex(/^[a-f0-9]{64}$/),contentHash:z.string().regex(/^[a-f0-9]{64}$/),stage:z.enum(['router-guard','schema-validation'])}),
  'approval/policy':z.strictObject({policy:policies}),
  'approval/asked':z.strictObject({id:z.string().min(1),toolName:z.string().min(1),callId:z.string().optional(),reason:z.string().optional()}),
  'approval/decided':z.strictObject({id:z.string().min(1),outcome:z.enum(['allowed-once','rejected','cancelled','unavailable'])}),
@@ -48,7 +49,7 @@ export async function createNativeBusinessState(store,{readOnly=false}={}) {
  return {
   audit({isLive,isTurnOpen}){
    if(typeof isLive!=='function'||typeof isTurnOpen!=='function')throw new TypeError('Explicit live actor and turn capabilities required')
-   return {isLive:()=>!poisoned&&isLive(),isTurnOpen,approvalPolicy:()=>{healthy();return readOnly?'never':approval},append(type,data){if(!type.startsWith('approval/'))throw fail('PI_BUSINESS_FACT_UNSUPPORTED');append(type,data)},flush}
+   return {isLive:()=>!poisoned&&isLive(),isTurnOpen,approvalPolicy:()=>{healthy();return readOnly?'never':approval},append(type,data){if(!type.startsWith('approval/')&&type!=='router-tool/not-started')throw fail('PI_BUSINESS_FACT_UNSUPPORTED');append(type,data)},flush}
   },
   bindActor(actor,{isLive,admitNotice}){
    if(typeof isLive!=='function'||typeof admitNotice!=='function')throw new TypeError('Explicit live actor and reliable notice capabilities required')
