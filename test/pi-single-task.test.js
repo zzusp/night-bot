@@ -1,3 +1,4 @@
+import {assertSharedCommunicationGuidance} from './fixtures/communication-guidance.js'
 import {symlink} from './fixtures/filesystem-link.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {tmpdir} from 'node:os'
@@ -86,6 +87,7 @@ for(const output of ['channel reply','Issue comment','PR review reply'])test(`of
   assert.doesNotMatch(prompt,/NIGHT_NATURAL_CHANNEL_REPLY|NIGHT_TASK_PUBLIC_COMMUNICATION|好，我看看是什么原因/)
   const loaded=f.requests.find(body=>body.messages.some(message=>message.role==='tool'&&JSON.stringify(message.content).includes('NIGHT_TASK_PUBLIC_COMMUNICATION')))
   assert.ok(loaded,'native tool result reaches the same execution session on demand')
+  assertSharedCommunicationGuidance(request,loaded)
   const content=JSON.stringify(loaded.messages.filter(message=>message.role==='tool'))
   assert.match(content,/Issue\/PR 描述和评论、代码审查回复/)
   assert.match(content,/写草稿不等于获准发送/)
