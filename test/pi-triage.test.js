@@ -11,7 +11,7 @@ function handoff(body){const input=requestEnvelope(body,'Router 交接请求：'
 
 test('一级分诊收到明确交办即承接，在 Router 未完成时可靠引用回复且不重复发送',{timeout:nativeTestTimeout(40000)},async t=>{
   const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
-  const acknowledgement='收到，我会排查这个内存告警，核实后反馈。'
+  const acknowledgement='好，我来查。'
   let triageRequest,routerInput,planned=false
   const h=await residentRouterHost(t,async body=>{
     const summary=handoff(body);if(summary)return summary
@@ -28,9 +28,10 @@ test('一级分诊收到明确交办即承接，在 Router 未完成时可靠引
   const original=channelMessage('reply-before-router',{text:'请排查这个测试节点的内存告警，仅调查，不修改配置。'})
   await h.receive(original);await entered.promise
   const prompt=requestText({messages:triageRequest.messages.filter(message=>message.role==='system')}).join(String.fromCharCode(10))
-  assert.match(prompt,/首答用于及时反馈会处理对应事项/)
-  assert.match(prompt,/在本次分诊提交简短reply/)
+  assert.match(prompt,/首答只承接，不复述用户的话或预告查询步骤/)
+  assert.match(prompt,/在本次分诊提交一句简短reply/)
   assert.match(prompt,/不等待Router安排、工具查询或任务结果/)
+  assert.match(prompt,/问哪些事项能推进是查状态，不是要求推进；把查证和实际答复交Router/)
   assert.match(prompt,/reason须同时说明是否处理及回复或静默的依据/)
   assert.doesNotMatch(prompt,/需处理也可省略reply/)
   await eventually(()=>h.sent.length===1&&h.readbacks.length===1,'preliminary reply reaches the fake channel before Router gate releases',t.signal)
@@ -41,6 +42,9 @@ test('一级分诊收到明确交办即承接，在 Router 未完成时可靠引
   assert.match(prompt,/无reply也提供/)
   const routerPrompt=requestText(h.requests.find(body=>requestTools(body).includes('resident_router_settle'))).join('\n')
   assert.match(routerPrompt,/不逐条重新分诊/)
+  assert.match(routerPrompt,/问哪些等待事项能推进时，先查现状，再直接说明哪些能继续、哪些卡在哪；询问不等于要求启动；不重复承接，也不把承接当答复/)
+  assert.match(routerPrompt,/具体进展、卡点和未核实项/)
+  assert.match(routerPrompt,/不为进度查询新建、重开或恢复任务/)
   assert.match(routerPrompt,/涉及敏感动作时再针对性核对/)
   assert.equal((await h.query('router.get',{conversationId})).cursor,0)
   assert.equal((await h.query('router.inbox',{conversationId})).length,1)
