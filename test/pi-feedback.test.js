@@ -6,6 +6,7 @@ import {join} from 'node:path'
 import {createFeedbackService} from '../src/feedback/service.js'
 import {redactFeedback} from '../src/feedback/redaction.js'
 import {feedbackErrorCodes} from '../src/feedback/evidence.js'
+import {investigationBudget} from '../src/feedback/investigation-budget.js'
 const input={title:'页面异常',description:'重现步骤',model:'test/model',revision:'default'}
 function fixture(overrides={}){
  let collected=0,sent=0,body
@@ -138,4 +139,25 @@ test('final preview reserves the full user description and explicitly marks over
  for(let i=0;i<50;i++){result=f.service.read('owner',draft.id);if(result.state!=='collecting')break;await new Promise(resolve=>setTimeout(resolve,2))}
  assert.equal(result.state,'ready');assert.ok(result.body.includes(description));assert.ok(result.body.length<=48000);assert.ok(budget<42000);assert.match(result.body,/诊断草稿达到长度限制/);assert.doesNotMatch(result.body,/END_OF_DIAGNOSIS/);assert.equal((result.body.match(/^```/gm)??[]).length%2,0);assert.equal(f.sent,0)
  await f.service.close()
+})
+test('collection failure reports the stage and allowlisted error only',async()=>{
+ const failures=[],f=fixture({getSecrets:async()=>{throw Object.assign(new Error('PRIVATE_MESSAGE'),{code:'PRIVATE_CODE'})},onCollectionFailure:row=>failures.push(row)})
+ const r=await ready(f);assert.equal(r.state,'failed');assert.equal(r.error,'FEEDBACK_COLLECTION_FAILED');assert.equal(failures.length,1)
+ const {elapsedMs,...context}=failures[0];assert.ok(Number.isSafeInteger(elapsedMs)&&elapsedMs>=0)
+ assert.deepEqual(context,{reportId:r.id,stage:'prepare-input',code:'FEEDBACK_COLLECTION_FAILED'})
+ assert.doesNotMatch(JSON.stringify(failures),/PRIVATE_|重现步骤/);assert.equal(f.sent,0);await f.service.close()
+})
+test('whole-diagnosis deadline logs one failure; cancellation and shutdown do not',async t=>{
+ const deadline=new AbortController(),timeout=AbortSignal.timeout.bind(AbortSignal)
+ t.mock.method(AbortSignal,'timeout',ms=>ms===investigationBudget.timeoutMs?deadline.signal:timeout(ms))
+ async function start(){
+  const started=Promise.withResolvers(),failures=[]
+  const f=fixture({onCollectionFailure:row=>failures.push(row),diagnose:async({signal})=>{started.resolve();await new Promise(r=>signal.addEventListener('abort',r,{once:true}));signal.throwIfAborted()}})
+  const r=f.service.collect('owner',input);await started.promise;return {f,r,failures}
+ }
+ const cancelled=await start();await cancelled.f.service.cancel('owner',cancelled.r.id);assert.deepEqual(cancelled.failures,[]);await cancelled.f.service.close()
+ const shut=await start();await shut.f.service.close();assert.deepEqual(shut.failures,[])
+ const expired=await start();deadline.abort(new DOMException('diagnostic deadline','TimeoutError'));await new Promise(setImmediate)
+ assert.equal(expired.f.service.read('owner',expired.r.id).state,'failed');assert.equal(expired.failures.length,1)
+ assert.equal(expired.failures[0].stage,'diagnose');assert.equal(expired.failures[0].code,'FEEDBACK_DIAGNOSIS_DEADLINE');await expired.f.service.close()
 })

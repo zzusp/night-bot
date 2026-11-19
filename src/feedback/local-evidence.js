@@ -7,6 +7,7 @@ import {createHash} from 'node:crypto'
 import {inside} from '../runtime/paths.js'
 import {redactFeedback} from './redaction.js'
 import {investigationBudget} from './investigation-budget.js'
+import {retryEvidenceRead} from './diagnostic-contract.js'
 const error=code=>{throw Object.assign(new Error(code),{code})}
 const sourceRoots=['src','packages/web-console/src','packages/web-console/server','packages/dingtalk-core','packages/dingtalk-dws','bin']
 const extensions=/\.(?:[cm]?js|tsx?)$/
@@ -41,7 +42,10 @@ async function openedPath(fd){
  return nativePath(fd)
 }
 /** Verify the opened handle, not just pathnames which can change before open. */
-export async function readEvidenceFile(root,path,maxBytes,{tail=false,signal}={}){
+export function readEvidenceFile(root,path,maxBytes,options={}){
+ return retryEvidenceRead(()=>readEvidenceFileOnce(root,path,maxBytes,options),options.signal)
+}
+async function readEvidenceFileOnce(root,path,maxBytes,{tail=false,signal}={}){
  signal?.throwIfAborted();const base=resolve(root),file=resolve(path)
  if(!inside(base,file)||await realpath(base)!==base||await realpath(file)!==file)error('FEEDBACK_EVIDENCE_SCOPE')
  const stat=await lstat(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)error('FEEDBACK_EVIDENCE_SCOPE')

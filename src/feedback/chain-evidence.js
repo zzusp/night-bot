@@ -1,6 +1,6 @@
 import {investigationBudget} from './investigation-budget.js'
 import {randomUUID} from 'node:crypto'
-import {diagnosticQueryFailure} from './diagnostic-contract.js'
+import {diagnosticQueryFailure,retryEvidenceRead} from './diagnostic-contract.js'
 import {AGENT_PHASES} from '../runtime/pi-agent-observation.js'
 import {buildTraceLedger} from '../runtime/performance-trace.js'
 import {responseTiming} from '../../packages/web-console/server/response-times.js'
@@ -21,7 +21,6 @@ export function createChainEvidence({application,title='',description,secrets=[]
  const conversation=id=>{const alias=identity('conversation',id);if(alias)conversations.set(alias,id);return alias}
  const registerSession=(id,scope)=>{if(!id)return null;const alias=identity('session',id);const previous=sessions.get(alias);sessions.set(alias,{...previous,sessionId:id,...scope,windows:[...(previous?.windows??[]),...(scope.windows??(scope.window?[scope.window]:[]))]});return alias}
  const app=()=>typeof application==='function'?application():application
- const query=(kind,args)=>app().tasks.store.query({kind,...args})
  const input=[title,description].filter(Boolean).join('\n'),terms=[...new Set([...input.matchAll(/[“「"]([^”」"\n]{1,500})[”」"]/g)].map(match=>normalize(match[1])))]
  if(!terms.length)for(const part of [title,description,...String(description??'').split(/[，。！？：；,!?;:\n]/)]){const term=normalize(part);if(term)terms.push(term)}
  const sourceFor=alias=>{const value=sources.get(alias);if(!value)fail('FEEDBACK_ALIAS_INVALID');return value}
@@ -33,6 +32,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
   signal?.throwIfAborted();if(++calls>investigationBudget.calls)fail('FEEDBACK_EVIDENCE_LIMIT')
   const service=app()?.tasks
   if(!service?.store?.query&&action!=='schedule'&&action!=='discover')return unavailable('task-service-unavailable')
+  const read=fn=>retryEvidenceRead(fn,signal),query=(kind,args)=>read(()=>service.store.query({kind,...args}))
   let result
   if(action==='discover'){
    let selectedTerms=terms
@@ -79,7 +79,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
     const schedule=getSchedule?.()
     if(!schedule?.catalog)failures.push({target:'schedules',...unavailable('schedule-service-unavailable')})
     else try{
-     const {rows,inspected:count}=await catalogFor('schedules',()=>schedule.catalog(),row=>({id:row.id,sessionId:row.sessionId,kind:row.kind,status:row.status,scheduledAt:row.scheduledAt}));inspectedSchedules=count
+     const {rows,inspected:count}=await catalogFor('schedules',()=>read(()=>schedule.catalog()),row=>({id:row.id,sessionId:row.sessionId,kind:row.kind,status:row.status,scheduledAt:row.scheduledAt}));inspectedSchedules=count
      for(const row of rows.slice(start,start+10)){const alias=identity('schedule',row.id);schedules.set(alias,{id:row.id,sessionId:row.sessionId});scheduleCandidates.push({alias,kind:['at','after','every','daily','weekly','cron'].includes(row.kind)?row.kind:null,state:state(row.status),scheduledAt:stamp(row.scheduledAt),match:'literal-description-fragment'})}
      if(start+10<rows.length)continuations.push({target:'schedules',offset:start+10})
     }catch(error){failed('schedules',error)}
@@ -87,7 +87,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
    if(!args.target||args.target==='messages'){
     if(!service?.store?.query||!service.listObserverGroups||!service.observerGroupPage)failures.push({target:'messages',...unavailable('message-index-unavailable')})
     else try{
-     const groups=groupsCache??=await service.listObserverGroups(),selected=args.alias?[{groupId:conversations.get(args.alias)}]:groups.slice(start,start+20)
+     const groups=groupsCache??=await read(()=>service.listObserverGroups()),selected=args.alias?[{groupId:conversations.get(args.alias)}]:groups.slice(start,start+20)
      if(!args.alias&&start+20<groups.length)continuations.push({target:'messages',offset:start+20})
      for(const group of selected){
       const alias=conversation(group.groupId),first=args.alias?start:0;groupsScanned++;let offset=first
@@ -96,7 +96,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
        // 每次只读一段；返回准确游标，旧消息可在后续调用继续定位。
        while(offset<first+100){
         signal?.throwIfAborted();const key=JSON.stringify([group.groupId,offset]);let page=pageCache.get(key)
-        if(!page){page=await service.observerGroupPage(group.groupId,{collection:'messages',offset,limit:50,filter:'all'});if(page)pageCache.set(key,page)}
+        if(!page){page=await read(()=>service.observerGroupPage(group.groupId,{collection:'messages',offset,limit:50,filter:'all'}));if(page)pageCache.set(key,page)}
         if(!page)break
         const matched=page.items.filter(row=>matches(row.text)),refs=matched.map(row=>({messageId:row.messageId,version:row.messageVersion??1}))
         const context=refs.length?await query('observer.message-contexts',{groupId:group.groupId,messageIds:refs.map(row=>row.messageId),messages:refs}):{sources:[]}
@@ -139,7 +139,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
    const ref=sourceFor(args.alias),offset=args.offset??0
    if(!Number.isSafeInteger(offset)||offset<0||offset>450)fail('FEEDBACK_OFFSET_INVALID')
    if(!service.listExecutionTrace)return unavailable('execution-trace-unavailable')
-   const trace=await service.listExecutionTrace({sourceId:ref.sourceId,sourceVersion:ref.version,groupId:ref.groupId,limit:15,offset})
+   const trace=await read(()=>service.listExecutionTrace({sourceId:ref.sourceId,sourceVersion:ref.version,groupId:ref.groupId,limit:15,offset}))
    result={alias:args.alias,offset,nextOffset:Number.isSafeInteger(trace.nextOffset)&&trace.nextOffset<=450?trace.nextOffset:null,total:number(trace.total),complete:false,coverage:'retained-metadata-only',
     items:(trace.items??[]).slice(0,15).map(row=>({span:identity('span',row.spanId),parent:identity('span',row.parentSpanId),session:registerSession(row.sessionId,{groupId:ref.groupId,sourceId:ref.sourceId,sourceVersion:ref.version,windows:row.scopeIntervals??(Number.isFinite(row.startedAt)&&Number.isFinite(row.endedAt)?[[row.startedAt,row.endedAt]]:[])}),kind:['model','tool','phase','source-stage'].includes(row.kind)?row.kind:null,
      phase:phases.has(row.phase)?row.phase:null,startedAt:epoch(row.startedAt),endedAt:epoch(row.endedAt),durationMs:Number.isFinite(row.startedAt)&&Number.isFinite(row.endedAt)&&row.endedAt>=row.startedAt?row.endedAt-row.startedAt:null,status:state(row.status),shared:(row.sourceLinks??[]).some(link=>link.shared===true)})),
@@ -157,7 +157,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
   }else if(action==='schedule'){
    const ref=schedules.get(args.alias);if(!ref)fail('FEEDBACK_ALIAS_INVALID')
    const schedule=getSchedule?.();if(!schedule?.catalog)return unavailable('schedule-service-unavailable')
-   const row=(await schedule.catalog()).find(row=>row.id===ref.id&&row.sessionId===ref.sessionId)
+   const row=(await read(()=>schedule.catalog())).find(row=>row.id===ref.id&&row.sessionId===ref.sessionId)
    if(!row)return unavailable('selected-schedule-no-longer-retained')
    const kind=['at','after','every','daily','weekly','cron'].includes(row.kind)?row.kind:null
    // 仅暴露原生合同中的时间参数，不公开指令，也不猜测其中的停止条件。
@@ -169,7 +169,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
    const persistence=getSessionPersistence?.()
    if(!persistence?.readNative)return unavailable('native-journal-unavailable')
    let snapshot
-   try{snapshot=await persistence.readNative(ref.sessionId,{requireComplete:true,signal})}catch{signal?.throwIfAborted();return unavailable('native-journal-uncommitted-or-unavailable')}
+   try{snapshot=await read(()=>persistence.readNative(ref.sessionId,{requireComplete:true,signal}))}catch{signal?.throwIfAborted();return unavailable('native-journal-uncommitted-or-unavailable')}
    if(snapshot.header?.id!==ref.sessionId||!Array.isArray(snapshot.entries))return unavailable('native-journal-identity-unproven')
    const taskIdentities=(snapshot.audit??[]).filter(row=>row.domain==='task'&&row.kind==='identity')
    const validTask=ref.taskId&&taskIdentities.length===1&&taskIdentities[0].version===1&&taskIdentities[0].payload?.taskId===ref.taskId&&taskIdentities[0].payload?.sessionId===ref.sessionId

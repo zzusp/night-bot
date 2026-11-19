@@ -1,5 +1,5 @@
 import {SAFE_TOOL_PARALLELISM_POLICY} from '../runtime/parallel-read.js'
-import {investigationBudget,diagnosticCompactionSettings,diagnosticOutputTokens} from './investigation-budget.js'
+import {investigationBudget,diagnosticCompactionSettings,diagnosticOutputTokens,diagnosticMaxAttempts} from './investigation-budget.js'
 import {createAgentSession,DefaultResourceLoader,SettingsManager,SessionManager} from '@earendil-works/pi-coding-agent'
 import {join} from 'node:path'
 import {redactFeedback} from './redaction.js'
@@ -7,7 +7,7 @@ import {diagnosticSections,diagnosticPrompt,diagnosticToolDescription,diagnostic
 /** A separate official Pi session. Capability restriction is enforced by the
  * tool allowlist, not by asking a full-access shell agent to behave read-only. */
 export async function diagnoseWithPi({resolved,paths,title,description,evidence,signal,secrets=[],reportCharacters=investigationBudget.reportCharacters}){
- const cwd=paths.installRoot,agentDir=join(paths.runtime,'feedback'),settingsManager=SettingsManager.inMemory({packages:[],compaction:diagnosticCompactionSettings(resolved.model),retry:{enabled:false}})
+ const cwd=paths.installRoot,agentDir=join(paths.runtime,'feedback'),settingsManager=SettingsManager.inMemory({packages:[],compaction:diagnosticCompactionSettings(resolved.model),retry:{enabled:true,maxRetries:diagnosticMaxAttempts-1,baseDelayMs:500}})
  const resourceLoader=new DefaultResourceLoader({cwd,agentDir,settingsManager,extensionFactories:[{name:'feedback-private-context',factory:pi=>{pi.on('before_agent_start',event=>{event.systemPromptOptions.cwd='[安装目录]'})}}],noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,systemPrompt:diagnosticPrompt+'\n'+SAFE_TOOL_PARALLELISM_POLICY,appendSystemPrompt:[]})
  await resourceLoader.reload();signal.throwIfAborted()
  let calls=0,bytes=0,budgetExceeded=false,summarizing=false;const observations=[]
@@ -36,7 +36,8 @@ export async function diagnoseWithPi({resolved,paths,title,description,evidence,
   // Pi summaries may pre-resolve auth for an unmarked wrapper. Never feed that
   // credential back as an API-key override: ModelRuntime owns auth resolution.
   const {apiKey,headers,env,...request}=options??{}
-  return stream(model,context,{...request,...resolved.requestOptions,maxTokens:Math.min(diagnosticOutputTokens(model),resolved.requestOptions?.maxTokens??16384,options?.maxTokens??16384),signal:AbortSignal.any([signal,...(options?.signal?[options.signal]:[])])})
+  // Pi retries in the same session; do not multiply attempts with transport retries.
+  return stream(model,context,{...request,...resolved.requestOptions,maxRetries:0,maxTokens:Math.min(diagnosticOutputTokens(model),resolved.requestOptions?.maxTokens??16384,options?.maxTokens??16384),signal:AbortSignal.any([signal,...(options?.signal?[options.signal]:[])])})
  }
  try{
   signal.throwIfAborted();try{await session.prompt(`问题标题：${redactFeedback(title,secrets)}\n问题描述：${redactFeedback(description,secrets)}`)}catch(error){if(!budgetExceeded)throw error}signal.throwIfAborted()
@@ -44,7 +45,11 @@ export async function diagnoseWithPi({resolved,paths,title,description,evidence,
   if(budgetExceeded){summarizing=true;lastAssistant=undefined;session.setActiveToolsByName([]);try{await session.prompt('调查预算已用尽。停止调查，仅根据已有证据给出部分诊断：已确认事实、已缩小的原因范围、仍缺证据。引用有效 E 编号，不声称完整排查。')}catch{signal.throwIfAborted();summaryFailed=true}}
   const message=lastAssistant??(!summarizing?session.messages.filter(message=>message.role==='assistant').at(-1):undefined)
   const valid=message&&!['error','aborted','toolUse'].includes(message.stopReason)
-  if(!budgetExceeded&&!valid)throw new Error('FEEDBACK_MODEL_FAILED')
+  if(!budgetExceeded&&!valid){
+   if(message?.stopReason==='aborted')throw new Error('FEEDBACK_MODEL_ABORTED')
+   if(message?.stopReason==='error'&&message.errorMessage==='Request timed out.')throw new Error('FEEDBACK_MODEL_TIMEOUT')
+   throw new Error('FEEDBACK_MODEL_FAILED')
+  }
   const analysis=valid?message.content?.filter(part=>part.type==='text').map(part=>part.text).join('\n')??'':''
   let text=analysis
   if(budgetExceeded){text='调查未完成：达到证据调查预算。\n\n'+(analysis||'未能生成部分诊断；已采集证据保留如下，尚不能判断根因。');if(summaryFailed||!analysis)text+='\n已采集证据：'+observations.map(row=>row.ref).join('、')+'。'}

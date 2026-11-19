@@ -1,3 +1,6 @@
+import {setTimeout as sleep} from 'node:timers/promises'
+import {diagnosticMaxAttempts} from './investigation-budget.js'
+
 /** Bounded investigation contract, shared by the isolated Pi tool and tests. */
 export const diagnosticSections=['runtime','channels','errors','discover','message','trace','task','schedule','journal','code_search','code_read','logs','evidence']
 export const diagnosticPrompt=`你是 Night Bot 故障调查员。根据用户描述，结合本地现场和当前产品代码，独立调查问题，形成可供用户编辑的 Issue 草稿。
@@ -15,9 +18,33 @@ export function diagnosticToolParameters(){return {type:'object',properties:{
  cursor:{type:'string',maxLength:80,description:'discover 返回的 continuation 游标，原样传回。'}
  },required:['section'],additionalProperties:false}}
 
+const transientEvidenceCodes=new Set(['SQLITE_BUSY','SQLITE_LOCKED','EBUSY','EAGAIN','ETIMEDOUT'])
+function evidenceErrorCode(error){
+ // node:sqlite uses one generic code and exposes SQLite's extended code separately.
+ if(error?.code==='ERR_SQLITE_ERROR'&&Number.isInteger(error.errcode)){
+  const primary=error.errcode&255
+  if(primary===5)return 'SQLITE_BUSY'
+  if(primary===6)return 'SQLITE_LOCKED'
+ }
+ return error?.code??error?.message
+}
+
+/** Retry one read, not a whole diagnostic tool call or a partially built snapshot. */
+export async function retryEvidenceRead(read,signal){
+ for(let attempt=1;;attempt++){
+  signal?.throwIfAborted()
+  try{return await read()}catch(error){
+   signal?.throwIfAborted()
+   // Only structured transient errors qualify; do not classify arbitrary exception text.
+   if(attempt>=diagnosticMaxAttempts||!error?.code||!transientEvidenceCodes.has(evidenceErrorCode(error)))throw error
+   await sleep(attempt*100,undefined,{signal})
+  }
+ }
+}
+
 /** Only fixed product codes leave the Host; arbitrary errors may contain secrets. */
 export function diagnosticQueryFailure(error){
- const code=error?.code??error?.message
+ const code=evidenceErrorCode(error)
  const corrections={
   FEEDBACK_EVIDENCE_CHANGED:'读取期间文件变化或提前结束，报告该页读取不完整；不能当作完整文件。',
   FEEDBACK_CODE_QUERY_INVALID:'代码/日志 query 使用非空短关键词，最多 200 字符，不使用正则或路径。',
@@ -30,6 +57,9 @@ export function diagnosticQueryFailure(error){
   FEEDBACK_EVIDENCE_LIMIT:'调查调用预算已用尽，明确列出尚缺证据，不再重复查询。',
   OBSERVER_PAGE_INVALID:'消息索引查询参数无效；报告该证据源受阻。',
   DYNAMIC_STORE_CLOSED:'任务存储已关闭，报告现场服务不可用。',
+  EBUSY:'证据读取仍繁忙；保留其他证据并报告该查询失败。',
+  EAGAIN:'证据读取暂不可用；保留其他证据并报告该查询失败。',
+  ETIMEDOUT:'证据读取超时；保留其他证据并报告该查询失败。',
   SQLITE_BUSY:'存储正忙；保留其他证据并报告该查询失败。',
   SQLITE_LOCKED:'存储已锁定；保留其他证据并报告该查询失败。',
  }

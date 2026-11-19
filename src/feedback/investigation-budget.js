@@ -1,3 +1,5 @@
+export const diagnosticMaxAttempts=3
+
 /** Investigation input and publication output are deliberately separate budgets. */
 export const investigationBudget=Object.freeze({calls:96,evidenceCharacters:200000,pageCharacters:16000,reportCharacters:46000,appendixCharacters:22000,timeoutMs:15*60*1000})
 export function diagnosticCompactionSettings(model){
