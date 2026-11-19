@@ -1,13 +1,15 @@
-import { nativeLifecycle, nativeLifecycleTimeout, nativeTemporaryDirectory as mkdtemp } from './fixtures/native-lifecycle.js'
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
-import { mkdir, readFile, readdir, rename, symlink, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import { openTaskSessionService } from '../packages/dingtalk-core/task-session-service.js'
-import { nativeTaskHost, latestInput, topicTaskCalls } from './fixtures/task-session-native-host.js'
-import { createOfficialModelContentIndex, modelContentScope } from '../packages/dingtalk-core/model-context.js'
+import {latestInput} from './fixtures/task-session-native-host.js'
+import {residentRouterHost,channelMessage,requestEnvelope,requestTools} from './fixtures/resident-router-host.js'
+import {taskDirectories} from '../packages/dingtalk-core/session-workspaces.js'
+import {resolveTaskMaterialPaths} from '../src/tasks/material-paths.js'
 import { canonicalExecutionJson } from '../packages/dingtalk-core/execution-artifacts.js'
 import { openDynamicTaskStore } from '../packages/dingtalk-core/dynamic-task-store.js'
 
@@ -60,161 +62,161 @@ async function historicalFixture() {
   return { root, archive, dbPath, artifactDirectory, workspace, refs: { requirement, evidence, output, codeOutput } }
 }
 
-async function service(root, options = {}) {
-  const inputs = []
-  let host
-  host = await nativeTaskHost(root, request => {
-    const topicCalls = topicTaskCalls(request)
-    if (topicCalls) return topicCalls
-    const input = latestInput(request)
-    if (input.materials?.contextPath) {
-      const owners=host.ctx.agents.list().filter(actor=>actor.metadata&&input.contextRef?.startsWith(modelContentScope(actor.metadata)+':'))
-      assert.equal(owners.length,1,'content belongs to one exact live official actor')
-      const index = createOfficialModelContentIndex(owners[0])
-      const page = index.read({ contentRef: input.contextRef, path: input.materials.contextPath, limit: 16000 })
-      assert.equal(page.nextOffset, null)
-      inputs.push({ ...input, materials: JSON.parse(page.text) })
-    } else inputs.push(input)
-    return [{ name: 'task_session_submit', args: { decision: { action: 'wait', summary: '材料已登记，等待后续执行', evidence: [], limitations: [] } } }]
-  }, {
-    initialize: options.initialize !== false,
-    config: { dbPath: join(root, 'dynamic.sqlite'), instanceId: 'material-history', ownerActorId: 'user', ...options.config },
-    serviceFactory: args => openTaskSessionService({ ...args, readResource: options.readResource }),
-  })
-  return { instance: { ...host.service, close: () => host.close() }, inputs, residentStore: host.residentStore }
+// Script only model decisions; ingress, Router, task preparation and receipts are real.
+async function service(t, options = {}) {
+  const inputs = [], planned = new Map(), handled = new Set()
+  let host, reopenTaskId
+  host = await residentRouterHost(t, body => {
+    const tools = requestTools(body)
+    if (tools.includes('channel_triage_submit')) {
+      const input = requestEnvelope(body, '一级分诊请求：')
+      return {tool:'channel_triage_submit',args:{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'Synthetic material request'}))}}
+    }
+    if (tools.includes('task_result')) {
+      inputs.push(latestInput(body))
+      return {tool:'task_result',args:{decision:{action:'complete',summary:'Synthetic materials observed',evidence:['isolated fixture'],limitations:[]}}}
+    }
+    if (tools.includes('resident_router_settle')) {
+      const input=requestEnvelope(body,'Router 请求：'),event=input.events.find(event=>event.source)
+      if(body.messages.at(-1)?.role==='tool'&&host.results.at(-1)?.name==='resident_router_settle')return {text:'Synthetic settled'}
+      if(event&&!handled.has(event.id)) {
+        handled.add(event.id)
+        if(reopenTaskId) {
+          const taskId=reopenTaskId;reopenTaskId=undefined
+          return host.query('task.get',{taskId}).then(task=>({tool:'resident_task_action',args:{operationId:'reopen:'+event.id,kind:'reopen',sameGoal:true,taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,sourceId:event.sourceId,messageVersion:event.messageVersion}}))
+        }
+        const taskId='material-task-'+(planned.size+1);planned.set(event.sourceId,taskId)
+        return {tool:'resident_task_plan',args:{operationId:'plan:'+event.id,sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId,title:'Synthetic material inspection',objective:'Inspect isolated source materials',requirements:[]}],dependencies:[]}}
+      }
+      return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
+    }
+    return {text:'No other synthetic work'}
+  },{config:{retryIntervalMs:600000,...options.config},readResource:options.readResource})
+  return {...host, inputs,
+    async material(task) {
+      const directory=(await taskDirectories(host.host.ctx.runtimePaths.workspaces,task.taskId,{task})).materials
+      const name=(await readdir(directory)).find(name=>name.startsWith('source-')&&name.endsWith('.json'))
+      const path=join(directory,name)
+      return {directory,path,material:JSON.parse(await readFile(path,'utf8'))}
+    },
+    async reopen(taskId) {
+      reopenTaskId=taskId
+      await host.receive(channelMessage('reopen-'+host.requests.length,{text:'Recheck the same synthetic materials.'}))
+      await host.service.whenIdle()
+    },
+  }
 }
 
-test('active task service ignores archived history and never exposes or imports retired tasks', { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (_nativeContext) => {
-  await _nativeContext.beginBusiness()
-  const f = await _nativeContext.step(async () => historicalFixture()), before = await _nativeContext.step(async () => snapshot(f.archive))
-  const h = await _nativeContext.step(async () => service(f.root, { config: { legacyDbPath: f.dbPath, legacyArtifactDirectory: f.artifactDirectory, legacyWorkspaceDir: f.workspace } }))
-  try {
-    assert.equal(await _nativeContext.step(async () => h.instance.taskDetail('legacy-task')), null)
-    assert.deepEqual((await _nativeContext.step(async () => h.instance.taskExecutions('legacy-task'))).executions, [])
-    assert.deepEqual(await _nativeContext.step(async () => h.instance.store.query({ kind: 'task.list' })), [])
-    assert.deepEqual(await _nativeContext.step(async () => h.instance.store.query({ kind: 'execution.list' })), [])
-    assert.deepEqual(await _nativeContext.step(async () => h.instance.boardTasks()), [])
-    assert.deepEqual(await _nativeContext.step(async () => h.instance.store.query({ kind: 'legacy.list' })), [])
-    assert.equal(h.inputs.length, 0)
-  } finally { await _nativeContext.step(async () => h.instance.close()) }
-  assert.deepEqual(await _nativeContext.step(async () => snapshot(f.archive)), before)
-}))
+test('legacy import configuration is rejected and active service never exposes or imports nearby retired archives', {timeout:nativeTestTimeout(30000)},async t=>{
+  const f=await historicalFixture();t.after(()=>rm(f.root,{recursive:true,force:true}))
+  const before=await snapshot(f.archive)
+  await assert.rejects(openDynamicTaskStore({dbPath:join(f.root,'rejected.sqlite'),instanceId:'legacy-rejection',initialize:true,legacyDbPath:f.dbPath}),{code:'DYNAMIC_LEGACY_IMPORT_RETIRED'})
+  await assert.rejects(access(join(f.root,'rejected.sqlite')),{code:'ENOENT'})
+  const h=await service(t)
+  assert.equal(await h.service.taskDetail('legacy-task'),null)
+  assert.deepEqual((await h.service.taskExecutions('legacy-task')).executions,[])
+  for(const kind of ['task.list','execution.list','legacy.list'])assert.deepEqual(await h.query(kind),[])
+  assert.deepEqual(await h.service.boardTasks(),[])
+  assert.equal(h.inputs.length,0)
+  await h.close()
+  assert.deepEqual(await snapshot(f.archive),before)
+})
 
-test('source text and actual attachment bytes are materialized into their own task and reused without downloading again', { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (_nativeContext) => {
-  const root = await temporary(), calls = []
-  const imageBytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 0, 255])
-  const h = await service(root, { readResource: async (groupId, messageId, resource) => {
-    calls.push({ groupId, messageId, resource })
-    return resource.resourceId === 'text' ? { text: '真实附件正文\nSELECT 1;', complete: true, mediaType: 'text/plain' }
-      : { image: { data: imageBytes, mediaType: 'image/png', name: '../untrusted.png' } }
-  } })
-  await _nativeContext.beginBusiness()
-
-  _nativeContext.finallyCleanup(async () => { await h.instance.close() })
-{
-    const source = { groupId: 'native-group', messageId: 'one', senderOpenDingTalkId: 'user', occurredAt: '2026-10-13T10:00:00Z', mediaUnavailable: [], text: '测试助手，分析这份材料', resourceRefs: [{ type: 'fileId', resourceId: 'text' }, { type: 'mediaId', resourceId: 'image' }] }
-    await _nativeContext.step(async () => h.instance.ingest(source)); await _nativeContext.step(async () => h.instance.whenIdle())
-    await _nativeContext.step(async () => h.instance.ingest({ ...source, messageId: 'two', text: '测试助手，这是第二个独立任务' })); await _nativeContext.step(async () => h.instance.whenIdle())
-    const tasks = await _nativeContext.step(async () => h.instance.store.query({ kind: 'task.list' }))
-    assert.equal(tasks.length, 2); assert.equal(calls.length, 4)
-    assert.equal(h.residentStore.listTopics('native-group').length, 2)
-    assert.ok(tasks.every(task => task.topicRefs.length === 1))
-    for (const task of tasks) {
-      const directory = join(root, 'tasks', task.taskId, 'materials')
-      const name = (await _nativeContext.step(async () => readdir(directory))).find(name => name.startsWith('source-'))
-      const material = JSON.parse(await _nativeContext.step(async () => readFile(join(directory, name), 'utf8')))
-      assert.equal(material.taskId, task.taskId)
-      assert.equal(material.path, join(directory, name))
-      assert.equal(material.resources.length, 2)
-      for (const entry of material.resources) {
-        assert.equal(entry.status, 'read'); assert.equal(entry.complete, true)
-        assert.equal(entry.path.startsWith(directory + sep), true)
-        const bytes = await _nativeContext.step(async () => readFile(entry.path))
-        assert.equal(digest(bytes), entry.sha256)
-        assert.equal(bytes.length, entry.bytes)
-        if (entry.resource.resourceId === 'text') assert.equal(bytes.toString('utf8'), '真实附件正文\nSELECT 1;')
-        else assert.deepEqual(bytes, Buffer.from(imageBytes))
-      }
+test('source text and actual attachment bytes are materialized into separate task archives and cached without redownload', {timeout:nativeTestTimeout(30000)},async t=>{
+  const calls=[],imageBytes=Uint8Array.from([137,80,78,71,13,10,0,255])
+  const h=await service(t,{readResource:async(conversationId,messageId,resource)=>{
+    calls.push({conversationId,messageId,resource})
+    return resource.resourceId==='text'?{text:'Synthetic attachment body\nSELECT 1;',complete:true,mediaType:'text/plain'}:{image:{data:imageBytes,mediaType:'image/png',name:'../untrusted.png'}}
+  }})
+  const first=channelMessage('one',{text:'Inspect these synthetic materials.',resourceRefs:[{kind:'file',resourceId:'text'},{kind:'image',resourceId:'image'}]})
+  await h.receive(first);await h.service.whenIdle()
+  await h.receive({...first,messageId:'two',text:'A separate synthetic material task.'});await h.service.whenIdle()
+  const tasks=await h.query('task.list')
+  assert.equal(tasks.length,2);assert.equal(calls.length,4);assert.equal(h.inputs.length,2)
+  const directories=[]
+  for(const task of tasks){
+    const {directory,path,material}=await h.material(task);directories.push(directory)
+    // Stored paths use the portable binding contract; resolve them before comparing native paths.
+    const resolved=resolveTaskMaterialPaths(material,directory,path)
+    assert.equal(resolved.taskId,task.taskId);assert.equal(resolved.path,path)
+    const source=await h.query('source.get',{sourceId:resolved.sourceId})
+    assert.equal(resolved.text,source.text);assert.equal(resolved.actorId,source.actorId);assert.equal(resolved.messageId,source.messageId)
+    assert.equal(resolved.resources.length,2)
+    for(const entry of resolved.resources){
+      assert.equal(entry.status,'read');assert.equal(entry.complete,true)
+      assert.ok(entry.path.startsWith(directory+sep))
+      const bytes=await readFile(entry.path);assert.equal(digest(bytes),entry.sha256);assert.equal(bytes.length,entry.bytes)
+      if(entry.resource.resourceId==='text')assert.equal(bytes.toString('utf8'),'Synthetic attachment body\nSELECT 1;')
+      else assert.deepEqual(bytes,Buffer.from(imageBytes))
     }
-    await _nativeContext.step(async () => h.instance.ingest(source)); await _nativeContext.step(async () => h.instance.whenIdle())
-    assert.equal(calls.length, 4)
-    assert.ok(h.inputs.every(input => input.materials.every(material => material.resources.every(resource => resource.path.includes(sep + 'materials' + sep)))))
   }
-}))
+  assert.notEqual(directories[0],directories[1])
+  await h.receive(first);await h.service.whenIdle()
+  assert.equal(calls.length,4);assert.equal(h.inputs.length,2,'duplicate ingress must not execute again')
+  await h.reopen(tasks[0].taskId)
+  assert.equal(calls.length,4);assert.equal(h.inputs.length,3,'same-goal reopen exercises cache validation')
+  assert.ok(h.inputs.every(input=>input.materials.every(material=>material.resources.every(resource=>resource.path.includes(sep+'materials'+sep)))))
+})
 
-for (const mode of ['throw', 'null', 'partial', 'metadata-only', 'unconfigured']) test(`resource ${mode} never becomes a successful material download`, { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (_nativeContext) => {
-  const root = await temporary()
-  const h = await service(root, { readResource: mode === 'unconfigured' ? undefined : async () => {
-    if (mode === 'throw') throw Object.assign(new Error('connector detail must not be stored'), { code: 'CONNECTOR_UNAVAILABLE' })
-    if (mode === 'null') return null
-    if (mode === 'partial') return { text: 'only first page', complete: false }
-    return { url: 'https://example.invalid/not-downloaded' }
-  } })
-  await _nativeContext.beginBusiness()
+for(const mode of ['throw','null','partial','metadata-only','unconfigured'])test(`resource ${mode} never becomes a successful material download`,{timeout:nativeTestTimeout(30000)},async t=>{
+  const h=await service(t,{readResource:mode==='unconfigured'?undefined:async()=>{
+    if(mode==='throw')throw Object.assign(new Error('connector detail must not be stored'),{code:'CONNECTOR_UNAVAILABLE'})
+    if(mode==='null')return null
+    if(mode==='partial')return {text:'only first page',complete:false}
+    return {url:'https://example.invalid/not-downloaded'}
+  }})
+  await h.receive(channelMessage(mode,{resourceRefs:[{kind:'file',resourceId:'missing'}]}));await h.service.whenIdle()
+  const tasks=await h.query('task.list');assert.equal(tasks.length,1);assert.equal(h.inputs.length,1)
+  const {directory,material}=await h.material(tasks[0]),resource=material.resources[0]
+  const entries=await readdir(directory,{withFileTypes:true})
+  assert.deepEqual(entries.filter(entry=>entry.isFile()).map(entry=>entry.name),[entries.find(entry=>entry.name.startsWith('source-')).name])
+  assert.ok(entries.filter(entry=>!entry.isFile()).every(entry=>entry.name==='runtime-evidence'&&entry.isDirectory()),'only the current Host evidence directory may accompany the source snapshot')
+  assert.equal(resource.status,'unavailable');assert.ok(resource.reason)
+  assert.equal(resource.path,undefined);assert.equal(resource.value,undefined)
+  assert.doesNotMatch(JSON.stringify(material),/connector detail|only first page|example\.invalid/)
+  assert.equal(h.inputs[0].materials[0].resources[0].status,'unavailable')
+})
 
-  _nativeContext.finallyCleanup(async () => { await h.instance.close() })
-{
-    await _nativeContext.step(async () => h.instance.ingest({ groupId: 'native-group', messageId: mode, senderOpenDingTalkId: 'user', occurredAt: '2026-10-13T10:00:00Z', mediaUnavailable: [], text: '测试助手，读取材料', resourceRefs: [{ type: 'fileId', resourceId: 'missing' }] }))
-    await _nativeContext.step(async () => h.instance.whenIdle())
-    const task = (await _nativeContext.step(async () => h.instance.store.query({ kind: 'task.list' })))[0]
-    const directory = join(root, 'tasks', task.taskId, 'materials'), names = await _nativeContext.step(async () => readdir(directory))
-    assert.equal(names.length, 1)
-    const material = JSON.parse(await _nativeContext.step(async () => readFile(join(directory, names[0]), 'utf8'))), resource = material.resources[0]
-    assert.equal(resource.status, 'unavailable'); assert.ok(resource.reason)
-    assert.equal(resource.path, undefined); assert.equal(resource.value, undefined)
-    assert.equal(JSON.stringify(material).includes('connector detail'), false)
-    assert.equal(h.inputs[0].materials[0].resources[0].status, 'unavailable')
+for(const mode of ['snapshot-link','snapshot-truncated','foreign-resource','resource-link','source-identity'])test(`cached material ${mode} is rejected before reaching any task model or connector`,{timeout:nativeTestTimeout(30000)},async t=>{
+  let reads=0
+  const h=await service(t,{readResource:async()=>{reads++;return {text:'original bytes',complete:true}}})
+  await h.receive(channelMessage(mode,{resourceRefs:[{kind:'file',resourceId:'own'}]}));await h.service.whenIdle()
+  const [task]=await h.query('task.list');assert.ok(task);assert.equal(h.inputs.length,1)
+  const {directory,path,material}=await h.material(task),originalSnapshot=await readFile(path)
+  const resolved=resolveTaskMaterialPaths(material,directory,path)
+  const foreign=join(h.host.ctx.runtimePaths.workspaces,'foreign-fixture');await mkdir(foreign,{recursive:true})
+  const foreignFile=join(foreign,'private.txt');await writeFile(foreignFile,'FOREIGN_SECRET_MUST_NOT_REACH_MODEL')
+  const modelCalls=h.inputs.length,savedSnapshot=join(foreign,'saved-snapshot.json'),savedResource=join(foreign,'saved-resource.txt')
+  if(mode==='snapshot-link'){
+    await rename(path,savedSnapshot)
+    await symlink(process.platform==='win32'?foreign:savedSnapshot,path,process.platform==='win32'?'junction':'file')
+  }else if(mode==='snapshot-truncated')await writeFile(path,'{"sourceId":')
+  else if(mode==='foreign-resource'){
+    material.resources[0].path=foreignFile;material.resources[0].sha256=digest(await readFile(foreignFile));material.resources[0].bytes=(await readFile(foreignFile)).length
+    await writeFile(path,JSON.stringify(material))
+  }else if(mode==='resource-link'){
+    await rename(resolved.resources[0].path,savedResource)
+    await symlink(process.platform==='win32'?foreign:foreignFile,resolved.resources[0].path,process.platform==='win32'?'junction':'file')
+  }else{
+    material.resources[0].resource.resourceId='another-users-resource'
+    await writeFile(path,JSON.stringify(material))
   }
-}))
+  await h.reopen(task.taskId)
+  const expected={ 'snapshot-link':'TASK_MATERIAL_PATH_INVALID','snapshot-truncated':'TASK_MATERIAL_SNAPSHOT_INVALID','foreign-resource':'TASK_MATERIAL_PATH_BINDING_INVALID','resource-link':'TASK_MATERIAL_PATH_INVALID','source-identity':'TASK_MATERIAL_SOURCE_MISMATCH'}[mode]
+  assert.equal((await h.service.taskDialogue(task.taskId)).error,expected)
+  assert.equal(h.inputs.length,modelCalls);assert.equal(reads,1)
+  assert.doesNotMatch(JSON.stringify(h.inputs),/FOREIGN_SECRET/)
+  assert.equal(await readFile(foreignFile,'utf8'),'FOREIGN_SECRET_MUST_NOT_REACH_MODEL')
+  assert.deepEqual((await readdir(foreign)).sort(),['private.txt',...mode==='snapshot-link'?['saved-snapshot.json']:mode==='resource-link'?['saved-resource.txt']:[]].sort())
+  if(mode==='snapshot-link')assert.deepEqual(await readFile(savedSnapshot),originalSnapshot)
+  if(mode==='resource-link')assert.equal(await readFile(savedResource,'utf8'),'original bytes')
+})
 
-for (const mode of ['snapshot-link', 'snapshot-truncated', 'foreign-resource', 'resource-link', 'source-identity']) test(`cached material ${mode} is rejected before reaching any task model or connector`, { timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (_nativeContext) => {
-  const root = await temporary(); let reads = 0
-  const h = await service(root, { config: { retryIntervalMs: 60000 }, readResource: async () => { reads++; return { text: 'original bytes', complete: true } } })
-  await _nativeContext.beginBusiness()
-
-  _nativeContext.finallyCleanup(async () => { await h.instance.close() })
-{
-    await _nativeContext.step(async () => h.instance.ingest({ groupId: 'native-group', messageId: mode, senderOpenDingTalkId: 'user', occurredAt: '2026-10-13T10:00:00Z', mediaUnavailable: [], text: '测试助手，读取自己的材料', resourceRefs: [{ type: 'fileId', resourceId: 'own' }] }))
-    await _nativeContext.step(async () => h.instance.whenIdle())
-    const task = (await _nativeContext.step(async () => h.instance.store.query({ kind: 'task.list' })))[0]
-    const directory = join(root, 'tasks', task.taskId, 'materials'), name = (await _nativeContext.step(async () => readdir(directory))).find(name => name.startsWith('source-'))
-    const path = join(directory, name), originalSnapshot = await _nativeContext.step(async () => readFile(path)), material = JSON.parse(originalSnapshot.toString('utf8'))
-    const foreign = join(root, 'tasks', 'foreign-task', 'materials'); await _nativeContext.step(async () => mkdir(foreign, { recursive: true }))
-    const foreignFile = join(foreign, 'private.txt'); await _nativeContext.step(async () => writeFile(foreignFile, 'FOREIGN_SECRET_MUST_NOT_REACH_MODEL'))
-    const modelCalls = h.inputs.length
-    if (mode === 'snapshot-link') {
-      const prior = join(root, 'external-snapshot.json'); await _nativeContext.step(async () => rename(path, prior))
-      // Windows 无特权进程用原生 junction 覆盖最终路径重解析点拒绝；POSIX 保留文件 symlink。
-      await _nativeContext.step(async () => symlink(process.platform === 'win32' ? foreign : prior, path, process.platform === 'win32' ? 'junction' : 'file'))
-    } else if (mode === 'snapshot-truncated') await _nativeContext.step(async () => writeFile(path, '{"sourceId":'))
-    else if (mode === 'foreign-resource') {
-      material.resources[0].path = foreignFile
-      material.resources[0].sha256 = digest(await _nativeContext.step(async () => readFile(foreignFile))); material.resources[0].bytes = (await _nativeContext.step(async () => readFile(foreignFile))).length
-      await _nativeContext.step(async () => writeFile(path, JSON.stringify(material)))
-    } else if (mode === 'resource-link') {
-      await _nativeContext.step(async () => rename(material.resources[0].path, join(root, 'saved-resource.txt')))
-      await _nativeContext.step(async () => symlink(process.platform === 'win32' ? foreign : foreignFile, material.resources[0].path, process.platform === 'win32' ? 'junction' : 'file'))
-    } else {
-      material.resources[0].resource.resourceId = 'another-users-resource'
-      await _nativeContext.step(async () => writeFile(path, JSON.stringify(material)))
-    }
-    await _nativeContext.step(async () => h.instance.store.command({ id: 'wake-cached-material', kind: 'task.revise', args: { taskId: task.taskId, expectedRequirementRevision: 1, request: task.request + '\n再次核对', sourceRefs: task.sourceRefs } }))
-    await _nativeContext.step(async () => h.instance.recover()); await _nativeContext.step(async () => h.instance.whenIdle())
-    const observation = await _nativeContext.step(async () => h.instance.recover())
-    assert.ok(observation.failures.some(failure => /^TASK_MATERIAL_/.test(failure.code)), JSON.stringify(observation))
-    assert.equal(h.inputs.length, modelCalls)
-    assert.equal(reads, 1)
-    assert.equal(JSON.stringify(h.inputs).includes('FOREIGN_SECRET'), false)
-    assert.equal(await _nativeContext.step(async () => readFile(foreignFile, 'utf8')), 'FOREIGN_SECRET_MUST_NOT_REACH_MODEL')
-    assert.deepEqual(await _nativeContext.step(async () => readdir(foreign)), ['private.txt'])
-    if (mode === 'snapshot-link') assert.deepEqual(await _nativeContext.step(async () => readFile(join(root, 'external-snapshot.json'))), originalSnapshot)
-    if (mode === 'resource-link') assert.equal(await _nativeContext.step(async () => readFile(join(root, 'saved-resource.txt'), 'utf8')), 'original bytes')
-  }
-}))
-
-test('persistence initialization failure releases the already-open dynamic store and permits a clean retry', async () => {
-  const root = await temporary(), config = { dbPath: join(root, 'failed-start.sqlite'), instanceId: 'failed-start', initialize: true, workspaceDir: root }
-  await assert.rejects(openTaskSessionService({ ctx: {}, config, legacy: { getAgentConfig: () => ({ workspaceDir: root }) } }), { code: 'TASK_OFFICIAL_FACTORY_REQUIRED' })
-  const reopened = await openDynamicTaskStore({ dbPath: config.dbPath, instanceId: config.instanceId, initialize: false })
-  try { assert.deepEqual(await reopened.query({ kind: 'task.list' }), []) } finally { await reopened.close() }
+test('missing official factory is rejected before creating the database and permits a clean initialized retry',async t=>{
+  const root=await temporary();t.after(()=>rm(root,{recursive:true,force:true}))
+  const config={dbPath:join(root,'failed-start.sqlite'),instanceId:'failed-start',initialize:true,workspaceDir:root}
+  await assert.rejects(openTaskSessionService({ctx:{},config,legacy:{getAgentConfig:()=>({workspaceDir:root})}}),{code:'TASK_OFFICIAL_FACTORY_REQUIRED'})
+  await assert.rejects(access(config.dbPath),{code:'ENOENT'})
+  const reopened=await openDynamicTaskStore({...config,initialize:true})
+  try{assert.deepEqual(await reopened.query({kind:'task.list'}),[])}finally{await reopened.close()}
 })
