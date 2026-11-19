@@ -2,8 +2,9 @@ import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {Context} from '@deepseek-ai/cordis'
-import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises'
+import fs,{appendFile,mkdtemp,rm,readFile,rename,writeFile} from 'node:fs/promises'
 import {join} from 'node:path'
+import {syncBuiltinESMExports} from 'node:module'
 import {SessionManager} from '@earendil-works/pi-coding-agent'
 import * as storage from '../src/pi-session-persistence.js'
 import {apply as authority} from '../src/pi-authority.js'
@@ -53,9 +54,48 @@ test('borrowed committed business receipts stay immutable when the live official
  let writer=await f.backend.createNative(f.header('prefix'),options)
  writer.appendAudit({version:1,domain:'approval',kind:'policy',payload:{policy:'never'}});await writer.close()
  const bytes=await readFile(f.backend.path('prefix'));writer=await f.backend.openNative('prefix',options)
- writer.manager.getEntries().find(entry=>entry.type==='custom'&&entry.customType==='night.audit').data.payload.policy='ask'
+ const receipt=writer.manager.getEntries().find(entry=>entry.type==='custom'&&entry.customType==='night.audit')
+ assert.throws(()=>{receipt.data.payload.policy='ask'},TypeError)
  assert.deepEqual(await writer.readAudit(),[{version:1,domain:'approval',kind:'policy',payload:{policy:'never'}}])
+ await writer.commit();await writer.close()
+ assert.deepEqual(await readFile(f.backend.path('prefix')),bytes)
+})
+test('warm Pi commit never rereads the history or enumerates prior entries, including branch-only commits',async t=>{
+ const f=await fixture(t),seed=await f.backend.createNative(f.header('long'))
+ const first=seed.manager.appendMessage({role:'user',content:'first',timestamp:1})
+ for(let i=0;i<1024;i++)seed.manager.appendMessage({role:'user',content:'x'.repeat(4096),timestamp:i+2})
+ await seed.close()
+ const path=f.backend.path(seed.id),prefix=await readFile(path),writer=await f.backend.openNative(seed.id)
+ const original=fs.readFile
+ t.mock.method(fs,'readFile',(target,...args)=>{
+  assert.notEqual(target,path,'a live commit must not read journal bytes')
+  return original(target,...args)
+ })
+ t.mock.method(writer.manager,'getEntries',()=>assert.fail('a live commit must not enumerate prior entries'))
+ syncBuiltinESMExports()
+ try{
+  await writer.commit()
+  writer.manager.appendMessage({role:'user',content:'new tail',timestamp:1027})
+  await writer.commit()
+  writer.manager.branch(first);await writer.commit();await writer.close()
+ }finally{t.mock.restoreAll();syncBuiltinESMExports()}
+ const bytes=await readFile(path),restored=await f.backend.openNative(seed.id)
+ assert.ok(bytes.subarray(0,prefix.length).equals(prefix))
+ assert.ok(bytes.length-prefix.length<1024,'append and branch-only commit write only their own records')
+ assert.deepEqual(restored.manager.buildSessionProjection().messages.map(message=>message.content),['first'])
+ await restored.close()
+})
+
+for(const change of ['append','overwrite','replace'])test('warm Pi commit refuses external journal '+change,async t=>{
+ const f=await fixture(t),writer=await f.backend.createNative(f.header('drift'))
+ writer.manager.appendMessage({role:'user',content:'before',timestamp:1});await writer.commit()
+ const path=f.backend.path(writer.id),prefix=await readFile(path)
+ if(change==='append')await appendFile(path,'{"pending":')
+ if(change==='overwrite')await writeFile(path,prefix.toString().replace('before','edited'))
+ if(change==='replace'){await rename(path,path+'.saved');await writeFile(path,prefix)}
+ const modified=await readFile(path)
+ writer.manager.appendMessage({role:'user',content:'must not append',timestamp:2})
  await assert.rejects(writer.commit(),{code:'PI_SESSION_PREFIX_CHANGED'})
  await assert.rejects(writer.close(),{code:'PI_SESSION_PREFIX_CHANGED'})
- assert.deepEqual(await readFile(f.backend.path('prefix')),bytes)
+ assert.deepEqual(await readFile(path),modified)
 })
