@@ -228,6 +228,18 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         const failed=branch.findLast(entry=>entry.type==='message'||entry.type==='custom_message'&&entry.customType==='night.business-input')
         const cold=coldSessions.delete(row.activeSessionId)
         const unexpectedStop=cold&&(failed?.id===admittedInput.id||failed?.message?.role==='toolResult'||failed?.message?.stopReason==='toolUse')
+        // Partial settlement changes the pending prefix, not the immutable admitted
+        // packet. Retire only a proven effect-complete checkpoint; never re-admit
+        // the consumed prefix or weaken the ordinary continuation's identity guard.
+        if(admittedPacket.source.eventIds.some(id=>!inbox.some(event=>event.id===id))){
+          try{
+            await checkPartialSettlement(row,handle,admittedPacket,failed?.id)
+            row=await replaceOwner(row,'ROUTER_BATCH_PARTIALLY_SETTLED',handle);handle=undefined;continue
+          }catch(error){
+            if(/^(?:PI_ROUTER_RESUME_|ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT|ROUTER_EVENT_SCOPE)/.test(error.code??''))fail('ROUTER_BATCH_UNSETTLED',error.code)
+            throw error
+          }
+        }
         // 补充输入夹在原续办的 claim 和 turn 之间，不是新的续办起点。
         const inputIndex=branch.indexOf(admittedInput)
         const resumeTurn=branch.slice(inputIndex+1).find(entry=>entry.type==='custom_message'&&entry.customType==='night.router-resume-turn')
@@ -298,6 +310,30 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     tails.set(conversationId,work);inflight.add(work)
     void work.then(()=>errors.delete(conversationId),error=>errors.set(conversationId,error)).finally(()=>{inflight.delete(work);if(tails.get(conversationId)===work)tails.delete(conversationId)}).catch(()=>{})
     return work
+  }
+  async function checkPartialSettlement(row,handle,packet,failedEntryId){
+    const ids=packet.source.eventIds,conversationId=row.id
+    const events=await query('router.batch-events',{conversationId,eventIds:ids});assertOpen()
+    const consumed=events.filter(event=>event.state==='consumed'),remaining=events.filter(event=>event.state==='pending')
+    if(!consumed.length||!remaining.length||consumed.length+remaining.length!==ids.length)fail('ROUTER_RESUME_BATCH_STALE')
+    for(const event of consumed){
+      const receipt=typeof event.operationId==='string'&&await query('router.action',{conversationId,operationId:event.operationId})
+      const settled=receipt?.result?.conversation
+      if(event.processedGeneration!==row.generation||!Number.isSafeInteger(event.processedCursor)||event.processedCursor<=0||event.processedCursor>row.cursor||settled?.id!==conversationId||settled.generation!==row.generation||settled.activeSessionId!==row.activeSessionId||!Number.isSafeInteger(settled.cursor)||settled.cursor<event.processedCursor)fail('ROUTER_RESUME_BATCH_STALE')
+    }
+    const original=events.map(event=>{
+      if(event.state!=='consumed')return event
+      const {operationId,processedGeneration,processedCursor,noTaskDisposition,inspectionDisposition,...input}=event
+      return {...input,state:'pending'}
+    })
+    if(!routerPacketViews(row,original).some(value=>sameRouterPacket(value,packet)))fail('ROUTER_PACKET_ID_CONFLICT')
+    // Strict native validation retains unknown/missing/error tool-result fences.
+    // This is not the relaxed wake-only inference path.
+    await handle.checkRouterBatch({packet,failedEntryId})
+    const current=await query('router.get',{conversationId}),pending=await query('router.inbox',{conversationId,limit:30})
+    if(!current||current.phase!=='active'||current.generation!==row.generation||current.activeSessionId!==row.activeSessionId||current.cursor!==row.cursor||agents.get(row.activeSessionId)!==handle.agent||handle.agent.lifecycle.signal.aborted)fail('ROUTER_RESUME_STALE')
+    if(!isDeepStrictEqual(remaining.map(event=>event.id),pending.slice(0,remaining.length).map(event=>event.id))||!isDeepStrictEqual(events,await query('router.batch-events',{conversationId,eventIds:ids})))fail('ROUTER_RESUME_BATCH_STALE')
+    assertOpen()
   }
   async function prepareResume(row,handle,packet){
     const conversationId=row.id,ids=packet.source.eventIds
