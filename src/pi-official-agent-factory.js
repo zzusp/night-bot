@@ -253,9 +253,19 @@ export class OfficialAgentFactory {
     }
     const receipts=entries.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit').map(entry=>entry.data)
     if(!wakeOnly&&(calls.size||unresolvedNativeJobReceipts(receipts,id).length||receipts.some(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent')))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
-    // Only isolation may leave a failed schedule catalog read in the old journal.
-    // It must match the parameterless Router tool; this is not a not-started proof.
-    if(isolationOnly&&unknownCalls.some(call=>!['resident_task_action','resident_router_reply','resident_task_query'].includes(call.name)&&!(call.name==='platform_schedule_list'&&isDeepStrictEqual(call.arguments,{}))))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
+    if(isolationOnly){
+     const eventIds=new Set(packet.source.eventIds)
+     const canIsolate=({name,arguments:args})=>{
+      if(['resident_task_action','resident_router_reply','resident_task_query'].includes(name))return true
+      if(name==='platform_schedule_list')return isDeepStrictEqual(args,{})
+      // Settlement touches only the local ledger. Keep the paired failure in the
+      // old journal; never turn it into a receipt or widen the frozen batch.
+      return name==='resident_router_settle'&&Array.isArray(args?.eventIds)&&args.eventIds.length>0
+        &&args.eventIds.every(eventId=>eventIds.has(eventId))
+        &&(args.inspectionReviews===undefined||isDeepStrictEqual(args.inspectionReviews,[]))
+     }
+     if(unknownCalls.some(call=>!canIsolate(call)))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
+    }
     return {conversationId:store.header.conversationId,generation:store.header.generation,sessionId:id,packetId:packet.id,inputEntryId:input.id,failedEntryId,checkpointRevision:store.snapshot().revision,...isolationOnly?{unknownTaskIds:[...new Set(unknownCalls.map(call=>call.arguments?.taskId??call.arguments?.taskDelivery?.taskId).filter(id=>typeof id==='string'))],unknownSourceIds:[...new Set(unknownCalls.map(call=>call.arguments?.sourceId).filter(id=>typeof id==='string'))]}:{}}
    }
    const handle={actor,agent:actor,session:bundle.session,
