@@ -516,3 +516,16 @@ test('exact task timing page never includes another task or excludes archived id
  assert.equal(result.total,1);assert.deepEqual(result.items.map(row=>row.taskId),['old']);
  assert.equal(page({collection:'tasks',taskId:'absent',archived:'all',limit:1}).total,0);
 });
+
+test('channel activity task scope precedes SQL totals, status filters and pagination',t=>{
+ const f=fixture(t),base={status:'active',control:'active',drained:false,requirementRevision:1,createdAt:'2026-01-01',updatedAt:'2026-01-01'}
+ for(let i=0;i<20;i++)f.put('tasks','new-b-'+i,{...base,groupId:'plugin:room-b',updatedAt:'2026-02-01'})
+ for(let i=0;i<7;i++)f.put('tasks','old-a-'+i,{...base,groupId:'plugin:room-a'})
+ f.put('tasks','a-wait',{...base,groupId:'plugin:room-a',control:'paused'})
+ f.put('tasks','standalone',base)
+ const a=f.page({collection:'tasks',groupId:'plugin:room-a',state:'running',archived:false,offset:0,limit:5})
+ assert.equal(a.total,7);assert.equal(a.items.length,5);assert.ok(a.items.every(row=>row.groupId==='plugin:room-a'))
+ assert.equal(f.page({collection:'tasks',groupId:'plugin:room-a',state:'waiting',archived:false,offset:0,limit:5}).total,1)
+ assert.equal(f.page({collection:'tasks',groupId:'plugin:room-empty',archived:false,offset:0,limit:5}).total,0)
+ assert.equal(f.page({collection:'tasks',state:'running',archived:false,offset:0,limit:5}).total,28)
+})

@@ -339,6 +339,17 @@ export async function createWebConsole({channels, paths, config, getApplication,
       return send(response, 200, schedulePage(catalog, options, [credential.token]))
     }
     if (request.method === 'GET' && path === '/api/tasks') return send(response, 200, await tasks(taskOptions(url.searchParams)))
+    const activity = /^\/api\/conversations\/([^/]+)\/activity$/.exec(path)
+    if(request.method==='GET'&&activity){
+      if([...url.searchParams.keys()].length)fail('PAGE_INVALID')
+      const id=decodeURIComponent(activity[1]),groupId=executionContext('conversations',id)
+      const states=[undefined,'running','waiting'],keys=['tasks','running','waiting']
+      const results=await Promise.allSettled(states.map(state=>tasks({groupId,state,offset:0,limit:5,archived:false})))
+      executionContext('conversations',id)
+      const values=Object.fromEntries(keys.map((key,index)=>[key,results[index].status==='fulfilled'?results[index].value:null]))
+      const sectionErrors=Object.fromEntries(keys.flatMap((key,index)=>results[index].status==='rejected'?[[key,'SECTION_UNAVAILABLE']]:[]))
+      return send(response,200,{scope:{conversationId:groupId},...values,sectionErrors})
+    }
     if (request.method === 'GET' && path === '/api/overview') {
       const app = application()
       const sections = {

@@ -2,7 +2,7 @@ import {useMemo} from 'react';
 import {ApiError} from '../api';
 import { RiArrowRightSLine, RiCheckboxCircleLine, RiTimeLine, RiLoader4Line } from '@remixicon/react';
 import type { Overview, Page, Task } from '../api';
-import { dateTime } from '../hooks';
+import { dateTime, useResource } from '../hooks';
 import { Loading, Notice, Status } from './Shared';
 import '../styles/activity-panel.css';
 import { StageTimingChart } from './StageTimingChart';
@@ -16,15 +16,34 @@ function TaskRow({task}: {task: Task}) {
   </a>;
 }
 
-function TaskSection({title, tasks, href, tone, failed}: {title: string; tasks?: Page<Task> | null; href: string; tone: 'running' | 'waiting' | 'recent'; failed: boolean}) {
+function TaskSection({title, tasks, href, tone, failed}: {title: string; tasks?: Page<Task> | null; href?: string; tone: 'running' | 'waiting' | 'recent'; failed: boolean}) {
   const Icon = tone === 'running' ? RiLoader4Line : tone === 'waiting' ? RiTimeLine : RiCheckboxCircleLine;
   return <section className={`rail-section rail-section-${tone}`} aria-label={title}>
-    <div className="rail-section-title"><h3><Icon size={16} aria-hidden="true" />{title}</h3><a href={href} aria-label={`查看${title}任务`}>查看<RiArrowRightSLine size={15} aria-hidden="true" /></a></div>
+    <div className="rail-section-title"><h3><Icon size={16} aria-hidden="true" />{title}</h3>{href && <a href={href} aria-label={`查看${title}任务`}>查看<RiArrowRightSLine size={15} aria-hidden="true" /></a>}</div>
     {tasks?.items.length ? <div className="rail-task-list">{tasks.items.slice(0, 5).map(task => <TaskRow key={task.taskId} task={task}/>)}</div> : <p className="rail-empty">{failed || !tasks || tasks.total > 0 ? '—' : tone === 'running' ? '暂无执行中的任务' : tone === 'waiting' ? '暂无等待中的任务' : '暂无任务'}</p>}
   </section>;
 }
 
-export function ActivityPanel({data, loading, error, onRetry, conversation}: {conversation: {kind: 'chat'|'conversations'; id?: string}; data?: Overview; loading: boolean; error: unknown; onRetry: () => void}) {
+type ActivityData = Pick<Overview, 'tasks' | 'running' | 'waiting' | 'sectionErrors'>;
+type ActivityProps = {conversation: {kind: 'chat'|'conversations'; id?: string}; data?: ActivityData; loading: boolean; error: unknown; onRetry: () => void};
+export function ActivityPanel(props: ActivityProps) {
+  return props.conversation.kind === 'conversations'
+    ? <ChannelActivityPanel key={props.conversation.id ?? 'unselected'} {...props}/>
+    : <ActivityPanelContent {...props}/>;
+}
+function ChannelActivityPanel(props: ActivityProps) {
+  const id=props.conversation.id;
+  const query=useResource<ActivityData & {scope:{conversationId:string}}>(id ? `/conversations/${encodeURIComponent(id)}/activity` : null,5000,{pauseWhenHidden:true});
+  const mismatch=query.data && query.data.scope?.conversationId!==id;
+  const error=query.error ?? (mismatch ? new ApiError(503,'ACTIVITY_SCOPE_INVALID') : null);
+  return <ActivityPanelContent {...props} data={!error ? query.data ?? undefined : undefined} loading={query.loading} error={error} onRetry={query.refresh}/>;
+}
+function ActivityPanelContent({data, loading, error, onRetry, conversation}: ActivityProps) {
+  // The existing task-list UI cannot retain a channel filter. Do not link to a
+  // global collection from a scoped count; individual task details stay linked.
+  const allTasks=conversation.kind==='chat' ? '#/tasks' : undefined;
+  const runningTasks=allTasks ? '#/tasks?state=running' : undefined;
+  const waitingTasks=allTasks ? '#/tasks?state=waiting' : undefined;
   // The overview pages own their totals and membership. Waiting never implies a
   // human approval request, and an unavailable page must not become a zero.
   const incomplete = !!Object.keys(data?.sectionErrors || {}).length;
@@ -34,18 +53,18 @@ export function ActivityPanel({data, loading, error, onRetry, conversation}: {co
     && data.running.total === 0 && data.waiting.total === 0
     && data.running.items.length === 0 && data.waiting.items.length === 0;
   return <aside id="activity-panel" className="activity-rail" aria-label="任务动态">
-    <div className="rail-heading"><h2>工作动态</h2><a href="#/tasks">全部任务<RiArrowRightSLine size={16} aria-hidden="true" /></a></div>
+    <div className="rail-heading"><h2>工作动态</h2>{allTasks && <a href={allTasks}>全部任务<RiArrowRightSLine size={16} aria-hidden="true" /></a>}</div>
     {!!error && <Notice error={error} stale={!!data} onRetry={onRetry}/>}
-    {incomplete && !error && <Notice read error={partialError} source="/overview" message="部分工作动态暂不可读。" onRetry={onRetry}/>}
+    {incomplete && !error && <Notice read error={partialError} source={conversation.kind === 'conversations' ? `/conversations/${encodeURIComponent(conversation.id || '')}/activity` : '/overview'} message="部分工作动态暂不可读。" onRetry={onRetry}/>}
+    <StageTimingChart kind={conversation.kind} id={conversation.id}/>
     {!data && loading ? <Loading/> : <>
-      <StageTimingChart kind={conversation.kind} id={conversation.id}/>
       <div className="activity-counts">
-        <a href="#/tasks?state=running"><span><i className="count-dot info"/>执行中</span><strong>{data?.sectionErrors?.running ? '—' : data?.running?.total ?? '—'}</strong></a>
-        <a href="#/tasks?state=waiting"><span><i className="count-dot warning"/>等待中</span><strong>{data?.sectionErrors?.waiting ? '—' : data?.waiting?.total ?? '—'}</strong></a>
+        {runningTasks ? <a href={runningTasks}><span><i className="count-dot info"/>执行中</span><strong>{data?.sectionErrors?.running ? '—' : data?.running?.total ?? '—'}</strong></a> : <div><span><i className="count-dot info"/>执行中</span><strong>{data?.sectionErrors?.running ? '—' : data?.running?.total ?? '—'}</strong></div>}
+        {waitingTasks ? <a href={waitingTasks}><span><i className="count-dot warning"/>等待中</span><strong>{data?.sectionErrors?.waiting ? '—' : data?.waiting?.total ?? '—'}</strong></a> : <div><span><i className="count-dot warning"/>等待中</span><strong>{data?.sectionErrors?.waiting ? '—' : data?.waiting?.total ?? '—'}</strong></div>}
       </div>
-      <TaskSection title="正在执行" tasks={data?.running} href="#/tasks?state=running" tone="running" failed={!!data?.sectionErrors?.running}/>
-      <TaskSection title="等待继续" tasks={data?.waiting} href="#/tasks?state=waiting" tone="waiting" failed={!!data?.sectionErrors?.waiting}/>
-      {idle && <TaskSection title="最近任务" tasks={data?.tasks} href="#/tasks" tone="recent" failed={!!data?.sectionErrors?.tasks}/>}
+      <TaskSection title="正在执行" tasks={data?.running} href={runningTasks} tone="running" failed={!!data?.sectionErrors?.running}/>
+      <TaskSection title="等待继续" tasks={data?.waiting} href={waitingTasks} tone="waiting" failed={!!data?.sectionErrors?.waiting}/>
+      {idle && <TaskSection title="最近任务" tasks={data?.tasks} href={allTasks} tone="recent" failed={!!data?.sectionErrors?.tasks}/>}
     </>}
   </aside>;
 }
