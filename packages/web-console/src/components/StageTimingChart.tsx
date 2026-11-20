@@ -1,3 +1,4 @@
+import {RouterContextWindow, type ContextWindowSnapshot} from './RouterContextWindow';
 import {ApiError} from '../api';
 import {Notice} from './Shared';
 import { useId, useState } from 'react';
@@ -8,7 +9,7 @@ import { messageProcessDuration } from '../message-process-duration';
 const unavailableTimings=new ApiError(503,'STAGE_TIMES_UNAVAILABLE');
 type Stage = { status: 'recorded' | 'running' | 'missing' | 'invalid' | 'failed' | 'cancelled' | 'unconfirmed'; durationMs: number | null; shared: boolean };
 type Sample = { receivedAt: string | null; router?: Stage; compaction?: Stage };
-type StagePage = { status: string; items: Sample[]; compactions?: {status: string; items: Sample[]} };
+type StagePage = { status: string; items: Sample[]; contextWindow?: ContextWindowSnapshot; compactions?: {status: string; items: Sample[]} };
 const valueOf = (stage: Stage) => stage.status === 'recorded' && typeof stage.durationMs === 'number' && Number.isFinite(stage.durationMs) && stage.durationMs >= 0 ? stage.durationMs : null;
 const stageText = (stage: Stage) => valueOf(stage) !== null ? messageProcessDuration(valueOf(stage)!) : stage.status === 'failed' ? '压缩失败' : stage.status === 'cancelled' ? '已取消' : stage.status === 'unconfirmed' ? '结果未确认' : stage.status === 'running' ? '结束未记录' : stage.status === 'invalid' ? '时间异常' : '未记录';
 
@@ -49,18 +50,15 @@ function StagePlot({items, stage, title}: {items: Sample[]; stage: 'router'|'com
 
 export function StageTimingChart({kind, id}: {kind: 'chat'|'conversations'; id?: string}) {
   const resolvedId = id;
-  const query = useResource<StagePage>(resolvedId ? `/${kind}/${encodeURIComponent(resolvedId)}/stage-times?limit=8` : null, 10000, {pauseWhenHidden:true});
+  const query = useResource<StagePage>(resolvedId ? `/${kind}/${encodeURIComponent(resolvedId)}/stage-times?limit=8&contextWindow=1` : null, 10000, {pauseWhenHidden:true});
   // Do not show a previous conversation or stale timings as current measurements.
   const failure = query.error ?? (query.data && query.data.status !== 'ready' ? unavailableTimings : null);
   const items = !failure && query.data?.status === 'ready' ? [...query.data.items].reverse() : [];
-  const compactions = query.data?.compactions;
-  return <div className="stage-timing-charts" role="group" aria-label="最近处理耗时">{failure && <Notice read source={!query.error ? `/${kind}/${encodeURIComponent(resolvedId || '')}/stage-times?limit=8` : undefined} error={failure} onRetry={query.refresh}/>} {(['compaction','router'] as const).map(stage => {
-    const title = stage === 'compaction' ? 'Router 上下文压缩' : '路由';
-    const samples = stage === 'compaction' ? !failure && compactions?.status === 'ready' ? [...compactions.items].reverse() : [] : items;
-    const unavailable = Boolean(failure || stage === 'compaction' && query.data && (!compactions || compactions.status === 'unavailable'));
-    return <section key={stage} className={`rail-section stage-timing-card stage-timing-card-${stage}`} aria-label={`${title}耗时`}>
-      <div className="rail-section-title"><h3><i className="stage-title-dot"/>{title}耗时</h3><span className="stage-scope">本会话 · {samples.length ? `${samples.length} ${stage === 'compaction' ? '次压缩' : '条消息'}` : stage === 'compaction' ? '最近压缩' : '最近消息'}</span></div>
-      {samples.length ? <StagePlot key={`${resolvedId}:${stage}`} items={samples} stage={stage} title={title}/> : <p className="rail-empty">{unavailable ? '—' : query.loading || !resolvedId ? '读取中…' : stage === 'compaction' ? '暂无压缩耗时记录' : '暂无耗时记录'}</p>}
-    </section>;
-  })}</div>;
+  return <div className="stage-timing-charts" role="group" aria-label="最近处理耗时">{failure && <Notice read source={!query.error ? `/${kind}/${encodeURIComponent(resolvedId || '')}/stage-times?limit=8&contextWindow=1` : undefined} error={failure} onRetry={query.refresh}/>}
+    <RouterContextWindow key={resolvedId} snapshot={!failure ? query.data?.contextWindow : undefined} loading={query.loading || !resolvedId}/>
+    <section className="rail-section stage-timing-card stage-timing-card-router" aria-label="路由耗时">
+      <div className="rail-section-title"><h3><i className="stage-title-dot"/>路由耗时</h3><span className="stage-scope">本会话 · {items.length ? `${items.length} 条消息` : '最近消息'}</span></div>
+      {items.length ? <StagePlot key={`${resolvedId}:router`} items={items} stage="router" title="路由"/> : <p className="rail-empty">{failure ? '—' : query.loading || !resolvedId ? '读取中…' : '暂无耗时记录'}</p>}
+    </section>
+  </div>;
 }

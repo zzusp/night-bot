@@ -19,8 +19,8 @@ function fixture(t,{tokens=300000,compact,commit,outputReserveTokens,isHealthy,i
 }
 const result=()=>({summary:'Native summary',firstKeptEntryId:'leaf',tokensBefore:300000,details:{readFiles:[]}})
 test('only idle settled round at soft threshold creates and commits candidate',async t=>{
- const f=fixture(t,{tokens:299999});f.worker.settled();await delay(10);assert.equal(f.calls.length,0)
- f.state.tokens=300000;f.emit('agent_settled');await eventually(()=>f.state.refreshes===1)
+ const f=fixture(t,{tokens:283199});f.worker.settled();await delay(10);assert.equal(f.calls.length,0)
+ f.state.tokens=283200;f.emit('agent_settled');await eventually(()=>f.state.refreshes===1)
  assert.equal(f.calls.length,1);assert.equal(f.appends.length,1);assert.equal(f.state.commits,1);assert.ok(f.phases.includes('background-compaction-adopted'))
 })
 test('queued inputs, streaming, retrying and paused admission prevent background starts',async t=>{

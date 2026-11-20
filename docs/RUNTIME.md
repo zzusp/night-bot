@@ -54,7 +54,7 @@ All other optional provider integrations retain their own explicit admission.
 
 当前消息入口按“认证来源 → conversation Router → 唯一任务执行会话”分工。不运行前置分诊或自动收悉；Router 通过受控动作安排事项并评估结果，不能直接执行业务脚本。Topic 不再作为活动路由实体，旧 Owner/团队路径不因更换会话而恢复。
 
-Host/SQLite 保持直接来源、依赖、动作收据、内部事件和 active generation 的权威。依赖满足必须绑定当前授权、任务版本与证据，`completed` 和通知送达各自独立。Router 持续复用当前 Pi 会话，空闲和任务完成不再触发交接模型轮；Router 采用500,000 token目标预算（不超过模型真实窗口），60%后台压缩、80%原生前台压缩兜底；小窗口优先保留原生输出余量。旧部署已持久交接仍经严格提交证明、候选准备及 CAS 发布恢复；新代提交前不得处理业务。旧 journal、未知效果阻断和唯一业务 owner 继续保留。
+Host/SQLite 保持直接来源、依赖、动作收据、内部事件和 active generation 的权威。依赖满足必须绑定当前授权、任务版本与证据，`completed` 和通知送达各自独立。Router 持续复用当前 Pi 会话，空闲和任务完成不再触发交接模型轮；Router 采用472,000 token目标预算（不超过模型真实窗口），60%后台压缩、80%原生前台压缩兜底；小窗口优先保留原生输出余量。旧部署已持久交接仍经严格提交证明、候选准备及 CAS 发布恢复；新代提交前不得处理业务。旧 journal、未知效果阻断和唯一业务 owner 继续保留。
 
 完整职责与失败恢复见 [CHANNELS](CHANNELS.md)，本次版本的实际验收见 [任务入口](acceptance/resident-conversation-routing/goal.md)；此前阶段计数和 Topic 测试不替代本轮证据。
 

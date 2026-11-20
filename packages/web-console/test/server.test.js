@@ -1215,5 +1215,10 @@ test('compaction chart uses authenticated current Router events even with zero m
  assert.equal(page.status,200);assert.deepEqual(page.body.items,[]);assert.equal(page.body.compactions.items.length,1)
  assert.equal(page.body.compactions.items[0].receivedAt,new Date(4000).toISOString());assert.equal(page.body.compactions.items[0].compaction.durationMs,3000)
  assert.doesNotMatch(JSON.stringify(page.body),/triage|sourceId|spanId|router-one/)
- const count=calls.length;assert.equal((await f.fetchApi('/api/conversations/foreign/stage-times')).status,404);assert.equal(calls.length,count)
+ const count=calls.length
+ const contextOnly=await f.fetchApi('/api/conversations/room-one/stage-times?contextWindow=1')
+ assert.equal(contextOnly.status,200);assert.deepEqual(contextOnly.body.contextWindow,{status:'unavailable'});assert.equal(Object.hasOwn(contextOnly.body,'compactions'),false)
+ assert.equal(calls.length,count,'context card must not scan retained compaction traces')
+ assert.equal((await f.fetchApi('/api/conversations/room-one/stage-times?contextWindow=invalid')).status,400)
+ assert.equal((await f.fetchApi('/api/conversations/foreign/stage-times?contextWindow=1')).status,404);assert.equal(calls.length,count)
 })

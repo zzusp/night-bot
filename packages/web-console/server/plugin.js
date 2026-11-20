@@ -10,6 +10,7 @@ import {latestComparison} from '../../../src/memory/evolution-content.js'
 import {responseTiming,selectedResponseTiming} from './response-times.js'
 import {stageTiming} from './stage-times.js'
 import {routerCompactionTimes} from './router-compaction-times.js'
+import {routerContextWindow} from './router-context-window.js'
 import {createServer} from 'node:http'
 import {readFile, lstat, realpath} from 'node:fs/promises'
 import {fileURLToPath} from 'node:url'
@@ -73,7 +74,7 @@ async function staticResponse(pathname, request, response, dist) {
 }
 
 // 仅作为可选适配器：不导入核心实现，不扩展领域 schema，也不引入模型调用或任务调度。
-export async function createWebConsole({channels, paths, config, getApplication, getRedactionSecrets = () => [], getFeedback = () => undefined, getSchedule = () => undefined, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, getDeploymentInventory = () => undefined, dist = defaultDist, listen = true}) {
+export async function createWebConsole({channels, paths, config, getApplication, getAgents = () => undefined, getRedactionSecrets = () => [], getFeedback = () => undefined, getSchedule = () => undefined, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, getDeploymentInventory = () => undefined, dist = defaultDist, listen = true}) {
   const channelId = identifier(config.channelId ?? 'web-console')
   const senderId = identifier(config.senderId)
   const operatorName = (typeof config.operatorName === 'string' ? config.operatorName.trim().slice(0, 256).trim() : '') || '本机操作者'
@@ -460,7 +461,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
     }
     const stageTimes = /^\/api\/(chat|conversations)\/([^/]+)\/stage-times$/.exec(path)
     if (request.method === 'GET' && stageTimes) {
-      if ([...url.searchParams.keys()].some(key=>key!=='limit')) fail('PAGE_INVALID')
+      if ([...url.searchParams.keys()].some(key=>!['limit','contextWindow'].includes(key)) || url.searchParams.has('contextWindow') && url.searchParams.get('contextWindow')!=='1') fail('PAGE_INVALID')
       const limit=pageNumber(url.searchParams,'limit',8,20),id=decodeURIComponent(stageTimes[2])
       const conversationId=executionContext(stageTimes[1],id),app=application(),store=app.tasks.store
       const base={scope:'recent-message-host-stage-spans',limit,coverage:stageTimes[1]==='chat'?'retained-web-message-window':'paged-channel-messages'}
@@ -474,7 +475,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const refs=messages.items.map(row=>({messageId:row.messageId,version:row.messageVersion??1}))
       const context=await store.query({kind:'observer.message-contexts',groupId:conversationId,messages:refs,messageIds:refs.map(row=>row.messageId)})
       const items=messages.items.map(row=>stageTiming(row,context.sources,conversationId))
-      return send(response,200,{...base,status:'ready',items,compactions:await routerCompactionTimes(app.tasks,conversationId,limit)})
+      return send(response,200,{...base,status:'ready',items,contextWindow:await routerContextWindow(app.tasks,getAgents(),conversationId),...url.searchParams.get('contextWindow')==='1'?{}:{compactions:await routerCompactionTimes(app.tasks,conversationId,limit)}})
     }
     const responseTimes = /^\/api\/(chat|conversations)\/([^/]+)\/response-times$/.exec(path)
     if (request.method === 'GET' && responseTimes) {
@@ -649,7 +650,7 @@ export async function apply(ctx, config) {
       if (typeof credentials?.redactionValues !== 'function') throw new Error('Credentials unavailable')
       return [...await credentials.redactionValues(), ...launchEnvironmentOf(ctx).redactionValues()]
     },
-    getSchedule: () => ctx.get('schedule'), getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), getFeedback: () => ctx.get('errorFeedback'), getDeploymentInventory:()=>ctx.get('deploymentInventory')?.read(), listen: false})
+    getAgents: () => ctx.get('agents'), getSchedule: () => ctx.get('schedule'), getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), getFeedback: () => ctx.get('errorFeedback'), getDeploymentInventory:()=>ctx.get('deploymentInventory')?.read(), listen: false})
   const stop = () => stopping ??= prepared.then(web => web.close(), () => undefined)
   ctx.effect(() => stop, 'optional Web console shutdown')
   ctx.on('night/stopping', stop)

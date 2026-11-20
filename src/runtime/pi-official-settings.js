@@ -22,7 +22,7 @@ export function officialRetrySettings(input) {
 }
 
 // Budgets never enlarge the actual model window. Pi owns compaction/projection.
-export const ROUTER_CONTEXT_TOKENS = 500_000
+export const ROUTER_CONTEXT_TOKENS = 472_000
 export const TRIAGE_CONTEXT_TOKENS = 500_000
 export const CONVERSATION_BACKGROUND_RATIO = 0.6
 export const CONVERSATION_FOREGROUND_RATIO = 0.8
@@ -36,7 +36,7 @@ export function officialConversationContextBudget(model, role = 'CONVERSATION', 
   fail(`PI_${role}_CONTEXT_WINDOW_INVALID`, `${role} requires a model with a valid context window larger than Pi reserve tokens`)
  }
  if (outputReserveTokens !== undefined && (!Number.isSafeInteger(outputReserveTokens) || outputReserveTokens < 0)) fail(`PI_${role}_OUTPUT_RESERVE_INVALID`, 'Output reserve must be a nonnegative integer')
- const targetTokens = ROUTER_CONTEXT_TOKENS
+ const targetTokens = role === 'TRIAGE' ? TRIAGE_CONTEXT_TOKENS : ROUTER_CONTEXT_TOKENS
  const budgetTokens = Math.min(targetTokens, model.contextWindow)
  const outputHeadroomTokens = Math.max(defaults.reserveTokens, outputReserveTokens ?? 0)
  if (outputHeadroomTokens >= budgetTokens) fail(`PI_${role}_OUTPUT_RESERVE_INVALID`, 'Output reserve must be smaller than the effective context budget')
