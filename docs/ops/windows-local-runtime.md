@@ -94,7 +94,7 @@ API Key profile 使用声明的 `apiKeyEnv` 引用。可通过既有环境或 `n
 
 任务级 `TASK_EFFECT_NEW_AUTHORIZATION_REQUIRED` 规则已删除：已结清效果不再让后续全部非只读调用或完成结果等待独立操作者授权。Router 可直接调度原执行会话，普通恢复/修订不需要 `new-action`。旧具体调用的 noReplay、当前工具权限及真实结果核验继续保留；不得改 SQLite、Pi 日志或旧收据清警。运行旧发行仍报该错误时，须按本 runbook 的已合并发行升级流程处理，不对账本打补丁。
 
-旧 `new-action` CLI/HTTP 授权入口已退役。未知效果使用 inspect/close 核验结清，随后普通用户消息由 Router 决定恢复原执行会话。不要修改 SQLite、Pi 日志或旧收据以绕过核验。
+旧 `new-action` CLI/HTTP 授权入口已退役。旧交接记录命中的历史来源或任务 ID 不再阻止普通调度，可唤起原会话核验；若任务本身仍有未决作业或效果，走现有 inspect/close，不重跑原调用。真实外发、工具权限和完成证明仍按原规则检查。无需迁移数据或清理旧任务、来源、日志。
 
 ### 排空故障状态
 

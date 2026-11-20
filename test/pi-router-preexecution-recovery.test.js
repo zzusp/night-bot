@@ -51,7 +51,7 @@ for(const [label,legacy,scheduleFailure,settlementFailure] of [
   }
   replacementIds=input.events.map(e=>e.id)
   const fresh=input.events.find(e=>e.source?.sourceId==='independent-query'),source=fresh?.source
-  if(!attemptedHeld){attemptedHeld=true;return {tool:'resident_task_action',args:{operationId:'still-held',kind:'resume',taskId:task.taskId,sourceId:source.sourceId,messageVersion:source.version,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}}}
+  if(!attemptedHeld){attemptedHeld=true;return {tool:'resident_task_action',args:{operationId:'still-held',kind:'resume',taskId:task.taskId,sourceId:holdSource,messageVersion:1,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}}}
   if(!queried){queried=true;return {tool:'resident_task_query',args:{taskId:task.taskId}}}
   if(!reply){reply=true;assert.equal(task.control,'paused');return {tool:'resident_router_reply',args:{operationId:'actual-query-answer',sourceId:source.sourceId,messageVersion:source.version,replyPurpose:'direct-answer',text:'The existing task is paused; no execution has been started.'}}}
   if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1)?.result.isError)return {text:'Current state checked; events observed without task dispatch'}
@@ -61,8 +61,13 @@ for(const [label,legacy,scheduleFailure,settlementFailure] of [
  let make=residentRouterHost,install
  if(legacy){
   root=await mkdtemp(join(tmpdir(),'night-218-old-'));const code=join(root,'old-code');install=join(root,'installation');await mkdir(code)
-  const repo=fileURLToPath(new URL('../',import.meta.url)),{stdout}=await promisify(execFile)('git',['archive','bf3a1ab730bd552976dd276343e6f752f2b5072f'],{cwd:repo,encoding:'buffer',maxBuffer:64*1024*1024})
-  const tar=spawn('tar',['-x','-C',code]);tar.stdin.end(stdout);assert.equal((await once(tar,'exit'))[0],0);await symlink(join(repo,'node_modules'),join(code,'node_modules'),'dir')
+  const repo=fileURLToPath(new URL('../',import.meta.url)),win=process.platform==='win32',legacyLink='packages/dingtalk-dsh-assistant'
+  // Windows tar 无法还原旧目录链接；仅在旧版夹具中用 junction 还原指向。
+  const archive=['archive','bf3a1ab730bd552976dd276343e6f752f2b5072f',...(win?['--','.',`:(exclude)${legacyLink}`]:[])]
+  const {stdout}=await promisify(execFile)('git',archive,{cwd:repo,encoding:'buffer',maxBuffer:64*1024*1024})
+  const tar=spawn('tar',['-xf','-','-C',code],{stdio:['pipe','inherit','inherit']});tar.stdin.end(stdout);assert.equal((await once(tar,'exit'))[0],0)
+  if(win)await symlink(join(code,'packages/dingtalk-core'),join(code,legacyLink),'junction')
+  await symlink(join(repo,'node_modules'),join(code,'node_modules'),win?'junction':'dir')
   make=(await import(pathToFileURL(join(code,'test/fixtures/resident-router-host.js')))).residentRouterHost
  }
  old=h=await make(t,decide,{wrapStore,...legacy?{hostOptions:{hostConfig:{installRoot:install}}}:{}})
@@ -127,6 +132,55 @@ for(const [label,legacy,scheduleFailure,settlementFailure] of [
   assert.ok(!h.service.listAlerts().some(a=>a.detail==='PI_ROUTER_RESUME_EFFECT_UNRESOLVED'))
  }
  const requests=h.requests.length;await h.restart();await h.service.whenIdle();assert.equal(h.requests.length,requests);assert.equal(h.sent.length,1)
+})
+
+for(const directlyHeld of [false,true])test(`fresh Router scheduling survives a prior hold (${directlyHeld?'task':'source only'})`,{timeout:nativeTestTimeout(90000)},async t=>{
+ let h,heldSource,planned=false,step=0,runs=0
+ const taskId='handoff-scheduling-fixture'
+ const wrapStore=store=>({...store,query:async q=>{
+  const rows=await store.query(q)
+  return q.kind==='router.rotations'&&heldSource?[...rows,{id:'old-isolated-rotation',state:'published',recovery:{reason:'ROUTER_BATCH_ISOLATED',unknownSourceIds:[heldSource],unknownTaskIds:directlyHeld?[taskId]:[]}}]:rows
+ }})
+ h=await residentRouterHost(t,async body=>{
+  if(requestTools(body).includes('task_result')){
+   ++runs
+   return {tool:'task_result',args:{decision:{action:'wait',summary:`已进入第 ${runs} 次执行`,evidence:[],limitations:[]}}}
+  }
+  if(!requestTools(body).includes('resident_router_settle'))return {text:'No work'}
+  const input=requestEnvelope(body,'Router 请求：'),event=input?.events.find(e=>e.source)
+  if(!input||body.messages.at(-1)?.role==='tool'&&body.messages.findLast(m=>m.role==='assistant')?.tool_calls?.at(-1)?.function?.name==='resident_router_settle')return {text:'Done'}
+  const settle=()=>({tool:'resident_router_settle',args:{operationId:'settle-'+input.events[0].id,eventIds:input.events.map(e=>e.id),noTaskDispositions:input.events.filter(e=>e.source?.messageId==='new-instruction'&&directlyHeld).map(e=>({eventId:e.id,outcome:'context-only',sourceQuote:e.source.text,reason:'保留来源；调度已提交给原任务'}))}})
+  if(event?.source.messageId==='original-work'){
+   if(planned)return settle()
+   planned=true
+   return {tool:'resident_task_plan',args:{operationId:'plan-original',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId,title:'原任务',objective:'使用原执行会话',requirements:[]}],dependencies:[]}}
+  }
+  if(event?.source.messageId!=='new-instruction'||step>=5)return settle()
+  const task=await h.query('task.get',{taskId}),attempt=step++
+  const provenance=attempt===0?{sourceId:heldSource,messageVersion:1}:attempt===4&&directlyHeld?{}:{sourceId:event.sourceId,messageVersion:attempt===1?2:event.messageVersion}
+  return {tool:'resident_task_action',args:{operationId:'action-'+attempt,kind:attempt===3?'arrange':'resume',taskId,...provenance,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision+(attempt===2?1:0),...attempt===3?{expectedArrangementRevision:task.arrangementRevision??1,dependencies:[]}:{} }}
+ },{wrapStore})
+ await h.receive(channelMessage('original-work'));await h.service.whenIdle()
+ const original=await h.query('task.get',{taskId})
+ assert.equal(original.lastDecision.action,'wait')
+ heldSource=original.sourceRefs[0]
+ assert.ok(heldSource)
+ await h.receive(channelMessage('new-instruction',{text:'继续原任务核对实际结果'}));await h.service.whenIdle()
+ const actions=h.results.filter(r=>r.name==='resident_task_action')
+ assert.equal(actions.length,5)
+ for(const [i,code] of ['ROUTER_PRIOR_SESSION_EFFECT_UNKNOWN','ROUTER_SOURCE_FORBIDDEN','DYNAMIC_TASK_REVISION_STALE','ROUTER_PRIOR_SESSION_EFFECT_UNKNOWN'].entries()){
+  assert.equal(actions[i].result.isError,true)
+  assert.match(JSON.stringify(actions[i].result),new RegExp(code),`第 ${i+1} 次调度应拒绝；实际 ${JSON.stringify(actions[i].result)}`)
+ }
+ assert.equal(actions[4].result.isError,false)
+ const resumed=await h.query('task.get',{taskId})
+ assert.equal(resumed.sessionId,original.sessionId)
+ assert.equal(resumed.lastDecision.summary,'已进入第 2 次执行')
+ assert.equal(resumed.drained,true)
+ const journal=await h.host.ctx.sessionPersistence.readNative(original.sessionId,{requireComplete:true})
+ assert.equal(journal.entries.filter(e=>e.type==='message'&&e.message.role==='toolResult'&&e.message.toolName==='task_result'&&!e.message.isError).length,2)
+ assert.equal(runs,2);assert.equal(h.sent.length,0)
+ assert.equal(await h.query('router.inbox-count',{conversationId:resumed.groupId}),0)
 })
 
 test('consecutive zero-progress batches never starve independent messages', {timeout:nativeTestTimeout(90000)},async t=>{

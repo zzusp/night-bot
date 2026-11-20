@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestText} from './fixtures/resident-router-host.js'
+import {initializeMemoryTaskWorkspace} from './fixtures/memory-host.js'
 
 function taskInput(body){for(const text of requestText(body).toReversed()){try{const input=JSON.parse(text);if(input.task)return input}catch{}}}
 const call=(tool,args)=>({tool,args})
@@ -134,6 +135,7 @@ for(const continueTask of [true,false,'router-outage','router-busy'])test('an un
     await entered.promise
     const original=await h.query('task.get',{taskId:'inspect-e2e'})
     await h.store.command({id:'orphan-create',kind:'task.create',args:{taskId:'orphan-e2e',request:'Retain this orphan for investigation',groupId:original.groupId,ownerActorId:original.ownerActorId,sourceRefs:original.sourceRefs}})
+    await initializeMemoryTaskWorkspace(h.store,h.host.ctx.runtimePaths.workspaces,'orphan-e2e')
     await h.store.command({id:'orphan-claim',kind:'task.claim',args:{taskId:'orphan-e2e'}})
     await h.service.recover()
     assert.equal((await h.query('task.get',{taskId:'orphan-e2e'})).inspection.pending,true)
