@@ -659,7 +659,8 @@ test('new triage conclusions are frozen, bound, reply-independent and idempotent
  await assert.rejects(f.command('triage.commit',{conversationId:'foreign',dispositions:[sources[0]]}),/ROUTER_CONVERSATION_SCOPE/)
  await assert.rejects(f.command('triage.commit',{dispositions:[{...sources[0],messageVersion:2}]}),/ROUTER_SOURCE_STALE/)
  await assert.rejects(f.command('triage.commit',{dispositions:[{...sources[0],handoff:{...sources[0].handoff,summary:'Changed'}}]}),/ROUTER_TRIAGE_CONFLICT/)
- const {DatabaseSync}=await import('node:sqlite'),db=new DatabaseSync(f.dbPath);t.after(()=>db.close())
+ const {DatabaseSync}=await import('node:sqlite')
+ using db=new DatabaseSync(f.dbPath)
  const legacyId='triage:handoff-3',legacy=db.prepare('SELECT body FROM dynamic_triage WHERE id=?').get(legacyId).body,changedLegacy=JSON.parse(legacy)
  changedLegacy.decision.handoff={assignment:'explicit',summary:'Must not enrich an already queued legacy packet'}
  db.prepare('UPDATE dynamic_triage SET body=? WHERE id=?').run(JSON.stringify(changedLegacy),legacyId)
