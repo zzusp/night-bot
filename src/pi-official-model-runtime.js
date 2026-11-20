@@ -1,3 +1,4 @@
+import {routerModelProfiles} from './router-model-window.js'
 import {isDeepStrictEqual} from 'node:util'
 // Direct official SDK model/auth registry. No Night message/chunk conversion.
 import {ModelRuntime} from '@earendil-works/pi-coding-agent'
@@ -14,15 +15,23 @@ export class OfficialPiModelRuntime {
  #lifetime=new AbortController()
  #active=new Set()
  #closing
+ #routerRuntime
  #defaultScope={}
  #scopes=new WeakMap()
  constructor(ctx,profiles,authentication,{createRuntime=options=>ModelRuntime.create(options)}={}) {this.ctx=ctx;this.profiles=profiles;this.authentication=authentication;this.createRuntime=createRuntime;ctx.effect?.(()=>()=>this.close(),'official Pi model runtime drain')}
  async close() {
-  if(!this.#closing){this.#lifetime.abort(new Error('Official Pi model runtime disposed'));this.#closing=Promise.allSettled([...this.#active].map(record=>record.done.promise)).then(()=>{})}
+  if(!this.#closing){this.#lifetime.abort(new Error('Official Pi model runtime disposed'));this.#closing=Promise.allSettled([...this.#active].map(record=>record.done.promise).concat(this.#routerRuntime?[this.#routerRuntime.close()]:[])).then(()=>{})}
   return this.#closing
  }
  async resolve(config,actorScope) {
   if(this.#lifetime.signal.aborted)fail('OFFICIAL_MODEL_RUNTIME_CLOSED','Official Pi model runtime is closed')
+  if(actorScope?.runtimeOwner==='conversation-router'){
+   // A real independent SDK registry keeps the same provider/model route safe
+   // for simultaneous Router and execution use, including stream-time fences.
+   this.#routerRuntime??=new OfficialPiModelRuntime(this.ctx,()=>routerModelProfiles(this.profiles()),this.authentication,{createRuntime:this.createRuntime})
+   const {runtimeOwner,...scope}=actorScope
+   return this.#routerRuntime.resolve(config,scope)
+  }
   if(!config || typeof config.provider!=='string' || typeof config.model!=='string')fail('INVALID_MODEL_ROUTE','Explicit provider and model are required')
   config.signal?.throwIfAborted()
   if(config.stop!==undefined)fail('UNSUPPORTED_OPTION','Stop sequences are unsupported by this provider')

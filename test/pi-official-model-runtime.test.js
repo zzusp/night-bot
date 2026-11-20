@@ -100,13 +100,13 @@ test('missing actor credentials fail without borrowing a global configured key',
  assert.equal(result.stopReason,'error');assert.equal(requests,0);assert.ok(!JSON.stringify(result).includes('private-fixture-key'))
 })
 
-test('official runtime close aborts and joins an admitted direct stream and refuses later resolve',async t=>{
+for(const runtimeOwner of [undefined,'conversation-router'])test('official runtime close aborts and joins an admitted stream: '+(runtimeOwner??'execution'),async t=>{
  let entered;const started=new Promise(resolve=>entered=resolve)
  const base=await serverFixture(t,async(req,res)=>{for await(const _ of req){}res.writeHead(200,{'content-type':'text/event-stream'});res.flushHeaders();entered()})
- const f=fixture(declaration(base)),resolved=await f.runtime.resolve({provider:'fixture',model:'m'})
+ const f=fixture(declaration(base)),resolved=await f.runtime.resolve({provider:'fixture',model:'m'},{runtimeOwner})
  const result=resolved.modelRuntime.streamSimple(resolved.model,{messages:[{role:'user',content:'close',timestamp:1}]}).result()
  await started;await f.runtime.close();assert.ok(['error','aborted'].includes((await result).stopReason))
- await assert.rejects(f.runtime.resolve({provider:'fixture',model:'m'}),{code:'OFFICIAL_MODEL_RUNTIME_CLOSED'})
+ await assert.rejects(f.runtime.resolve({provider:'fixture',model:'m'},{runtimeOwner}),{code:'OFFICIAL_MODEL_RUNTIME_CLOSED'})
 })
 test('actual Host exposes only the official runtime plus metadata routes',async t=>{
  const {createHost}=await import('../src/host.js')
@@ -170,4 +170,49 @@ test('unspecified reasoning delegates to official SDK initialization for a high-
  const settings=SettingsManager.inMemory({retry:{enabled:false},compaction:{enabled:false},cacheWarming:'off'}),loader=new DefaultResourceLoader({cwd:root,agentDir,settingsManager:settings,noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true});await loader.reload()
  const {session}=await createAgentSession({cwd:root,agentDir,modelRuntime:resolved.modelRuntime,model:resolved.model,thinkingLevel:resolved.thinkingLevel,sessionManager:SessionManager.inMemory(root),settingsManager:settings,resourceLoader:loader,noTools:'all'});t.after(()=>session.dispose())
  assert.equal(session.thinkingLevel,'high');assert.ok(getSupportedThinkingLevels(resolved.model).includes(session.thinkingLevel))
+})
+
+for(const scenario of [
+ {name:'undeclared private window',profile:{},entry:{},expected:472000},
+ {name:'explicit model 262144',profile:{},entry:{contextWindow:262144},expected:262144},
+ {name:'explicit provider 262144',profile:{defaultContextWindow:262144},entry:{},expected:262144},
+ {name:'explicit provider 600000',profile:{defaultContextWindow:600000},entry:{},expected:600000},
+])test('Router-only fallback: '+scenario.name,async t=>{
+ const raw={fixture:{api:'openai-completions',baseURL:'https://synthetic.invalid/v1',...scenario.profile,models:[{id:'m',maxTokens:64,...scenario.entry}]}}
+ const f=fixture(raw);t.after(()=>f.runtime.close())
+ const scope={credentials:{resolve:async()=>{throw Error('not a model request')}}}
+ const [router,execution]=await Promise.all([f.runtime.resolve({provider:'fixture',model:'m'},{...scope,runtimeOwner:'conversation-router'}),f.runtime.resolve({provider:'fixture',model:'m'},scope)])
+ assert.equal(router.model.contextWindow,scenario.expected)
+ assert.equal(execution.model.contextWindow,scenario.entry.contextWindow??scenario.profile.defaultContextWindow??262144)
+ assert.notEqual(router.modelRuntime,execution.modelRuntime,'same credential capability still has role-isolated real SDK registries')
+ assert.equal((await f.runtime.resolve({provider:'fixture',model:'m'},scope)).model.contextWindow,execution.model.contextWindow)
+})
+test('known builtin 272k window is never raised by Router fallback',async t=>{
+ const {builtinProviders,getBuiltinModels}=await import('@earendil-works/pi-ai/providers/all')
+ const model=builtinProviders().flatMap(provider=>getBuiltinModels(provider.id)).find(model=>model.contextWindow===272000)
+ assert.ok(model,'pinned catalog includes a serviceable 272k model')
+ const f=fixture({[model.provider]:{models:[{id:model.id}]}});t.after(()=>f.runtime.close())
+ const resolved=await f.runtime.resolve({provider:model.provider,model:model.id},{runtimeOwner:'conversation-router'})
+ assert.equal(resolved.model.contextWindow,272000)
+})
+test('Router variant streams through official Pi and remains fenced after catalog update',async t=>{
+ const base=await serverFixture(t,async(req,res)=>{for await(const _ of req){}respond(res)})
+ const raw=declaration(base);delete raw.fixture.models[0].contextWindow
+ const snapshot=structuredClone(raw),f=fixture(raw);t.after(()=>f.runtime.close())
+ const router=await f.runtime.resolve({provider:'fixture',model:'m'},{runtimeOwner:'conversation-router'})
+ assert.equal(router.model.contextWindow,472000)
+ const execution=await f.runtime.resolve({provider:'fixture',model:'m'})
+ const [result,executionResult]=await Promise.all([
+  router.modelRuntime.streamSimple(router.model,{messages:[{role:'user',content:'Synthetic router query',timestamp:1}]},router.requestOptions).result(),
+  execution.modelRuntime.streamSimple(execution.model,{messages:[{role:'user',content:'Synthetic execution query',timestamp:1}]},execution.requestOptions).result(),
+ ])
+ assert.equal(result.stopReason,'stop');assert.equal(executionResult.stopReason,'stop');assert.equal(execution.model.contextWindow,262144)
+ assert.equal(router.modelRuntime.getModel('fixture','m').contextWindow,472000)
+ assert.equal(execution.modelRuntime.getModel('fixture','m').contextWindow,262144);assert.deepEqual(raw,snapshot)
+ f.update({fixture:{...raw.fixture,models:[{id:'m',maxTokens:64,contextWindow:262144}]}})
+ const stale=await router.modelRuntime.streamSimple(router.model,{messages:[{role:'user',content:'No dispatch',timestamp:1}]}).result()
+ assert.match(stale.errorMessage,/configuration changed/)
+ const next=await f.runtime.resolve({provider:'fixture',model:'m'},{runtimeOwner:'conversation-router'})
+ assert.equal(next.model.contextWindow,262144)
+ await f.runtime.close();await assert.rejects(f.runtime.resolve({provider:'fixture',model:'m'},{runtimeOwner:'conversation-router'}),{code:'OFFICIAL_MODEL_RUNTIME_CLOSED'})
 })

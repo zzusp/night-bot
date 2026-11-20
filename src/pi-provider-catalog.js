@@ -63,7 +63,7 @@ function scalarProfile(provider,source) {
   if(source.api!==undefined&&!protocols[source.api])throw invalid(provider,`unsupported explicit protocol ${source.api}`)
   if(source.headers!==undefined&&!object(source.headers))throw invalid(provider,'headers must be an object')
   for(const [key,value]of Object.entries(source.headers??{})){if(typeof value!=='string')throw invalid(provider,`header ${key} must be string`);try{new Headers([[key,value]])}catch{throw invalid(provider,`invalid header ${key}`)}}
-  const result={...structuredClone(source),provider,displayName:source.displayName??provider}
+  const result={...structuredClone(source),provider,displayName:source.displayName??provider,defaultContextWindowDeclared:source.defaultContextWindow!=null}
   for(const [key,fallback]of Object.entries({defaultContextWindow:262144,defaultMaxTokens:32768,maxRequestImageBytes:20971520,requestImagePixelBudget:4194304,requestImageMaxBytes:1048576}))result[key]=positive(provider,key,source[key]??fallback)
   result.streamIdleTimeoutMs=positive(provider,'streamIdleTimeoutMs',source.streamIdleTimeoutMs??300000,{integer:false})
   if(result.streamIdleTimeoutMs>2147483647)throw invalid(provider,'streamIdleTimeoutMs exceeds timer limit')
@@ -81,7 +81,7 @@ function modelsFor(profile,{deferred}) {
   const {provider}=profile,baseProvider=catalog.get(provider),defaults=new Map((baseProvider?getBuiltinModels(provider):[]).map(m=>[m.id,m]))
   if(profile.models!==undefined&&!Array.isArray(profile.models))throw invalid(provider,'models must be array')
   if(profile.modelOverrides!==undefined&&!object(profile.modelOverrides))throw invalid(provider,'modelOverrides must be object')
-  const overrides=profile.modelOverrides??{},errors=new Map(),caps=new Map()
+  const overrides=profile.modelOverrides??{},errors=new Map(),caps=new Map(),fallbackContextModels=new Set()
   for(const [id,entry]of Object.entries(overrides)){
     if(!id||!object(entry)||'id'in entry||!defaults.size||profile.models?.length)throw invalid(provider,`invalid modelOverrides.${id}`)
     if(!defaults.has(id)){const error=invalid(provider,`unknown modelOverrides.${id}`);if(!deferred||error.code!=='INVALID_CONFIG')throw error;errors.set(id,error.message)}
@@ -100,11 +100,12 @@ function modelsFor(profile,{deferred}) {
     const model={...structuredClone(base),id:entry.id,name:entry.name??base?.name??entry.id,api,provider,baseUrl,input:input(provider,entry.input,base?.input??profile.defaultInput),cost:base?.cost??{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:positive(provider,'contextWindow',entry.contextWindow??base?.contextWindow??profile.defaultContextWindow),maxTokens:positive(provider,'maxTokens',entry.maxTokens??base?.maxTokens??profile.defaultMaxTokens),...reasoning(provider,entry,base)}
     if(Object.keys(compat).length)model.compat={...(base?.api===api?base.compat:undefined),...compat}
     if(entry.maxTokens!==undefined)caps.set(entry.id,entry.maxTokens)
+    if(entry.contextWindow==null&&base?.contextWindow==null&&!profile.defaultContextWindowDeclared)fallbackContextModels.add(entry.id)
     models.push(model)
   }catch(error){if(!deferred||error.code!=='INVALID_CONFIG')throw error;errors.set(entry?.id??'',error.message)}
   const serviceable=models.filter(model=>!errors.has(model.id))
   for(const [key]of compatEntries(provider,profile.compat))if(!serviceable.some(model=>gates.get(model.api)?.includes(key)))throw invalid(provider,`compat.${key} is unused by this route`)
-  return{models:serviceable,modelErrors:errors,configuredMaxTokens:caps,baseProvider}
+  return{models:serviceable,modelErrors:errors,configuredMaxTokens:caps,baseProvider,fallbackContextModels}
 }
 export function resolvePiProfiles(providers,{deferred=false}={}) {
   if(!object(providers))throw invalid('', 'providers must be a dictionary')

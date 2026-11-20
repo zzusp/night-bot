@@ -45,7 +45,7 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
   // Pi/profile defaults, rather than borrowing another route's global effort.
   // On resume Pi restores and clamps its original thinking entry itself.
   if(mode==='resume'||requested.provider!==undefined||requested.model!==undefined)delete defaults.reasoningEffort
-  const selected=await provider.resolve({...defaults,...restored,...requested,...signal?{signal}:{}},{credentials})
+  const selected=await provider.resolve({...defaults,...restored,...requested,...signal?{signal}:{}},{credentials,...header.runtimeOwner==='conversation-router'?{runtimeOwner:header.runtimeOwner}:{}})
   const resolved=mode==='resume'&&requested.reasoningEffort===undefined?{...selected,thinkingLevel:undefined}:selected
   assertCurrent()
   const agentDir=join(privateRoot,'pi-agents',hash(actor.id));await safePath(agentDir);await privateDirectory(agentDir);assertCurrent()
