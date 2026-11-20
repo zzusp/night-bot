@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 // Offline historical snapshot fixture, matching the persisted task/humanRequest
 // and notification.prepare v1 shapes before 3739b753 (main 87121030).
 // Never calls a current production command to create a retired question.
-const canonical=value=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item)
+const canonical=value=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item)
 export function restoreLegacyHumanWait(dbPath,taskId,decision,{audience=decision.audience??'requester',prepareNotice=false,operatorUserId,requestId='legacy-question:'+taskId}={}){
  const db=new DatabaseSync(dbPath)
  try{
