@@ -851,7 +851,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const source=args.source,selection=args.taskDelivery,kind=selection?'status':args.kind??'router-reply',notificationId=args.outboundId
     const audience=notificationAudience(args)
     const explicitAudience=kind!=='platform-reply'&&audience.recipientActorIds!==undefined
-    const boundTaskId=args.completionBinding?.taskId??selection?.taskId
+    const boundTaskId=selection?.taskId??args.completionBinding?.taskId
     const finalReply=kind==='platform-reply'||!!selection||explicitAudience
     const explicitQuote=args.replyToSource===true
     const previous=await measure('router-reply-lookup',()=>query('notification.get',{notificationId}))
@@ -887,6 +887,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       void deliverNotifications();return {notification:{...previous,payload:{...canonicalReplyRequest(p),...p.replyRequest?{replyRequest:canonicalReplyRequest(p.replyRequest)}:{}}}}
     }
     // Frozen historical requests returned above retain their original receipt.
+    if(selection&&args.completionBinding&&selection.taskId!==args.completionBinding.taskId)fail('TASK_DELIVERY_COMPLETION_MISMATCH')
     if(kind!=='platform-reply'&&args.replyPurpose==='acknowledgement')fail('ROUTER_REPLY_REQUIRES_RESULT')
     if(quoteSource){
       const {target}=conversationNotificationRouting(residentStore.getGroup(source.groupId).messages,{replyToMessageId,recipientActorIds:recipients,atAll:args.atAll})

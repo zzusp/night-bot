@@ -103,13 +103,23 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
       // omitting the optional argument. Retained v1 packets keep their old path.
       if(!completionId&&admitted?.messages?.some(packet=>packet.source.modelViewVersion===2)){
         const matches=[]
-        for(const event of await currentEvents(exec.agent))if(event.kind==='task.completed'&&(await query('task.get',{taskId:event.taskId}))?.sourceRefs?.includes(original.sourceId))matches.push(event)
+        for(const event of await currentEvents(exec.agent))if(event.kind==='task.completed'&&(await query('task.get',{taskId:event.taskId}))?.sourceRefs?.includes(original.sourceId)){
+          if(args.taskDelivery&&event.taskId!==args.taskDelivery.taskId){
+            // A retained pre-fix notification keeps its original identity and
+            // request digest. Never create a replacement for an old receipt.
+            const id=completionReplyId(conversationId,event.taskEventId,original.sourceId,original.version),frozen=await query('notification.get',{notificationId:id})
+            if(frozen?.payload?.taskDelivery?.taskId===args.taskDelivery.taskId&&frozen.payload.completionBinding?.eventId===event.taskEventId&&frozen.payload.completionBinding.taskId===event.taskId)return prepareReply({...args,completionBinding:frozen.payload.completionBinding,source:original,conversationId,generation,outboundId:id},exec)
+            continue
+          }
+          matches.push(event)
+        }
         if(matches.length>1)fail('ROUTER_COMPLETION_REPLY_REQUIRED')
         completionId=matches[0]?.taskEventId
       }
       if(completionId){
         const event=(await currentEvents(exec.agent)).find(event=>event.kind==='task.completed'&&event.taskEventId===completionId)
         if(!event)fail('ROUTER_COMPLETION_REPLY_STALE')
+        if(args.taskDelivery&&event.taskId!==args.taskDelivery.taskId&&!await query('notification.get',{notificationId:completionReplyId(conversationId,event.taskEventId,original.sourceId,original.version)}))fail('TASK_DELIVERY_COMPLETION_MISMATCH')
         const detail=await routerTaskContext(query,conversationId,event.taskId,{completionEvent:event})
         if(detail.completion?.status!=='current'||!(await query('task.get',{taskId:event.taskId}))?.sourceRefs?.includes(original.sourceId))fail('ROUTER_COMPLETION_REPLY_STALE')
         completionBinding={eventId:event.taskEventId,taskId:event.taskId,commandId:detail.completion.commandId,requirementRevision:detail.task.requirementRevision,controlRevision:detail.task.controlRevision}

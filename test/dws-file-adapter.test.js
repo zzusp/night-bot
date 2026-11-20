@@ -139,3 +139,13 @@ test('image ingress bounds each download and cleans successful and rejected temp
   assert.equal(result.mediaUnavailable.length, 1)
   assert.deepEqual(await readdir(cwd), [])
 })
+
+test('负责人原生提及仅编码在父说明，DWS 文件子消息不支持原生 @',()=>{
+ const adapter=createDwsAdapter({enabled:true,writesAuthorized:true,profile:'synthetic:user',runner:{run:async()=>{throw Error('Compile-only fixture must not send')}}})
+ const shared={groupId:'synthetic-room',idempotencyKey:'synthetic-delivery',atOpenDingTalkIds:['synthetic-owner']}
+ const parent=adapter.compileGroupSend({...shared,text:'Synthetic result'})
+ const file=adapter.compileGroupFileSend({...shared,fileName:'synthetic.txt'})
+ assert.ok(parent.includes('--at-open-dingtalk-ids'));assert.ok(parent.some(value=>value.includes('<@synthetic-owner>')))
+ assert.ok(!file.includes('--at-open-dingtalk-ids'));assert.ok(!file.includes('--at-all'));assert.ok(!file.some(value=>value.includes('<@')))
+ assert.equal(file[file.indexOf('--msg-type')+1],'file')
+})
