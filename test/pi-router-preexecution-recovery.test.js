@@ -11,10 +11,12 @@ import {residentRouterHost,channelMessage,requestTools,requestEnvelope} from './
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {piJournalFilename} from '../src/runtime/pi-journal.js'
 
-for(const [label,legacy,scheduleFailure] of [
+for(const [label,legacy,scheduleFailure,settlementFailure] of [
  ['new call-bound pre-execution proofs',false,false],
  ['legacy failures remain unknown but scoped',true,false],
  ['failed read-only schedule list stays in the old journal',false,true],
+ ['rejected in-batch settlement and failed schedule list stay in the old journal',false,true,'in-batch'],
+ ['rejected out-of-batch settlement does not permit isolation',false,true,'out-of-batch'],
 ])test(`26 -> 20+6 and independent query: ${label}`,{timeout:nativeTestTimeout(90000)},async t=>{
  let h,old,current,root,holdSource,phase='register',step=0,scheduleReads=0,ids=[],replacementIds=[],reply=false,queried=false,attemptedHeld=false
  t.after(async()=>{await current?.close();await current?.host?.close();if(old!==current){await old?.close();await old?.host?.close()}if(root)await rm(root,{recursive:true,force:true})})
@@ -41,15 +43,20 @@ for(const [label,legacy,scheduleFailure] of [
     }
     return {tool:'platform_schedule_list',args:{}}
    }
+   if(step===6&&settlementFailure){
+    const id=input.events.find(e=>e.source?.sourceId==='old-unsettled').id
+    return {tool:'resident_router_settle',args:{operationId:'rejected-settlement',eventIds:[ids[20],settlementFailure==='out-of-batch'?'not-in-admitted-packet':id],noTaskDispositions:[{eventId:id,outcome:'context-only',sourceQuote:'Wrong frozen quote',reason:'Fixture uses the wrong evidence'}]}}
+   }
    return {text:'Stopped with paired rejected calls; no settlement of the remaining six'}
   }
   replacementIds=input.events.map(e=>e.id)
-  const source=input.events.find(e=>e.source)?.source
+  const fresh=input.events.find(e=>e.source?.sourceId==='independent-query'),source=fresh?.source
   if(!attemptedHeld){attemptedHeld=true;return {tool:'resident_task_action',args:{operationId:'still-held',kind:'resume',taskId:task.taskId,sourceId:source.sourceId,messageVersion:source.version,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}}}
   if(!queried){queried=true;return {tool:'resident_task_query',args:{taskId:task.taskId}}}
   if(!reply){reply=true;assert.equal(task.control,'paused');return {tool:'resident_router_reply',args:{operationId:'actual-query-answer',sourceId:source.sourceId,messageVersion:source.version,replyPurpose:'direct-answer',text:'The existing task is paused; no execution has been started.'}}}
   if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1)?.result.isError)return {text:'Current state checked; events observed without task dispatch'}
-  return {tool:'resident_router_settle',args:{operationId:'settle-seven',eventIds:replacementIds,noTaskDispositions:[{eventId:input.events.find(e=>e.source).id,outcome:'handled-inline',sourceQuote:source.text,reason:'Actual current task state was read and replied; no new work was requested'}]}}
+  const noTaskDispositions=input.events.filter(e=>e.source).map(e=>({eventId:e.id,outcome:e===fresh?'handled-inline':'context-only',sourceQuote:e.source.text,reason:e===fresh?'Actual current task state was read and replied':'Retain the source as context without repeating an old action'}))
+  return {tool:'resident_router_settle',args:{operationId:'settle-seven',eventIds:replacementIds,noTaskDispositions}}
  }
  let make=residentRouterHost,install
  if(legacy){
@@ -63,18 +70,28 @@ for(const [label,legacy,scheduleFailure] of [
  const source=(await h.query('source.list'))[0];holdSource=source.sourceId;const conversationId=source.groupId
  let n=0;const command=(kind,args)=>h.store.command({id:'seed-'+(++n),kind,args})
  await command('task.create',{taskId:'old-task',conversationId,groupId:conversationId,ownerActorId:source.actorId,request:'Existing paused task',sourceRefs:[holdSource]})
- for(let i=0;i<25;i++)await command('task.supplement',{taskId:'old-task',messageId:'supp-'+i,text:'Recorded evidence '+i,expectedRequirementRevision:1,expectedControlRevision:1})
+ for(let i=0;i<(settlementFailure?24:25);i++)await command('task.supplement',{taskId:'old-task',messageId:'supp-'+i,text:'Recorded evidence '+i,expectedRequirementRevision:1,expectedControlRevision:1})
  await command('task.control',{taskId:'old-task',control:'paused',expectedControlRevision:1})
+ if(settlementFailure){
+  await h.residentStore.ingest({groupId:conversationId,messageId:'old-unsettled',text:'Keep this old source as context.',senderOpenDingTalkId:source.actorId,occurredAt:new Date().toISOString(),channelType:'chat-room',channelId:'resident-fixture'})
+  await command('source.record-direct',{source:{sourceId:'old-unsettled',groupId:conversationId,messageId:'old-unsettled',actorId:source.actorId,channel:'chat-room',version:1,text:'Keep this old source as context.',resources:[]},conversation:{conversationId},routeDirect:true})
+ }
  phase='seed';await h.restart();await h.service.whenIdle()
  assert.equal(await h.query('router.inbox-count',{conversationId}),6)
  const before=await h.query('router.get',{conversationId}),file=join(h.host.ctx.runtimePaths.state,'sessions',piJournalFilename(before.activeSessionId))
  const snapshot=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true}),proofs=snapshot.entries.filter(e=>e.type==='custom'&&e.customType==='night.audit'&&e.data?.domain==='router-tool'&&e.data.kind==='not-started')
  assert.equal(proofs.length,legacy?0:scheduleFailure?3:4)
- const errors=snapshot.entries.filter(e=>e.type==='message'&&e.message.role==='toolResult'&&e.message.isError);assert.equal(errors.length,4)
+ const errors=snapshot.entries.filter(e=>e.type==='message'&&e.message.role==='toolResult'&&e.message.isError);assert.equal(errors.length,settlementFailure?5:4)
+ if(settlementFailure){
+  assert.equal(errors.at(-1).message.toolName,'resident_router_settle')
+  assert.match(JSON.stringify(errors.at(-1).message.content),settlementFailure==='in-batch'?/ROUTER_SOURCE_DISPOSITION_INVALID/:/ROUTER_EVENT_SCOPE/)
+  assert.ok(proofs.every(e=>e.data.payload.toolName!=='resident_router_settle'))
+  assert.deepEqual((await h.query('router.inbox',{conversationId})).map(e=>e.id),ids.slice(20),'rejected transaction rolls back even the valid first event')
+ }
  if(scheduleFailure){
   assert.equal(scheduleReads,1)
-  assert.equal(errors.at(-1).message.toolName,'platform_schedule_list')
-  assert.match(JSON.stringify(errors.at(-1).message.content),/FIXTURE_SCHEDULE_READ_FAILED/)
+  const failure=errors.find(e=>e.message.toolName==='platform_schedule_list')
+  assert.match(JSON.stringify(failure?.message.content),/FIXTURE_SCHEDULE_READ_FAILED/)
   assert.ok(proofs.every(e=>e.data.payload.toolName!=='platform_schedule_list'))
   await h.service.recover();await h.service.whenIdle()
   assert.equal((await h.query('router.get',{conversationId})).activeSessionId,before.activeSessionId)
@@ -88,6 +105,14 @@ for(const [label,legacy,scheduleFailure] of [
  if(legacy)current=h=await residentRouterHost(t,decide,{wrapStore,config:{initialize:false},hostOptions:{hostConfig:{installRoot:install}}})
  else {await old.boot();current=h=old;await h.restart()}
  await h.service.recover();await h.service.whenIdle()
+ if(settlementFailure==='out-of-batch'){
+  assert.equal((await h.query('router.get',{conversationId})).activeSessionId,before.activeSessionId)
+  assert.equal(await h.query('router.inbox-count',{conversationId}),7)
+  assert.deepEqual(replacementIds,[]);assert.equal(h.sent.length,0)
+  assert.ok(h.service.listAlerts().some(a=>a.detail==='PI_ROUTER_RESUME_EFFECT_UNRESOLVED'))
+  assert.deepEqual(await readFile(file),prefix)
+  return
+ }
  assert.deepEqual(replacementIds.slice(0,6),ids.slice(20));assert.equal(replacementIds.length,7);assert.equal(new Set(replacementIds).size,7)
  assert.equal(await h.query('router.inbox-count',{conversationId}),0);assert.equal((await h.query('task.list')).length,1);assert.equal((await h.query('execution.list',{taskId:'old-task'})).length,0)
  assert.equal((await h.query('task.get',{taskId:'old-task'})).control,'paused')
