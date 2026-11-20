@@ -9,6 +9,7 @@ const call=(tool,args)=>({tool,args})
 
 test('default Router creates A then B, rejects preliminary completion, reworks original A session and releases B only on current accepted evidence',{timeout:nativeTestTimeout(90000)},async t=>{
   let h,originalSession;const taskTurns=[],bStarts=[],evaluations=[],queries=[]
+  const aHandoff='Verify synthetic A and retain the verified evidence.',bHandoff='Produce B only after A’s evidence has been verified.',recheckHandoff='Finish verifying the evidence for A before B starts.'
   h=await residentRouterHost(t,async body=>{
     if(requestText(body).some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION')))return {text:'{"lessons":[]}'}
     const names=requestTools(body),first=requestEnvelope(body,'一级分诊请求：')
@@ -25,10 +26,8 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
       const dependency=task.dependencies[0],prior=dependency.prerequisite
       assert.equal(dependency.taskId,task.taskId);assert.equal(prior.taskId,'a-e2e');assert.equal(prior.requirementRevision,2)
       assert.equal(dependency.state,'satisfied');assert.equal(dependency.prerequisiteRequirementRevision,2)
-      assert.equal(dependency.evaluation.decision,'satisfied');assert.equal(dependency.evaluation.prerequisiteRequirementRevision,2)
-      assert.equal(dependency.evaluation.requirementRevision,task.requirementRevision);assert.equal(dependency.evaluation.controlRevision,task.controlRevision)
+      assert.equal(dependency.evaluation,undefined,'Router evaluation prose is not a new execution instruction')
       assert.equal(dependency.completionEvent.kind,'task.completed');assert.equal(dependency.completionEvent.taskId,prior.taskId);assert.equal(dependency.completionEvent.requirementRevision,2)
-      assert.equal(dependency.evaluation.completionEventId,dependency.completionEvent.id)
       assert.equal(prior.completion.result.summary,'Verification evidence accepted');assert.deepEqual(prior.completion.result.evidence,['proof:verified']);assert.deepEqual(prior.completion.result.limitations,[])
       assert.equal(prior.sessionId,undefined);assert.equal(dependency.authorization.actorId,task.ownerActorId);assert.match(dependency.authorization.actorId,/^channel-actor-/);assert.equal(dependency.authorization.messageVersion,1)
       assert.ok(input.sources.some(source=>source.sourceId===dependency.authorization.sourceId&&source.version===dependency.authorization.messageVersion&&source.actorId===dependency.authorization.actorId))
@@ -41,7 +40,7 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
       const input=requestEnvelope(body,'Router 请求：'),source=(await h.query('source.list')).find(source=>source.messageId==='ordered-work')
       const tasks=await h.query('task.list'),a=tasks.find(task=>task.taskId==='a-e2e'),b=tasks.find(task=>task.taskId==='b-e2e')
       if(!a)return call('resident_task_plan',{operationId:'ordered-plan',sourceId:source.sourceId,messageVersion:source.version,
-        tasks:[{taskId:'a-e2e',title:'Verify A',objective:'Verify A',requirements:['Evidence must be verified']},{taskId:'b-e2e',title:'Produce B',objective:'Produce B only after verified A',requirements:['Use current verified A']}],
+        tasks:[{taskId:'a-e2e',handoff:aHandoff,title:'Verify A',objective:'Verify A',requirements:['Evidence must be verified']},{taskId:'b-e2e',handoff:bHandoff,title:'Produce B',objective:'Produce B only after verified A',requirements:['Use current verified A']}],
         dependencies:[{taskId:'b-e2e',prerequisiteTaskId:'a-e2e',condition:'A evidence is verified with no remaining verification limitation'}]})
       originalSession??=a.sessionId
       const event=input.events.find(event=>event.taskEvent?.taskId==='a-e2e'&&event.taskEvent.kind==='task.completed')
@@ -58,7 +57,7 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
               controlRevision:b.controlRevision,arrangementRevision:dependency.arrangementRevision,decision,evidence:[revision===1?'proof:preliminary':'proof:verified']})
           }
           if(revision===1)return call('resident_task_action',{operationId:'rework-a',sourceId:source.sourceId,messageVersion:source.version,
-            kind:'reopen',taskId:'a-e2e',expectedRequirementRevision:a.requirementRevision,expectedControlRevision:a.controlRevision,sameGoal:true,request:'Recheck A against current evidence; do not repeat completed external effects.'})
+            kind:'reopen',taskId:'a-e2e',expectedRequirementRevision:a.requirementRevision,expectedControlRevision:a.controlRevision,sameGoal:true,handoff:recheckHandoff})
         }
       }
       if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1).result.isError)return {text:'Current batch disposition is committed.'}
@@ -74,9 +73,9 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
   assert.ok(planned.result.tasks.every(task=>task.projection==='summary'&&task.request===undefined),'plan returns compact receipts, not accumulated full input')
   const revised=h.results.find(row=>row.name==='resident_task_action'&&!row.result.isError).result.value
   assert.equal(revised.result.task.projection,'summary');assert.equal(revised.result.task.request,undefined)
-  assert.equal(a.request,'Recheck A against current evidence; do not repeat completed external effects.','real Router tool passes the explicit replacement brief through the service')
+  assert.equal(a.request,aHandoff,'same-goal rework keeps the original task brief')
   const originalSource=(await h.query('source.list')).find(row=>row.messageId==='ordered-work');assert.match(originalSource.text,/First verify synthetic A/,'original user evidence remains intact')
-  const journalA=await h.host.ctx.sessionPersistence.readNative(a.sessionId,{requireComplete:true});const revisedInput=journalA.audit.filter(row=>row.domain==='admission'&&row.kind==='enqueued'&&row.payload.source.kind==='task-input').map(row=>JSON.parse(row.payload.content[0].text)).find(body=>body.task.requirementRevision===2);assert.equal(revisedInput.task.request,a.request)
+  const journalA=await h.host.ctx.sessionPersistence.readNative(a.sessionId,{requireComplete:true});const revisedInput=journalA.audit.filter(row=>row.domain==='admission'&&row.kind==='enqueued'&&row.payload.source.kind==='task-input').map(row=>JSON.parse(row.payload.content[0].text)).find(body=>body.task.requirementRevision===2);assert.equal(revisedInput.task.request,undefined);assert.deepEqual(revisedInput.handoffs.map(row=>row.text),[recheckHandoff])
   assert.equal(a.requirementRevision,2);assert.equal(a.status,'completed');assert.equal(a.sessionId,originalSession)
   assert.equal(b.status,'completed');assert.equal(b.requirementRevision,1)
   assert.deepEqual(evaluations,[{revision:1,decision:'continue'},{revision:2,decision:'satisfied'}])
@@ -93,6 +92,10 @@ test('default Router creates A then B, rejects preliminary completion, reworks o
   await assert.rejects(h.service.listExecutionTrace({sourceId:source.sourceId,sourceVersion:source.version,groupId:'foreign'}))
   const admitted=JSON.parse(packet.content.find(part=>part.type==='text').text)
   assert.deepEqual(admitted.task.dependencies,[bStarts[0].dependency])
+  assert.deepEqual(admitted.handoffs.map(row=>row.text),[bHandoff])
+  const accepted=(await h.query('router.evaluations',{taskId:'b-e2e'})).find(row=>row.decision==='satisfied')
+  assert.equal(accepted.completionEventId,bStarts[0].dependency.completionEvent.id)
+  assert.equal(accepted.prerequisiteRequirementRevision,2);assert.equal(accepted.requirementRevision,b.requirementRevision);assert.equal(accepted.controlRevision,b.controlRevision)
   assert.equal(admitted.task.sessionId,b.sessionId)
   assert.deepEqual(await h.query('execution.list'),[],'one task keeps one direct execution session, not a split team')
   assert.equal((await h.query('wake.list',{taskId:'b-e2e'})).filter(wake=>wake.kind==='dependency.satisfied').length,1)
@@ -119,7 +122,7 @@ for(const continueTask of [true,false,'router-outage','router-busy'])test('an un
       if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1).result.isError)return {text:'Batch committed'}
       const input=requestEnvelope(body,'Router 请求：')
       if(!arranged){arranged=true;const source=input.events.find(event=>event.source).source
-        return call('resident_task_plan',{operationId:'inspection-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'inspect-e2e',title:'Inspect recovery',objective:'Finish synthetic work',requirements:['Verify completion']}],dependencies:[]})}
+        return call('resident_task_plan',{operationId:'inspection-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'inspect-e2e',handoff:'Complete the synthetic work and verify the result.',title:'Inspect recovery',objective:'Finish synthetic work',requirements:['Verify completion']}],dependencies:[]})}
       const event=input.events.find(event=>event.kind==='task.inspection')
       if(event&&continueTask==='router-busy'&&!held){held=true;entered.resolve();await release.promise}
       if(event&&outage)return {error:'TEST_INSPECTION_ROUTER_UNAVAILABLE'}
@@ -169,11 +172,11 @@ for(const wait of ['user','external-event','future-time'])test('real Router reco
     if(requestText(body).some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION')))return {text:'{"lessons":[]}'}
     const names=requestTools(body)
     if(names.includes('channel_triage_submit')){const input=requestEnvelope(body,'一级分诊请求：');return call('channel_triage_submit',{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'Original task request'}))})}
-    if(names.includes('task_result')){turns++;return call('task_result',{decision:{action:'wait',summary:wait==='future-time'?'Wait until the agreed future instant in seven days':'Wait for '+wait,evidence:[],limitations:[],...wait==='user'?{question:'Which target should be used?',audience:'requester'}:{}}})}
+    if(names.includes('task_result')){turns++;return call('task_result',{decision:{action:'wait',summary:wait==='future-time'?'Wait until the agreed future instant in seven days':'Wait for '+wait,evidence:[],limitations:[]}})}
     if(names.includes('resident_router_settle')){
       if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1).result.isError)return {text:'Current review committed'}
       const input=requestEnvelope(body,'Router 请求：')
-      if(!planned){planned=true;const source=input.events.find(e=>e.source).source;return call('resident_task_plan',{operationId:'wait-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'wait-e2e',title:'Wait review',objective:'Preserve the actual waiting condition',requirements:['Retain original task and never restart merely because time passed']}],dependencies:[]})}
+      if(!planned){planned=true;const source=input.events.find(e=>e.source).source;return call('resident_task_plan',{operationId:'wait-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'wait-e2e',handoff:'Retain the current waiting condition; elapsed time alone does not authorize restarting.',title:'Wait review',objective:'Preserve the actual waiting condition',requirements:['Retain original task and never restart merely because time passed']}],dependencies:[]})}
       const inspectionReviews=[]
       for(const event of input.events.filter(e=>e.taskEvent?.reason==='wait-overdue')){
         const task=await h.query('task.get',{taskId:event.taskId});reviews++

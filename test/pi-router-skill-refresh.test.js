@@ -25,7 +25,7 @@ test('retrospective skill publication during Router assessment preserves one adm
    const input=requestEnvelope(body,'Router 请求：');assert.ok(input);const key=input.events.map(event=>event.id).join(',')
    batches.set(key,input)
    const task=await h.query('task.get',{taskId:'skill-race-task'})
-   if(!task){const source=input.events.find(event=>event.source)?.source;return {tool:'resident_task_plan',args:{operationId:'skill-race-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'skill-race-task',title:'Verify local evidence',objective:'Verify the local synthetic evidence',requirements:['Verify current evidence']}],dependencies:[]}}}
+   if(!task){const source=input.events.find(event=>event.source)?.source;return {tool:'resident_task_plan',args:{operationId:'skill-race-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'skill-race-task',handoff:'Verify the current evidence from the local fixture.',title:'Verify local evidence',objective:'Verify the local synthetic evidence',requirements:['Verify current evidence']}],dependencies:[]}}}
    const completed=input.events.find(event=>event.taskEvent?.kind==='task.completed')
    if(completed&&!queried.has(completed.id)){
     queried.add(completed.id);completionEvent=completed.taskEvent;armed=true

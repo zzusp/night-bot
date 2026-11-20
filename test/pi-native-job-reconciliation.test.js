@@ -25,12 +25,12 @@ import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store
 import {initializeTaskDirectories,taskDirectories} from '../packages/dingtalk-core/session-workspaces.js'
 import {nativeRuntimeHost,nativeShell,latestInput,topicTaskCalls} from './fixtures/runtime-official-host.js'
 const exec=promisify(execFile),hash=bytes=>createHash('sha256').update(bytes).digest('hex')
-async function fixture(t,{effect=false}={}){
+async function fixture(t,{effect=false,historicalShell='pwsh',objective='Continue the original local objective; do not replay the old invocation'}={}){
  const root=await mkdtemp(join(tmpdir(),'night-job-operator-')),config={installRoot:root,permissionMode:'full',model:{provider:'fixture',model:'fixture'},providers:{fixture:{api:'openai-completions',baseURL:'http://127.0.0.1:1',apiKeyEnv:'LOCAL_FIXTURE_KEY',models:[{id:'fixture'}]}},resident:{taskSessions:{instanceId:'native-test',webActorId:'native-user',ownerActorId:'native-user',ingressEpoch:'2026-01-01T00:00:00Z'}}},paths=runtimePaths(config),options={...config.resident.taskSessions,dbPath:join(paths.state,'tasks.sqlite')}
  await prepareRuntimePaths(paths)
  let store=await openDynamicTaskStore({...options,initialize:true}),n=0
  const command=(kind,args,id=kind+':'+(++n))=>store.command({kind,args,id})
- await command('task.create',{taskId:'lost-job',groupId:'native-group',ownerActorId:'native-user',request:'Continue the original local objective; do not replay the old invocation'})
+ await command('task.create',{taskId:'lost-job',groupId:'native-group',ownerActorId:'native-user',request:objective})
  let task=await store.query({kind:'task.get',taskId:'lost-job'})
  if(task.workspaceInitialization){const b={taskId:task.taskId,creationCommandId:task.workspaceInitialization.creationCommandId,sessionId:task.sessionId},begin=await command('task.workspace.begin',b,b.creationCommandId+':workspace-begin');const observation=await initializeTaskDirectories(paths.workspaces,begin.result.task);await command('task.workspace.finish',{...b,state:'ready',observation:observation.native},b.creationCommandId+':workspace-finish')}
  const {binding}= (await command('task.claim',{taskId:task.taskId})).result
@@ -47,15 +47,15 @@ async function fixture(t,{effect=false}={}){
  const route=await registerTaskSession(paths,routes,task),backend=new PiPersistence(ctx,{root:join(paths.state,'sessions')}),writer=await backend.createNative({version:4,id:task.sessionId,createdAt:Date.now(),isSeeded:false,cwd:route.root,agentPreset:'night-bot-task'},{auditKinds:{...nativeBusinessAuditKinds,...jobReceiptKinds,...taskAuditKinds,...singleTaskAuditKinds,...admissionAuditKinds}})
  writer.appendAudit({version:1,domain:'permission',kind:'selected',payload:{preset:'danger-full-access',sandbox:'danger-full-access',approval:'never'}})
  writer.appendAudit({version:1,domain:'task',kind:'identity',payload:{taskId:task.taskId,sessionId:task.sessionId}})
- const bound={version:1,jobId:'pwsh-lost-fixture',owner:task.sessionId,kind:'pwsh',label:'Original fixture producer; never replay',startedAt:1,toolCall:{callId:'old-call',rootCallId:'old-call',toolName:'pwsh'}}
+ const bound={version:1,jobId:'pwsh-lost-fixture',owner:task.sessionId,kind:historicalShell,label:'Original fixture producer; never replay',startedAt:1,toolCall:{callId:'old-call',rootCallId:'old-call',toolName:historicalShell}}
  let intentEntryId
  if(effect){
   const originBinding=taskEffectBinding(binding),packet={id:'original-input',source:{kind:'task-input',taskSession:originBinding},content:[{type:'text',text:'Original bounded local work; retain unknown effects without replay'}]}
   writer.appendAudit({version:1,domain:'admission',kind:'enqueued',payload:packet})
   const inputEntryId=writer.manager.appendCustomMessageEntry('night.business-input',packet.content,false,{packetId:packet.id,source:packet.source})
   writer.appendAudit({version:1,domain:'admission',kind:'admitted',payload:{id:packet.id,entryId:inputEntryId}})
-  const callEntryId=writer.manager.appendMessage({role:'assistant',content:[{type:'toolCall',id:bound.toolCall.callId,name:'pwsh',arguments:{command:'echo old-producer-must-never-run'}}],api:'openai-completions',provider:'fixture',model:'fixture',timestamp:1,stopReason:'toolUse',usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}})
-  intentEntryId=writer.appendAudit({version:1,domain:'task',kind:'effect-intent',payload:{version:2,key:taskEffectInvocationKey({sessionId:task.sessionId,callEntryId,callId:bound.toolCall.callId}),name:'pwsh',callId:bound.toolCall.callId,invocation:{callEntryId,inputEntryId,packetId:packet.id,inputDigest:taskEffectDigest(packet),originBinding}}})
+  const callEntryId=writer.manager.appendMessage({role:'assistant',content:[{type:'toolCall',id:bound.toolCall.callId,name:historicalShell,arguments:{command:'echo old-producer-must-never-run'}}],api:'openai-completions',provider:'fixture',model:'fixture',timestamp:1,stopReason:'toolUse',usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}})
+  intentEntryId=writer.appendAudit({version:1,domain:'task',kind:'effect-intent',payload:{version:2,key:taskEffectInvocationKey({sessionId:task.sessionId,callEntryId,callId:bound.toolCall.callId}),name:historicalShell,callId:bound.toolCall.callId,invocation:{callEntryId,inputEntryId,packetId:packet.id,inputDigest:taskEffectDigest(packet),originBinding}}})
  }
  writer.appendAudit({version:1,domain:'job',kind:'registered',payload:{...bound,state:'admitted'}})
  await writer.close()
@@ -162,12 +162,42 @@ test('new input wakes the original task with a cold unresolved shell job, withou
    await h.service.whenIdle()
    const after=await h.query('task.get',{taskId:task.taskId})
    assert.equal(after.sessionId,f.task.sessionId);assert.equal(after.drained,true);assert.equal(after.sessionFailure,null)
-   assert.equal(after.lastDecision.summary,'Evidence read on the original session');assert.ok(after.lastDecision.limitations.includes('TASK_JOB_UNCERTAIN_NO_REPLAY'))
+   assert.equal(after.lastDecision.summary,'Evidence read on the original session');assert.ok(after.lastDecision.limitations.includes('TASK_HISTORICAL_JOB_OUTCOME_UNKNOWN'));assert.ok(!after.lastDecision.limitations.includes('TASK_JOB_UNCERTAIN_NO_REPLAY'))
   }
   assert.equal(turns,4);assert.equal(h.toolResults.some(row=>['pwsh','bash'].includes(row.name)),false)
   const saved=await h.ctx.sessionPersistence.readNative(f.task.sessionId,{requireComplete:true})
   assert.deepEqual(saved.audit.filter(row=>row.domain==='job').map(row=>row.kind),['registered'])
   assert.deepEqual(unresolvedNativeJobReceipts(saved.audit,f.task.sessionId).map(row=>row.jobId),[f.bound.jobId])
+ }finally{try{await h.close()}finally{await store.close()}}
+})
+
+test('historical unknown shell does not prevent a new independent read-only shell in the same task',{timeout:60000},async t=>{
+ const f=await fixture(t,{effect:true,historicalShell:nativeShell,objective:'Verify the current retained evidence file independently; do not assume the historical command succeeded.'}),store=await openDynamicTaskStore(f.options)
+ let userTurns=0
+ const h=await nativeRuntimeHost(f.root,request=>{
+  if(!request.tools.some(tool=>tool.name==='task_result'))return topicTaskCalls(request)
+  assert.equal(latestInput(request).task.taskId,f.task.taskId)
+  if(++userTurns===1)return [{name:nativeShell,args:{command:nativeShell==='bash'?'cat work/readback.txt':'Get-Content -LiteralPath work/readback.txt',description:'Read independent retained local evidence without replaying the historical command'}}]
+  const verified=request.messages.some(message=>message.role==='toolResult'&&!message.isError&&JSON.stringify(message.content).includes('exit unknown; no success claimed'))
+  return [{name:'task_result',args:{decision:{action:verified?'complete':'wait',summary:verified?'Independent evidence verified; original shell outcome still unknown':'No new evidence; original shell outcome still unknown',evidence:verified?['work/readback.txt']:[],limitations:[]}}}]
+ },{store,permissionMode:'full'})
+ try{
+  await resumeFromOperatorAfterColdDrain(h,f.task.taskId)
+  const task=await h.query('task.get',{taskId:f.task.taskId}),saved=await h.ctx.sessionPersistence.readNative(f.task.sessionId,{requireComplete:true})
+  assert.equal(task.sessionId,f.task.sessionId);assert.equal(task.drained,true);assert.equal(task.sessionFailure,null)
+  assert.deepEqual(saved.audit.filter(row=>row.domain==='job'&&row.payload.jobId===f.bound.jobId).map(row=>row.kind),['registered'])
+  assert.deepEqual(unresolvedNativeJobReceipts(saved.audit,f.task.sessionId).map(row=>row.jobId),[f.bound.jobId])
+  const effects=saved.audit.filter(row=>row.domain==='task'&&row.kind==='effect-intent'),oldEffect=effects.find(row=>row.payload.callId===f.bound.toolCall.callId),newEffect=effects.find(row=>row!==oldEffect)
+  assert.equal(effects.length,2);assert.ok(oldEffect&&newEffect)
+  assert.ok(!saved.audit.some(row=>row.domain==='task'&&['effect-result','effect-reconciled'].includes(row.kind)&&row.payload.key===oldEffect.payload.key))
+  assert.equal(newEffect.payload.invocation.originBinding.leaseEpoch,task.leaseEpoch)
+  assert.equal(saved.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result'&&row.payload.key===newEffect.payload.key&&!row.payload.isError).length,1)
+  const result=h.toolResults.filter(row=>row.name===nativeShell)
+  assert.equal(result.length,1,'only the new read-only shell should be invoked')
+  assert.equal(result[0].result.isError,false,JSON.stringify(result[0].result))
+  assert.match(JSON.stringify(result[0].result.value),/exit unknown; no success claimed/)
+  assert.equal(task.status,'completed');assert.equal(task.completion.result.summary,'Independent evidence verified; original shell outcome still unknown')
+  assert.ok(task.completion.result.limitations.includes('TASK_HISTORICAL_JOB_OUTCOME_UNKNOWN'));assert.ok(task.completion.result.limitations.includes('TASK_HISTORICAL_EFFECT_OUTCOME_UNKNOWN'))
  }finally{try{await h.close()}finally{await store.close()}}
 })
 

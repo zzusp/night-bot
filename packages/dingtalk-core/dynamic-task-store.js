@@ -86,7 +86,7 @@ function taskBusinessFailure(value){
   return clone(value)
 }
 const hasUnknownTaskEffect=task=>task.lastDecision?.limitations?.some(code=>['TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(code))
-function clearDisabledTaskRetry(task){if(task.drained&&!task.recovering&&!hasUnknownTaskEffect(task)&&task.providerRecovery?.hostRetryDisabled){task.providerRecovery=null;task.technicalFailure=null}}
+function clearDisabledTaskRetry(task,{freshRouterHandoff=false}={}){if(task.drained&&!task.recovering&&(freshRouterHandoff||!hasUnknownTaskEffect(task))&&task.providerRecovery?.hostRetryDisabled){task.providerRecovery=null;task.technicalFailure=null}}
 // Host-owned active intervals only. Never reconstruct legacy/restarted intervals.
 function stopExecutionTiming(execution, stamp) {
   const segment = execution.timeline?.segments.at(-1)
@@ -684,7 +684,9 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         if (prior.text !== message) fail('DYNAMIC_FEEDBACK_ID_CONFLICT')
         return changed({ task })
       }
-      clearDisabledTaskRetry(task)
+      // A new authenticated Router handoff can retry the current objective.
+      // The old lease's effect and job evidence is not altered or replayed.
+      clearDisabledTaskRetry(task,{freshRouterHandoff:routerScheduling&&a.routerInputPolicy==='faithful-handoff-v1'})
       if (task.archivedAt || task.status !== 'active' || task.control !== 'active') fail('DYNAMIC_TASK_NOT_ACTIVE')
       if (a.expectedRequirementRevision !== task.requirementRevision || a.expectedControlRevision !== task.controlRevision) fail('DYNAMIC_TASK_REVISION_STALE')
       const request = task.humanRequests?.findLast(item => item.status === 'waiting-reply' && ['requester', 'topic'].includes(item.audience))
@@ -713,7 +715,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         put('dynamic_executions', execution)
       }
       const supplementWakeId=`wake:${commandId}`
-      if(a.liveBinding!==undefined)(task.liveSupplements??=[]).push({messageId,wakeId:supplementWakeId,fromContextRevision:previousContextRevision,contextRevision:task.contextRevision,leaseEpoch:task.leaseEpoch,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,sourceRefs:clone(task.sourceRefs??[]),sourceSnapshots:(a.currentInput?.sourceId?[a.currentInput.sourceId]:(task.sourceRefs??[])).map(id=>{const {stages,...source}=get('dynamic_sources',id);return clone(source)}),request:task.request,text:message,...(task.currentInput?{currentInput:clone(task.currentInput)}:{}),state:'pending'})
+      const inputPolicy=a.routerInputPolicy??task.metadata?.routerInputPolicy
+      if(a.liveBinding!==undefined)(task.liveSupplements??=[]).push({messageId,wakeId:supplementWakeId,fromContextRevision:previousContextRevision,contextRevision:task.contextRevision,leaseEpoch:task.leaseEpoch,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,...inputPolicy?{inputPolicy}:{},sourceRefs:clone(task.sourceRefs??[]),sourceSnapshots:(a.currentInput?.sourceId?[a.currentInput.sourceId]:(task.sourceRefs??[])).map(id=>{const {stages,...source}=get('dynamic_sources',id);return clone(source)}),request:task.request,text:message,...(task.currentInput?{currentInput:clone(task.currentInput)}:{}),state:'pending'})
       saveTask(task); wake(task.taskId, kind, { messageId, contextRevision: task.contextRevision,
         ...(reviewSources.length ? { humanRequestId: request.requestId, sourceIds: reviewSources.map(source => source.sourceId) } : {}) }, supplementWakeId)
       return changed({ task })
@@ -971,6 +974,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'task.wait') {
       if(a.question!==undefined||a.decision?.question!==undefined||a.humanRequest!==undefined)fail('TASK_QUESTION_DISABLED')
+      if(a.resultSource!==undefined&&(a.resultSource!=='pi-task-result'||!['wait','blocked'].includes(a.action)||a.technicalFailure!==undefined||a.reviewFailureCode!==undefined))fail('TASK_RESULT_SOURCE_INVALID')
       const task = currentTask(a.binding, { active: false, allowHumanReview: true })
       if (task.humanReviewLease === a.binding.leaseEpoch && (a.question?.trim() || a.decision?.question?.trim())) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
       let notification = null
@@ -1051,6 +1055,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       }
       task.lastDecision = { action: a.action ?? 'wait', summary: text(a.summary, 'summary'), decision: a.decision ?? null, question: a.question ?? a.decision?.question ?? null,
         evidence: a.evidence ?? [], limitations: a.limitations ?? [], ...(a.humanReply ? { replySourceId: a.humanReply.sourceId } : {}),
+        ...(a.resultSource ? { resultSource: a.resultSource } : {}),
         requirementRevision: task.requirementRevision, controlRevision: task.controlRevision, contextRevision:task.contextRevision??0, at: stamp }
       if(a.technicalFailure!==undefined){task.technicalFailure=taskBusinessFailure(a.technicalFailure);task.lastDecision.technicalFailure=task.technicalFailure;task.providerRecovery=null}
       else if(a.reviewFailureCode===undefined&&Object.hasOwn(task,'technicalFailure'))task.technicalFailure=null
@@ -2186,7 +2191,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           saveTask(task)
           value.result.task = task
         }
-        if(['task.wait','task.revise','task.reopen','task.control','task.supplement'].includes(kind)&&value.result.task?.conversationId)routerLedger.taskEvent({id:`task-changed:${id}`,kind:kind==='task.wait'?(args.action==='blocked'?'task.blocked':'task.waiting'):'task.changed',taskId:value.result.task.taskId,commandId:id,...kind==='task.wait'&&args.action==='blocked'?{result:clone(value.result.task.lastDecision)}:{}})
+        if(['task.wait','task.revise','task.reopen','task.control','task.supplement'].includes(kind)&&value.result.task?.conversationId)routerLedger.taskEvent({id:`task-changed:${id}`,kind:kind==='task.wait'?(args.action==='blocked'?'task.blocked':'task.waiting'):'task.changed',taskId:value.result.task.taskId,commandId:id,...kind==='task.wait'&&args.action==='blocked'?{result:clone(value.result.task.lastDecision),...(args.resultSource?{resultSource:args.resultSource}:{})}:{}})
         if(reassessStart) {
           // 未授许可的父件等待可按原 ID 重评估；保留热/冷收据序号，授过许可后永不重发。
           const table=db.prepare('SELECT 1 FROM dynamic_archived_receipts WHERE id=?').get(id)?'dynamic_archived_receipts':'dynamic_receipts'

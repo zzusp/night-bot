@@ -66,7 +66,7 @@ test('real Router reads committed sole-execution progress without waking another
   if(tools.includes('channel_triage_submit')){const input=requestEnvelope(body,'一级分诊请求：');return {tool:'channel_triage_submit',args:{dispositions:input.messages.map(s=>({sourceId:s.sourceId,messageVersion:s.version,needsHandling:true,reason:'Current request'}))}}}
   if(tools.includes('resident_router_settle')){
    const input=requestEnvelope(body,'Router 请求：'),source=input.events.find(event=>event.source)?.source,key=source?.messageId??input.events[0].id,step=steps.get(key)??0;steps.set(key,step+1)
-   if(source?.messageId==='start'&&step===0)return {tool:'resident_task_plan',args:{operationId:'start',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'context-progress-task',title:'Local verification',objective:'Check the local fixture',requirements:['Use fixture only']}],dependencies:[]}}
+   if(source?.messageId==='start'&&step===0)return {tool:'resident_task_plan',args:{operationId:'start',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'context-progress-task',handoff:'Verify the local fixture only.',title:'Local verification',objective:'Check the local fixture',requirements:['Use fixture only']}],dependencies:[]}}
    if(source?.messageId==='progress'&&step===0){const system=JSON.stringify(body.messages.filter(message=>message.role==='system'));assert.match(system,/不自动安排业务复测/);assert.match(system,/不得把一般经验、模型建议/);assert.ok(system.includes('taskIndex'));return {tool:'resident_task_query',args:{taskId:'context-progress-task',detail:'progress'}}}
    if(source?.messageId==='progress'&&step===1){const raw=body.messages.at(-1).content;assert.ok(raw.startsWith('{'),raw);const result=JSON.parse(raw);assert.equal(result.coverage,'committed-current-run');assert.ok(result.activities.some(row=>row.toolCalls.some(call=>call.name==='task_result')));checked=true}
    if(body.messages.at(-1)?.role!=='tool'||step<2)return {tool:'resident_router_settle',args:{operationId:'settle-'+key,eventIds:input.events.map(event=>event.id)}}
@@ -107,35 +107,29 @@ test('real reply tool and quoted-source index use delivered ledger state after c
 })
 
 
-test('real Router sees the automatically sent requester question on waiting and after cold recovery',{timeout:nativeTestTimeout(90000)},async t=>{
- const steps=new Map(),question='Please provide the exact page address.';let h,checks=0
+test('removed requester question cannot send even when the execution model proposes it; normal wait remains internal',{timeout:nativeTestTimeout(30000)},async t=>{
+ const steps=new Map(),question='Please provide the exact page address.';let h,resultCalls=0,validationResult
  h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
-  if(tools.includes('channel_triage_submit')){const input=requestEnvelope(body,'一级分诊请求：');return {tool:'channel_triage_submit',args:{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'Local fixture only'}))}}}
   if(tools.includes('resident_router_settle')){
    const input=requestEnvelope(body,'Router 请求：'),source=input.events.find(event=>event.source)?.source,key=input.events.map(event=>event.id).join(','),step=steps.get(key)??0;steps.set(key,step+1)
-   if(source?.messageId==='ask'&&step===0)return {tool:'resident_task_plan',args:{operationId:'ask',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'requester-question',title:'Inspect local page',objective:'Inspect the local fixture',requirements:['Ask for the missing address']}],dependencies:[]}}
-   const lookup=source?.messageId==='lookup'||input.events.some(event=>event.kind==='task.waiting')
-   if(lookup&&step===0)return {tool:'resident_reply_query',args:{taskId:'requester-question'}}
-   if(lookup&&step===1){
-    const result=JSON.parse(body.messages.at(-1).content)
-    assert.equal(result.replies.length,1)
-    assert.equal(result.replies[0].kind,'question');assert.equal(result.replies[0].textPreview,question)
-    if(source?.messageId==='lookup')assert.equal(result.replies[0].state,'delivered')
-    assert.match(JSON.stringify(body.messages.filter(message=>message.role==='system')),/不换措辞重复提问/)
-    checks++
-   }
-   if(step<2)return {tool:'resident_router_settle',args:{operationId:'settle-'+key,eventIds:input.events.map(event=>event.id),...source?.messageId==='lookup'?{noTaskDispositions:[{eventId:input.events[0].id,outcome:'context-only',reason:'Read the existing question; do not send a duplicate.',sourceQuote:source.text}]}:{}}}
+   if(source?.messageId==='ask'&&step===0)return {tool:'resident_task_plan',args:{operationId:'ask',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'requester-question',handoff:'Inspect the local page using the fixture.',title:'Inspect local page',objective:'Inspect the local fixture',requirements:[]}],dependencies:[]}}
+   if(step<2)return {tool:'resident_router_settle',args:{operationId:'settle-'+key,eventIds:input.events.map(event=>event.id)}}
    return {text:'Settled.'}
   }
-  if(tools.includes('task_result'))return {tool:'task_result',args:{decision:{action:'wait',summary:'The exact address is missing.',question,audience:'requester',evidence:['The local input has no address.'],limitations:[]}}}
+  if(tools.includes('task_result')){
+   const result={action:'wait',summary:'The fixture does not contain the exact address.',evidence:['The local input has no address.'],limitations:['The page was not checked.']}
+   if(resultCalls++===0)return {tool:'task_result',args:{decision:{...result,question,audience:'requester'}}}
+   if(resultCalls===2){validationResult=body.messages.findLast(message=>message.role==='tool');return {tool:'task_result',args:{decision:result}}}
+   return {text:'No more work.'}
+  }
   return {text:'Done.'}
  })
  await h.receive(channelMessage('ask'));await h.service.whenIdle()
- const notice=await eventually(async()=>{const n=(await h.query('notification.list')).find(row=>row.kind==='question');return n?.state==='delivered'&&n},'requester question delivered',t.signal)
- assert.equal(checks,1);assert.equal(notice.sendAttemptCount,1);assert.equal(h.sent.length,1)
- await h.restart()
- await h.receive(channelMessage('lookup',{text:'核对已经发出的页面地址提问'}));await h.service.whenIdle()
- assert.equal(checks,2);assert.equal(h.sent.length,1,'waiting review and history lookup never send another question')
- assert.equal((await h.query('notification.get',{notificationId:notice.id})).sendAttemptCount,1)
+ assert.ok(validationResult);assert.match(JSON.stringify(validationResult),/TASK_QUESTION_DISABLED|additional properties|question/)
+ assert.equal((await h.query('task.get',{taskId:'requester-question'})).lastDecision.action,'wait')
+ assert.equal(resultCalls,2);assert.equal(h.sent.length,0)
+ await h.restart();await h.service.whenIdle()
+ assert.equal(h.sent.length,0)
+ assert.equal((await h.query('notification.list')).some(row=>row.kind==='question'),false)
 })

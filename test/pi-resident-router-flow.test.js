@@ -13,6 +13,7 @@ import {conversationSource} from '../src/channels/message-safety.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {initializeMemoryTaskWorkspace} from './fixtures/memory-host.js'
 import {inspectionVersion} from '../src/tasks/inspection.js'
+import {restoreLegacyHumanWait} from './fixtures/legacy-human-wait.js'
 import {residentRouterHost,channelMessage,requestEnvelope,requestText,requestTools,eventually} from './fixtures/resident-router-host.js'
 
 const triage=body=>requestEnvelope(body,'一级分诊请求：')
@@ -980,6 +981,9 @@ test('Router close cannot swallow an admission PAUSED failure produced before it
 
 for(const answerFrom of ['requester','same-conversation-member'])test(`Router resumes a waiting task in its original Pi session after an answer from ${answerFrom}`,{timeout:nativeTestTimeout(60000)},async t=>{
   const steps=new Map(),runs=[],seenInputs=[];let taskStep=0,writes=0,reads=0
+  const partialHandoff='The target is environment-configured; its variable name is still unknown.'
+  const answerHandoff='Use VERIFY_TARGET for the existing read-only target and continue original verification.'
+  const historicalWait={summary:'Waiting for the target variable name',question:'Which environment variable identifies the read-only target?',evidence:['Original proof saved'],limitations:['Target variable name missing']}
   const h=await residentRouterHost(t,async body=>{
     const summary=handoff(body);if(summary)return summary
     if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
@@ -989,11 +993,11 @@ for(const answerFrom of ['requester','same-conversation-member'])test(`Router re
       const step=steps.get(source.messageId)??0;steps.set(source.messageId,step+1)
       if(step===0){
         if(source.messageId==='request')return {tool:'resident_task_plan',args:{operationId:'plan:'+answerFrom,sourceId:source.sourceId,messageVersion:source.version,
-          tasks:[{taskId:'wait-resume-'+answerFrom,title:'Verify the original proof',objective:'Read the original proof after the missing environment information arrives',requirements:['Keep the original session and verify the file']}],dependencies:[]}}
+          tasks:[{taskId:'wait-resume-'+answerFrom,title:'Verify the original proof',objective:'Read the original proof after the missing environment information arrives',requirements:['Keep the original session and verify the file'],handoff:'Verify the original proof once the environment variable identifying the read-only target is known.'}],dependencies:[]}}
         const task=await h.query('task.get',{taskId:'wait-resume-'+answerFrom})
         return {tool:'resident_task_action',args:{operationId:'action:'+source.messageId,sourceId:source.sourceId,messageVersion:source.version,
           taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,
-          ...(source.messageId==='answer'?{kind:'resume',humanRequestId:task.humanRequests.at(-1).requestId,expectedContextRevision:task.contextRevision??0,reason:'The original answer supplies the missing variable; continue verification'}:{kind:'supplement'}),text:source.text}}
+          ...(source.messageId==='answer'?{kind:'resume',humanRequestId:task.humanRequests.at(-1).requestId,expectedContextRevision:task.contextRevision??0,reason:'The original answer supplies the missing variable; continue verification'}:{kind:'supplement'}),handoff:source.messageId==='answer'?answerHandoff:partialHandoff,text:source.text}}
       }
       if(step===1)return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle:'+source.messageId}}
       return {text:'Task action and original source are committed.'}
@@ -1010,8 +1014,8 @@ for(const answerFrom of ['requester','same-conversation-member'])test(`Router re
       runs.push(input.task.sessionId)
       if(taskStep++===0){writes++;return {tool:'write',args:{path:'work/proof.txt',content:'original-session-proof'}}}
       assert.equal(input.task.humanRequests,undefined,'execution gets the current brief, not the historical human-request ledger')
-      const hasAnswer=input.updates?.some(row=>row.text.includes('VERIFY_TARGET'))&&input.sources?.some(row=>row.text.includes('VERIFY_TARGET'))
-      if(!hasAnswer)return {tool:'task_result',args:{decision:{action:'wait',question:'Which environment variable identifies the read-only target?',summary:'Waiting for the target variable name',evidence:['Original proof saved'],limitations:['Target variable name missing']}}}
+      const hasAnswer=input.handoffs?.some(row=>row.text===answerHandoff)
+      if(!hasAnswer)return {tool:'task_result',args:{decision:{action:'wait',summary:historicalWait.summary,evidence:historicalWait.evidence,limitations:historicalWait.limitations}}}
       if(reads++===0)return {tool:'read',args:{path:'work/proof.txt'}}
       assert.match(JSON.stringify(body),/original-session-proof/,'continuation reads the actual original file')
       return {tool:'task_result',args:{decision:{action:'complete',summary:'Original proof read after the Router continuation',evidence:['Original proof read: original-session-proof'],limitations:[]}}}
@@ -1019,7 +1023,11 @@ for(const answerFrom of ['requester','same-conversation-member'])test(`Router re
     return {text:'No other work'}
   })
   await h.receive(channelMessage('request',{text:'Verify the proof after obtaining the read-only target variable name.'}));await h.service.whenIdle()
-  const taskId='wait-resume-'+answerFrom,waiting=await h.query('task.get',{taskId})
+  const taskId='wait-resume-'+answerFrom,dbPath=join(h.host.ctx.runtimePaths.state,'tasks.sqlite')
+  // Current executions never ask questions. Restore an actual persisted pre-change
+  // question after the scaffold drains to exercise same-session answer recovery.
+  await h.close();restoreLegacyHumanWait(dbPath,taskId,historicalWait);await h.restart();await h.service.whenIdle()
+  const waiting=await h.query('task.get',{taskId})
   assert.equal(waiting.humanRequests.at(-1).status,'waiting-reply');assert.equal(waiting.humanRequests.at(-1).audience,'requester');assert.equal(waiting.drained,true)
   const originalSession=waiting.sessionId,executionCalls=runs.length
   await h.receive(channelMessage('partial',{senderId:'bob',text:'The configuration is in the environment; the exact variable name is not yet supplied.'}));await h.service.whenIdle()
@@ -1059,13 +1067,13 @@ for(const answerFrom of ['requester','same-conversation-member'])test(`Router re
   assert.equal(completed.sessionId,originalSession);assert.equal(completed.humanRequests.at(-1).status,'answered')
   assert.equal(completed.humanRequests.at(-1).resolution.reason,'The original answer supplies the missing variable; continue verification')
   assert.equal(completed.claimContextRevision,completed.contextRevision)
-  assert.ok(seenInputs.at(-1).sources.some(source=>source.text.includes('VERIFY_TARGET')))
-  assert.ok(seenInputs.at(-1).sources.some(source=>source.text.includes('not yet supplied')))
+  assert.ok(seenInputs.some(input=>input.handoffs?.some(row=>row.text===answerHandoff)))
+  assert.ok(seenInputs.some(input=>input.handoffs?.some(row=>row.text===partialHandoff)))
   assert.equal((await h.query('task.list')).length,1);assert.equal((await h.query('execution.list')).length,0)
   assert.ok((await h.query('wake.list',{taskId})).every(row=>row.state==='acked'))
   assert.equal(writes,1);assert.equal(reads,2)
   const answered=completed.humanRequests.at(-1),answerSource=await h.query('source.get',{sourceId:answered.sourceId}),operationId=answered.resolution.operationId
-  const retry={conversationId,generation:999,sourceId:answered.sourceId,messageVersion:answerSource.version,kind:'task.resume',operationId,
+  const retry={conversationId,generation:999,sourceId:answered.sourceId,messageVersion:answerSource.version,kind:'task.resume',operationId,handoff:answerHandoff,
     action:{taskId,expectedRequirementRevision:completed.requirementRevision,expectedControlRevision:completed.controlRevision,operationId,
       messageId:operationId,text:answerSource.text,humanRequestId:answered.requestId,expectedContextRevision:completed.contextRevision-1,reason:answered.resolution.reason}}
   await h.store.command({id:'resume-retry-after-completion',kind:'router.task-action',args:retry})
@@ -1239,6 +1247,7 @@ test('Router synthesizes project memory with linked evidence, cold recall and re
 test('Router schedules the same execution session across wait, stop, cancellation, completion and restart without operator grants',{timeout:nativeTestTimeout(100000)},async t=>{
   const actions=new Set(),settled=new Set(),turns=new Map(),owners=[],gate=Promise.withResolvers(),entered=Promise.withResolvers()
   let phase='initial',proofWrites=0,h
+  const historicalWait={summary:'Original session is waiting',question:'Await a Router decision',evidence:['Original proof written'],limitations:['Waiting']}
   t.after(()=>gate.resolve())
   h=await residentRouterHost(t,async body=>{
     const summary=handoff(body);if(summary)return summary
@@ -1250,7 +1259,7 @@ test('Router schedules the same execution session across wait, stop, cancellatio
       if(!source)return settle(body,input)
       if(!actions.has(source.messageId)){
         actions.add(source.messageId)
-        if(source.messageId==='schedule-create')return {tool:'resident_task_plan',args:{operationId:'create',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'schedule-authority',title:'Preserve the execution proof',objective:'Verify retained proof under Router scheduling',requirements:['Use one session; do not repeat the first write']}],dependencies:[]}}
+        if(source.messageId==='schedule-create')return {tool:'resident_task_plan',args:{operationId:'create',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'schedule-authority',title:'Preserve the execution proof',objective:'Verify retained proof under Router scheduling',requirements:['Use one session; do not repeat the first write'],handoff:'Verify the retained execution proof in the same session, without repeating the first write.'}],dependencies:[]}}
         const task=await h.query('task.get',{taskId:'schedule-authority'})
         const action={operationId:source.messageId,taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}
         // 唤醒不要求新的人类授权来源；停止则以另一作者来源验证无作者白名单。
@@ -1269,7 +1278,7 @@ test('Router schedules the same execution session across wait, stop, cancellatio
       const lease=input.task.leaseEpoch,step=turns.get(lease)??0;turns.set(lease,step+1)
       if(phase==='initial'){
         if(step===0){proofWrites++;return {tool:'write',args:{path:'work/router-proof.txt',content:'retained scheduling proof'}}}
-        return {tool:'task_result',args:{decision:{action:'wait',question:'Await a Router decision',summary:'Original session is waiting',evidence:['Original proof written'],limitations:['Waiting']}}}
+        return {tool:'task_result',args:{decision:{action:'wait',summary:historicalWait.summary,evidence:historicalWait.evidence,limitations:historicalWait.limitations}}}
       }
       if(step===0)return {tool:'read',args:{path:'work/router-proof.txt'}}
       assert.match(JSON.stringify(body),/retained scheduling proof/)
@@ -1279,8 +1288,11 @@ test('Router schedules the same execution session across wait, stop, cancellatio
     return {text:'No other work'}
   })
   await h.receive(channelMessage('schedule-create'));await h.service.whenIdle()
-  const initial=await h.query('task.get',{taskId:'schedule-authority'}),sessionId=initial.sessionId
-  assert.equal(initial.lastDecision.action,'wait');assert.equal(initial.humanRequests.at(-1).status,'waiting-reply')
+  const scaffold=await h.query('task.get',{taskId:'schedule-authority'}),dbPath=join(h.host.ctx.runtimePaths.state,'tasks.sqlite')
+  assert.equal(scaffold.lastDecision.action,'wait')
+  await h.close();restoreLegacyHumanWait(dbPath,scaffold.taskId,historicalWait,{prepareNotice:true});await h.restart();await h.service.whenIdle()
+  const initial=await h.query('task.get',{taskId:scaffold.taskId}),sessionId=initial.sessionId
+  assert.equal(initial.humanRequests.at(-1).status,'waiting-reply')
   await h.receive(channelMessage('schedule-pause',{senderId:'bob'}));await h.service.whenIdle()
   let task=await h.query('task.get',{taskId:initial.taskId});assert.equal(task.control,'paused');assert.equal(task.drained,true)
   phase='inflight'
@@ -1321,7 +1333,7 @@ for(const cut of ['prepared-only','journal-committed'])test(`Router resumes thro
       if(!source)return settle(body,input)
       const step=steps.get(source.messageId)??0;steps.set(source.messageId,step+1)
       if(step===0){
-        if(source.messageId==='closure-create')return {tool:'resident_task_plan',args:{operationId:'create',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'closure-router',title:'Continue independent work',objective:'Read old evidence and complete independent work',requirements:['Do not replay an old invocation']}],dependencies:[]}}
+        if(source.messageId==='closure-create')return {tool:'resident_task_plan',args:{operationId:'create',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'closure-router',title:'Continue independent work',objective:'Read old evidence and complete independent work',requirements:['Do not replay an old invocation'],handoff:'Inspect prior evidence and continue independent work without replaying the old invocation.'}],dependencies:[]}}
         const task=await h.query('task.get',{taskId:'closure-router'})
         return {tool:'resident_task_action',args:{operationId:'resume',kind:'resume',taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}}
       }
@@ -1394,7 +1406,7 @@ for(const scenario of ['newer-cancellation','committed-reply','failed-tool'])tes
       if(event.type==='message_update'&&event.message.content.some(block=>block.type==='toolCall'&&block.name==='resident_task_action'))entered.resolve()
     })
     t.after(unsubscribe)
-    return {tool:'resident_task_action',args:{operationId:'must-never-dispatch-aborted-call',sourceId:source.sourceId,messageVersion:source.version,kind:'reopen',taskId:'not-a-task-in-this-conversation',expectedRequirementRevision:1,expectedControlRevision:1},beforeFinish:()=>release.promise}
+    return {tool:'resident_task_action',args:{operationId:'must-never-dispatch-aborted-call',sourceId:source.sourceId,messageVersion:source.version,kind:'reopen',taskId:'not-a-task-in-this-conversation',handoff:'Prepare the release only after checking the current instructions.',expectedRequirementRevision:1,expectedControlRevision:1},beforeFinish:()=>release.promise}
   },scenario==='late-triage-receipt'?{send:async()=>{await replyRelease.promise;return {messageId:'triage-visible-once'}}}:{})
   const message=channelMessage('shutdown-'+scenario,{text:'Prepare a release only after checking current instructions.'}),conversationId=h.host.ctx.channels.identity(message).sessionId
   await h.receive(message);await entered.promise
@@ -1516,6 +1528,105 @@ for(const variant of ['other-tool','wrong-events','stale-source'])test('cold Rou
  assert.equal(stored.entries.filter(e=>e.type==='message'&&e.message.role==='toolResult'&&e.message.toolCallId===call.id).length,0)
  assert((await readFile(file)).subarray(0,prefix.length).equals(prefix))
  assert.equal((await h.query('router.inbox',{conversationId:row.id})).length,1)
+})
+
+for(const partial of [false,true])test('cold Router dispatches a fresh independent source without replaying an unpaired old reply'+(partial?' after partial settlement':''),{timeout:nativeTestTimeout(60000)},async t=>{
+ const oldMessage=channelMessage('uncertain-reply',{text:'What was recorded for the earlier sample?'})
+ const freshMessage=channelMessage('independent-create',{senderId:'bob',text:'Start a separate task to document sample B, unrelated to the earlier sample.'})
+ let oldAttempted=false,oldPrepareCalls=0,newPlans=0,executions=0,paired,partialRequested=false
+ const activeSourcesForFreshPlan=[]
+ const h=await residentRouterHost(t,body=>{
+  const summary=handoff(body);if(summary)return summary
+  if(requestTools(body).includes('resident_router_settle')){
+   const input=router(body),fresh=input.events.find(event=>event.source?.messageId===freshMessage.messageId)
+   if(fresh){
+    if(newPlans++===0){
+     activeSourcesForFreshPlan.push(...input.events.filter(event=>event.source).map(event=>event.source.messageId))
+     return {tool:'resident_task_plan',args:{operationId:'new-independent-plan',sourceId:fresh.sourceId,messageVersion:fresh.messageVersion,
+      tasks:[{taskId:'cold-fresh-task',title:'Document sample B',objective:'Document the separate sample B',requirements:['Keep it separate from the earlier sample'],handoff:'Document sample B as a separate task, unrelated to the earlier sample.'}],dependencies:[]}}
+    }
+    return settle(body,{...input,events:[fresh]})
+   }
+   const old=input.events.find(event=>event.source?.messageId===oldMessage.messageId)
+   if(partial&&old&&!partialRequested){
+    partialRequested=true
+    paired=input.events.find(event=>event.source?.messageId==='already-handled')
+    assert.ok(paired,'original packet also contains the later durably settled event')
+    return {tool:'resident_router_settle',args:{operationId:'old-partial-settle',eventIds:[paired.id],noTaskDispositions:[{eventId:paired.id,outcome:'context-only',reason:'Synthetic prior context was handled',sourceQuote:paired.source.text}]}}
+   }
+   if(old&&!oldAttempted){oldAttempted=true;return {tool:'resident_router_reply',args:{operationId:'uncertain-old-reply',sourceId:old.sourceId,messageVersion:old.messageVersion,text:'Earlier sample result'}}}
+   return old?{text:'Earlier reply remains unresolved.'}:settle(body,input)
+  }
+  if(requestTools(body).includes('task_result')){
+   executions++
+   return {tool:'task_result',args:{decision:{action:'complete',summary:'Documented sample B',evidence:['Synthetic test evidence'],limitations:[]}}}
+  }
+  return {text:'No work'}
+ },{wrapStore:store=>({...store,command:async command=>{
+  if(partial&&command.kind==='source.record-direct'&&command.args.source.messageId===oldMessage.messageId){
+   const result=await store.command(command)
+   const original=command.args.source
+   await store.command({kind:'source.record-direct',id:'seed-already-handled',args:{...command.args,source:{...original,sourceId:'seed-already-handled',messageId:'already-handled',text:'An earlier related reference, not another task.'}}})
+   return result
+  }
+  if(command.kind==='notification.prepare'){
+   oldPrepareCalls++
+   throw Object.assign(Error('Interrupted before reply registration'),{code:'TEST_UNPAIRED_REPLY'})
+  }
+  return store.command(command)
+ }})})
+ await h.receive(oldMessage);await h.service.whenIdle().catch(()=>{})
+ const conversationId=h.host.ctx.channels.identity(oldMessage).sessionId,old=await h.query('router.get',{conversationId})
+ const oldEvent=(await h.query('router.inbox',{conversationId})).find(event=>event.source?.messageId===oldMessage.messageId)
+ assert.ok(oldEvent?.sourceId);assert.equal(oldPrepareCalls,1)
+ let prior
+ if(partial){
+   ;[prior]=await h.query('router.batch-events',{conversationId,eventIds:[paired.id]})
+   assert.equal(prior.state,'consumed');assert.equal(prior.processedGeneration,old.generation)
+   assert.ok(await h.query('router.action',{conversationId,operationId:prior.operationId}))
+ }
+ assert.deepEqual(await h.query('notification.list'),[])
+ const file=join(h.host.ctx.runtimePaths.state,'sessions',piJournalFilename(old.activeSessionId))
+ await h.close();await h.host.close()
+ const full=await readFile(file);let offset=0,call,checkpoint
+ for(const line of full.toString().split(/(?<=\n)/)){
+  if(!line.endsWith('\n'))break
+  offset+=Buffer.byteLength(line);const entry=JSON.parse(line)
+  if(entry.type==='message'&&entry.message.role==='assistant')call??=entry.message.content.find(part=>part.type==='toolCall'&&part.name==='resident_router_reply')
+  if(call&&entry.type==='custom'&&entry.customType==='night.commit'){checkpoint=offset;break}
+ }
+ assert.ok(call&&checkpoint);const prefix=full.subarray(0,checkpoint)
+ const hasResult=entry=>entry.type==='message'&&entry.message.role==='toolResult'&&entry.message.toolCallId===call.id
+ assert.equal(decodePiJournal(prefix,old.activeSessionId,{requireComplete:true}).entries.filter(hasResult).length,0)
+ await writeFile(file,prefix)
+ await h.restart();await h.service.whenIdle().catch(()=>{})
+ assert.equal(oldPrepareCalls,1,'cold recovery does not retry the old unproven reply')
+ await h.receive(freshMessage);await h.service.whenIdle().catch(()=>{})
+ const source=(await h.query('source.list',{groupId:conversationId})).find(source=>source.messageId===freshMessage.messageId)
+ assert.ok(source,'fresh message durably registered through authenticated channel')
+ const tasks=await h.query('task.list')
+ assert.equal(tasks.length,1,'fresh independent task reaches execution while old reply stays unresolved')
+ assert.equal(tasks[0].taskId,'cold-fresh-task')
+ assert.deepEqual(tasks[0].sourceRefs,[source.sourceId])
+ await eventually(()=>executions===1,'fresh task model executes without settling the old event')
+ assert.equal(executions,1)
+ const current=await h.query('router.get',{conversationId})
+ assert.equal(current.generation,old.generation+1,'the old owner is fenced before the separate task')
+ const [held]=await h.query('router.batch-events',{conversationId,eventIds:[oldEvent.id]})
+ const rotation=(await h.query('router.rotations',{conversationId})).find(row=>row.candidateSessionId===current.activeSessionId)
+ t.diagnostic(JSON.stringify({freshTaskRuns:executions,activeSourcesForFreshPlan,oldState:held.state,oldHold:held.deliveryHold?.reason,rotation:rotation?.recovery.reason}))
+ if(partial)assert.deepEqual((await h.query('router.batch-events',{conversationId,eventIds:[paired.id]}))[0],prior,'the already-settled row never replays or changes')
+ assert.equal(held.state,'pending','old source is neither dropped nor marked complete')
+ assert.deepEqual(activeSourcesForFreshPlan,[freshMessage.messageId],'the old unresolved source was not re-admitted as actionable')
+ assert.ok(held.deliveryHold?.reason,'the old source has a durable hold')
+ assert.deepEqual(await h.query('router.inbox',{conversationId,deliverable:true}),[])
+ assert.deepEqual(rotation.recovery.unknownSourceIds,[oldEvent.sourceId],'hold is scoped to the old effect')
+ assert.equal(oldPrepareCalls,1,'old operation was never replayed')
+ assert.deepEqual(await h.query('notification.list'),[],'no old reply receipt was invented')
+ assert.deepEqual(h.sent,[])
+ assert.ok((await readFile(file)).subarray(0,prefix.length).equals(prefix),'old committed journal prefix immutable')
+ const retained=await h.host.ctx.sessionPersistence.readNative(old.activeSessionId,{requireComplete:true})
+ assert.equal(retained.entries.filter(hasResult).length,0,'no result was fabricated for the unpaired call')
 })
 
 for(const fault of [null,'missing-row','missing-receipt','changed-packet','unknown-effect'])test('partially settled 26-event Router batch: '+(fault??'safe replacement drains six remaining events and a new query'),{timeout:nativeTestTimeout(60000)},async t=>{

@@ -53,7 +53,7 @@ test('direct Router dispatches explicit work but answers an independent message 
   const event=input.events.find(event=>event.source)
   if(!event)return settle(input)
   if(event.source.text==='EXPLICIT task'){
-   if(!planned){planned=true;return {tool:'resident_task_plan',args:{operationId:'plan-explicit',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'direct-work',title:'Synthetic work',objective:'Read-only synthetic work',requirements:['No external changes']}],dependencies:[]}}}
+   if(!planned){planned=true;return {tool:'resident_task_plan',args:{operationId:'plan-explicit',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'direct-work',handoff:'Inspect the fixture without making changes.',title:'Synthetic work',objective:'Read-only synthetic work',requirements:['No external changes']}],dependencies:[]}}}
    return settle(input)
   }
   if(!answered){answered=true;return {tool:'resident_router_reply',args:{operationId:'independent-answer',sourceId:event.sourceId,messageVersion:event.messageVersion,text:'Independent query answered without waiting for the task.'}}}
@@ -72,7 +72,7 @@ for(const edit of ['update','retract'])test('direct versions remain auditable wi
  const h=await residentRouterHost(t,async body=>{
   const input=checked(body);if(!input)return {text:'No work'}
   if(isSettleResult(body))return {text:'Done'}
-  if(first){first=false;gate.resolve();await release.promise;const event=input.events.find(event=>event.source);return {tool:'resident_task_plan',args:{operationId:'must-refuse-stale',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'must-not-create',title:'Stale instruction',objective:'Must not run',requirements:[]}],dependencies:[]}}}
+  if(first){first=false;gate.resolve();await release.promise;const event=input.events.find(event=>event.source);return {tool:'resident_task_plan',args:{operationId:'must-refuse-stale',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'must-not-create',handoff:'Do the work described by the source being tested for staleness.',title:'Stale instruction',objective:'Must not run',requirements:[]}],dependencies:[]}}}
   return settle(input)
  })
  const original=channelMessage('versioned',{text:'v1 background'})

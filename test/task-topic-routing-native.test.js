@@ -77,7 +77,7 @@ t.onCancel(() => gate.resolve())
 
   let host, store, entered = false, block = false
   const ownerRuns = new Map()
-  const sessions = { async run({ binding, submit }) { ownerRuns.set(binding.taskId, (ownerRuns.get(binding.taskId) ?? 0) + 1); await submit({ action: 'wait', summary: '等待输入', evidence: [], limitations: [] }); return { status: 'submitted' } }, async cancel() {}, async close() {} }
+  const sessions = { async run({ binding, submit }) { ownerRuns.set(binding.taskId, (ownerRuns.get(binding.taskId) ?? 0) + 1); await submit({ action: 'wait', summary: '等待输入', evidence: [], limitations: [] }, binding); return { status: 'submitted' } }, async cancel() {}, async close() {} }
   t.after(async () => { gate.resolve(); await host?.close(); await store?.close(); await rm(root, { recursive: true, force: true }) })
   await t.beginBusiness()
   host = await t.step(async () => nativeTaskHost(root, async () => { throw new Error('Unexpected native model call') }, { serviceFactory: async args => {
@@ -117,7 +117,7 @@ t.onCancel(() => gate.resolve())
 
 testRunner('failed Web old-drain releases admission and replays the committed request without duplicating revision', {timeout:nativeLifecycleTimeout(30000)}, nativeLifecycle(30000, async t=>{
  const root=await mkdtemp(join(tmpdir(),'web-drain-failure-'));let host,cancels=0,runs=0
- const sessions={async run({submit}){runs++;await submit({action:'wait',summary:'等待补充',evidence:[],limitations:[]});return{status:'submitted'}},async cancel(){if(++cancels===1)throw Object.assign(new Error('fixture cancel failed'),{code:'FIXTURE_CANCEL_FAILED'})},async close(){}}
+ const sessions={async run({binding,submit}){runs++;await submit({action:'wait',summary:'等待补充',evidence:[],limitations:[]},binding);return{status:'submitted'}},async cancel(){if(++cancels===1)throw Object.assign(new Error('fixture cancel failed'),{code:'FIXTURE_CANCEL_FAILED'})},async close(){}}
  t.after(async()=>{try{await host?.close()}finally{await rm(root,{recursive:true,force:true})}})
  await t.beginBusiness();host=await nativeTaskHost(root,()=>{throw Error('Unexpected model call')},{serviceFactory:args=>openTaskSessionService({...args,taskSessions:sessions})})
  const created=await host.service.createTask({groupId:'native-group',requestId:'drain-create',objective:'核对真实排空失败恢复'});await host.service.whenIdle()
@@ -197,15 +197,15 @@ t.onCancel(() => releaseQuery.resolve())
   let host, store, intercept = false, blocked = false, runs = 0, accepted = false, started = false
   const cancellations = []
   const sessions = {
-    async run({ submit }) {
+    async run({ binding, submit }) {
       runs++
       if (runs === 1) {
-        await submit({ action: 'wait', summary: '等待输入', evidence: [], limitations: [] })
+        await submit({ action: 'wait', summary: '等待输入', evidence: [], limitations: [] }, binding)
         return { status: 'submitted' }
       }
       started = true
       await releaseNew.promise
-      await submit({ action: 'wait', summary: '等待补充', evidence: [], limitations: [] })
+      await submit({ action: 'wait', summary: '等待补充', evidence: [], limitations: [] }, binding)
       return { status: 'submitted' }
     },
     async cancel(taskId) { cancellations.push({ taskId, runs }) },

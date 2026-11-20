@@ -209,7 +209,7 @@ export class OfficialAgentFactory {
     if(inputs.length!==1||!isDeepStrictEqual(input.details,{packetId:packet.id,source:packet.source})||!isDeepStrictEqual(input.content,packet.content)||branch.findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')?.id!==input.id)throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
     return {entries,branch,messages,input}
    }
-   const routerCheckpoint=(packet,failedEntryId,claim,wakeOnly=false,isolationOnly=false)=>{
+   const routerCheckpoint=(packet,failedEntryId,claim,wakeOnly=false,isolationOnly=false,isolateUnpairedReplies=false)=>{
     const {entries,branch,messages,input}=routerInputCheckpoint(packet)
     const failure=branch.find(entry=>entry.id===failedEntryId),claims=entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.router-resume-claim'&&entry.details?.failedEntryId===failedEntryId)
     if(claim===undefined&&claims.length)throw fail('PI_ROUTER_RESUME_CHECKPOINT_USED')
@@ -250,7 +250,11 @@ export class OfficialAgentFactory {
      if(message.role==='toolResult'){if(!calls.has(message.toolCallId)||calls.get(message.toolCallId).call.name!==message.toolName||message.isError&&!wakeOnly&&!isolationOnly&&!routerCallNotStarted(entries,{sessionId:id,packetId:packet.id,...calls.get(message.toolCallId),result:entry}))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED');if(isolationOnly&&message.isError){const bound=calls.get(message.toolCallId);if(!routerCallNotStarted(entries,{sessionId:id,packetId:packet.id,...bound,result:entry}))unknownCalls.push(bound.call)}calls.delete(message.toolCallId)}
     }
     const receipts=entries.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit').map(entry=>entry.data)
-    if(!wakeOnly&&(calls.size||unresolvedNativeJobReceipts(receipts,id).length||receipts.some(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent')))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
+    // This opt-in proof only identifies an effect to quarantine; it never
+    // satisfies the normal application continuation or settlement checks.
+    const unpairedReplies=isolationOnly&&isolateUnpairedReplies?[...calls.values()].map(({call})=>call):undefined
+    if(unpairedReplies&&(!unpairedReplies.length||unknownCalls.length||unpairedReplies.some(call=>call.name!=='resident_router_reply'||typeof call.arguments?.sourceId!=='string'||!Number.isSafeInteger(call.arguments?.messageVersion))))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
+    if(!wakeOnly&&(calls.size&&!unpairedReplies||unresolvedNativeJobReceipts(receipts,id).length||receipts.some(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent')))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
     if(isolationOnly){
      const eventIds=new Set(packet.source.eventIds)
      const canIsolate=({name,arguments:args})=>{
@@ -264,7 +268,7 @@ export class OfficialAgentFactory {
      }
      if(unknownCalls.some(call=>!canIsolate(call)))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
     }
-    return {conversationId:store.header.conversationId,generation:store.header.generation,sessionId:id,packetId:packet.id,inputEntryId:input.id,failedEntryId,checkpointRevision:store.snapshot().revision,...isolationOnly?{unknownTaskIds:[...new Set(unknownCalls.map(call=>call.arguments?.taskId??call.arguments?.taskDelivery?.taskId).filter(id=>typeof id==='string'))],unknownSourceIds:[...new Set(unknownCalls.map(call=>call.arguments?.sourceId).filter(id=>typeof id==='string'))]}:{}}
+    return {conversationId:store.header.conversationId,generation:store.header.generation,sessionId:id,packetId:packet.id,inputEntryId:input.id,failedEntryId,checkpointRevision:store.snapshot().revision,...isolationOnly?{unknownTaskIds:[...new Set(unknownCalls.map(call=>call.arguments?.taskId??call.arguments?.taskDelivery?.taskId).filter(id=>typeof id==='string'))],unknownSourceIds:[...new Set(unknownCalls.map(call=>call.arguments?.sourceId).filter(id=>typeof id==='string'))]}:{},...unpairedReplies?{unpairedReplies:unpairedReplies.map(call=>({sourceId:call.arguments.sourceId,messageVersion:call.arguments.messageVersion,taskId:call.arguments.taskDelivery?.taskId}))}:{}}
    }
    const handle={actor,agent:actor,session:bundle.session,
     async retireTriagePending(){
@@ -277,11 +281,11 @@ export class OfficialAgentFactory {
     deliver:(packetId,deliveryOptions)=>{
      active();if(routerFrozen||routerContinuing)throw fail('PI_ROUTER_FROZEN');const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,()=>bundle.deliver(packetId,deliveryOptions)));pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation
     },whenIdle,interrupt,cancel,
-    checkRouterBatch({packet,failedEntryId,isolationOnly=false}){
+    checkRouterBatch({packet,failedEntryId,isolationOnly=false,isolateUnpairedReplies=false}){
      active();check()
      if(ownerCtx.agents.currentInitiator?.()!==undefined)throw fail('PI_ROUTER_RESUME_HOST_ONLY')
      if(routerContinuing||routerFrozen||maintenanceCount||admission.paused||pending.size)throw fail('PI_ROUTER_RESUME_BUSY')
-     return routerCheckpoint(packet,failedEntryId,undefined,false,isolationOnly)
+     return routerCheckpoint(packet,failedEntryId,undefined,false,isolationOnly,isolateUnpairedReplies)
     },
     resumeRouterBatch({packet,failedEntryId,supplements=[],wakeOnly=false},validate){
      active();check()

@@ -31,7 +31,7 @@ const h=await residentRouterHost(t,async body=>{
   const packets=requestText(body).filter(text=>text.startsWith('Router 请求：')).map(text=>JSON.parse(text.slice('Router 请求：'.length)))
   const input={events:[...new Map(packets.flatMap(packet=>packet.events).map(event=>[event.id,event])).values()]}
   const pendingIds=new Set((await h.query('router.inbox',{conversationId:requestEnvelope(body,'Router 请求：').conversationId})).map(event=>event.id));input.events=input.events.filter(event=>pendingIds.has(event.id))
-  if(role==='unreadable'&&!planned){const source=input.events.find(event=>event.source?.messageId==='same-new')?.source;if(source){planned=true;return {tool:'resident_task_plan',args:{operationId:'new-safe-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'safe-after-recovery',title:'Synthetic safe follow-up',objective:'Complete the isolated fixture without external effects',requirements:[]}],dependencies:[]}}}}
+  if(role==='unreadable'&&!planned){const source=input.events.find(event=>event.source?.messageId==='same-new')?.source;if(source){planned=true;return {tool:'resident_task_plan',args:{operationId:'new-safe-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'safe-after-recovery',title:'Synthetic safe follow-up',objective:'Complete the isolated fixture without external effects',requirements:[],handoff:'Complete the later same-channel fixture work without external effects.'}],dependencies:[]}}}}
   if(!input.events.length)return {text:'Settled'}
   if(phase==='recover'&&['unknown','unfrozen'].includes(role)){
    const source=input.events[0].source

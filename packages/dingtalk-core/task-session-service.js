@@ -12,6 +12,7 @@ import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import {TaskArchives} from '../../src/tasks/archive.js'
 import {freezeSingleTaskFiles} from '../../src/tasks/delivery.js'
 import {createSingleTaskSessions} from '../../src/tasks/single-session.js'
+import {routerHandoffTaskInput} from '../../src/tasks/execution-context.js'
 import {createTaskEffectReconciliation,taskEffectReconciliationIdentity,taskEffectDigest,effectReconciliationAuditKinds} from '../../src/tasks/effect-reconciliation.js'
 import {readTaskEffectScope} from '../../src/tasks/effect-scope.js'
 import {createObserverAlertPages} from './observer-alert-pages.js'
@@ -582,8 +583,13 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     return {...page,items:undefined,executions:[]}
   }
   async function materializeSource(taskId, source) {
-    const directories = await taskDirectories(root, taskId, {task:await requireTask(taskId)})
-    const target = join(directories.materials, `source-${hash(source.sourceId).slice(0, 32)}.json`)
+    const task = await requireTask(taskId)
+    const directories = await taskDirectories(root, taskId, {task})
+    const attachmentOnly = routerHandoffTaskInput(task)
+    const snapshotIdentity = attachmentOnly ? ['faithful-handoff-v1', source.sourceId, source.version] : source.sourceId
+    const text = attachmentOnly ? undefined : source.text
+    const quote = attachmentOnly ? undefined : source.quote
+    const target = join(directories.materials, `source-${hash(snapshotIdentity).slice(0, 32)}.json`)
     const readSnapshot = async () => {
       await checkedTaskDirectory(directories.materials)
       const info = await lstat(target)
@@ -592,8 +598,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       try { material = JSON.parse(await readFile(target, 'utf8')) } catch { fail('TASK_MATERIAL_SNAPSHOT_INVALID') }
       material = resolveTaskMaterialPaths(material, directories.materials, target)
       if (!material || material.sourceId !== source.sourceId || material.path !== target || material.taskId !== undefined && material.taskId !== taskId
-        || material.version !== undefined && material.version !== source.version || material.actorId !== source.actorId || material.messageId !== source.messageId || material.text !== source.text
-        || hash(material.quote ?? null) !== hash(source.quote ?? null) || !Array.isArray(material.resources)
+        || material.version !== undefined && material.version !== source.version || material.actorId !== source.actorId || material.messageId !== source.messageId || material.text !== text
+        || hash(material.quote ?? null) !== hash(quote ?? null) || !Array.isArray(material.resources)
         || material.resources.length !== (source.resources ?? []).length) fail('TASK_MATERIAL_SOURCE_MISMATCH')
       await mapIndependentReads(material.resources,readConcurrency(),async resource => {
         if (!resource || !source.resources.some(item => stableTaskResourceIdentity([resource.resource]) === stableTaskResourceIdentity([item]))) fail('TASK_MATERIAL_SOURCE_MISMATCH')
@@ -617,9 +623,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             || resource.value.file.bytes !== resource.bytes || resource.value.file.sha256 !== resource.sha256)) fail('TASK_MATERIAL_CONTENT_CHANGED')
       })
       await checkedTaskDirectory(directories.materials)
-      if (typeof source.text === 'string' && Buffer.byteLength(source.text) >= 512) {
+      if (typeof text === 'string' && Buffer.byteLength(text) >= 512) {
         const textPath = target.replace(/\.json$/, '.txt')
-        await publish(textPath, Buffer.from(source.text, 'utf8'))
+        await publish(textPath, Buffer.from(text, 'utf8'))
         return { ...material, version: source.version, textPath }
       }
       return material
@@ -664,7 +670,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       catch (error) { resources.push({ resource, status: 'unavailable', reason: error.code ?? 'RESOURCE_READ_FAILED' }) }
     }
     const material = clean({ taskId, sourceId: source.sourceId, version: source.version, actorId: source.actorId, messageId: source.messageId,
-      text: source.text, quote: source.quote, resources, path: target })
+      text, quote, resources, path: target })
     await publish(target, Buffer.from(JSON.stringify(bindTaskMaterialPaths(material,directories.materials))))
     return readSnapshot()
   }
@@ -825,7 +831,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         ...(args.kind==='control'?{control:args.control,reason:args.reason??source.text}:{}),
         ...(args.kind==='arrange'?{expectedArrangementRevision:args.expectedArrangementRevision,dependencies:args.dependencies}:{})}
       const hostLiveBinding=args.kind==='supplement'?taskSessions.liveBinding?.(task.taskId):undefined
-      const receipt=await command('router.task-action',{conversationId:args.conversationId,generation:args.generation,sourceId:source.sourceId,messageVersion:source.version,operationId:args.operationId,kind:'task.'+args.kind,action,inputSource:args.sourceId!==undefined,...(hostLiveBinding?{hostLiveBinding}:{}),...(args.sameGoal!==undefined?{sameGoal:args.sameGoal}:{})},'router-action:'+args.operationId)
+      const receipt=await command('router.task-action',{conversationId:args.conversationId,generation:args.generation,sourceId:source.sourceId,messageVersion:source.version,operationId:args.operationId,kind:'task.'+args.kind,action,inputSource:args.sourceId!==undefined,...(args.handoff!==undefined?{handoff:args.handoff}:{}),...(hostLiveBinding?{hostLiveBinding}:{}),...(args.sameGoal!==undefined?{sameGoal:args.sameGoal}:{})},'router-action:'+args.operationId)
       // 重放只补排空尚未退出的原租约，不能取消后续已经合法启动的新轮次。
       const originalLease=!task.drained&&task.leaseEpoch===receipt.result.task.leaseEpoch&&task.requirementRevision===receipt.result.task.requirementRevision&&task.controlRevision===receipt.result.task.controlRevision
       if(!(args.kind==='supplement'||args.kind==='resume'&&args.humanRequestId!==undefined)&&(!receipt.replayed||originalLease))await cancelLiveTask(task.taskId,oldTask,oldExecutions)
@@ -1151,7 +1157,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
               // create a fresh automatic channel follow-up during execution.
               exec?.signal.throwIfAborted()
               const topicFacts=!task.conversationId&&(replyBindings.length>0||!!task.replyBindings?.length||!!task.topicRefs?.length)
-              await command('task.wait', { binding:replyBinding, ...decision, topicFacts, replyBindings, ...(humanReply ? { humanReply } : {}) }, `wait:${taskId}:${binding.leaseEpoch}`)
+              await command('task.wait', { binding:replyBinding, ...decision, resultSource:'pi-task-result', topicFacts, replyBindings, ...(humanReply ? { humanReply } : {}) }, `wait:${taskId}:${binding.leaseEpoch}`)
             }
             submitted = true
             return { accepted: true }

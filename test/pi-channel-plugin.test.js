@@ -251,7 +251,7 @@ test('configured channel responsibilities isolate all model roles through the de
       const input=requestEnvelope(body,'Router 请求：'),room=rooms.find(row=>row.groupId===input.conversationId);record('router',room,body)
       const task=await app.tasks.store.query({kind:'task.get',taskId:room.taskId})
       const source=(await app.tasks.store.query({kind:'source.list'})).find(row=>row.messageId==='order-'+room.key)
-      if(!task)return {tool:'resident_task_plan',args:{operationId:'role-plan-'+room.key,sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:room.taskId,title:'Bounded task '+room.key,objective:'Complete the bounded local verification for '+room.key,requirements:['Report a verified bounded result']}],dependencies:[]}}
+      if(!task)return {tool:'resident_task_plan',args:{operationId:'role-plan-'+room.key,sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:room.taskId,handoff:'Complete the local verification for '+room.key+' and report its result.',title:'Bounded task '+room.key,objective:'Complete the bounded local verification for '+room.key,requirements:['Report a verified bounded result']}],dependencies:[]}}
       if(task.status==='completed'&&input.events.some(event=>event.taskEvent?.kind==='task.completed')&&!replied.has(room.key)){
         replied.add(room.key)
         return {tool:'resident_router_reply',args:{operationId:'role-result-'+room.key,sourceId:source.sourceId,messageVersion:source.version,text:'Bounded verification completed.',recipientActorIds:[]}}
@@ -364,7 +364,7 @@ for(const quoteMode of ['other-recipient','explicit','default'])test('default ap
       if(step===2)return {tool:'resident_router_reply',args:{...reply,recipientActorIds:[foreign]}}
       if(step===3)return {tool:'resident_router_reply',args:{...reply,atOpenDingTalkIds:[bob]}}
       if(step===4)return {tool:'resident_router_reply',args:{...reply,messageVersion:source.version+1,recipientActorIds:[bob]}}
-      if(step===5)return {tool:'resident_task_plan',args:{operationId:'neutral-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId,title:'Material verification',objective:'Read the original material, create a local result file and report the frozen output.',requirements:['Result bytes match the material']}],dependencies:[]}}
+      if(step===5)return {tool:'resident_task_plan',args:{operationId:'neutral-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId,handoff:'Read the attached material and deliver the verified file.'+(replyToSource?' Save it as work/'+taskId+'.txt, quote the request and notify the requester and Bob.':''),title:'Material verification',objective:'Read the original material, create a local result file and report the frozen output.',requirements:['Result bytes match the material']}],dependencies:[]}}
       if(step===6)return settle()
       return {text:'Original source disposition committed'}
     }
@@ -466,7 +466,7 @@ for(const quoteMode of ['other-recipient','explicit','default'])test('default ap
   assert.equal(parent.payload.taskDelivery.taskId,taskId);assert.equal(parent.payload.taskDelivery.requirementRevision,task.requirementRevision)
   assert.deepEqual(parent.payload.taskDelivery.artifactIds,task.completion.result.artifactFiles.map(file=>file.artifact.artifactId))
   assert.ok(taskPackets.length>=3)
-  for(const input of taskPackets){for(const source of input.sources){assert.equal(Object.hasOwn(source,'groupId'),false);if(source.quote){assert.equal(source.quote.actorId,bob);assert.equal(source.quote.text,message.quotedMessage.text);assert.equal(Object.hasOwn(source.quote,'senderOpenDingTalkId'),false)}}for(const material of input.materials){assert.equal(Object.hasOwn(material,'groupId'),false);if(material.quote)assert.equal(material.quote.actorId,bob)}}
+  for(const input of taskPackets){for(const source of [...input.sources,...input.materials]){assert.equal(Object.hasOwn(source,'groupId'),false);assert.equal(Object.hasOwn(source,'text'),false);assert.equal(Object.hasOwn(source,'quote'),false)}}
   const rejected=results.filter(row=>row.name==='resident_router_reply'&&row.result.isError)
   assert.equal(rejected.length,replyToSource?8:4,'source/recipient ACL, quote author and operation semantic conflicts fail inside the registered tool')
   if(!replyToSource)assert.equal(rejected.filter(row=>JSON.stringify(row.result).includes('GROUP_REPLY_INTERNAL_DETAILS')).length,1)

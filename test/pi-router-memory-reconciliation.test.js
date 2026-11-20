@@ -7,9 +7,9 @@ import {residentRouterHost,channelMessage,requestEnvelope,requestText,requestToo
 const scope={kind:'bot',id:hash('bot:shared')}
 const result=body=>JSON.parse(body.messages.at(-1).content)
 const cases=[
-  {key:'slow-readiness',decision:'update',initial:'现场反馈：首次加载慢，可能与副本扩容有关。',supplement:'补充：只有冷启动慢。请继续核实之前那条现场线索。',summary:'冷启动先等待 readiness；副本扩容是否为根因仍未确认。'},
-  {key:'obsolete-retry',decision:'delete',initial:'现场反馈：固定重试三次可以解决首次加载失败。',supplement:'补充：重试无效。请核实之前的重试建议。',summary:'验证表明固定重试三次无效，不能再作为修复建议。'},
-  {key:'unrelated-timeout',decision:'keep',initial:'现场反馈：导出服务超时需要核对导出队列。',supplement:'另外验证登录服务的超时，和此前导出队列不是同一个问题。',summary:'此次登录服务验证与原导出服务线索无关。'},
+  {key:'slow-readiness',initialHandoff:'核验首次加载变慢时是否发生副本扩容，不能先认定扩容就是原因。',supplementHandoff:'补充线索是只有冷启动慢；按这条线索继续核验。',decision:'update',initial:'现场反馈：首次加载慢，可能与副本扩容有关。',supplement:'补充：只有冷启动慢。请继续核实之前那条现场线索。',summary:'冷启动先等待 readiness；副本扩容是否为根因仍未确认。'},
+  {key:'obsolete-retry',initialHandoff:'核验首次加载失败后固定重试三次是否能恢复。',supplementHandoff:'补充反馈是重试无效，核对原先认为重试能恢复的建议。',decision:'delete',initial:'现场反馈：固定重试三次可以解决首次加载失败。',supplement:'补充：重试无效。请核实之前的重试建议。',summary:'验证表明固定重试三次无效，不能再作为修复建议。'},
+  {key:'unrelated-timeout',initialHandoff:'核对导出服务超时时导出队列的情况。',supplementHandoff:'验证另一个超时现象，范围是登录服务，不是导出队列。',decision:'keep',initial:'现场反馈：导出服务超时需要核对导出队列。',supplement:'另外验证登录服务的超时，和此前导出队列不是同一个问题。',summary:'此次登录服务验证与原导出服务线索无关。'},
 ]
 function handoff(body){
  const input=requestEnvelope(body,'Router 交接请求：')
@@ -20,7 +20,7 @@ function settle(input,key){return {tool:'resident_router_settle',args:{eventIds:
 // Scripted semantic choices exercise the real channel -> Pi Router -> task ->
 // completion -> memory path. They do not claim a live model always picks them.
 test('task verification reconciles an existing memory without a repeated memory command or internal key from the user',{timeout:nativeTestTimeout(180000)},async t=>{
- const steps=new Map(),completionSteps=new Map(),continued=new Set(),outcomes=new Map(),reads=new Map(),sources=new Map(),taskSessions=new Map(),completionCalls=new Map()
+ const steps=new Map(),completionSteps=new Map(),continued=new Set(),outcomes=new Map(),reads=new Map(),sources=new Map(),taskSessions=new Map(),completionCalls=new Map(),taskHandoffs=new Map()
  let h
  h=await residentRouterHost(t,async body=>{
   const transfer=handoff(body);if(transfer)return transfer
@@ -37,13 +37,13 @@ test('task verification reconciles an existing memory without a repeated memory 
     if(source.messageId.endsWith('-initial')){
      sources.set(item.key,source)
      if(step===0)return {tool:'resident_memory_remember',args:{sourceId:source.sourceId,messageVersion:source.version,topic:'projects',key:item.key,expectedRevision:0,sourceQuote:source.text,memory:{summary:item.initial,why:'来源为现场反馈，尚未经独立验证。',howToApply:'仅作为同一问题的待核验排查线索，不作为已确认根因。',appliesTo:{kind:'context',description:'同一服务同一现象的排查'},evidence:[{id:'initial',source:'message',sourceId:source.sourceId,messageVersion:source.version,quote:source.text}]}}}
-     if(step===1){assert.equal(result(body).persisted,true);return {tool:'resident_task_plan',args:{operationId:'plan-'+item.key,sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'verify-'+item.key,title:'Verify reported symptom',objective:'Verify the reported symptom and retained evidence',requirements:['Do not treat the original report as a verified conclusion']}],dependencies:[]}}}
+     if(step===1){assert.equal(result(body).persisted,true);return {tool:'resident_task_plan',args:{operationId:'plan-'+item.key,sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'verify-'+item.key,handoff:item.initialHandoff,title:'Verify reported symptom',objective:'Verify the reported symptom and retained evidence',requirements:['Do not treat the original report as a verified conclusion']}],dependencies:[]}}}
      if(step===2)return settle(input,source.messageId)
     }else{
      if(step===0){
       continued.add(item.key)
       const task=await h.query('task.get',{taskId:'verify-'+item.key})
-      return {tool:'resident_task_action',args:{operationId:'continue-'+item.key,kind:'resume',taskId:task.taskId,sourceId:source.sourceId,messageVersion:source.version,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,reason:'Follow-up evidence continues the same verification'}}
+      return {tool:'resident_task_action',args:{operationId:'continue-'+item.key,kind:'resume',handoff:item.supplementHandoff,taskId:task.taskId,sourceId:source.sourceId,messageVersion:source.version,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,reason:'Follow-up evidence continues the same verification'}}
      }
      if(step===1)return settle(input,source.messageId)
     }
@@ -77,7 +77,8 @@ test('task verification reconciles an existing memory without a repeated memory 
    const input=requestText(body).toReversed().map(text=>{try{return JSON.parse(text)}catch{return null}}).find(value=>value?.task)
    const item=cases.find(row=>input.task.taskId==='verify-'+row.key)
    const ids=taskSessions.get(item.key)??new Set();ids.add(input.task.sessionId);taskSessions.set(item.key,ids)
-   if(!continued.has(item.key))return {tool:'task_result',args:{decision:{action:'wait',question:'Provide the additional observation',summary:'Original report preserved; awaiting observation',evidence:['Original report is unverified'],limitations:['No validation result yet']}}}
+   const handoffs=taskHandoffs.get(item.key)??[];handoffs.push(input.handoffs?.map(handoff=>handoff.text));taskHandoffs.set(item.key,handoffs)
+   if(!continued.has(item.key))return {tool:'task_result',args:{decision:{action:'wait',summary:'Original report preserved; awaiting observation',evidence:['Original report is unverified'],limitations:['No validation result yet']}}}
    return {tool:'task_result',args:{decision:{action:'complete',summary:item.summary,evidence:['Read-only verification: '+item.summary],limitations:item.decision==='update'?['Expansion is not established as the root cause']:[]}}}
   }
   return {text:JSON.stringify({lessons:[]})}
@@ -90,6 +91,7 @@ test('task verification reconciles an existing memory without a repeated memory 
   await h.receive(channelMessage(item.key+'-followup',{text:item.supplement,quotedMessage:{messageId:'saved-'+item.key,senderId:'assistant',text:'已保存这条现场线索。'+item.initial}}));await h.service.whenIdle()
   const outcome=outcomes.get(item.key);assert.ok(outcome,item.key);assert.equal(outcome.ok,true,JSON.stringify(outcome))
   const after=(await h.host.ctx.memory.store.read(scope,{topic:'projects',key:item.key,includeSources:true})).entries[0]
+  assert.deepEqual(taskHandoffs.get(item.key),[[item.initialHandoff],[item.supplementHandoff]])
   assert.equal(taskSessions.get(item.key).size,1,'follow-up retains the original task execution session')
   assert.equal((await h.query('task.get',{taskId:'verify-'+item.key})).status,'completed')
   if(item.decision==='update'){

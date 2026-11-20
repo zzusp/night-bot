@@ -1,6 +1,8 @@
 import {assertSharedCommunicationGuidance} from './fixtures/communication-guidance.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {join} from 'node:path'
+import {restoreLegacyHumanWait} from './fixtures/legacy-human-wait.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestText,eventually} from './fixtures/resident-router-host.js'
 
@@ -36,9 +38,9 @@ test('default ingress shares room arrangements without merging private senders o
   assert.equal(h.sent.length,0);assert.equal((await h.query('task.list')).length,0)
 })
 
-test('conversation task questions use original requester and preserve the original scope/session',{timeout:nativeTestTimeout(60000)},async t=>{
+test('historical conversation task questions reach the original requester and resume the same scoped session',{timeout:nativeTestTimeout(60000)},async t=>{
   const packets=[]
-  const question='Which exact local verification input should be used?'
+  const legacyWait={question:'Which exact local verification input should be used?',summary:'A precise input is required before continuing',evidence:['original authenticated objective'],limitations:[]}
   const h=await residentRouterHost(t,body=>{
     const tools=requestTools(body)
     assert.ok(!tools.includes('channel_triage_submit'))
@@ -53,22 +55,32 @@ test('conversation task questions use original requester and preserve the origin
     const input=requestText({...body,messages:body.messages.filter(message=>message.role==='user')}).toReversed().map(text=>{try{return JSON.parse(text)}catch{return null}}).find(value=>value?.task)
     assert.ok(input);packets.push(input)
     const definition=body.tools.find(tool=>tool.function.name==='task_result').function
-    assert.deepEqual(definition.parameters.properties.decision.properties.audience.enum,['operator','requester'])
+    assert.equal(definition.parameters.properties.decision.properties.question,undefined)
+    assert.equal(definition.parameters.properties.decision.properties.audience,undefined)
     const answer=input.sources.find(source=>source.channel==='web'&&source.text==='Use the original local-only verification input.')
     if(answer){
       assert.equal(answer.actorId,'owner');assert.ok(answer.sourceId)
       return {tool:'task_result',args:{decision:{action:'complete',summary:'The original local work continued after the precise answer',evidence:['authorized answer read: '+answer.sourceId],limitations:[]}}}
     }
-    const audience=input.task.title.slice('audience-'.length)
-    assert.match(JSON.stringify(body.messages.filter(row=>row.role==='system')),/NIGHT_NATURAL_CHANNEL_REPLY/)
-    return {tool:'task_result',args:{decision:{action:'blocked',summary:'A precise input is required before continuing',question,evidence:['original authenticated objective'],limitations:[],...audience==='default'?{}:{audience}}}}
+    const {summary,evidence,limitations}=legacyWait
+    return {tool:'task_result',args:{decision:{action:'wait',summary,evidence,limitations}}}
   })
   for(const audience of ['default','requester']){
-    const input=channelMessage('question-'+audience,{senderId:'requester-'+audience,text:'Verify this local-only objective and ask for missing input explicitly.'}),identity=h.host.ctx.channels.identity(input),before=h.sent.length
+    const input=channelMessage('question-'+audience,{senderId:'requester-'+audience,text:'Verify this local-only objective with the precise input.'}),identity=h.host.ctx.channels.identity(input),before=h.sent.length
     await h.receive(input)
     const created=await h.service.createTask({requestId:'question-'+audience,title:'audience-'+audience,objective:input.text,channel:input})
     await h.service.whenIdle()
-    let task=await h.query('task.get',{taskId:created.taskId})
+    const scaffold=await h.query('task.get',{taskId:created.taskId})
+    assert.equal(scaffold.drained,true);assert.equal(scaffold.lastDecision.action,'wait')
+    assert.equal(scaffold.humanRequests.length,0,'new execution does not open a question')
+    assert.equal(h.sent.length,before,'technical wait sends nothing')
+    const dbPath=join(h.host.ctx.runtimePaths.state,'tasks.sqlite')
+    // Restore a frozen old requester question after the real execution drains.
+    // The current model is never allowed to create a question or choose an audience.
+    await h.close()
+    restoreLegacyHumanWait(dbPath,created.taskId,audience==='default'?legacyWait:{...legacyWait,audience},{prepareNotice:true})
+    await h.restart();await h.service.whenIdle()
+    const task=await h.query('task.get',{taskId:created.taskId})
     assert.equal(task.drained,true);assert.equal(task.conversationId,identity.sessionId);assert.equal(task.ownerActorId,identity.principal)
     assert.equal(task.humanRequests.length,1)
     const request=task.humanRequests[0]
@@ -77,7 +89,7 @@ test('conversation task questions use original requester and preserve the origin
     assert.ok(web);assert.equal(web.audience,request.audience)
     const notices=await h.query('notification.list',{taskId:task.taskId})
       await eventually(()=>h.sent.length===before+1&&h.readbacks.length===before+1,'requester question actually sent and read back by local transport',t.signal)
-      assert.equal(request.question,question);
+      assert.equal(request.question,legacyWait.question);
       assert.equal(notices.length,1);assert.equal(notices[0].kind,'question');assert.equal(notices[0].payload.audience,'requester')
       const source=await h.query('source.get',{sourceId:notices[0].payload.sourceId})
       assert.equal(source.actorId,identity.principal);assert.equal(source.messageId,input.messageId);assert.equal(source.groupId,identity.sessionId);assert.equal(notices[0].payload.sourceVersion,source.version)
@@ -93,9 +105,9 @@ test('conversation task questions use original requester and preserve the origin
     await h.service.respondHumanRequest(args);await h.service.whenIdle()
     assert.equal(packets.length,calls,'repeating the same accepted answer does not restart completed work')
   }
-  for(const audience of ['default','requester'])assert.equal(packets.filter(input=>input.task.title==='audience-'+audience).length,2,'one question submission and one same-session answer, with no rewrite round')
+  for(const audience of ['default','requester'])assert.equal(packets.filter(input=>input.task.title==='audience-'+audience).length,2,'one stopped scaffold and one same-session answer, with no rewrite round')
   assert.equal(h.errors.length,0)
-  t.diagnostic(JSON.stringify({case:'operator-requester-routing',defaultRequester:true,retiredOperatorQuestionOverride:true,requesterSourcePreserved:true,requesterWebCasResumeSameSession:true,realVendorExecuted:false}))
+  t.diagnostic(JSON.stringify({case:'legacy-requester-routing',defaultRequester:true,currentQuestionAndAudienceFieldsAbsent:true,requesterSourcePreserved:true,requesterWebCasResumeSameSession:true,realVendorExecuted:false}))
 })
 
 test('Router sends directly while rejecting a draft containing credentials',{timeout:nativeTestTimeout(30000)},async t=>{

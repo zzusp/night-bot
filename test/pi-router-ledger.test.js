@@ -675,7 +675,28 @@ test('new triage conclusions are frozen, bound, reply-independent and idempotent
  assert.deepEqual(await f.query('router.inbox',{conversationId:f.conversationId}),before)
 })
 
-test('Router task handoff binds original sources and strips subjective supplemental text at the Host sink',async t=>{
+test('Router persists faithful handoffs against verified sources and task revisions',async t=>{
+ const f=await fixture(t),{conversationId,generation,sourceId}=f
+ const first='Verify A using the available evidence.'
+ await f.plan({tasks:[{taskId:'a',request:'A Router guess not sent to execution.',handoff:first}],dependencies:[]})
+ const original=await f.query('source.get',{sourceId})
+ const task=await f.query('task.get',{taskId:'a'})
+ assert.equal(task.request,first)
+ assert.deepEqual(task.metadata.routerHandoffs,[{id:'original-plan',sourceId,messageVersion:1,requirementRevision:1,contextRevision:0,text:first}])
+ const delta='new-scope', second='Keep the original scope and do not write to the service.'
+ await f.command('source.record-direct',{source:{sourceId:delta,groupId:conversationId,messageId:'new-user-message',actorId:'alice',version:1,text:'Raw correction goes only in the sender ledger.'},conversation:{conversationId}})
+ const action={conversationId,generation,sourceId:delta,messageVersion:1,operationId:'append-scope',kind:'task.supplement',inputSource:true,handoff:second,action:{taskId:'a',messageId:'append-scope',text:'Router guesses extra work.',expectedRequirementRevision:1,expectedControlRevision:1}}
+ await assert.rejects(f.command('router.task-action',{...action,messageVersion:2}),{code:'ROUTER_SOURCE_STALE'})
+ await f.command('router.task-action',action)
+ await f.command('router.task-action',action)
+ const revised=await f.query('task.get',{taskId:'a'})
+ assert.equal(revised.metadata.routerInputPolicy,'faithful-handoff-v1')
+ assert.deepEqual(revised.metadata.routerHandoffs,[...task.metadata.routerHandoffs,{id:'append-scope',sourceId:delta,messageVersion:1,requirementRevision:1,contextRevision:1,text:second}])
+ assert.equal(revised.currentInput.text,second)
+ assert.deepEqual(await f.query('source.get',{sourceId}),original)
+})
+
+test('legacy Router task handoff binds original sources and strips subjective supplemental text at the Host sink',async t=>{
  const f=await fixture(t);await f.plan({dependencies:[],tasks:[{taskId:'a',title:'ROUTER_GUESS',request:'ROUTER_GUESS',requirements:['ROUTER_GUESS']}]})
  let task=await f.query('task.get',{taskId:'a'});assert.equal(task.metadata.routerInputPolicy,'source-only-v1')
  await f.command('source.record-direct',{source:{sourceId:'real-supplement',groupId:f.conversationId,messageId:'next',actorId:'alice',version:1,text:'继续原任务，只读查看原来五分钟日志，输出范围并脱敏'},conversation:{conversationId:f.conversationId}})

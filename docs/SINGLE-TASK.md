@@ -4,9 +4,9 @@ In the portable Night Bot kit, a task has one durable Pi execution session. It
 uses native file, shell, web, memory and skill tools directly, and commits
 `task_result`. There is no task coordinator/owner conversation, delegate tool,
 execution team or child-execution driver. The default portable preset also omits
-subagent tools. First-tier triage only decides handling and short replies. The
-conversation's durable Router arranges tasks and assesses their results; neither
-role is an additional task execution session. Topic is no longer an active routing
+subagent tools. New channel messages go straight to the durable Router. It
+decides what needs work, relays the request and sends the result; it is not
+another task execution session. Topic is no longer an active routing
 entity. A retrospective is a separate tool-free
 model request after completion, not another execution session.
 
@@ -16,9 +16,11 @@ model request after completion, not another execution session.
 
 ## 排查和补问
 
-执行会话负责取证、验证假设和决定是否补问。排查先读原始反馈与已有材料，沿最具体的现象或报错核对现场环境、版本和调用路径；区分已证事实、待验证假设和取证限制。某个工具或访问路径失败不代表用户漏报，也不应中断其他可继续的授权工作。
+执行会话根据 Router 对用户诉求的简短转述和可用附件取证，沿最具体的现象或报错核对现场环境、版本和调用路径；区分已证事实、待验证假设和取证限制。某个工具或访问路径失败不代表用户漏报，也不应中断其他可继续的授权工作。
 
 执行不主动提问，也不向 Router 或渠道播报中间进展；继续在原授权内自行取得必要信息。缺项确实阻断必要步骤且无安全路径时，以 `task_result(blocked)` 记录已核对的证据、真实缺项和限制，不伪造完成或自旋。`question` / `audience` 已从执行工具移除，Host 与账本也拒绝新建问询。用户主动补充仍由 Router 判断是否恢复原执行会话；补充本身不批准工具调用、不扩大权限。旧待答记录和已冻结通知保留原身份、回执及恢复边界，不转换、不新建自动追问。
+
+任务完成或确实无法继续时，Router 默认把可用结果和必要卡点送回原渠道。用户只说不用发文件时，仍反馈文字结果；明确要求不发结果才静默。普通等待或运行时巡检不是执行结论。
 
 ## 执行生命周期
 
@@ -59,11 +61,10 @@ packet digest 和原任务绑定；同一次已登记调用不可再次执行业
 可以同参；不同命令文字也不证明业务效果不同。原 Night v1 收据只在实际原输入和调用
 唯一匹配时读取，不改写历史，歧义保持阻断，详见 [输入与重试](PI-TASK-INPUT-AND-RETRY.md)。
 
-活跃任务接收原会话 steer；不活跃时唤起原会话并交付新输入。未决 intent 或旧后台作业
-不会阻拦推理、只读核验或 `wait` / `blocked` 报告；未核实的副作用及完成提交仍受保护。
-当前 owner 的进程和作业必须真正排空；旧收据缺终态既不等于当前 owner 未排空，也不证明
-旧作业已退出。provider retry、换 call ID 或恢复目录不授权重放原调用；取消或工具失败
-可能已有部分效果，须如实报告。
+活跃任务接收原会话 steer；不活跃时唤起原会话并交付新输入。过去租约的未知回执留在
+历史里，不阻断独立的新调用或当前目标的独立验证。当前轮未决效果、活跃进程和未释放资源
+仍须核实。旧记录缺终态不证明曾运行或已退出；provider retry、换 call ID 或恢复目录
+都不授权重放原调用。部分效果可能已发生，必须如实报告。
 
 Completed tasks trigger the independent scoped retrospective. Failure to learn or
 send a notification cannot reverse task completion. 旧任务 Owner/多执行 session
