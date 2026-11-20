@@ -34,7 +34,7 @@ test('real Pi call owns a committed job receipt and cold inspection never relaun
  try{assert.deepEqual(resumed.ctx.jobs.list(parent.id),[]);const cold=await resumed.ctx.sessionPersistence.readNative(parent.id);assert.deepEqual(cold.audit,saved.audit);assert.deepEqual(cold.entries,saved.entries);assert.equal(starts,1);assert.equal(f.requests.length,requests);assert.deepEqual(await readFile(path),bytes)}finally{await resumed.close()}
 })
 
-test('cold Pi activation refuses an unresolved job journal instead of polling or restarting its producer',async t=>{
+test('cold Pi receives new input without polling, closing or restarting an unresolved producer',async t=>{
  const {mkdir,copyFile}=await import('node:fs/promises'),{basename}=await import('node:path')
  const done=Promise.withResolvers();let parent,starts=0
  const f=await subagentFixture(t,(_,f)=>f.requests.length===1?{tools:[{id:'unresolved-call',name:'leave_owned_job',args:{}}]}:{text:'job remains owned'})
@@ -42,33 +42,35 @@ test('cold Pi activation refuses an unresolved job journal instead of polling or
  f.host.ctx.tools.register({name:'leave_owned_job',description:'Admit a test-only pending producer',parameters:{type:'object'},output:{schema:{type:'string'},render:(_,id)=>[{type:'text',text:id}]},execute:(_,exec)=>f.host.ctx.jobs.startDurable({kind:'fixture',label:'unresolved crash fixture',owner:exec.agent.id,run(){starts++;return{done:done.promise,cancel(){done.resolve({status:'killed'})}}}},exec)})
  parent=await parentOf(f,'cold-unresolved-job');await prompt(parent,'Leave one pending fixture producer')
  const original=f.host.ctx.sessionPersistence.path(parent.id),coldState=join(f.root,'cold-state');await mkdir(join(coldState,'sessions'),{recursive:true});await copyFile(original,join(coldState,'sessions',basename(original)))
- // This copied unresolved journal intentionally retains fail-closed ownership.
- // Inspect it in a separate process, so terminating the inspection process
- // cannot be mistaken for successful producer reconciliation or application drain.
  const config={stateDir:coldState,workspaceDir:join(f.root,'work'),model:{provider:'fixture',model:'m'},providers:{fixture:{api:'openai-completions',apiKeyEnv:'COLD_JOB_FIXTURE_KEY',baseURL:'http://127.0.0.1:1/v1',models:[{id:'m',maxTokens:256,contextWindow:16384}]}}}
  const script=`
   import assert from 'node:assert/strict';
   import {createHost} from './src/host.js';
+  import {createAssistantMessageEventStream} from '@earendil-works/pi-ai';
   const cold=await createHost(${JSON.stringify(config)},{environmentOptions:{inherited:{COLD_JOB_FIXTURE_KEY:'fixture-only'}}});
   let modelCalls=0;
   const official=cold.ctx.nativePiProvider.official,resolve=official.resolve.bind(official);
-  official.resolve=async(...args)=>{const result=await resolve(...args),stream=result.modelRuntime.streamSimple.bind(result.modelRuntime);result.modelRuntime.streamSimple=(...input)=>{modelCalls++;return stream(...input)};return result};
+  official.resolve=async(...args)=>{const result=await resolve(...args);result.modelRuntime.streamSimple=(model,context)=>{
+   modelCalls++;assert.match(JSON.stringify(context.messages),/Do not replay unresolved effects/);
+   const stream=createAssistantMessageEventStream(),message={role:'assistant',api:model.api,provider:model.provider,model:model.id,content:[{type:'text',text:'New input read; old producer not replayed'}],timestamp:Date.now(),stopReason:'stop',usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}};
+   stream.push({type:'done',reason:'stop',message});stream.end(message);return stream;
+  };return result};
   const handle=await cold.ctx.agents.resume({resumeSessionId:${JSON.stringify(parent.id)},authorizeInput:(p,a)=>a.id===${JSON.stringify(parent.id)}&&p.id==='cold-input'&&p.source.kind==='fixture-user'});
   await handle.enqueue({id:'cold-input',source:{kind:'fixture-user'},content:'Do not replay unresolved effects'});
-  await assert.rejects(handle.deliver('cold-input'),{code:'NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY'});
-  assert.equal(modelCalls,0);assert.deepEqual(cold.ctx.jobs.list(handle.actor.id),[]);
-  await assert.rejects(handle.dispose(),{code:'PI_BUSINESS_DRAIN_UNPROVEN'});
-  const drainUnproven=error=>error?.code==='PI_BUSINESS_DRAIN_UNPROVEN'||error instanceof AggregateError&&error.errors.some(drainUnproven);
-  await assert.rejects(cold.close(),error=>error instanceof AggregateError&&drainUnproven(error));
-  assert.equal(cold.ctx.agents.get(handle.actor.id),handle.actor);
-  process.send({modelCalls,producerRecords:cold.ctx.jobs.list(handle.actor.id).length,ownershipRetained:true});
+  await handle.deliver('cold-input');await handle.whenIdle();
+  assert.equal(modelCalls,1);assert.deepEqual(cold.ctx.jobs.list(handle.actor.id),[]);
+  await handle.dispose();assert.equal(cold.ctx.agents.get(handle.actor.id),undefined);
+  const saved=await cold.ctx.sessionPersistence.readNative(handle.actor.id,{requireComplete:true});
+  assert.match(JSON.stringify(saved.entries),/New input read; old producer not replayed/);
+  assert.deepEqual(saved.audit.filter(row=>row.domain==='job').map(row=>row.kind),['registered']);
+  await cold.close();process.send({modelCalls,producerRecords:0});
  `
  const child=spawn(process.execPath,['--input-type=module','-e',script],{cwd:process.cwd(),stdio:['ignore','pipe','pipe','ipc']});let output=''
  for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>output+=chunk)
  const exited=once(child,'close'),signal=AbortSignal.any([t.signal,AbortSignal.timeout(nativeTestTimeout(10000))])
  try{
   const [proof]=await Promise.race([once(child,'message',{signal}),exited.then(result=>assert.fail(JSON.stringify(result)+output))])
-  assert.deepEqual(proof,{modelCalls:0,producerRecords:0,ownershipRetained:true});assert.equal(starts,1)
+  assert.deepEqual(proof,{modelCalls:1,producerRecords:0});assert.equal(starts,1)
  }catch(error){throw new Error('Cold unresolved-job proof did not complete: '+output,{cause:error})}
  finally{child.kill('SIGTERM');await exited}
 })

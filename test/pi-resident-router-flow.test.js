@@ -1329,7 +1329,11 @@ for(const cut of ['prepared-only','journal-committed'])test(`Router resumes thro
       return {text:'Committed'}
     }
     if(requestTools(body).includes('partial_router_write')){
-      if(phase==='unknown')return {tool:'partial_router_write',args:{}}
+      if(phase==='unknown'){phase='report-unknown';return {tool:'partial_router_write',args:{}}}
+      if(phase==='report-unknown'){
+        assert.match(JSON.stringify(body.messages),/TASK_EFFECT_UNCERTAIN_NO_REPLAY/)
+        return {tool:'task_result',args:{decision:{action:'wait',summary:'The original outcome remains unknown',evidence:['The write response was lost'],limitations:['Do not replay']}}}
+      }
       if(phase==='write'){phase='finish';return {tool:'write',args:{path:'work/independent.txt',content:'new independent work'}}}
       return {tool:'task_result',args:{decision:{action:'complete',summary:'Independent work complete; the old invocation remains closed with possible partial effects.',evidence:['work/independent.txt'],limitations:['Old partial effects retained']}}}
     }

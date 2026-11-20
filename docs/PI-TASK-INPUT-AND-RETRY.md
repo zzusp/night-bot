@@ -35,8 +35,10 @@ key and verified official input must identify exactly one call. Provider call-ID
 reuse across distinct inputs is supported when that proof is unique; genuinely
 ambiguous old records remain held. This is Night upgrade support, not DSH import.
 
-Unknown effects still hold side effects until reconciliation; Router can wake the
-same session for evidence readback without requesting execution authorization.
+Unknown effects still hold side effects until reconciliation. They do not stop
+Pi inference or new input: active tasks receive steer, and inactive tasks resume
+the original session. The model can read evidence and report wait/blocked without
+requesting execution authorization or first closing a historical job.
 After closure, ordinary Router scheduling permits independent new calls and task
 completion. No separate operator grant, new objective or requirement revision is
 required. Closure never declares the old partial outcome successful, and the
