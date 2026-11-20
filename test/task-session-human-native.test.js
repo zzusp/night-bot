@@ -54,7 +54,6 @@ for (const operatorUserId of [undefined,'legacy-operator']) test(`环境资料�
   const h=await fixture(t,request=>routeTask(request)??[humanRequest({reason:'需要核实环境归属',question,evidence:['仅内部证据'],attemptedActions:['仅内部排查过程']})],{config:{operatorUserId}})
   const task=await createGroupTask(h,'environment-source','只读核对生产服务的错误数')
   assert.equal(task.humanRequests[0].status,'waiting-reply')
-  assert.ok(h.auxiliaryRequests.some(request=>request.purpose==='reply-quality'),'the original-conversation question must pass the real prose-review gate')
   const notices=()=>h.sent.filter(item=>item.taskId===task.taskId&&item.kind==='question')
   assert.equal(notices().length,1)
   const [notice]=notices()
@@ -158,7 +157,7 @@ for(const batched of [true,false])test(`Router 保留两条事实追问来源并
       return routed
     }
     turns++;return [requestHuman('requester')]
-  })
+  },{compactionSummary:'原任务仍在等待获准的环境与操作范围；后续只答复事实追问，不改变任务状态。'})
   original=await createGroupTask(h,'batch-followup-'+batched,'方案等待确认，仅回答事实追问')
   const initialTurns=turns,messages=['batch-first','batch-second','batch-unrelated'].map((messageId,index)=>({groupId:'native-group',messageId,
     senderOpenDingTalkId:'member-'+index,text:index<2?`测试助手，第 ${index+1} 项目前实施了什么？`:'测试助手，另一件事下周再聊',occurredAt:new Date().toISOString()}))

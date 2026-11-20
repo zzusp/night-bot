@@ -4,18 +4,14 @@ import {mkdtemp,rm} from 'node:fs/promises'
 import {join} from 'node:path'
 import {createHost} from '../../src/host.js'
 import {randomUUID} from 'node:crypto'
-export async function memoryHost(t,decide=()=>undefined,{callIdPrefix='',background=false,portable=true,dingtalkProfileRunner,hostConfig={},inheritedEnvironment={},replyQuality=acceptScriptedReplyQuality,strictModelDecisions=false}={}){
+export async function memoryHost(t,decide=()=>undefined,{callIdPrefix='',background=false,portable=true,dingtalkProfileRunner,hostConfig={},inheritedEnvironment={},strictModelDecisions=false}={}){
   const root=await mkdtemp(join(tmpdir(),'night-memory-wire-')),requests=[],errors=[];let host
   const server=createServer(async(req,res)=>{
     req.setEncoding('utf8')
     let raw='';for await(const chunk of req)raw+=chunk
-    const body=JSON.parse(raw);requests.push(body);const review=replyQualityRequest(body)
-    let decision
-    if(review)decision=await replyQuality(review,body)
-    else{
-      const selection=JSON.stringify(body.messages).includes('NIGHT_BOT_REFLECTION_SELECT')
-      decision=scriptedAdmissionDecisions(body,selection?scriptedAdmissionSelection(body):await decide(body)??scriptedSkillGeneration(body))
-    }
+    const body=JSON.parse(raw);requests.push(body)
+    const selection=JSON.stringify(body.messages).includes('NIGHT_BOT_REFLECTION_SELECT')
+    let decision=scriptedAdmissionDecisions(body,selection?scriptedAdmissionSelection(body):await decide(body)??scriptedSkillGeneration(body))
     // Normal legacy scripted models used bare settle for no further action.
     // Supply only the explicit new direct-source disposition; negative Host
     // contract cases opt out. No production result or scope is rewritten.
@@ -47,14 +43,6 @@ export async function memoryHost(t,decide=()=>undefined,{callIdPrefix='',backgro
     async agent(id,binding){const handle=await host.ctx.agents.create({sessionId:id,meta:{cwd:join(root,'data','workspaces'),agentPreset:'night-bot'},agentOptions:config.model,authorizeInput:packet=>packet.source.kind==='user',setup:async ctx=>{await host.ctx.agentPresets.mount(ctx,'night-bot')}});if(binding)await host.ctx.memory.bindSession(id,binding);return handle},
     async say(agent,text){const message={id:randomUUID(),source:{kind:'user'},content:[{type:'text',text}]};await agent.input.enqueue(message);await agent.input.deliver(message.id,{deliverAs:'followUp'});await agent.whenIdle();await host.ctx.memory.whenIdle();return message},
   }
-}
-
-export function replyQualityRequest(body){
-  if(!body.messages.some(row=>row.role==='system'&&row.content.startsWith('NIGHT_BOT_REPLY_QUALITY_REVIEW')))return
-  return JSON.parse(body.messages.find(row=>row.role==='user').content)
-}
-function acceptScriptedReplyQuality({candidates}){
-  return {text:JSON.stringify({decisions:candidates.map(({index})=>({index,issues:[]}))})}
 }
 
 // 低层复盘夹具也须兑现 Host 的工作区创建事务，不能直接 claim pending 任务。

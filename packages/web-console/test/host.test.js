@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {createHash} from 'node:crypto'
-import {memoryHost,replyQualityRequest} from '../../../test/fixtures/memory-host.js'
+import {memoryHost} from '../../../test/fixtures/memory-host.js'
 import {nativeTestTimeout} from '../../../test/fixtures/native-lifecycle.js'
 import {requestEnvelope, requestTools, eventually} from '../../../test/fixtures/resident-router-host.js'
 import {createHost} from '../../../src/host.js'
@@ -101,7 +101,7 @@ test('discovered Web plugin reaches direct channel Router and durable reply read
     const requestCount = f.requests.length
     assert.equal(f.requests.filter(body=>requestTools(body).includes('channel_triage_submit')).length,0,'no pre-Router inference')
     assert.equal(f.requests.filter(body=>requestTools(body).includes('resident_router_settle')).length,3,'reply, settle and final Router response')
-    assert.equal(f.requests.filter(replyQualityRequest).length,1,'the discovered application must use its declared review provider')
+    assert.equal(requestCount-scheduleReadsBefore,3,'a Web reply does not request a second model for review')
     const channels = host.ctx.channels
     await host.close(); host = undefined
     assert.equal(channels.transports.has(channelId), false, 'Host stop must release optional HTTP transport')

@@ -37,8 +37,8 @@ test('default ingress shares room arrangements without merging private senders o
 })
 
 test('conversation task questions use original requester and preserve the original scope/session',{timeout:nativeTestTimeout(60000)},async t=>{
-  const packets=[],reviewed=[]
-  const draft='兹请提供具体输入，收到后将开展相关核验工作。',question='Which exact local verification input should be used?'
+  const packets=[]
+  const question='Which exact local verification input should be used?'
   const h=await residentRouterHost(t,body=>{
     const tools=requestTools(body)
     assert.ok(!tools.includes('channel_triage_submit'))
@@ -60,19 +60,9 @@ test('conversation task questions use original requester and preserve the origin
       return {tool:'task_result',args:{decision:{action:'complete',summary:'The original local work continued after the precise answer',evidence:['authorized answer read: '+answer.sourceId],limitations:[]}}}
     }
     const audience=input.task.title.slice('audience-'.length)
-    const revise=JSON.stringify(body.messages.filter(row=>row.role==='tool')).includes('REPLY_QUALITY_REVISION_REQUIRED')
     assert.match(JSON.stringify(body.messages.filter(row=>row.role==='system')),/NIGHT_NATURAL_CHANNEL_REPLY/)
-    return {tool:'task_result',args:{decision:{action:'blocked',summary:'A precise input is required before continuing',question:audience==='requester'&&!revise?draft:question,evidence:['original authenticated objective'],limitations:[],...audience==='default'?{}:{audience}}}}
-  },{hostOptions:{replyQuality:async({candidates},body)=>{
-    assert.deepEqual(requestTools(body),[]);
-    assert.equal(candidates.length,1);
-    const [candidate]=candidates;
-    assert.equal(candidate.purpose,'task-requester-question');assert.equal(Object.hasOwn(candidate,'routerReply'),false,'Router-only timing policy does not change task questions');
-    const activeTasks=(await h.query('task.list')).filter(task=>!task.drained);assert.equal(activeTasks.length,1);const reviewedTask=activeTasks[0];assert.equal(reviewedTask.humanRequests.length,0);
-    assert.equal((await h.query('notification.list',{taskId:reviewedTask.taskId})).length,0);
-    reviewed.push(candidate.text);
-    return {text:JSON.stringify({decisions:[{index:0,issues:candidate.text===draft?['bureaucracy']:[]}]})};
-  }}})
+    return {tool:'task_result',args:{decision:{action:'blocked',summary:'A precise input is required before continuing',question,evidence:['original authenticated objective'],limitations:[],...audience==='default'?{}:{audience}}}}
+  })
   for(const audience of ['default','requester']){
     const input=channelMessage('question-'+audience,{senderId:'requester-'+audience,text:'Verify this local-only objective and ask for missing input explicitly.'}),identity=h.host.ctx.channels.identity(input),before=h.sent.length
     await h.receive(input)
@@ -87,11 +77,11 @@ test('conversation task questions use original requester and preserve the origin
     assert.ok(web);assert.equal(web.audience,request.audience)
     const notices=await h.query('notification.list',{taskId:task.taskId})
       await eventually(()=>h.sent.length===before+1&&h.readbacks.length===before+1,'requester question actually sent and read back by local transport',t.signal)
-      assert.deepEqual(reviewed,audience==='default'?[question]:[question,draft,question]);assert.equal(request.question,question);
+      assert.equal(request.question,question);
       assert.equal(notices.length,1);assert.equal(notices[0].kind,'question');assert.equal(notices[0].payload.audience,'requester')
       const source=await h.query('source.get',{sourceId:notices[0].payload.sourceId})
       assert.equal(source.actorId,identity.principal);assert.equal(source.messageId,input.messageId);assert.equal(source.groupId,identity.sessionId);assert.equal(notices[0].payload.sourceVersion,source.version)
-      assert.equal(h.sent.at(-1).conversationId,input.conversationId);assert.equal(h.sent.at(-1).senderId,input.senderId)
+      assert.equal(h.sent.at(-1).conversationId,input.conversationId);assert.equal(h.sent.at(-1).senderId,input.senderId);assert.deepEqual(h.sent.at(-1).recipientIds,[input.senderId])
     const args={taskId:task.taskId,humanRequestId:request.requestId,requestId:'precise-local-answer',reply:'Use the original local-only verification input.',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}
     await assert.rejects(h.service.respondHumanRequest({...args,expectedControlRevision:task.controlRevision+1}),{code:'DYNAMIC_HUMAN_REQUEST_STALE'})
     await h.service.respondHumanRequest(args);await h.service.whenIdle()
@@ -103,48 +93,43 @@ test('conversation task questions use original requester and preserve the origin
     await h.service.respondHumanRequest(args);await h.service.whenIdle()
     assert.equal(packets.length,calls,'repeating the same accepted answer does not restart completed work')
   }
-  for(const audience of ['default','requester'])assert.equal(packets.filter(input=>input.task.title==='audience-'+audience).length,audience==='requester'?3:2)
+  for(const audience of ['default','requester'])assert.equal(packets.filter(input=>input.task.title==='audience-'+audience).length,2,'one question submission and one same-session answer, with no rewrite round')
   assert.equal(h.errors.length,0)
   t.diagnostic(JSON.stringify({case:'operator-requester-routing',defaultRequester:true,retiredOperatorQuestionOverride:true,requesterSourcePreserved:true,requesterWebCasResumeSameSession:true,realVendorExecuted:false}))
 })
 
-test('Router returns review feedback to its author and freezes only its revised text',{timeout:nativeTestTimeout(30000)},async t=>{
- let initial;let step=0;const answer='确认有一条空值误拦路径，但还不能证明是这次失败的根因。', draft='这次 UAT 失败的根因是空值误拦，已经修好了。', reviewed=[];
+test('Router sends directly while rejecting a draft containing credentials',{timeout:nativeTestTimeout(30000)},async t=>{
+ const assertReleaseReplyRule=prompt=>assert.match(prompt,/默认 ELI5 方式交流/u);
+ let initial;let step=0;const answer='确认有一条空值误拦路径，但还不能证明是这次失败的根因。', draft='api_key: synthetic-fixture-only';
  const h=await residentRouterHost(t,body=>{
   const tools=requestTools(body),input=requestEnvelope(body,'Router 请求：');
   assert.ok(!tools.includes('channel_triage_submit'));
   if(!tools.includes('resident_router_reply'))return {text:'Settled'};
   const prompt=body.messages.filter(row=>row.role==='system').map(row=>row.content).join('\n');
   assert.match(prompt,/沟通规范索引/);assert.match(prompt,/NIGHT_NATURAL_CHANNEL_REPLY/);assert.doesNotMatch(prompt,/NIGHT_TASK_PUBLIC_COMMUNICATION/);
+  assertReleaseReplyRule(prompt);
   if(step===0){initial=body;step++;return {tool:'communication_guidance_read',args:{}}}
   assertSharedCommunicationGuidance(initial,body)
   assert.match(JSON.stringify(body.messages.filter(row=>row.role==='tool')),/本次事件根因分开/);
   const events=requestEnvelope(body,'Router 请求：').events,source=events.find(event=>event.source)?.source;
   const reply=text=>({tool:'resident_router_reply',args:{operationId:'natural-answer',sourceId:source.sourceId,messageVersion:source.version,text}});
   if(step++===1)return reply(draft);
-  if(step===3){assert.match(JSON.stringify(body.messages.filter(row=>row.role==='tool')),/REPLY_QUALITY_REVISION_REQUIRED.*按实际证据/);return reply(answer)}
+  if(step===3){assert.match(JSON.stringify(body.messages.filter(row=>row.role==='tool')),/GROUP_REPLY_SENSITIVE_DETAILS/);return reply(answer)}
   if(step===4)return {tool:'resident_router_settle',args:{operationId:'natural-settle',eventIds:events.map(event=>event.id),noTaskDispositions:events.filter(event=>event.source).map(event=>({eventId:event.id,outcome:'handled-inline',reason:'Answered the current evidence boundary without claiming repair',sourceQuote:event.source.text}))}};
   return {text:'Settled'};
- },{hostOptions:{replyQuality:async({candidates},body)=>{
-   assert.deepEqual(requestTools(body),[]);assert.equal(body.messages.length,2);
-   assert.equal((await h.query('notification.list')).length,0);
-   assert.equal(candidates.length,1);assert.match(candidates[0].sourceText,/本次UAT输入和日志还没核实/);
-   const [{index,text}]=candidates;reviewed.push(text);
-   return {text:JSON.stringify({decisions:[{index,issues:text===draft?['overclaim']:[]}]})};
- }}});
+ });
  const message=channelMessage('natural-scope',{text:'空值误拦路径已核实，但本次UAT输入和日志还没核实。请说明目前能确定什么。'});
  await h.receive(message);await h.service.whenIdle();
  assert.deepEqual(h.sent.map(row=>row.text),[answer]);assert.equal((await h.query('task.list')).length,0);
  const calls=h.requests.length;await h.receive(message);await h.service.whenIdle();assert.equal(h.requests.length,calls);assert.equal(h.sent.length,1);
- assert.deepEqual(reviewed,[draft,answer]);
+ assert.equal(h.requests.length,5,'only the original Router tool loop reaches the model');
  const [receipt]=await h.query('notification.list');assert.equal(receipt.state,'delivered');assert.equal(receipt.payload.text,answer);
 });
 
 test('Router progress quotes the original source without changing an old frozen plain reply',{timeout:nativeTestTimeout(30000)},async t=>{
- let step=0,oldReply;const reviewed=[]
+ let step=0,oldReply
  const h=await residentRouterHost(t,async body=>{
   const tools=requestTools(body)
-  if(tools.includes('channel_triage_submit'))return triageReply(triageInput(body),()=>({needsHandling:true}))
   if(!tools.includes('resident_router_reply'))return {text:'No additional work'}
   const events=requestEnvelope(body,'Router 请求：').events,source=events.find(event=>event.source).source
   const args={sourceId:source.sourceId,messageVersion:source.version,recipientActorIds:[source.actorId]}
@@ -159,10 +144,9 @@ test('Router progress quotes the original source without changing an old frozen 
    case 4:return {tool:'resident_router_settle',args:{operationId:'progress-settle',eventIds:events.map(event=>event.id),noTaskDispositions:events.filter(event=>event.source).map(event=>({eventId:event.id,outcome:'handled-inline',reason:'Answered the original progress request',sourceQuote:event.source.text}))}}
    default:return {text:'No additional work'}
   }
- },{hostOptions:{replyQuality:({candidates})=>{reviewed.push(...candidates.map(item=>item.text));return {text:JSON.stringify({decisions:candidates.map(({index})=>({index,issues:[]}))})}}}})
+ })
  const original=channelMessage('progress-origin',{text:'请说一下实际核对进度。'})
  await h.receive(original);await h.service.whenIdle()
- assert.deepEqual(reviewed,['已读取材料。','已完成数据核对。']);
  const delivered=await h.query('notification.list')
  assert.equal(delivered.length,2);assert.ok(delivered.every(row=>row.state==='delivered'&&row.sendAttemptCount===1))
  const retained=delivered.find(row=>row.id===oldReply.id)
@@ -196,9 +180,9 @@ test('an edited source cannot freeze or send a direct Router reply generated fro
  assert.equal(receipt.payload.sourceRef.messageVersion,2);assert.equal(receipt.state,'delivered');
 });
 
-for(const outcome of ['stage','clarification','blocker'])test('Router rejects acknowledgement-only prose then sends '+outcome+' without another review stage',{timeout:nativeTestTimeout(40000)},async t=>{
- const drafts=['好，我来查。','收到，接下来会查询。'],answers={stage:'当前任务索引是空的，没有等待事项。',clarification:'需要核对哪个环境？现有资料没有指定目标。',blocker:'目标环境现在不可用，暂时无法核对结果。'}
- let h,step=0;const reviews=[]
+for(const outcome of ['stage','clarification','blocker'])test('Router rejects explicit acknowledgement and sends '+outcome+' without a review stage',{timeout:nativeTestTimeout(40000)},async t=>{
+ const answers={stage:'当前任务索引是空的，没有等待事项。',clarification:'需要核对哪个环境？现有资料没有指定目标。',blocker:'目标环境现在不可用，暂时无法核对结果。'}
+ let h,step=0
  h=await residentRouterHost(t,async body=>{
   const input=requestEnvelope(body,'Router 请求：')
   if(!requestTools(body).includes('resident_router_settle')||!input)return {text:'No work'}
@@ -212,22 +196,44 @@ for(const outcome of ['stage','clarification','blocker'])test('Router rejects ac
    assert.equal((await h.query('notification.list')).length,0)
    assert.ok(!body.tools.find(tool=>tool.function.name==='resident_router_reply').function.parameters.properties.replyPurpose.enum.includes('acknowledgement'))
   }
-  if(step<drafts.length){const index=step++;return {tool:'resident_router_reply',args:{...args,operationId:'prose-ack-'+index,...index?{replyPurpose:'direct-answer'}:{},text:drafts[index]}}}
-  if(step++===2){assert.equal((await h.query('notification.list')).length,0);assert.equal(h.sent.length,0);return {tool:'resident_task_query',args:{detail:'index'}}}
-  if(step===4)return {tool:'resident_router_reply',args:{...args,operationId:'verified-outcome',replyPurpose:outcome==='stage'?'task-update':'direct-answer',text:answers[outcome]}}
-  if(step===5)return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle-result',noTaskDispositions:[{eventId:event.id,outcome:'handled-inline',reason:'Answered with the available result or necessary missing information',sourceQuote:event.source.text}]}}
+  if(step++===0)return {tool:'resident_task_query',args:{detail:'index'}}
+  if(step===2)return {tool:'resident_router_reply',args:{...args,operationId:'verified-outcome',replyPurpose:outcome==='stage'?'task-update':'direct-answer',text:answers[outcome]}}
+  if(step===3)return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle-result',noTaskDispositions:[{eventId:event.id,outcome:'handled-inline',reason:'Answered with the available result or necessary missing information',sourceQuote:event.source.text}]}}
   return {text:'Done'}
- },{hostOptions:{replyQuality:async({candidates},body)=>{
-  const text=requestText(body).join('\n');assert.match(text,/仅当候选 routerReply=true/);assert.match(text,/事实与推断分开/);assert.match(text,/其他角色不套用/)
-  assert.equal(requestTools(body).length,0);assert.equal(candidates.length,1);assert.equal(candidates[0].routerReply,true)
-  const candidate=candidates[0];reviews.push(candidate.text)
-  if(drafts.includes(candidate.text)){assert.equal((await h.query('notification.list')).length,0);return {text:JSON.stringify({decisions:[{index:0,issues:['acknowledgement_only']}]})}}
-  return {text:JSON.stringify({decisions:[{index:0,issues:[]}]})}
- }}})
+ })
  await h.receive(channelMessage('result-'+outcome,{text:'查询当前状态。目标、证据和环境状态均以可取得资料为准。'}));await h.service.whenIdle()
- assert.deepEqual(reviews,[...drafts,answers[outcome]]);assert.deepEqual(h.sent.map(row=>row.text),[answers[outcome]])
+ assert.deepEqual(h.sent.map(row=>row.text),[answers[outcome]])
  const records=await h.query('notification.list');assert.equal(records.length,1);assert.equal(records[0].state,'delivered')
  assert.ok(h.requests.every(body=>!requestTools(body).includes('channel_triage_submit')))
  const original=structuredClone(records[0]),count=h.requests.length;await h.restart();await h.service.whenIdle()
  assert.equal(h.requests.length,count);assert.deepEqual(await h.query('notification.get',{notificationId:original.id}),original);assert.equal(h.sent.length,1)
+})
+
+test('completion mentions the authenticated task owner instead of quoting the latest contributor',{timeout:nativeTestTimeout(30000)},async t=>{
+ let contributor,replied=false
+ const resultText='核对已完成，未访问线上环境。'
+ const h=await residentRouterHost(t,body=>{
+  const tools=requestTools(body)
+  if(tools.includes('task_result'))return {tool:'task_result',args:{decision:{action:'complete',summary:resultText,evidence:['synthetic read-only check'],limitations:['no live access']}}}
+  if(!tools.includes('resident_router_settle'))return {text:'No work'}
+  if(body.messages.at(-1)?.role==='tool'&&body.messages.findLast(row=>row.role==='assistant')?.tool_calls?.at(-1)?.function?.name==='resident_router_settle')return {text:'Settled'}
+  const input=requestEnvelope(body,'Router 请求：'),done=input.events.find(event=>event.kind==='task.completed')
+  if(done&&!replied){
+   replied=true
+   return {tool:'resident_router_reply',args:{operationId:'owner-receipt',sourceId:contributor.sourceId,messageVersion:contributor.version,completionEventId:done.taskEventId,replyPurpose:'task-update',text:resultText}}
+  }
+  return {tool:'resident_router_settle',args:{operationId:'audience:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
+ })
+ h.host.ctx.channels.transports.get('resident-fixture').capabilities={quotedReplies:['chat-room']}
+ const original=channelMessage('owner-request',{text:'请核对现有资料。'}),latest=channelMessage('other-person',{senderId:'bob',text:'补充一份材料。'})
+ await h.receive(original);await h.receive(latest);await h.service.whenIdle()
+ contributor=(await h.query('source.list')).find(source=>source.messageId===latest.messageId)
+ assert.ok(contributor)
+ const task=await h.service.createTask({requestId:'owner-task',channel:original,objective:original.text,sourceRefs:[contributor.sourceId]})
+ await h.service.whenIdle()
+ const [notice]=await h.query('notification.list')
+ assert.equal(notice.state,'delivered');assert.equal(notice.payload.completionBinding.taskId,task.taskId)
+ assert.equal(notice.payload.sourceRef.actorId,contributor.actorId)
+ assert.deepEqual(h.sent.map(({text,recipientIds,replyToMessageId})=>({text,recipientIds,replyToMessageId})),[{text:resultText,recipientIds:[original.senderId],replyToMessageId:undefined}])
+ assert.equal(h.readbacks.length,1)
 })

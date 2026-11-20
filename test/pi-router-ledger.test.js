@@ -715,3 +715,18 @@ test('Host internal system dispatch keeps its own text and is not reclassified a
  const task=await f.query('task.get',{taskId:'scheduled'}),body=executionContext({task,sources:[await f.query('source.get',{sourceId:'system-dispatch'})]})
  assert.equal(task.metadata.routerInputPolicy,undefined);assert.equal(body.task.request,'System-owned scheduled query');assert.equal(body.updates[0].text,'System-owned continuation');assert.equal(body.sources[0].channel,'internal')
 })
+
+test('new notification cannot mix task A completion and task B attachments with a shared source and distinct owners',async t=>{
+ const {completionReplyId}=await import('../src/channels/router-task-context.js'),f=await fixture(t)
+ await f.plan({tasks:[{taskId:'a',request:'Synthetic A'}],dependencies:[]})
+ await f.command('source.record-direct',{source:{sourceId:'bob-source',groupId:f.conversationId,messageId:'bob-request',actorId:'bob',version:1,text:'Synthetic B'},conversation:{conversationId:f.conversationId}})
+ await f.plan({sourceId:'bob-source',operationId:'bob-plan',tasks:[{taskId:'b',request:'Synthetic B',sourceRefs:[f.sourceId]}],dependencies:[]})
+ const completed=await f.complete('a');await f.complete('b')
+ const a=await f.query('task.get',{taskId:'a'}),b=await f.query('task.get',{taskId:'b'})
+ assert.equal(a.ownerActorId,'alice');assert.equal(b.ownerActorId,'bob');assert.ok(b.sourceRefs.includes(f.sourceId))
+ const binding={eventId:completed.event.id,taskId:'a',commandId:a.completion.commandId,requirementRevision:a.requirementRevision,controlRevision:a.controlRevision}
+ const args={notificationId:completionReplyId(f.conversationId,completed.event.id,f.sourceId,1),routerGeneration:f.generation,taskId:'b',requirementRevision:b.requirementRevision,kind:'status',payload:{conversationId:f.conversationId,sourceId:f.sourceId,sourceVersion:1,text:'Synthetic attachment result',completionBinding:binding,taskDelivery:{taskId:'b',requirementRevision:b.requirementRevision,artifactIds:['b-file']}}}
+ const before=await f.query('notification.list')
+ await assert.rejects(f.command('notification.prepare',args),{code:'TASK_DELIVERY_COMPLETION_MISMATCH'})
+ assert.deepEqual(await f.query('notification.list'),before,'no frozen notice or outbox effect exists for the mismatch')
+})

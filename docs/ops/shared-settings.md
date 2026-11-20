@@ -110,7 +110,7 @@ node bin/night-bot-settings.js CONFIG model-entry --action remove --provider PRO
 
 模型能力保存在原有 `providers.<provider>.models[].reasoningEfforts`，Router 与任务执行共用 Pi 解析后的目录。未修改能力的旧配置保持不变；已被角色选中的深度不能被移除。保存后正常重启生效。
 
-渠道新正文复核沿用当前写作角色（Router 或执行）的模型与授权，不新增环境变量、开关或数据库迁移。升级后检查已配置模型能否完成无工具复核；若出现 `REPLY_QUALITY_UNAVAILABLE`，核对对应角色的模型可用性及输出是否完整，按原待办恢复流程处理。不要改冻结正文、手动重放或清空待办。复核失败可能延后 Router 回复或结清，详见[渠道回复](../CHANNELS.md#对外回复的信息取舍)。
+渠道回复只使用当前写作角色的模型，不另调用模型复核。此变更无需配置或数据库迁移，按正常更新流程生效。历史冻结回复及未知发送继续按回执恢复，不手动改正文或重发。
 
 CLI 使用同一入口（也支持 `--json-file`）：
 

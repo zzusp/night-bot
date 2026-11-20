@@ -1733,7 +1733,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       const task = ['triage-reply','router-reply','platform-reply','topic-reply', 'fixed-topic-reply', 'routing-clarification'].includes(a.kind) ? null : get('dynamic_tasks', a.taskId), id = text(a.notificationId, 'notificationId')
       if (!['question','status','triage-reply','router-reply','platform-reply','topic-reply','fixed-topic-reply','routing-clarification'].includes(a.kind)) fail('DYNAMIC_ARGUMENT_INVALID', 'kind')
       integer(a.requirementRevision, 'requirementRevision')
-      // 复核是异步的，在实际冻结事务中核对当前代际和来源。
+      // 在实际冻结事务中再次核对当前代际和来源。
       if(a.routerGeneration!==undefined){
         const p=record(a.payload)
         routerLedger.assertReplySource({conversationId:p.conversationId,generation:a.routerGeneration,sourceId:p.sourceId,messageVersion:p.sourceVersion})
@@ -1743,6 +1743,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         if(a.taskId||p.atAll&&a.kind!=='platform-reply'||source.groupId!==p.conversationId||source.messageId!==ref.messageId||source.version!==ref.messageVersion||source.actorId!==ref.actorId||typeof p.text!=='string'||!p.text.trim()||source.authorizationRevoked)fail('DYNAMIC_DIRECT_SOURCE_INVALID')
         if(a.kind==='triage-reply'&&(p.artifactFiles?.length||p.taskIds?.length))fail('DYNAMIC_DIRECT_SOURCE_INVALID')
       }
+      if(a.payload?.completionBinding&&a.payload.taskDelivery&&!get('dynamic_notifications',id,true)&&a.payload.completionBinding.taskId!==a.payload.taskDelivery.taskId)fail('TASK_DELIVERY_COMPLETION_MISMATCH')
       if(a.payload?.completionBinding){
         const p=a.payload,b=record(p.completionBinding),completed=get('dynamic_tasks',b.taskId),event=get('dynamic_task_events',b.eventId)
         if(a.routerGeneration===undefined||event.kind!=='task.completed'||event.taskId!==completed.taskId||event.commandId!==b.commandId||completed.completion?.commandId!==b.commandId||completed.groupId!==p.conversationId||completed.status!=='completed'||completed.archivedAt||completed.archiveRestoreHold||completed.archiveRestore?.reviewRequired||!completed.sourceRefs?.includes(p.sourceId)||event.requirementRevision!==b.requirementRevision||completed.requirementRevision!==b.requirementRevision||event.controlRevision!==b.controlRevision||completed.controlRevision!==b.controlRevision||id!==completionReplyId(p.conversationId,b.eventId,p.sourceId,p.sourceVersion))fail('ROUTER_COMPLETION_REPLY_STALE')
