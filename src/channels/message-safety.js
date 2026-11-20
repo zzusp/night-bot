@@ -1,7 +1,9 @@
+import {containsSecret} from '../memory/format.js'
+
 // Shared static system-prompt wording; detailed guidance remains on demand.
 export const communicationReplyPrinciple = '接活就接住，问进度就说做到哪、还差什么，对方接手就确认停下。默认 ELI5 方式交流，不复述、不汇报过程，追问时再展开。'
 
-// Router 的回复时机与上线回报规则，由撰写和复核共用。
+// Router 的回复时机与上线回报规则。
 export const routerReplyOutcomeRule = 'Router 先处理再回复：接住任务指开始处理，不先发送收悉、承诺或查询计划。取得可核实的阶段结论后再说新增结果；必要澄清、实际阻塞和最终结果也可回复，不必等长任务最终完成。只承接而没有新增结果或必要信息的正文不发送。\n' +
  '回答上线结果时，先说是否已上线和实际确认的服务状态。默认不列版本号、PR、测试过程或工单，除非对方问到或它会影响下一步。关键功能未实测要单独说明，不能把服务正常当作功能已验收。'
 
@@ -43,6 +45,13 @@ export function replyInternalTaskId(taskId, sourceText) {
     && new RegExp(`(?<![a-zA-Z0-9_-])${RegExp.escape(taskId)}(?![a-zA-Z0-9_-])`, 'u').test(sourceText) ? undefined : taskId
 }
 
+export function assertNoConversationReplySecrets(text) {
+  if (containsSecret(text)) {
+    const code = 'GROUP_REPLY_SENSITIVE_DETAILS'
+    throw Object.assign(new Error(`${code}: 移除凭据或敏感字段后再提交。`), {code})
+  }
+}
+
 export function assertConversationReply(text, internalIds = []) {
   if (typeof text !== 'string') return
   // 已知身份按原值检查；短 ID 还需边界，避免误命中正常单词中的几个字母。
@@ -74,7 +83,7 @@ export function conversationSource(value){
 export const communicationGuidanceIndex = '沟通规范索引：撰写渠道首答、进度、结论或 Issue/PR 正文、评论前，按需调用 communication_guidance_read 读取 communication/v1；本索引不授予发布或其他动作权限。'
 export const taskReplyWritingPrompt = communicationReplyPrinciple + '\n' + communicationGuidanceIndex
 export const channelReplyWritingPrompt = communicationReplyPrinciple + '\n' + channelReplyWritingRules + '\n' + communicationGuidanceIndex + '\n' +
- '新正文在冻结前独立复核；若工具返回REPLY_QUALITY_REVISION_REQUIRED，按反馈改写对应正文并重新提交。在工具确认前不当成已保存或已送达，不以省略应答或换操作编号绕过复核。'
+ '群聊用受信身份原生提及相关负责人或发起人，不按最新发言或姓名猜测；引用只用于补充上下文。在工具确认前不当成已保存或已送达。'
 export function communicationGuidanceReadTool(){
  return {name:'communication_guidance_read',isConcurrencySafe:()=>true,description:'只读 communication/v1 沟通规范；准备面向人的正文时按需读取，不访问文件、网络或业务数据。',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object',properties:{id:{type:'string'},content:{type:'string'}},required:['id','content']},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]},async execute(){return {id:'communication/v1',content:taskPublicCommunicationInstructions}}}
 }

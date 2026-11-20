@@ -1,12 +1,11 @@
+import {unpackArchivedRouterCheckout} from './fixtures/archived-router-checkout.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {fork,spawn,execFile} from 'node:child_process'
-import {mkdtemp,rm,mkdir,symlink,readFile,writeFile} from 'node:fs/promises'
+import {fork} from 'node:child_process'
+import {mkdtemp,rm,mkdir,readFile,writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {once} from 'node:events'
-import {promisify} from 'node:util'
-import {fileURLToPath} from 'node:url'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 
 for(const role of ['router','query','reply-query','unknown','unfrozen','fails','unreadable','slow','retry-new'])test(`${role}: SIGKILL recovery uses the original session and does not replay effects`,{timeout:nativeTestTimeout(60000)},async t=>{
@@ -14,10 +13,7 @@ for(const role of ['router','query','reply-query','unknown','unfrozen','fails','
  let oldRoot
  if(role==='unfrozen'){
   oldRoot=join(root,'old-code');await mkdir(oldRoot)
-  const repo=fileURLToPath(new URL('../',import.meta.url))
-  const {stdout}=await promisify(execFile)('git',['archive','523430099caf08224ea8343ada9e7cc7025887c7'],{cwd:repo,encoding:'buffer',maxBuffer:64*1024*1024})
-  const unpack=spawn('tar',['-x','-C',oldRoot]);unpack.stdin.end(stdout);assert.equal((await once(unpack,'exit'))[0],0)
-  await symlink(join(repo,'node_modules'),join(oldRoot,'node_modules'),'dir')
+  await unpackArchivedRouterCheckout('523430099caf08224ea8343ada9e7cc7025887c7',oldRoot)
  }
  const children=[];t.after(()=>{for(const child of children)if(child.exitCode===null)child.kill('SIGKILL')})
  const start=phase=>{

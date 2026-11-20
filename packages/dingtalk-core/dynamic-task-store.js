@@ -1733,7 +1733,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       const task = ['triage-reply','router-reply','platform-reply','topic-reply', 'fixed-topic-reply', 'routing-clarification'].includes(a.kind) ? null : get('dynamic_tasks', a.taskId), id = text(a.notificationId, 'notificationId')
       if (!['question','status','triage-reply','router-reply','platform-reply','topic-reply','fixed-topic-reply','routing-clarification'].includes(a.kind)) fail('DYNAMIC_ARGUMENT_INVALID', 'kind')
       integer(a.requirementRevision, 'requirementRevision')
-      // 复核是异步的，在实际冻结事务中核对当前代际和来源。
+      // 在实际冻结事务中再次核对当前代际和来源。
       if(a.routerGeneration!==undefined){
         const p=record(a.payload)
         routerLedger.assertReplySource({conversationId:p.conversationId,generation:a.routerGeneration,sourceId:p.sourceId,messageVersion:p.sourceVersion})

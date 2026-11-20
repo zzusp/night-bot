@@ -1,0 +1,12 @@
+case,scope,round-1
+direct-reply,不再二次模型复核与凭据及旧来源保护,PASS
+owner-mention,不同作者补充后回执原生提及负责人,PASS
+attachment-audience,默认和显式受众与来源ACL,PASS
+requester-question,需求提出者提问与同会话事实追问,PASS
+frozen-concurrency,来源版本任务修订重复ID及历史回执,PASS
+resume-and-dispatch,旧新Host同会话续办首轮派发与依赖,PASS
+web-and-crash,Web直发回读及冻结前崩溃不重放,PASS
+verbatim-input,整合主分支原文交接与任务投影,PASS
+source-guards,源码清单导入及原生运行守卫,PASS
+full-suites,全量测试与运行时套件,NOT_RUN
+live-vendor,真实钉钉与UAT实测,NOT_RUN

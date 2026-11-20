@@ -484,7 +484,9 @@ for(const quoteMode of ['other-recipient','explicit','default'])test('default ap
   assert.ok(!app.tasks.listAlerts().some(row=>row.detail==='CHANNEL_TRANSPORT_UNAVAILABLE'),'terminal delivered notifications do not require a disabled transport')
   assert.deepEqual((await f.host.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})).entries,taskNative.entries)
   const pendingId='neutral-pending-disabled-channel'
-  await app.tasks.store.command({id:'fixture-pending-disabled-channel',kind:'notification.prepare',args:{notificationId:pendingId,taskId:parent.taskId,requirementRevision:parent.requirementRevision,kind:parent.kind,payload:parent.payload}})
+  // 模拟独立的旧状态通知，不把本次完成事件绑定到另一条通知身份。
+  const {completionBinding,replyRequest,...pendingPayload}=parent.payload
+  await app.tasks.store.command({id:'fixture-pending-disabled-channel',kind:'notification.prepare',args:{notificationId:pendingId,taskId:parent.taskId,requirementRevision:parent.requirementRevision,kind:parent.kind,payload:pendingPayload}})
   await app.tasks.recover();await app.tasks.whenIdle()
   const disabledPending=await app.tasks.store.query({kind:'notification.get',notificationId:pendingId})
   assert.equal(disabledPending.state,'prepared');assert.equal(disabledPending.sendAttemptCount??0,0)

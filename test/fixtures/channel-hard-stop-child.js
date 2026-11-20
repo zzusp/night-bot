@@ -42,14 +42,14 @@ const h=await residentRouterHost(t,async body=>{
   return {tool:'resident_router_settle',args:{operationId:'synthetic-settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id),noTaskDispositions:input.events.filter(event=>event.source).map(event=>({eventId:event.id,outcome:role==='reply-query'?'handled-inline':'not-assigned',reason:'Synthetic fixture requires no task',sourceQuote:event.source.text}))}}
  }
  return {text:'No other work'}
-},{hostOptions:{callIdPrefix:phase+'-',hostConfig:{installRoot:root},replyQuality:async({candidates})=>{
- if(phase==='seed'&&role==='unfrozen'){
+},{hostOptions:{callIdPrefix:phase+'-',hostConfig:{installRoot:root}},wrapStore:store=>({...store,command:async command=>{
+ if(phase==='seed'&&role==='unfrozen'&&command.kind==='notification.prepare'){
   for(let index=0;index<11;index++)await h.receive(channelMessage('later-'+index,{text:'Synthetic later item '+index}))
   await eventually(async()=>await h.query('router.inbox-count',{conversationId:h.host.ctx.channels.identity(channelMessage('hard-stop')).sessionId})===12,'eleven durable old-version events')
   await hold()
  }
- return {text:JSON.stringify({decisions:candidates.map(({index})=>({index,issues:[]}))})}
-}},send:async()=>{if(phase==='seed'&&role==='unknown')await hold();return {messageId:'synthetic-visible'}}})
+ return store.command(command)
+}}),send:async()=>{if(phase==='seed'&&role==='unknown')await hold();return {messageId:'synthetic-visible'}}})
 if(phase==='seed')void h.receive(channelMessage('hard-stop',{text:'Synthetic hard-stop verification only'})).catch(error=>process.send({type:'error',error:error.stack}))
 else if(role==='slow'){
  await h.service.recover({waitForRouter:false})
