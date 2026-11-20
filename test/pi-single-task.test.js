@@ -305,7 +305,7 @@ test('Router room unknown effect drains and inspects with distinct conversation 
   if(names.includes('task_result'))return effects?{text:'The original effect is unverified.'}:{tool:'room_partial_effect',args:{}}
   if(names.includes('resident_router_settle')){
    const input=requestEnvelope(body,'Router 请求：'),task=await f.query('task.get',{taskId:'room-effect-scope'})
-   if(!task){const source=(await f.query('source.list')).find(source=>source.messageId==='scope-request');return {tool:'resident_task_plan',args:{operationId:'scope-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'room-effect-scope',title:'Bounded room effect',objective:'Perform one local action without replay',requirements:[]}],dependencies:[]}}}
+   if(!task){const source=(await f.query('source.list')).find(source=>source.messageId==='scope-request');return {tool:'resident_task_plan',args:{operationId:'scope-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'room-effect-scope',handoff:'Perform the single local action requested for this conversation.',title:'Bounded room effect',objective:'Perform one local action without replay',requirements:[]}],dependencies:[]}}}
    if(body.messages.at(-1)?.role==='tool'&&body.messages.findLast(m=>m.role==='assistant')?.tool_calls?.at(-1)?.function?.name==='resident_router_settle')return {text:'Current batch settled'}
    return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'scope-settle:'+input.events.map(event=>event.id).join(',')}}
   }

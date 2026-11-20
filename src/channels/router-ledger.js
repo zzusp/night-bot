@@ -3,6 +3,7 @@ import {inspectionIsCurrent,taskWaitIdentity,MIN_WAIT_RECHECK_MS} from '../tasks
 import {queryTaskIndex,queryReplyHistory} from './conversation-context.js'
 import {createHash} from 'node:crypto'
 import {querySourceHistory,queryCurrentSource,sourceHistorySchema} from './source-history.js'
+import {normalizeRouterHandoff,recordRouterHandoff,ROUTER_HANDOFF_POLICY} from './router-handoff.js'
 
 export const routerSchemaVersion = '1'
 export const routerTables = ['conversations','router_inbox','triage','source_links','dependencies','completion_evaluations','router_rotations','router_actions','router_upgrade_audit']
@@ -78,7 +79,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     return {...row,source,triageReply:row.triageReplyId?read('notifications',row.triageReplyId):undefined,taskEvent:row.taskEventId?readEvent(row.taskEventId):undefined,...conclusion?{triageConclusion:conclusion}:{}}
   }
   function sourceOnlyTask(task,source,quote,resetSelection=false){
-    if(source.channel==='internal')return
+    if(source.channel==='internal'||task.metadata?.routerInputPolicy===ROUTER_HANDOFF_POLICY)return
     if(resetSelection&&task.metadata)delete task.metadata.routerSourceSelection
     task.metadata={...task.metadata,routerInputPolicy:'source-only-v1',...quote?{routerSourceSelection:{sourceId:source.sourceId,messageVersion:source.version,quote}}:{}}
   }
@@ -134,7 +135,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(!readEvent(event.id))db.prepare('INSERT INTO dynamic_task_events(id,body) VALUES (?,?)').run(event.id,JSON.stringify({...event,eventVersion:1,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,recordedAt:new Date().toISOString()}))
       // Ordinary waits remain audit-only. Failed/unknown stopped runs use the
       // existing inspection event, not a second final-result notification.
-      const inspectionReport=event.kind==='task.blocked'&&(task.technicalFailure||task.sessionFailure
+      const inspectionReport=event.kind==='task.blocked'&&event.resultSource!=='pi-task-result'&&(task.technicalFailure||task.sessionFailure
         ||task.lastDecision?.limitations?.some(code=>['TASK_SESSION_NO_SUBMISSION','TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(code)))
       if(event.kind==='task.waiting'||inspectionReport)return
       return enqueue(task.conversationId,event.id,{kind:event.kind,taskId:task.taskId,taskEventId:event.id})
@@ -295,8 +296,13 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       const created=[]
       for (const input of a.tasks) {
         for(const id of input.sourceRefs??[]){if(id!==source.sourceId){const context=read('sources',id);if(context.channel==='internal')fail('ROUTER_SOURCE_FORBIDDEN');sourceOf({sourceId:id,messageVersion:context.version,conversationId:source.groupId})}}
-        const result=reduce('task.create',{...input,groupId:source.groupId,ownerActorId:source.actorId,sourceRefs:[...new Set([...(input.sourceRefs ?? []),source.sourceId])],operationId:a.operationId},`${commandId}:${input.taskId}`)
-        const task=result.result.task;task.conversationId=source.groupId;task.arrangementRevision=1;sourceOnlyTask(task,source,input.quote,true);saveTask(task);link(task,source,'create',input.quote);created.push(task)
+        const handoff=input.handoff===undefined?undefined:normalizeRouterHandoff(input.handoff)
+        if(handoff!==undefined){sourceOf(a);if(source.retracted)fail('ROUTER_SOURCE_STALE')}
+        const result=reduce('task.create',{...input,...handoff===undefined?{}:{request:handoff},groupId:source.groupId,ownerActorId:source.actorId,sourceRefs:[...new Set([...(input.sourceRefs ?? []),source.sourceId])],operationId:a.operationId},`${commandId}:${input.taskId}`)
+        const task=result.result.task;task.conversationId=source.groupId;task.arrangementRevision=1
+        if(handoff!==undefined)recordRouterHandoff(task,source,a.operationId,handoff)
+        else sourceOnlyTask(task,source,input.quote,true)
+        saveTask(task);link(task,source,'create',input.quote);created.push(task)
       }
       const dependencies=[]
       for (const input of a.dependencies ?? []) {
@@ -317,16 +323,26 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(a.kind==='task.arrange'){const result=arrange(task,a.action,source,a.operationId,commandId);sourceOnlyTask(result.result.task,source);saveTask(result.result.task);return result}
       // Host 派生值只在未命中业务回执后计算，避免跨代重试受当前任务或 actor 变化影响。
       const action={...a.action,sourceRefs:[...new Set([...(task.sourceRefs??[]),source.sourceId])],operationId:a.operationId,sameGoal:a.sameGoal}
+      const handoff=a.handoff===undefined?undefined:normalizeRouterHandoff(a.handoff)
+      if(handoff!==undefined){
+        if(a.inputSource===false||!['task.supplement','task.resume','task.revise','task.reopen'].includes(a.kind))fail('ROUTER_HANDOFF_INVALID')
+        sourceOf(a)
+        if(source.retracted)fail('ROUTER_SOURCE_STALE')
+      }
+      if(handoff!==undefined&&a.kind==='task.supplement')action.routerInputPolicy=ROUTER_HANDOFF_POLICY
       if(['task.supplement','task.resume','task.revise','task.reopen'].includes(a.kind)) {
-        const message=required(source.channel==='internal'?a.action.text??source.text:source.text)
+        const message=handoff??required(source.channel==='internal'?a.action.text??source.text:source.text)
         if(a.inputSource!==false||source.channel==='internal')action.currentInput={id:a.operationId,text:message,sourceId:source.sourceId,messageVersion:source.version}
         if(a.action.request!==undefined)action.request=required(a.action.request)
+        if(handoff!==undefined&&a.sameGoal!==true&&['task.revise','task.reopen'].includes(a.kind))action.request=handoff
         if(['task.supplement','task.resume'].includes(a.kind)) {action.text=message;if(a.hostLiveBinding!==undefined)action.liveBinding=a.hostLiveBinding}
       }
       const result=a.kind==='task.resume'
         ?a.action.humanRequestId!==undefined?resume(task,action,source,a,commandId):reduce('task.control',{...action,control:'active'},commandId,{routerScheduling:true})
         :reduce(a.kind,action,commandId,{routerScheduling:true})
-      sourceOnlyTask(result.result.task,source,undefined,['task.revise','task.reopen'].includes(a.kind)&&a.sameGoal!==true);saveTask(result.result.task)
+      if(handoff!==undefined)recordRouterHandoff(result.result.task,source,a.operationId,handoff)
+      else sourceOnlyTask(result.result.task,source,undefined,['task.revise','task.reopen'].includes(a.kind)&&a.sameGoal!==true)
+      saveTask(result.result.task)
       if(a.kind==='task.supplement'&&result.result.task.inspection){Object.assign(result.result.task.inspection,{pending:false,resolvedAt:new Date().toISOString(),resolvedOperationId:a.operationId});saveTask(result.result.task)}
       link(result.result.task,source,a.kind,a.quote)
       taskEvent({id:`task-changed:${commandId}`,kind:'task.changed',taskId:task.taskId,operationId:a.operationId,sourceId:source.sourceId,messageVersion:source.version})
@@ -408,7 +424,8 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(a.sessionId!==row.activeSessionId||a.generation!==row.generation)fail('ROUTER_GENERATION_STALE')
       const pending=pendingInbox(row.id,true)
       if(!pending.length)fail('ROUTER_EVENTS_REQUIRED')
-      const blocking=a.reason==='ROUTER_BATCH_NO_PROGRESS'
+      const isolatedReply=a.reason==='ROUTER_CONTINUATION_REPLY_UNRESOLVED'
+      const blocking=a.reason==='ROUTER_BATCH_NO_PROGRESS'||isolatedReply
       const prior=rows('router_rotations').find(rotation=>rotation.candidateSessionId===row.activeSessionId&&rotation.recovery&&rotation.cutoff===row.cursor)
       if(prior&&!blocking)fail('ROUTER_RECOVERY_OWNER_UNAVAILABLE')
       const scope=a.unknownEventIds===undefined?pending:(()=>{
@@ -417,6 +434,12 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       })()
       if(blocking){
         const ids=new Set(scope.map(event=>event.id))
+        if(isolatedReply){
+          if(!Array.isArray(a.knownEventIds)||a.knownEventIds.length>30||new Set(a.knownEventIds).size!==a.knownEventIds.length
+            ||a.knownEventIds.some(id=>read('router_inbox',required(id),true)?.conversationId!==row.id)
+            ||scope.some(event=>event.kind!=='source.message'||!a.knownEventIds.includes(event.id)))fail('ROUTER_RESUME_BATCH_STALE')
+          for(const id of a.knownEventIds)ids.add(id)
+        }
         if(!a.unknownEventIds?.length||scope.some(event=>event.state!=='pending'||event.deliveryHold)||independentSource(pending,ids)?.id!==a.freshEventId||!a.freshEventId)fail('ROUTER_RESUME_BATCH_STALE')
         for(const event of scope)write('router_inbox',{...event,deliveryHold:{handoffId:a.handoffId,reason:a.reason}})
       }

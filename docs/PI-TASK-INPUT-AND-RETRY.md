@@ -4,10 +4,12 @@ The default single-task runtime uses Pi 1.5.0 public AgentSession input queues,
 steer delivery, SessionManager branches and native retry settings. Night owns
 source authentication, task revisions, permissions and durable effect receipts.
 
-Initial task context is retained in the authenticated source/material and the
-actual native task input. Missing or foreign source references fail before task
-creation. Router actions bind tasks directly to authenticated source versions,
-authors and exact quotes. Topic fields retained in old archives are audit evidence,
+New Router task input carries a brief, faithful restatement of the user's goal,
+relevant facts and constraints, plus material references. It does not attach the
+raw channel message or quoted body. The Host binds source versions and authors
+from the ledger and retains the original there for audit. Existing native input
+packets remain immutable. Missing or foreign source references fail before task
+creation. Topic fields retained in old archives are audit evidence,
 not an active routing or authorization path; handoff summaries cannot supply a
 missing source or grant permissions. Dependencies are checked at scheduling and
 claim, separately from ordinary task pause/control state. See CHANNELS.md.
@@ -35,15 +37,14 @@ key and verified official input must identify exactly one call. Provider call-ID
 reuse across distinct inputs is supported when that proof is unique; genuinely
 ambiguous old records remain held. This is Night upgrade support, not DSH import.
 
-Unknown effects still hold side effects until reconciliation. They do not stop
-Pi inference or new input: active tasks receive steer, and inactive tasks resume
-the original session. The model can read evidence and report wait/blocked without
-requesting execution authorization or first closing a historical job.
-After closure, ordinary Router scheduling permits independent new calls and task
-completion. No separate operator grant, new objective or requirement revision is
-required. Closure never declares the old partial outcome successful, and the
-original invocation remains permanently blocked. The former new-action HTTP/CLI
-entry is retired. See EFFECT-RECONCILIATION.md for evidence closure boundaries.
+An unknown effect in the current lease still needs readback before the affected
+work can be declared complete. An unresolved intent from an older lease is
+historical evidence, not a session-wide gate. Active tasks receive steer, and
+inactive tasks resume the original session. New authorized calls can run and an
+independently verified current objective can complete while the older outcome
+remains unknown. This neither replays the original invocation nor closes its
+receipt. Unproven process or resource ownership still needs reconciliation.
+See EFFECT-RECONCILIATION.md for evidence closure boundaries.
 
 An owner spanning several admitted inputs emits one scope-limited drain proof
 covering exact original intent identities. It does not fabricate multiple owner

@@ -11,8 +11,8 @@ test('explicit read-only investigation reaches real execution without a pre-Rout
     if(requestText(body).some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION')))return {text:'{"lessons":[]}'}
     if(names.includes('task_result')){
       executionInput=taskInput(body);executionSessions.push(executionInput.task.sessionId)
-      assert.ok(executionInput.sources.some(source=>source.text.includes('只排查，不修改或部署')))
-      assert.match(executionInput.task.requirements.join('\n'),/只读/)
+      assert.ok(executionInput.sources.every(source=>!Object.hasOwn(source,'text')))
+      assert.match(executionInput.handoffs.map(item=>item.text).join('\n'),/只读.*不.{0,16}部署/)
       return {tool:'task_result',args:{decision:{action:'complete',summary:'Synthetic read-only investigation complete',evidence:['fixture:status-and-gateway'],limitations:[]}}}
     }
     if(names.includes('resident_router_settle')){
@@ -26,9 +26,9 @@ test('explicit read-only investigation reaches real execution without a pre-Rout
         assert.equal(event.triageReply,undefined)
         if(!attemptedBareSettle){attemptedBareSettle=true;return {tool:'resident_router_settle',args:{eventIds:[event.id],operationId:'premature-settle'}}}
         const task=await h.query('task.get',{taskId:'investigate-502'}).catch(()=>null)
-        if(!task)return {tool:'resident_task_plan',args:{operationId:'investigate',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'investigate-502',title:'排查测试环境 502',objective:'只读定位测试环境服务和网关异常',requirements:['仅只读排查，不修改代码、数据，不部署或发布']}],dependencies:[]}}
+        if(!task)return {tool:'resident_task_plan',args:{operationId:'investigate',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'investigate-502',handoff:'排查测试环境 502 的原因，只读，不改代码或数据，也不部署。',title:'排查测试环境 502',objective:'只读定位测试环境服务和网关异常',requirements:['仅只读排查，不修改代码、数据，不部署或发布']}],dependencies:[]}}
         const links=await h.query('router.source-links',{sourceId:event.sourceId})
-        if(!links.length)return {tool:'resident_task_action',args:{operationId:'continue:'+event.sourceId,kind:'reopen',taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,sameGoal:true,sourceId:event.sourceId,messageVersion:event.messageVersion}}
+        if(!links.length)return {tool:'resident_task_action',args:{operationId:'continue:'+event.sourceId,kind:'reopen',handoff:'继续调查测试环境 502，保持只读，不修改、不部署。',taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,sameGoal:true,sourceId:event.sourceId,messageVersion:event.messageVersion}}
       }
       return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle:'+input.events.map(event=>event.id).join(',')}}
     }

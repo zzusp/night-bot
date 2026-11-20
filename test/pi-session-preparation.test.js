@@ -12,7 +12,7 @@ test('real task preparation overlaps independent ledger reads after claim while 
  const h=await residentRouterHost(t,body=>{
   const names=requestTools(body)
   if(names.includes('channel_triage_submit'))return submit(triage(body))
-  if(names.includes('resident_router_settle')){const input=router(body);if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle')return {text:'Synthetic settled'};if(!planned){planned=true;const event=input.events[0];return {tool:'resident_task_plan',args:{operationId:'plan',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'overlap-task',title:'Synthetic preparation',objective:'Synthetic read only',requirements:[]}],dependencies:[]}}}return settle(input)}
+  if(names.includes('resident_router_settle')){const input=router(body);if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle')return {text:'Synthetic settled'};if(!planned){planned=true;const event=input.events[0];return {tool:'resident_task_plan',args:{operationId:'plan',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'overlap-task',handoff:'Check the synthetic fixture without writing.',title:'Synthetic preparation',objective:'Synthetic read only',requirements:[]}],dependencies:[]}}}return settle(input)}
   if(names.includes('task_result'))return {tool:'task_result',args:{decision:{action:'complete',summary:'Synthetic task completed',evidence:['fixture'],limitations:[]}}}
   return {text:'No other work'}
  },{hostOptions:{hostConfig:{maxParallelToolCalls:2}},wrapStore:store=>({...store,command:async c=>{const result=await store.command(c);if(c.kind==='task.claim'&&c.args.taskId==='overlap-task')claimed=true;return result},query:async q=>{
@@ -39,7 +39,7 @@ test('same controlled follow-up avoids one model query/request when exact curren
     const input=router(body),event=input.events.find(e=>e.source)
     if(event?.source.messageId==='pause')routerRequests++
     if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle')return {text:'Synthetic settled'}
-    if(event?.source.messageId==='start'&&!planned){planned=true;return {tool:'resident_task_plan',args:{operationId:'initial',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'bound-task',title:'Synthetic existing task',objective:'Synthetic check',requirements:[]}],dependencies:[]}}}
+    if(event?.source.messageId==='start'&&!planned){planned=true;return {tool:'resident_task_plan',args:{operationId:'initial',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'bound-task',handoff:'Check the existing synthetic fixture.',title:'Synthetic existing task',objective:'Synthetic check',requirements:[]}],dependencies:[]}}}
     if(event?.source.messageId!=='pause')return settle(input)
     const phase=phases.get('pause')??0
     const lines=requestText(body).flatMap(text=>text.split('\n')),line=lines.find(line=>line.startsWith('{"asOf":')&&line.includes('"sourceTaskLinks"'))
@@ -76,8 +76,8 @@ test('official Host validates multiple cached attachment bytes without refetch; 
   if(names.includes('resident_router_settle')){
    const input=router(body),event=input.events.find(e=>e.source)
    if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle')return {text:'Synthetic settled'}
-   if(!planned&&event){planned=true;handled.add(event.id);return {tool:'resident_task_plan',args:{operationId:'create-material',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'cached-material-task',title:'Synthetic attachments',objective:'Read isolated attachment bytes',requirements:[]}],dependencies:[]}}}
-   if(event&&!handled.has(event.id)){handled.add(event.id);const task=await h.query('task.get',{taskId:'cached-material-task'});return {tool:'resident_task_action',args:{operationId:'reopen-'+event.id,kind:'reopen',sameGoal:true,taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,sourceId:event.sourceId,messageVersion:event.messageVersion}}}
+   if(!planned&&event){planned=true;handled.add(event.id);return {tool:'resident_task_plan',args:{operationId:'create-material',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'cached-material-task',handoff:'Read and verify both uploaded attachments.',title:'Synthetic attachments',objective:'Read isolated attachment bytes',requirements:[]}],dependencies:[]}}}
+   if(event&&!handled.has(event.id)){handled.add(event.id);const task=await h.query('task.get',{taskId:'cached-material-task'});return {tool:'resident_task_action',args:{operationId:'reopen-'+event.id,kind:'reopen',handoff:'Verify those same attachments again, with the same requirements.',sameGoal:true,taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,sourceId:event.sourceId,messageVersion:event.messageVersion}}}
    return settle(input)
   }
   return {text:'No other synthetic work'}

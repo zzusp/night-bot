@@ -23,7 +23,7 @@ test('active task completion stays on the current Router instead of waiting behi
       assert.match(definitions.get('resident_source_get').description,/sourceId.*messageId/)
       assert.deepEqual(definitions.get('resident_source_get').parameters.required,['sourceId'])
       assert.match(definitions.get('resident_task_action').description,/sameGoal=true仅限reopen/)
-      if(!planned){planned=true;const source=input.events.find(event=>event.source).source;return {tool:'resident_task_plan',args:{operationId:'performance-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'running-performance-task',title:'Synthetic work',objective:'Verify local fixture',requirements:['local evidence']}],dependencies:[]}}}
+      if(!planned){planned=true;const source=input.events.find(event=>event.source).source;return {tool:'resident_task_plan',args:{operationId:'performance-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'running-performance-task',handoff:'Verify the local fixture and keep the evidence.',title:'Synthetic work',objective:'Verify local fixture',requirements:['local evidence']}],dependencies:[]}}}
       if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle')return {text:'Settled'}
       batches.push(input)
       return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle:'+input.events.map(event=>event.id).join(',')}}

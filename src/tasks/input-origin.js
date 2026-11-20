@@ -1,5 +1,6 @@
 import {isDeepStrictEqual} from 'node:util'
 import {conversationSource} from '../channels/message-safety.js'
+import {ROUTER_HANDOFF_POLICY} from '../channels/router-handoff.js'
 import {taskEffectBinding,taskEffectDigest,taskEffectInvocationKey} from './effect-reconciliation.js'
 import {admissionAuditKinds} from '../runtime/pi-business-admission.js'
 const fail=code=>{throw Object.assign(new Error(code),{code})}
@@ -55,6 +56,32 @@ export function unresolvedTaskInputOrigins(manager,intents,identity){
 
 /** Repair only already committed Night admission facts across the SQL/native
  * boundary. This function never delivers input or invokes a model. */
+const handoffSourceKeys=new Set(['sourceId','messageId','version','actorId','actorRole','senderId','senderName','channelId','channelType','conversationId','channel','timestamp','authorizationRevoked','archiveRestoreHold'])
+function matchesFaithfulSupplement(body,row,task,binding){
+ const brief=body.task
+ if(row.inputPolicy!==ROUTER_HANDOFF_POLICY||!['taskId','sessionId','requirementRevision','controlRevision','contextRevision','leaseEpoch'].every(key=>brief[key]===binding[key])||!isDeepStrictEqual(brief.sourceRefs,row.sourceRefs))return false
+ if(['request','objective','title','requirements','sourceSelection'].some(key=>Object.hasOwn(brief,key))||!isDeepStrictEqual(body.supplement,{messageId:row.messageId,contextRevision:row.contextRevision}))return false
+ if(!Array.isArray(row.sourceSnapshots)||!Array.isArray(row.sourceRefs)||!Array.isArray(body.sources)||!Array.isArray(body.handoffs)||!Array.isArray(body.updates))return false
+ const sources=new Map(row.sourceSnapshots.map(conversationSource).map(source=>[source.sourceId,source]))
+ const seen=new Set()
+ for(const source of body.sources){
+  const fact=source&&sources.get(source.sourceId)
+  if(!fact||seen.has(source.sourceId)||!['sourceId','messageId','version','actorId','conversationId'].every(key=>source[key]===fact[key])||!Object.keys(source).every(key=>handoffSourceKeys.has(key)&&isDeepStrictEqual(source[key],fact[key])))return false
+  seen.add(source.sourceId)
+ }
+ const materialKeys=new Set(['taskId','sourceId','messageId','version','actorId','resources'])
+ if(body.materials!==undefined&&(!Array.isArray(body.materials)||body.materials.some(material=>!material||!seen.has(material.sourceId)||material.taskId!==binding.taskId||!['messageId','version','actorId'].every(key=>material[key]===sources.get(material.sourceId)?.[key])||!Object.keys(material).every(key=>materialKeys.has(key)))))return false
+ const handoffs=new Map((task.metadata?.routerHandoffs??[]).filter(handoff=>handoff.requirementRevision===row.requirementRevision&&handoff.contextRevision<=row.contextRevision&&row.sourceRefs.includes(handoff.sourceId)).map(handoff=>[handoff.id,handoff]))
+ const supplied=new Set()
+ for(const handoff of body.handoffs){
+  if(!handoff||supplied.has(handoff.id)||!isDeepStrictEqual(handoff,handoffs.get(handoff.id)))return false
+  supplied.add(handoff.id)
+ }
+ const update=row.currentInput,signedWeb=update?.id===row.messageId&&row.sourceSnapshots.some(source=>source.channel==='web'&&source.sourceId===update.sourceId&&source.version===update.messageVersion&&source.requestIdentity?.action)
+ if(!isDeepStrictEqual(body.updates,signedWeb?[{id:update.id,sourceId:update.sourceId,messageVersion:update.messageVersion,text:update.text}]:[]))return false
+ return !handoffs.has(row.messageId)||supplied.has(row.messageId)
+}
+
 export function committedLiveSupplementAdmissions(manager,task){
  const branch=manager.getBranch(),audit=branch.filter(entry=>entry.type==='custom'&&entry.customType==='night.audit').map(entry=>entry.data),result=[]
  for(const row of task.liveSupplements??[]){
@@ -68,8 +95,11 @@ export function committedLiveSupplementAdmissions(manager,task){
   const packet=packets[0].payload,input=inputs[0],binding=taskEffectBinding(packet.source.taskSession)
   if(packet.source.kind!=='task-input'||!isDeepStrictEqual(input.details,{packetId,source:packet.source})||!isDeepStrictEqual(input.content,packet.content)||acks[0].payload.entryId!==input.id||binding.taskId!==task.taskId||binding.sessionId!==task.sessionId||binding.leaseEpoch!==row.leaseEpoch||binding.requirementRevision!==row.requirementRevision||binding.controlRevision!==row.controlRevision||binding.contextRevision!==row.contextRevision)fail('TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT')
   let body;try{body=JSON.parse(packet.content[0].text)}catch{fail('TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT')}
-  // The committed packet remains byte-exact; SQL snapshots have one old or neutral model view.
-  if(!Array.isArray(row.sourceSnapshots)||!isDeepStrictEqual(body.sources,row.sourceSnapshots)&&!isDeepStrictEqual(body.sources,row.sourceSnapshots.map(conversationSource))||body.task?.request!==row.request||body.task.contextRevision!==row.contextRevision||body.supplement?.messageId!==row.messageId||body.supplement.contextRevision!==row.contextRevision||row.text!==undefined&&body.supplement.text!==row.text)fail('TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT')
+  if(row.inputPolicy===ROUTER_HANDOFF_POLICY||body?.task?.inputPolicy===ROUTER_HANDOFF_POLICY){
+   if(body?.task?.inputPolicy!==ROUTER_HANDOFF_POLICY)fail('TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT')
+   if(!matchesFaithfulSupplement(body,row,task,binding))fail('TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT')
+  // The committed packet remains byte-exact; unmarked SQL snapshots have one old or neutral model view.
+  }else if(!Array.isArray(row.sourceSnapshots)||!isDeepStrictEqual(body?.sources,row.sourceSnapshots)&&!isDeepStrictEqual(body?.sources,row.sourceSnapshots.map(conversationSource))||body.task?.request!==row.request||body.task.contextRevision!==row.contextRevision||body.supplement?.messageId!==row.messageId||body.supplement.contextRevision!==row.contextRevision||row.text!==undefined&&body.supplement.text!==row.text)fail('TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT')
   result.push({messageId:row.messageId,entryId:input.id,packetId,binding:{kind:'task-session',...binding}})
  }
  return result

@@ -83,10 +83,10 @@ async function service(t, options = {}) {
         handled.add(event.id)
         if(reopenTaskId) {
           const taskId=reopenTaskId;reopenTaskId=undefined
-          return host.query('task.get',{taskId}).then(task=>({tool:'resident_task_action',args:{operationId:'reopen:'+event.id,kind:'reopen',sameGoal:true,taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,sourceId:event.sourceId,messageVersion:event.messageVersion}}))
+          return host.query('task.get',{taskId}).then(task=>({tool:'resident_task_action',args:{operationId:'reopen:'+event.id,kind:'reopen',handoff:'Inspect the same synthetic materials again.',sameGoal:true,taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,sourceId:event.sourceId,messageVersion:event.messageVersion}}))
         }
         const taskId='material-task-'+(planned.size+1);planned.set(event.sourceId,taskId)
-        return {tool:'resident_task_plan',args:{operationId:'plan:'+event.id,sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId,title:'Synthetic material inspection',objective:'Inspect isolated source materials',requirements:[]}],dependencies:[]}}
+        return {tool:'resident_task_plan',args:{operationId:'plan:'+event.id,sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId,handoff:'Inspect the attached synthetic materials in isolation.',title:'Synthetic material inspection',objective:'Inspect isolated source materials',requirements:[]}],dependencies:[]}}
       }
       return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
     }
@@ -122,7 +122,7 @@ test('legacy import configuration is rejected and active service never exposes o
   assert.deepEqual(await snapshot(f.archive),before)
 })
 
-test('source text and actual attachment bytes are materialized into separate task archives and cached without redownload', {timeout:nativeTestTimeout(30000)},async t=>{
+test('attachment bytes are materialized without source text in separate task archives and cached without redownload', {timeout:nativeTestTimeout(30000)},async t=>{
   const calls=[],imageBytes=Uint8Array.from([137,80,78,71,13,10,0,255])
   const h=await service(t,{readResource:async(conversationId,messageId,resource)=>{
     calls.push({conversationId,messageId,resource})
@@ -140,7 +140,7 @@ test('source text and actual attachment bytes are materialized into separate tas
     const resolved=resolveTaskMaterialPaths(material,directory,path)
     assert.equal(resolved.taskId,task.taskId);assert.equal(resolved.path,path)
     const source=await h.query('source.get',{sourceId:resolved.sourceId})
-    assert.equal(resolved.text,source.text);assert.equal(resolved.actorId,source.actorId);assert.equal(resolved.messageId,source.messageId)
+    assert.equal(Object.hasOwn(resolved,'text'),false);assert.equal(Object.hasOwn(resolved,'quote'),false);assert.ok(source.text);assert.equal(resolved.actorId,source.actorId);assert.equal(resolved.messageId,source.messageId)
     assert.equal(resolved.resources.length,2)
     for(const entry of resolved.resources){
       assert.equal(entry.status,'read');assert.equal(entry.complete,true)

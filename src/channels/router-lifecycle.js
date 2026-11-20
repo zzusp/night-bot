@@ -7,6 +7,7 @@ import {conversationSource} from './message-safety.js'
 import {routerModelBody,routerModelBatch} from './router-model-input.js'
 import {pendingBusinessInputs} from '../runtime/pi-business-inputs.js'
 import {residentOperationId} from './resident-router-business.js'
+import {unresolvedRouterCalls} from '../runtime/pi-router-recovery-view.js'
 
 const fail=(code,recoveryReason)=>{throw Object.assign(new Error(code),{code,...recoveryReason?{recoveryReason}:{}})}
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -155,10 +156,10 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     }else fail('ROUTER_RECOVERY_BLOCKED')
   }
 
-  async function replaceOwner(row,reason,handle,unknownEventIds,unknownTaskIds,unknownSourceIds,freshEventId){
+  async function replaceOwner(row,reason,handle,unknownEventIds,unknownTaskIds,unknownSourceIds,freshEventId,knownEventIds){
     if(handle){await handle.dispose();handles.delete(row.activeSessionId)}
     if(agents.get(row.activeSessionId))fail('ROUTER_RESUME_BUSY')
-    await command('router.handoff.recover',{conversationId:row.id,generation:row.generation,sessionId:row.activeSessionId,handoffId:'router-recovery:'+hash([row.id,row.generation]),reason,...freshEventId?{freshEventId}:{},...unknownEventIds===undefined?{}:{unknownEventIds,...unknownTaskIds===undefined?{}:{unknownTaskIds},...unknownSourceIds===undefined?{}:{unknownSourceIds}}})
+    await command('router.handoff.recover',{conversationId:row.id,generation:row.generation,sessionId:row.activeSessionId,handoffId:'router-recovery:'+hash([row.id,row.generation]),reason,...freshEventId?{freshEventId}:{},...knownEventIds?{knownEventIds}:{},...unknownEventIds===undefined?{}:{unknownEventIds,...unknownTaskIds===undefined?{}:{unknownTaskIds},...unknownSourceIds===undefined?{}:{unknownSourceIds}}})
     row=await query('router.get',{conversationId:row.id});await recoverConversation(row)
     return query('router.get',{conversationId:row.id})
   }
@@ -235,7 +236,10 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         if(admittedPacket.source.eventIds.some(id=>!inbox.some(event=>event.id===id))){
           try{
             const isolation=await checkPartialSettlement(row,handle,admittedPacket,failed?.id)
-            row=await replaceOwner(row,isolation?'ROUTER_BATCH_ISOLATED':'ROUTER_BATCH_PARTIALLY_SETTLED',handle,isolation?admittedPacket.source.eventIds:[],isolation?.unknownTaskIds,isolation?.unknownSourceIds);handle=undefined;continue
+            if(isolation?.unpairedReplies){
+              row=await replaceOwner(row,'ROUTER_CONTINUATION_REPLY_UNRESOLVED',handle,isolation.heldEventIds,isolation.unknownTaskIds,undefined,isolation.freshEventId,admittedPacket.source.eventIds)
+            }else row=await replaceOwner(row,isolation?'ROUTER_BATCH_ISOLATED':'ROUTER_BATCH_PARTIALLY_SETTLED',handle,isolation?admittedPacket.source.eventIds:[],isolation?.unknownTaskIds,isolation?.unknownSourceIds)
+            handle=undefined;continue
           }catch(error){
             if(/^(?:PI_ROUTER_RESUME_|ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT|ROUTER_EVENT_SCOPE)/.test(error.code??''))fail('ROUTER_BATCH_UNSETTLED',error.code)
             throw error
@@ -254,7 +258,28 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         if(consumedWithSupplements||branch.some(entry=>entry.customType==='night.router-resume-claim'&&entry.details?.packetId===admittedPacket.id)){
           const known=new Set(branch.filter(entry=>entry.customType==='night.business-input').flatMap(entry=>entry.details?.source?.eventIds??[]))
           if(!inbox.some(event=>!known.has(event.id)))fail('ROUTER_BATCH_UNSETTLED')
-          row=await replaceOwner(row,'ROUTER_CONTINUATION_FAILED',handle,admittedPacket.source.eventIds);handle=undefined;continue
+          const checkpointIds=admittedPacket.source.eventIds
+          const suffix=branch.slice(inputIndex+1).filter(entry=>entry.type==='message')
+          const replies=unresolvedRouterCalls(suffix.map(entry=>entry.message))
+          if(replies.length&&replies.every(call=>call.name==='resident_router_reply')){
+            // A consumed inspection is not evidence that an unmatched reply took
+            // effect. Preserve only its exact source on hold, never the new source
+            // or unrelated rows from the earlier batch.
+            const batch=await query('router.batch-events',{conversationId,eventIds:checkpointIds});assertOpen()
+            if(batch.some(event=>event.state!=='pending'||event.deliveryHold)||!routerPacketViews(row,batch).some(view=>sameRouterPacket(admittedPacket,view)))fail('ROUTER_BATCH_UNSETTLED','ROUTER_RESUME_BATCH_STALE')
+            const matches=(call,event)=>event.kind==='source.message'&&call.arguments?.sourceId===event.sourceId&&call.arguments?.messageVersion===event.messageVersion
+            const held=batch.filter(event=>replies.some(call=>matches(call,event)))
+            if(held.length&&replies.every(call=>held.some(event=>matches(call,event)))){
+              const knownPending=inbox.filter(event=>known.has(event.id)).map(event=>event.id)
+              const freshEventId=await query('router.independent-source',{conversationId,eventIds:knownPending});assertOpen()
+              if(!freshEventId)fail('ROUTER_BATCH_UNSETTLED')
+              const native=await persistence.readNative(row.activeSessionId,{requireComplete:true});assertOpen()
+              const durable=new Map(native.entries.map(entry=>[entry.id,entry]))
+              if(!isDeepStrictEqual(durable.get(admittedInput.id),admittedInput)||suffix.some(entry=>!isDeepStrictEqual(durable.get(entry.id),entry)))fail('ROUTER_BATCH_UNSETTLED','ROUTER_NATIVE_COMMIT_INVALID')
+              row=await replaceOwner(row,'ROUTER_CONTINUATION_REPLY_UNRESOLVED',handle,held.map(event=>event.id),[...new Set(replies.map(call=>call.arguments?.taskDelivery?.taskId).filter(id=>typeof id==='string'))],undefined,freshEventId,knownPending);handle=undefined;continue
+            }
+          }
+          row=await replaceOwner(row,'ROUTER_CONTINUATION_FAILED',handle,checkpointIds);handle=undefined;continue
         }
         const inspection=inbox.some(event=>event.kind==='task.inspection')
         const mayResume=unexpectedStop||failed?.message?.role==='assistant'&&(failed.message.stopReason==='aborted'||inspection&&['error','stop'].includes(failed.message.stopReason))
@@ -358,11 +383,25 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     let isolation
     try{await handle.checkRouterBatch({packet,failedEntryId})}
     catch(error){
-      if(error.code!=='PI_ROUTER_RESUME_EFFECT_UNRESOLVED')throw error
-      if(!await query('router.independent-source',{conversationId,eventIds:ids}))throw error
-      // This is not effect-complete recovery: exact paired old failures remain
-      // unknown and fenced. Only independent later sources can gain a new owner.
-      isolation=await handle.checkRouterBatch({packet,failedEntryId,isolationOnly:true})
+      if(!['PI_ROUTER_RESUME_EFFECT_UNRESOLVED','PI_ROUTER_RESUME_CHECKPOINT_INVALID'].includes(error.code))throw error
+      const freshEventId=await query('router.independent-source',{conversationId,eventIds:ids});assertOpen()
+      if(!freshEventId)throw error
+      // Certify partial settlement and the unmatched reply separately. This
+      // never makes the original checkpoint eligible to resume or replay.
+      const unpaired=await Promise.resolve().then(()=>handle.checkRouterBatch({packet,failedEntryId,isolationOnly:true,isolateUnpairedReplies:true})).catch(cause=>{
+        if(cause.code==='PI_ROUTER_RESUME_EFFECT_UNRESOLVED')return
+        throw cause
+      })
+      if(unpaired){
+        const matches=(call,event)=>event.kind==='source.message'&&call.sourceId===event.sourceId&&call.messageVersion===event.messageVersion
+        const heldEventIds=remaining.filter(event=>unpaired.unpairedReplies.some(call=>matches(call,event))).map(event=>event.id)
+        if(!unpaired.unpairedReplies.every(call=>remaining.some(event=>matches(call,event))))throw error
+        isolation={...unpaired,heldEventIds,freshEventId,unknownTaskIds:[...new Set(unpaired.unpairedReplies.map(call=>call.taskId).filter(id=>typeof id==='string'))]}
+      }else{
+        if(error.code!=='PI_ROUTER_RESUME_EFFECT_UNRESOLVED')throw error
+        // Exact paired old failures remain unknown and fenced.
+        isolation=await handle.checkRouterBatch({packet,failedEntryId,isolationOnly:true})
+      }
     }
     const current=await query('router.get',{conversationId}),pending=await query('router.inbox',{conversationId,limit:30,deliverable:true})
     if(!current||current.phase!=='active'||current.generation!==row.generation||current.activeSessionId!==row.activeSessionId||current.cursor!==row.cursor||agents.get(row.activeSessionId)!==handle.agent||handle.agent.lifecycle.signal.aborted)fail('ROUTER_RESUME_STALE')

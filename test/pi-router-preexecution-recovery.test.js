@@ -28,7 +28,7 @@ for(const [label,legacy,scheduleFailure,settlementFailure] of [
   if(phase==='register')return {tool:'resident_router_settle',args:{operationId:'register',eventIds:input.events.map(e=>e.id)}}
   const task=await h.query('task.get',{taskId:'old-task'})
   if(phase==='seed'){
-   const args={sourceId:holdSource,messageVersion:1,taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,kind:'resume'}
+   const args={sourceId:holdSource,messageVersion:1,taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,kind:'resume',handoff:'Continue the original paused task.'}
    if(step++===0){ids=input.events.map(e=>e.id);assert.equal(ids.length,26);return {tool:'resident_router_settle',args:{operationId:'twenty',eventIds:ids.slice(0,20)}}}
    if(step<=3)return {tool:'resident_task_action',args:{...args,operationId:'old-blocked-'+step}}
    if(step===4)return {tool:'resident_router_reply',args:{operationId:'old-blocked-reply',sourceId:holdSource,messageVersion:1,text:'Must not send old-source reply'}}
@@ -51,7 +51,7 @@ for(const [label,legacy,scheduleFailure,settlementFailure] of [
   }
   replacementIds=input.events.map(e=>e.id)
   const fresh=input.events.find(e=>e.source?.sourceId==='independent-query'),source=fresh?.source
-  if(!attemptedHeld){attemptedHeld=true;return {tool:'resident_task_action',args:{operationId:'still-held',kind:'resume',taskId:task.taskId,sourceId:holdSource,messageVersion:1,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}}}
+  if(!attemptedHeld){attemptedHeld=true;return {tool:'resident_task_action',args:{operationId:'still-held',kind:'resume',handoff:'Continue the original paused task.',taskId:task.taskId,sourceId:holdSource,messageVersion:1,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}}}
   if(!queried){queried=true;return {tool:'resident_task_query',args:{taskId:task.taskId}}}
   if(!reply){reply=true;assert.equal(task.control,'paused');return {tool:'resident_router_reply',args:{operationId:'actual-query-answer',sourceId:source.sourceId,messageVersion:source.version,replyPurpose:'direct-answer',text:'The existing task is paused; no execution has been started.'}}}
   if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1)?.result.isError)return {text:'Current state checked; events observed without task dispatch'}
@@ -153,12 +153,12 @@ for(const directlyHeld of [false,true])test(`fresh Router scheduling survives a 
   if(event?.source.messageId==='original-work'){
    if(planned)return settle()
    planned=true
-   return {tool:'resident_task_plan',args:{operationId:'plan-original',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId,title:'原任务',objective:'使用原执行会话',requirements:[]}],dependencies:[]}}
+   return {tool:'resident_task_plan',args:{operationId:'plan-original',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId,title:'原任务',objective:'使用原执行会话',requirements:[],handoff:'在原执行会话处理当前任务。'}],dependencies:[]}}
   }
   if(event?.source.messageId!=='new-instruction'||step>=5)return settle()
   const task=await h.query('task.get',{taskId}),attempt=step++
   const provenance=attempt===0?{sourceId:heldSource,messageVersion:1}:attempt===4&&directlyHeld?{}:{sourceId:event.sourceId,messageVersion:attempt===1?2:event.messageVersion}
-  return {tool:'resident_task_action',args:{operationId:'action-'+attempt,kind:attempt===3?'arrange':'resume',taskId,...provenance,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision+(attempt===2?1:0),...attempt===3?{expectedArrangementRevision:task.arrangementRevision??1,dependencies:[]}:{} }}
+  return {tool:'resident_task_action',args:{operationId:'action-'+attempt,kind:attempt===3?'arrange':'resume',taskId,...provenance,...(attempt!==3&&provenance.sourceId?{handoff:'继续核对原任务的实际结果。'}:{}),expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision+(attempt===2?1:0),...attempt===3?{expectedArrangementRevision:task.arrangementRevision??1,dependencies:[]}:{} }}
  },{wrapStore})
  await h.receive(channelMessage('original-work'));await h.service.whenIdle()
  const original=await h.query('task.get',{taskId})
@@ -210,5 +210,52 @@ test('consecutive zero-progress batches never starve independent messages', {tim
  assert.ok(pending.every(event=>event.state==='pending'&&event.deliveryHold?.reason==='ROUTER_BATCH_NO_PROGRESS'))
  assert.deepEqual(await h.query('router.inbox',{conversationId,deliverable:true}),[])
  assert.deepEqual(await readFile(archive),bytes)
+ assert.equal(h.sent.length,0)
+})
+
+test('cold Router isolates a persisted zero-progress event and actually dispatches fresh independent work', {timeout:nativeTestTimeout(90000)},async t=>{
+ const deliveries=[],taskId='fresh-cold-dispatch-task';let oldAttempts=0,plans=0,runs=0
+ const h=await residentRouterHost(t,body=>{
+  const tools=requestTools(body)
+  if(tools.includes('task_result')){
+   assert.match(JSON.stringify(body.messages),/Complete the separate bounded work after restart/)
+   runs++
+   return {tool:'task_result',args:{decision:{action:'wait',summary:'Fresh work was actually admitted',evidence:[],limitations:[]}}}
+  }
+  if(!tools.includes('resident_router_settle'))return {text:'No work'}
+  const {events}=requestEnvelope(body,'Router 请求：'),messageIds=events.flatMap(event=>event.source?[event.source.messageId]:[])
+  const lastTool=body.messages.findLast(message=>message.role==='assistant')?.tool_calls?.at(-1)?.function?.name
+  if(body.messages.at(-1)?.role==='tool'&&lastTool==='resident_router_settle')return {text:'Turn finished'}
+  const old=events.find(event=>event.source?.messageId==='cold-zero-progress')
+  if(old){
+   deliveries.push(...messageIds);oldAttempts++
+   return {tool:'resident_router_settle',args:{operationId:'stable-old-settle',eventIds:events.map(event=>event.id),noTaskDispositions:[{eventId:old.id,outcome:'context-only',sourceQuote:'deliberately wrong quote',reason:'Synthetic refused settlement'}]}}
+  }
+  const fresh=events.find(event=>event.source?.messageId==='cold-fresh-work')
+  if(fresh&&!plans){
+   deliveries.push(...messageIds);plans++
+   return {tool:'resident_task_plan',args:{operationId:'independent-new-plan',sourceId:fresh.sourceId,messageVersion:fresh.messageVersion,tasks:[{taskId,title:'Independent cold work',objective:'Fresh bounded task after restart',requirements:[],handoff:'Complete the separate bounded work after restart.'}],dependencies:[]}}
+  }
+  return {tool:'resident_router_settle',args:{operationId:'settle-'+events[0].id,eventIds:events.map(event=>event.id)}}
+ })
+ const drain=async()=>{try{await h.service.whenIdle()}catch(error){if(error.code!=='ROUTER_BATCH_UNSETTLED')throw error}}
+ await h.receive(channelMessage('cold-zero-progress'));await drain()
+ const source=(await h.query('source.list'))[0],conversationId=source.groupId,before=await h.query('router.get',{conversationId})
+ const archive=join(h.host.ctx.runtimePaths.state,'sessions',piJournalFilename(before.activeSessionId)),original=await readFile(archive)
+ assert.equal(oldAttempts,1);assert.equal((await h.query('router.inbox',{conversationId}))[0]?.source?.sourceId,source.sourceId)
+ await h.restart()
+ await h.receive(channelMessage('cold-fresh-work',{text:'Fresh bounded task after restart'}));await drain()
+ assert.deepEqual(deliveries,['cold-zero-progress','cold-fresh-work'])
+ assert.equal(oldAttempts,1);assert.equal(plans,1);assert.equal(runs,1)
+ const task=await h.query('task.get',{taskId})
+ assert.equal(task.drained,true);assert.equal(task.lastDecision.summary,'Fresh work was actually admitted')
+ assert.ok((await h.query('wake.list',{taskId})).every(wake=>wake.state==='acked'))
+ const journal=await h.host.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
+ assert.equal(journal.entries.filter(entry=>entry.type==='message'&&entry.message.toolName==='task_result'&&!entry.message.isError).length,1)
+ const pending=await h.query('router.inbox',{conversationId})
+ assert.equal(pending.length,1);assert.equal(pending[0].source.sourceId,source.sourceId);assert.equal(pending[0].deliveryHold?.reason,'ROUTER_BATCH_NO_PROGRESS')
+ assert.deepEqual(await h.query('router.inbox',{conversationId,deliverable:true}),[])
+ assert.equal((await h.query('router.get',{conversationId})).generation,before.generation+1)
+ assert.deepEqual(await readFile(archive),original)
  assert.equal(h.sent.length,0)
 })

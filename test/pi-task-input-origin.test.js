@@ -44,3 +44,30 @@ for(const format of ['legacy','neutral'])test('cold supplemental repair accepts 
  assert.deepEqual(committedLiveSupplementAdmissions(native,task),[],'a branch without committed admission cannot ACK SQL')
  assert.deepEqual((await f.persistence.readNative('session',{requireComplete:true})).entries,stored.entries,'offline proof must not rewrite the durable journal')
 })
+
+for(const directWeb of [false,true])test(`cold faithful supplement repairs only matching persisted ${directWeb?'signed Web update':'Router handoff'}`,async t=>{
+ const f=await fixture(t),policy='faithful-handoff-v1',metadataSource={sourceId:'source',messageId:'original-message',version:1,actorId:'original-actor',conversationId:'original-room',channel:directWeb?'web':'im'}
+ const {conversationId,...sourceFact}=metadataSource
+ const sourceSnapshot={...sourceFact,groupId:conversationId,text:'Original text not republished by the handoff',...directWeb?{requestIdentity:{action:{kind:'task.supplement'}}}:{}}
+ const update={id:'supplement',sourceId:'source',messageVersion:1,text:'Explicit direct update'}
+ const handoff={id:'supplement',sourceId:'source',messageVersion:1,requirementRevision:1,contextRevision:1,text:'Faithful task handoff'}
+ const row={messageId:'supplement',wakeId:'wake',state:'pending',inputPolicy:policy,sourceRefs:['source'],sourceSnapshots:[sourceSnapshot],request:'Task title not sent to the model',leaseEpoch:1,requirementRevision:1,controlRevision:1,contextRevision:1,...directWeb?{currentInput:update}:{}}
+ const binding={...f.binding,contextRevision:1},task={...binding,metadata:{routerInputPolicy:policy,routerHandoffs:directWeb?[]:[handoff]},liveSupplements:[row]}
+ const body={task:{...binding,inputPolicy:policy,sourceRefs:row.sourceRefs},sources:[metadataSource],materials:[{taskId:'task',sourceId:'source',messageId:'original-message',version:1,actorId:'original-actor',resources:[]}],supplement:{messageId:row.messageId,contextRevision:1},handoffs:directWeb?[]:[handoff],updates:directWeb?[update]:[]}
+ const packet={id:'task-supplement:wake',source:{kind:'task-input',taskSession:binding},content:[{type:'text',text:JSON.stringify(body)}]}
+ const entryId=f.append(packet);await f.writer.commit();const stored=await f.persistence.readNative('session',{requireComplete:true})
+ const manager=()=>SessionManager.inMemory(stored.header.cwd,{id:stored.header.id},structuredClone(stored.entries)),native=manager()
+ assert.deepEqual(committedLiveSupplementAdmissions(native,task),[{messageId:row.messageId,entryId,packetId:packet.id,binding:{kind:'task-session',...binding}}])
+ assert.deepEqual(native.getEntries(),stored.entries)
+ for(const change of [
+  value=>{value.sources[0].text=sourceSnapshot.text},value=>{value.sources[0].version++},value=>{value.materials[0].actorId='other'},value=>{value.task.contextRevision++},
+  value=>{delete value.task.inputPolicy},value=>{value.supplement.messageId='other'},
+  directWeb?value=>{value.updates[0].text='Fabricated update'}:value=>{value.handoffs[0].text='Fabricated handoff'},
+  directWeb?value=>{value.updates=[]}:value=>{value.handoffs=[]}]){
+  const changed=structuredClone(body);change(changed);const tampered=manager(),entries=tampered.getEntries(),content=[{type:'text',text:JSON.stringify(changed)}]
+  entries.find(entry=>entry.id===entryId).content=content
+  entries.find(entry=>entry.type==='custom'&&entry.customType==='night.audit'&&entry.data.kind==='enqueued').data.payload.content=content
+  assert.throws(()=>committedLiveSupplementAdmissions(tampered,task),{code:'TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT'})
+ }
+ assert.deepEqual((await f.persistence.readNative('session',{requireComplete:true})).entries,stored.entries)
+})

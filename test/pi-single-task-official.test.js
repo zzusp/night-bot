@@ -227,7 +227,7 @@ test('cold new task lease retains old pending supplement without trace fields an
 
 test('unknown write permits a readback turn and its result retires queued job completions',async t=>{
  let f
- f=await fixture(t,(_context,n)=>n===1?{calls:[{name:'write'}]}:{calls:[{name:'task_result',arguments:{decision:{...decision,action:'wait'}}}]},
+ f=await fixture(t,(_context,n)=>n===1?{calls:[{name:'write'}]}:n<=3?{calls:[{name:'task_result',arguments:{decision:{...decision,action:'wait'}}}]}:{text:'Unexpected additional request'},
   {effect:async({exec})=>{
    for(let i=0;i<96;i++){
     const packet={id:'job:held:'+i,source:{kind:'job-completion',jobId:'job-'+i,terminalReceiptId:'terminal-'+i},content:'Completed producer'}
@@ -248,11 +248,14 @@ test('unknown write permits a readback turn and its result retires queued job co
  assert.equal(snapshot.entries.filter(row=>row.type==='message'&&row.message.role==='assistant').length,2)
  assert.equal(f.ctx.agents.list().length,0);assert.equal(f.persistence.writers.size,0)
  f.binding={...f.binding,sessionBound:true,leaseEpoch:2}
+ let resumedDecision
  assert.equal((await run(f,{submit:async decision=>{
-  assert.ok(decision.limitations.includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY'))
-  assert.ok(decision.evidence.some(text=>text.includes('write; intentEntryId=')))
+  resumedDecision=decision
   return {accepted:true}
  }})).status,'submitted','explicit resumed readback may report wait, without replaying the unknown effect')
+ assert.ok(resumedDecision.limitations.includes('TASK_HISTORICAL_EFFECT_OUTCOME_UNKNOWN'))
+ assert.ok(!resumedDecision.limitations.includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY'))
+ assert.ok(resumedDecision.evidence.some(text=>text.includes('write; intentEntryId=')))
  assert.equal(f.requests.length,3);assert.equal(f.effects,1)
 })
 
