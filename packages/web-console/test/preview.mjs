@@ -189,7 +189,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
         if (query.kind === 'router.get') return recordConversations.includes(query.conversationId) ? {id:query.conversationId,activeSessionId:`fixture-router-${query.conversationId}`,generation:1,phase:'active'} : null
         if (query.kind === 'router.rotations') return []
       }},
-      async boardTasks(query) {return pageOf(tasks.filter(task => !query.state || task.state === query.state), query)},
+      async boardTasks(query) {return pageOf(tasks.filter(task => (!query.groupId || task.groupId === query.groupId) && (!query.state || task.state === query.state)), query)},
       listObserverGroups() {return rooms},
       async taskDetail(id) {return tasks.find(task => task.taskId === id)},
       async taskDialogue(id) {return {taskId: id, sessionId: `fixture-pi-${id}`, writable: false, messages: [

@@ -5,10 +5,10 @@
 .rail-heading > a, .rail-section-title > a { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; color: var(--board-muted); font-size: 11px; min-height: 28px; border-radius: 6px; }
 .rail-heading > a:hover, .rail-section-title > a:hover { color: var(--board-info); }
 .activity-counts { display: grid; grid-template-columns: 1fr 1fr; background: var(--board-surface); border: 1px solid var(--board-border); border-radius: var(--board-radius-card); padding: 14px 0; }
-.activity-counts a { display: flex; flex-direction: column; gap: 10px; color: var(--board-text); padding: 2px 18px; border-radius: 6px; }
-.activity-counts a + a { border-left: 1px solid var(--board-border); }
+.activity-counts > :is(a, div) { display: flex; flex-direction: column; gap: 10px; color: var(--board-text); padding: 2px 18px; border-radius: 6px; }
+.activity-counts > :is(a, div) + :is(a, div) { border-left: 1px solid var(--board-border); }
 .activity-counts a:hover { background: var(--board-hover); }
-.activity-counts a > span { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--board-muted); }
+.activity-counts > :is(a, div) > span { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--board-muted); }
 .activity-counts strong { font-size: 28px; font-weight: 500; line-height: 32px; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
 .count-dot { display: inline-block; width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; }
 .count-dot.info { background: var(--board-info); }.count-dot.warning { background: var(--board-warning); }

@@ -1222,3 +1222,25 @@ test('compaction chart uses authenticated current Router events even with zero m
  assert.equal((await f.fetchApi('/api/conversations/room-one/stage-times?contextWindow=invalid')).status,400)
  assert.equal((await f.fetchApi('/api/conversations/foreign/stage-times?contextWindow=1')).status,404);assert.equal(calls.length,count)
 })
+
+test('channel activity scopes every count and page before querying, rejects foreign targets and keeps global overview',async t=>{
+ const identity=input=>Channels.prototype.identity.call({host:{runtimePaths:{workspaces:'/tmp/synthetic-conversations'}}},input).sessionId
+ const message={type:'chat-room',channelId:'same-plugin',conversationId:'room-one',senderId:'actor',messageId:'synthetic',text:'Synthetic',conversationName:'Same display name'}
+ assert.equal(new Set([identity(message),identity({...message,conversationId:'room-two'}),identity({...message,channelId:'other-plugin'}),identity({...message,type:'chat'})]).size,4)
+ assert.equal(identity(message),identity({...message,senderId:'other-member'}),'group members share one stable room scope')
+ const f=await fixture(t),calls=[],groups=['room-one','room-two','room-empty']
+ f.app.tasks.listObserverGroups=()=>groups.map(groupId=>({groupId,name:'Same display name'}))
+ const rows=[...Array.from({length:12},(_,i)=>({taskId:'b-'+i,groupId:'room-two',title:'B synthetic '+i,state:'running'})),{taskId:'a-run',groupId:'room-one',title:'A synthetic running',state:'running'},{taskId:'a-wait',groupId:'room-one',title:'A synthetic waiting',state:'waiting'},{taskId:'global',title:'Standalone synthetic',state:'running'}]
+ f.app.tasks.boardTasks=async q=>{calls.push(q);const selected=rows.filter(row=>(!q.groupId||row.groupId===q.groupId)&&(!q.state||row.state===q.state));return {items:selected.slice(q.offset,q.offset+q.limit),total:selected.length,nextOffset:null,limit:q.limit,offset:q.offset}}
+ assert.equal((await f.fetchApi('/api/conversations/room-one/activity')).status,401);assert.equal(calls.length,0)
+ await f.login();assert.equal((await f.fetchApi('/api/conversations/foreign/activity')).status,404);assert.equal(calls.length,0)
+ const a=(await f.fetchApi('/api/conversations/room-one/activity')).body
+ assert.deepEqual(a.scope,{conversationId:'room-one'});assert.equal(a.running.total,1);assert.equal(a.waiting.total,1);assert.equal(a.tasks.total,2)
+ assert.ok(calls.every(q=>q.groupId==='room-one'&&q.offset===0&&q.limit===5&&q.archived===false));assert.ok(a.tasks.items.every(row=>row.groupId==='room-one'))
+ const b=(await f.fetchApi('/api/conversations/room-two/activity')).body;assert.equal(b.running.total,12);assert.equal(b.running.items.length,5)
+ const empty=(await f.fetchApi('/api/conversations/room-empty/activity')).body;assert.equal(empty.tasks.total,0);assert.equal(empty.running.total,0);assert.equal(empty.waiting.total,0)
+ const count=calls.length;assert.equal((await f.fetchApi('/api/conversations/room-one/activity?groupId=room-two')).status,400);assert.equal(calls.length,count)
+ const global=(await f.fetchApi('/api/overview')).body;assert.equal(global.running.total,14)
+ const board=f.app.tasks.boardTasks;f.app.tasks.boardTasks=async q=>{if(q.state==='running')throw Error('PRIVATE_ERROR');return board(q)}
+ const partial=(await f.fetchApi('/api/conversations/room-one/activity')).body;assert.equal(partial.running,null);assert.equal(partial.waiting.total,1);assert.equal(partial.sectionErrors.running,'SECTION_UNAVAILABLE');assert.ok(!JSON.stringify(partial).includes('PRIVATE_ERROR'))
+})
