@@ -128,3 +128,33 @@ for(const [label,legacy,scheduleFailure,settlementFailure] of [
  }
  const requests=h.requests.length;await h.restart();await h.service.whenIdle();assert.equal(h.requests.length,requests);assert.equal(h.sent.length,1)
 })
+
+test('consecutive zero-progress batches never starve independent messages', {timeout:nativeTestTimeout(90000)},async t=>{
+ const failures=new Set(['stalled-a','stalled-b']), deliveries=[]
+ const h=await residentRouterHost(t,async body=>{
+  if(!requestTools(body).includes('resident_router_settle'))return {text:'No work'}
+  const batch=requestEnvelope(body,'Router 请求：').events, messages=batch.flatMap(event=>event.source?[event.source.messageId]:[])
+  if(body.messages.at(-1)?.role==='tool')return {text:'Turn finished'}
+  deliveries.push(messages)
+  const bad=messages.some(id=>failures.has(id))
+  return {tool:'resident_router_settle',args:{operationId:batch[0].id,eventIds:batch.map(event=>event.id),noTaskDispositions:batch.filter(event=>event.source).map(event=>({eventId:event.id,outcome:'context-only',sourceQuote:bad?'wrong original quote':event.source.text,reason:'Fixture records a source without dispatch'}))}}
+ })
+ const drain=async()=>{try{await h.service.whenIdle()}catch(error){if(error.code!=='ROUTER_BATCH_UNSETTLED')throw error}}
+ await h.receive(channelMessage('stalled-a'));await drain()
+ const source=(await h.query('source.list'))[0],conversationId=source.groupId
+ const before=await h.query('router.get',{conversationId}),archive=join(h.host.ctx.runtimePaths.state,'sessions',piJournalFilename(before.activeSessionId))
+ const bytes=await readFile(archive)
+ assert.deepEqual(deliveries,[['stalled-a']]);assert.equal(await h.query('router.inbox-count',{conversationId}),1)
+ await h.receive(channelMessage('stalled-b'));await drain()
+ await h.receive(channelMessage('independent-one'));await drain()
+ assert.deepEqual(deliveries,[['stalled-a'],['stalled-b'],['independent-one']])
+ assert.equal((await h.query('router.get',{conversationId})).generation,before.generation+2)
+ await h.restart();await h.receive(channelMessage('independent-two'));await drain()
+ assert.deepEqual(deliveries,[['stalled-a'],['stalled-b'],['independent-one'],['independent-two']])
+ const pending=await h.query('router.inbox',{conversationId})
+ assert.deepEqual(pending.map(event=>event.source.messageId),['stalled-a','stalled-b'])
+ assert.ok(pending.every(event=>event.state==='pending'&&event.deliveryHold?.reason==='ROUTER_BATCH_NO_PROGRESS'))
+ assert.deepEqual(await h.query('router.inbox',{conversationId,deliverable:true}),[])
+ assert.deepEqual(await readFile(archive),bytes)
+ assert.equal(h.sent.length,0)
+})

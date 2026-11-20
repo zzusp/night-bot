@@ -155,17 +155,17 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     }else fail('ROUTER_RECOVERY_BLOCKED')
   }
 
-  async function replaceOwner(row,reason,handle,unknownEventIds,unknownTaskIds,unknownSourceIds){
+  async function replaceOwner(row,reason,handle,unknownEventIds,unknownTaskIds,unknownSourceIds,freshEventId){
     if(handle){await handle.dispose();handles.delete(row.activeSessionId)}
     if(agents.get(row.activeSessionId))fail('ROUTER_RESUME_BUSY')
-    await command('router.handoff.recover',{conversationId:row.id,generation:row.generation,sessionId:row.activeSessionId,handoffId:'router-recovery:'+hash([row.id,row.generation]),reason,...unknownEventIds===undefined?{}:{unknownEventIds,...unknownTaskIds===undefined?{}:{unknownTaskIds},...unknownSourceIds===undefined?{}:{unknownSourceIds}}})
+    await command('router.handoff.recover',{conversationId:row.id,generation:row.generation,sessionId:row.activeSessionId,handoffId:'router-recovery:'+hash([row.id,row.generation]),reason,...freshEventId?{freshEventId}:{},...unknownEventIds===undefined?{}:{unknownEventIds,...unknownTaskIds===undefined?{}:{unknownTaskIds},...unknownSourceIds===undefined?{}:{unknownSourceIds}}})
     row=await query('router.get',{conversationId:row.id});await recoverConversation(row)
     return query('router.get',{conversationId:row.id})
   }
   async function drain(conversationId){
     assertOpen();ctx.get('channels').assertGroupTarget(conversationId)
     let row=await query('router.get',{conversationId})
-    const events=await query('router.inbox',{conversationId,limit:30});assertOpen()
+    const events=await query('router.inbox',{conversationId,limit:30,deliverable:true});assertOpen()
     if(!row){if(!events.length)return;row=(await command('router.ensure',{conversationId,sessionId:sessionId(conversationId,1)})).result.conversation}
     assertOpen()
     if(row.phase!=='active'){await recoverConversation(row);row=await query('router.get',{conversationId});assertOpen()}
@@ -174,7 +174,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     for(const rotation of rotations)if(rotation.state==='published'&&rotation.candidateSessionId===row.activeSessionId){const old=handles.get(rotation.oldSessionId);if(old){await old.dispose();handles.delete(rotation.oldSessionId)}}
     let handle
     for(;;){
-      const inbox=await query('router.inbox',{conversationId,limit:30});assertOpen()
+      const inbox=await query('router.inbox',{conversationId,limit:30,deliverable:true});assertOpen()
       if(!inbox.length)break
       const startedAt=new Date().toISOString()
       if(!handle)try{handle=await open(row)}catch(error){
@@ -199,7 +199,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
           const operationId=residentOperationId(conversationId,args.operationId)
           const prior=await query('router.action',{conversationId,operationId});assertOpen()
           if(!prior){
-            const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
+            const pending=await query('router.inbox',{conversationId,limit:30,deliverable:true});assertOpen()
             const batch=pending.filter(event=>args.eventIds.includes(event.id))
             if(!isDeepStrictEqual(batch.map(event=>event.id),args.eventIds)||!routerPacketViews(row,batch).some(view=>sameRouterPacket(admittedPacket,view)))fail('ROUTER_PACKET_ID_CONFLICT')
             for(const event of batch)if(event.sourceId){
@@ -257,12 +257,27 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
           row=await replaceOwner(row,'ROUTER_CONTINUATION_FAILED',handle,admittedPacket.source.eventIds);handle=undefined;continue
         }
         const inspection=inbox.some(event=>event.kind==='task.inspection')
-        if(!unexpectedStop&&(failed?.message?.role!=='assistant'||failed.message.stopReason!=='aborted'&&!(inspection&&['error','stop'].includes(failed.message.stopReason))))fail('ROUTER_BATCH_UNSETTLED',errors.get(conversationId)?.recoveryReason)
-        try{await continueBatch(row,handle,admittedPacket,failed.id,()=>{},undefined,unexpectedStop)}catch(error){
-          if(/^(?:PI_ROUTER_RESUME_|ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT)/.test(error.code??''))fail('ROUTER_BATCH_UNSETTLED',unexpectedStop?error.code:undefined)
-          throw error
+        const mayResume=unexpectedStop||failed?.message?.role==='assistant'&&(failed.message.stopReason==='aborted'||inspection&&['error','stop'].includes(failed.message.stopReason))
+        let resumeFailure
+        if(mayResume){
+          try{await continueBatch(row,handle,admittedPacket,failed.id,()=>{},undefined,unexpectedStop);row=await query('router.get',{conversationId});continue}
+          catch(error){
+            if(!/^(?:PI_ROUTER_RESUME_|ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT)/.test(error.code??''))throw error
+            resumeFailure=error
+          }
         }
-        row=await query('router.get',{conversationId});continue
+        const ids=admittedPacket.source.eventIds
+        const freshEventId=await query('router.independent-source',{conversationId,eventIds:ids})
+        if(freshEventId){
+          try{
+            const proof=await checkStalledBatch(row,handle,admittedPacket,failed?.id)
+            row=await replaceOwner(row,'ROUTER_BATCH_NO_PROGRESS',handle,ids,proof.unknownTaskIds,proof.unknownSourceIds,freshEventId);handle=undefined;continue
+          }catch(error){
+            if(/^(?:PI_ROUTER_RESUME_|ROUTER_RESUME_|ROUTER_PACKET_ID_CONFLICT|ROUTER_EVENT_SCOPE)/.test(error.code??''))fail('ROUTER_BATCH_UNSETTLED',error.code)
+            throw error
+          }
+        }
+        fail('ROUTER_BATCH_UNSETTLED',unexpectedStop?resumeFailure?.code:errors.get(conversationId)?.recoveryReason)
       }
       // Once a cold owner starts fresh work it is no longer a cold checkpoint.
       coldSessions.delete(row.activeSessionId)
@@ -291,7 +306,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         // Keep an open span if the official join itself cannot be established.
         try{await handle.whenIdle();await observed.finish()}catch{await observed.finishIfSettled()}finally{stopObserving()}
       }
-      const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
+      const pending=await query('router.inbox',{conversationId,limit:30,deliverable:true});assertOpen()
       if(batch.some(event=>pending.some(item=>item.id===event.id)))fail('ROUTER_BATCH_UNSETTLED')
       row=await query('router.get',{conversationId})
     }
@@ -311,6 +326,16 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     tails.set(conversationId,work);inflight.add(work)
     void work.then(()=>errors.delete(conversationId),error=>errors.set(conversationId,error)).finally(()=>{inflight.delete(work);if(tails.get(conversationId)===work)tails.delete(conversationId)}).catch(()=>{})
     return work
+  }
+  async function checkStalledBatch(row,handle,packet,failedEntryId){
+    const conversationId=row.id,eventIds=packet.source.eventIds
+    const events=await query('router.batch-events',{conversationId,eventIds});assertOpen()
+    if(events.some(event=>event.state!=='pending'||event.deliveryHold)||!routerPacketViews(row,events).some(value=>sameRouterPacket(value,packet)))fail('ROUTER_RESUME_BATCH_STALE')
+    const proof=await handle.checkRouterBatch({packet,failedEntryId,isolationOnly:true})
+    const current=await query('router.get',{conversationId});assertOpen()
+    if(!current||current.phase!=='active'||current.generation!==row.generation||current.activeSessionId!==row.activeSessionId||current.cursor!==row.cursor||agents.get(row.activeSessionId)!==handle.agent||handle.agent.lifecycle.signal.aborted)fail('ROUTER_RESUME_STALE')
+    if(!isDeepStrictEqual(events,await query('router.batch-events',{conversationId,eventIds})))fail('ROUTER_RESUME_BATCH_STALE')
+    assertOpen();return proof
   }
   async function checkPartialSettlement(row,handle,packet,failedEntryId){
     const ids=packet.source.eventIds,conversationId=row.id
@@ -334,17 +359,12 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     try{await handle.checkRouterBatch({packet,failedEntryId})}
     catch(error){
       if(error.code!=='PI_ROUTER_RESUME_EFFECT_UNRESOLVED')throw error
-      let fresh=false
-      for(const event of await query('router.inbox',{conversationId,limit:30})){
-        const source=event.source
-        if(!ids.includes(event.id)&&event.kind==='source.message'&&source&&!source.authorizationRevoked&&!source.retracted&&!source.triageHold&&!source.archiveRestoreHold&&await query('router.source-latest',{conversationId,sourceId:source.sourceId,messageVersion:source.version})){fresh=true;break}
-      }
-      if(!fresh)throw error
+      if(!await query('router.independent-source',{conversationId,eventIds:ids}))throw error
       // This is not effect-complete recovery: exact paired old failures remain
       // unknown and fenced. Only independent later sources can gain a new owner.
       isolation=await handle.checkRouterBatch({packet,failedEntryId,isolationOnly:true})
     }
-    const current=await query('router.get',{conversationId}),pending=await query('router.inbox',{conversationId,limit:30})
+    const current=await query('router.get',{conversationId}),pending=await query('router.inbox',{conversationId,limit:30,deliverable:true})
     if(!current||current.phase!=='active'||current.generation!==row.generation||current.activeSessionId!==row.activeSessionId||current.cursor!==row.cursor||agents.get(row.activeSessionId)!==handle.agent||handle.agent.lifecycle.signal.aborted)fail('ROUTER_RESUME_STALE')
     if(!isDeepStrictEqual(remaining.map(event=>event.id),pending.slice(0,remaining.length).map(event=>event.id))||!isDeepStrictEqual(events,await query('router.batch-events',{conversationId,eventIds:ids})))fail('ROUTER_RESUME_BATCH_STALE')
     assertOpen();return isolation
@@ -352,9 +372,9 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
   async function prepareResume(row,handle,packet){
     const conversationId=row.id,ids=packet.source.eventIds
     if(!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length)fail('ROUTER_PACKET_ID_CONFLICT')
-    const pendingInbox=await query('router.inbox',{conversationId,limit:30});assertOpen()
+    const pendingInbox=await query('router.inbox',{conversationId,limit:30,deliverable:true});assertOpen()
     const inbox=pendingInbox.filter(event=>(event.kind==='operator.message')===(packet.source.webOnly===true))
-    const pendingCount=await query('router.inbox-count',{conversationId});assertOpen()
+    const pendingCount=await query('router.inbox-count',{conversationId,deliverable:true});assertOpen()
     // 不漏掉分页外的后续取消；联合续轮仍受原批次消息数与编码预算约束。
     if(pendingCount!==pendingInbox.length||inbox.filter(event=>['source.message','operator.message'].includes(event.kind)).length>15||!isDeepStrictEqual(ids,inbox.slice(0,ids.length).map(event=>event.id))||routerModelBatch(row,inbox).length!==inbox.length)fail('ROUTER_RESUME_BATCH_STALE')
     if(!routerPacketViews(row,inbox.slice(0,ids.length)).some(value=>sameRouterPacket(value,packet)))fail('ROUTER_PACKET_ID_CONFLICT')
@@ -364,8 +384,8 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       assertOpen()
       const current=await query('router.get',{conversationId});assertOpen()
       if(!current||current.phase!=='active'||current.generation!==row.generation||current.activeSessionId!==row.activeSessionId||agents.get(row.activeSessionId)!==handle.agent||handle.agent.lifecycle.signal.aborted)fail('ROUTER_RESUME_STALE')
-      const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
-      if(await query('router.inbox-count',{conversationId})!==pendingInbox.length||!sameRouterPacket(routerPacketViews(current,pending)[0],snapshot))fail('ROUTER_RESUME_BATCH_STALE')
+      const pending=await query('router.inbox',{conversationId,limit:30,deliverable:true});assertOpen()
+      if(await query('router.inbox-count',{conversationId,deliverable:true})!==pendingInbox.length||!sameRouterPacket(routerPacketViews(current,pending)[0],snapshot))fail('ROUTER_RESUME_BATCH_STALE')
     }
     await validate();assertOpen()
     return {inbox,supplements,allIds,validate,inboxDigest:hash(comparableRouterPacket(snapshot))}
@@ -412,7 +432,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       for(const input of [packet,...supplements])packets.delete(input.id)
       try{await handle.whenIdle();await observed.finish()}catch{await observed.finishIfSettled()}finally{stopObserving()}
     }
-    const pending=await query('router.inbox',{conversationId,limit:30});assertOpen()
+    const pending=await query('router.inbox',{conversationId,limit:30,deliverable:true});assertOpen()
     if(pending.some(event=>allIds.includes(event.id)))fail('ROUTER_BATCH_UNSETTLED')
   }
   async function resumeRouterBatch({conversationId,generation,sessionId:activeSessionId,packetId,failedEntryId,checkpointRevision,inboxDigest}={}){
@@ -445,7 +465,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       const failures=[],fatal=[],work=[]
       for(const id of conversations){
         if(tails.has(id))continue
-        const row=await query('router.get',{conversationId:id}),inbox=await query('router.inbox',{conversationId:id,limit:30})
+        const row=await query('router.get',{conversationId:id}),inbox=await query('router.inbox',{conversationId:id,limit:30,deliverable:true})
         const inspection=inbox.some(event=>event.kind==='task.inspection')
         const key=hash([row?.generation,inbox.map(event=>event.id)]),retry=row?.recoveryRetry
         if(inspection&&row?.phase==='active'&&retry?.key===key&&Date.parse(retry.nextAttemptAt)>Date.now()){
