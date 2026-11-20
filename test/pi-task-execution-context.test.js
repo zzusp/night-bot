@@ -44,3 +44,19 @@ test('pending live and legacy packets keep byte-exact bodies after current brief
   assert.throws(()=>retainExecutionPacket({...regenerated,source:{kind:'task-input',taskSession:{...source.taskSession,contextRevision:2}}},retained),{code:'TASK_LIVE_SUPPLEMENT_ENTRY_CONFLICT'})
  }
 })
+
+test('Router source-only input cannot smuggle planning prose, dependencies or rewritten deltas',()=>{
+ const original={...source('one','只读查看原来的五分钟日志，输出范围并脱敏'),quote:{text:'真实引用：继续原任务'},resources:[{id:'attachment-one',name:'synthetic.txt'}],triageReason:'ROUTER_GUESS'}
+ const task={taskId:'t',title:'ROUTER_GUESS',objective:'ROUTER_GUESS',request:'ROUTER_GUESS',requirements:['ROUTER_GUESS'],metadata:{routerInputPolicy:'source-only-v1'},currentInput:{id:'extra',text:'ROUTER_GUESS'},supplements:[{id:'delta',text:'ROUTER_GUESS',contextRevision:1}],dependencies:[{state:'satisfied',condition:'ROUTER_GUESS',evaluation:{reason:'ROUTER_GUESS'},prerequisite:{taskId:'prior',completion:{result:{evidence:['real-host-reference']}}}}]}
+ const body=executionContext({task,sources:[original,source('two','保持之前的只读限制')],materials:[{sourceId:'one',resources:original.resources}]})
+ assert.doesNotMatch(JSON.stringify(body),/ROUTER_GUESS/);assert.equal(body.task.inputPolicy,'source-only-v1');assert.deepEqual(body.updates,[])
+ assert.deepEqual(body.sources.map(row=>row.text),[original.text,'保持之前的只读限制']);assert.equal(body.sources[0].quote.text,original.quote.text);assert.deepEqual(body.sources[0].resources,original.resources)
+ assert.equal(body.task.dependencies[0].prerequisite.completion.result.evidence[0],'real-host-reference')
+ const continued=executionContext({task,sources:[original,source('three','只在原任务继续，不新增排查步骤')]},audit(body))
+ assert.deepEqual(continued.sources.map(row=>row.sourceId),['three']);assert.doesNotMatch(JSON.stringify(continued),/ROUTER_GUESS/)
+})
+
+test('unmarked system and scheduled inputs retain their own instruction semantics',()=>{
+ const body=executionContext({task:{taskId:'scheduled',request:'System schedule: read status',requirements:['System-owned scope'],contextRevision:1,currentInput:{id:'system-tick',text:'Scheduled check'}},sources:[{sourceId:'system',channel:'internal',text:'Scheduled event'}]})
+ assert.equal(body.task.request,'System schedule: read status');assert.equal(body.updates[0].text,'Scheduled check');assert.equal(body.sources[0].channel,'internal');assert.equal(body.task.inputPolicy,undefined)
+})

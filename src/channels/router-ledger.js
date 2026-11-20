@@ -77,6 +77,11 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     const source=row.sourceId?read('sources',row.sourceId):undefined,conclusion=triageConclusion(row,source)
     return {...row,source,triageReply:row.triageReplyId?read('notifications',row.triageReplyId):undefined,taskEvent:row.taskEventId?readEvent(row.taskEventId):undefined,...conclusion?{triageConclusion:conclusion}:{}}
   }
+  function sourceOnlyTask(task,source,quote,resetSelection=false){
+    if(source.channel==='internal')return
+    if(resetSelection&&task.metadata)delete task.metadata.routerSourceSelection
+    task.metadata={...task.metadata,routerInputPolicy:'source-only-v1',...quote?{routerSourceSelection:{sourceId:source.sourceId,messageVersion:source.version,quote}}:{}}
+  }
   function dependenciesReady(task) {
     return rows('dependencies').filter(row => row.taskId === task.taskId).every(row => {
       const prior = read('tasks',row.prerequisiteTaskId,true), authorization = read('sources',row.authorizationSourceId,true)
@@ -142,7 +147,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
   function operation(a, action) {
     const id = `router-action:${hash([a.conversationId,required(a.operationId)])}`
     // generation 是执行栅栏，不是业务幂等身份。
-    const {generation,sessionId,agent,hostLiveBinding, ...request} = a
+    const {generation,sessionId,agent,hostLiveBinding,inputSource, ...request} = a
     const prior = read('router_actions',id,true), requestDigest = digest(request)
     if (prior) { if (prior.requestDigest !== requestDigest) fail('ROUTER_OPERATION_CONFLICT'); return changed(prior.result) }
     const value = action()
@@ -284,8 +289,9 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if (!Array.isArray(a.tasks) || !a.tasks.length || !Array.isArray(a.dependencies ?? [])) fail('ROUTER_PLAN_INVALID')
       const created=[]
       for (const input of a.tasks) {
+        for(const id of input.sourceRefs??[]){if(id!==source.sourceId){const context=read('sources',id);if(context.channel==='internal')fail('ROUTER_SOURCE_FORBIDDEN');sourceOf({sourceId:id,messageVersion:context.version,conversationId:source.groupId})}}
         const result=reduce('task.create',{...input,groupId:source.groupId,ownerActorId:source.actorId,sourceRefs:[...new Set([...(input.sourceRefs ?? []),source.sourceId])],operationId:a.operationId},`${commandId}:${input.taskId}`)
-        const task=result.result.task;task.conversationId=source.groupId;task.arrangementRevision=1;saveTask(task);link(task,source,'create',input.quote);created.push(task)
+        const task=result.result.task;task.conversationId=source.groupId;task.arrangementRevision=1;sourceOnlyTask(task,source,input.quote,true);saveTask(task);link(task,source,'create',input.quote);created.push(task)
       }
       const dependencies=[]
       for (const input of a.dependencies ?? []) {
@@ -303,18 +309,19 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(a.action.expectedRequirementRevision!==task.requirementRevision || a.action.expectedControlRevision!==task.controlRevision)fail('DYNAMIC_TASK_REVISION_STALE')
       if(a.action.request!==undefined&&!['task.revise','task.reopen'].includes(a.kind))fail('TASK_CONTEXT_CLASSIFICATION_CONFLICT')
       if(a.sameGoal===true&&(a.kind!=='task.reopen'||['objective','title','requirements'].some(key=>a.action[key]!==undefined&&digest(a.action[key])!==digest(task[key]))))fail('ROUTER_SAME_GOAL_CONFLICT')
-      if(a.kind==='task.arrange')return arrange(task,a.action,source,a.operationId,commandId)
+      if(a.kind==='task.arrange'){const result=arrange(task,a.action,source,a.operationId,commandId);sourceOnlyTask(result.result.task,source);saveTask(result.result.task);return result}
       // Host 派生值只在未命中业务回执后计算，避免跨代重试受当前任务或 actor 变化影响。
       const action={...a.action,sourceRefs:[...new Set([...(task.sourceRefs??[]),source.sourceId])],operationId:a.operationId,sameGoal:a.sameGoal}
       if(['task.supplement','task.resume','task.revise','task.reopen'].includes(a.kind)) {
-        const message=required(a.action.text??source.text)
-        action.currentInput={id:a.operationId,text:message,sourceId:source.sourceId,messageVersion:source.version}
+        const message=required(source.channel==='internal'?a.action.text??source.text:source.text)
+        if(a.inputSource!==false||source.channel==='internal')action.currentInput={id:a.operationId,text:message,sourceId:source.sourceId,messageVersion:source.version}
         if(a.action.request!==undefined)action.request=required(a.action.request)
         if(['task.supplement','task.resume'].includes(a.kind)) {action.text=message;if(a.hostLiveBinding!==undefined)action.liveBinding=a.hostLiveBinding}
       }
       const result=a.kind==='task.resume'
         ?a.action.humanRequestId!==undefined?resume(task,action,source,a,commandId):reduce('task.control',{...action,control:'active'},commandId,{routerScheduling:true})
         :reduce(a.kind,action,commandId,{routerScheduling:true})
+      sourceOnlyTask(result.result.task,source,undefined,['task.revise','task.reopen'].includes(a.kind)&&a.sameGoal!==true);saveTask(result.result.task)
       if(a.kind==='task.supplement'&&result.result.task.inspection){Object.assign(result.result.task.inspection,{pending:false,resolvedAt:new Date().toISOString(),resolvedOperationId:a.operationId});saveTask(result.result.task)}
       link(result.result.task,source,a.kind,a.quote)
       taskEvent({id:`task-changed:${commandId}`,kind:'task.changed',taskId:task.taskId,operationId:a.operationId,sourceId:source.sourceId,messageVersion:source.version})
