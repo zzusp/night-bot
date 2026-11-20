@@ -324,9 +324,9 @@ test('stable task action retries ignore physical generation and live binding wit
   const args={conversationId:f.conversationId,generation:f.generation,sourceId:f.sourceId,messageVersion:1,operationId:'stable-supplement',kind:'task.supplement',hostLiveBinding:claimed.binding,
     action:{taskId:'a',expectedRequirementRevision:1,expectedControlRevision:1,messageId:'stable-supplement',text:'Retain one exact source supplement'}}
   const first=await f.command('router.task-action',args),snapshot=await f.query('task.get',{taskId:'a'})
-  const replay=await f.command('router.task-action',{...args,generation:args.generation+1,hostLiveBinding:{sessionId:'new-actor',leaseEpoch:2}})
+  const replay=await f.command('router.task-action',{...args,generation:args.generation+1,hostLiveBinding:{sessionId:'new-actor',leaseEpoch:2},inputSource:false})
   assert.deepEqual(replay.result,first.result);assert.deepEqual(await f.query('task.get',{taskId:'a'}),snapshot)
-  assert.equal(snapshot.request,'Verify A');assert.equal(snapshot.currentInput.text,'Retain one exact source supplement');assert.equal(snapshot.supplements.length,1)
+  assert.equal(snapshot.request,'Verify A');assert.equal(snapshot.currentInput.text,(await f.query('source.get',{sourceId:f.sourceId})).text);assert.equal(snapshot.supplements.length,1)
   assert.equal((await f.query('router.source-links',{taskId:'a'})).filter(row=>row.relation==='task.supplement').length,1)
   await assert.rejects(f.command('router.task-action',{...args,action:{...args.action,text:'Changed action under the same stable ID'}}),/OPERATION_CONFLICT/)
 })
@@ -499,10 +499,10 @@ test('Router updates keep a current brief and exact delta instead of appending o
  }
  await action('supplement','delta-one')
  const supplemented=await h.query('task.get',{taskId:'a'})
- assert.equal(supplemented.request,task.request);assert.equal(supplemented.currentInput.text,'Progress only')
+ assert.equal(supplemented.request,task.request);assert.equal(supplemented.currentInput.text,(await h.query('source.get',{sourceId:h.sourceId})).text)
  await action('revise','delta-two',{text:'Old scope replaced',request:'Only two targeted checks',requirements:['Retain old-call noReplay']})
  const revised=await h.query('task.get',{taskId:'a'})
- assert.equal(revised.request,'Only two targeted checks');assert.deepEqual(revised.requirements,['Retain old-call noReplay']);assert.equal(revised.currentInput.text,'Old scope replaced')
+ assert.equal(revised.request,'Only two targeted checks');assert.deepEqual(revised.requirements,['Retain old-call noReplay']);assert.equal(revised.currentInput.text,(await h.query('source.get',{sourceId:h.sourceId})).text)
  assert.equal((await h.query('source.get',{sourceId:h.sourceId})).text,'First verify A; only after the evidence is accepted, produce B')
 })
 
@@ -673,4 +673,45 @@ test('new triage conclusions are frozen, bound, reply-independent and idempotent
  }
  db.prepare('UPDATE dynamic_triage SET body=? WHERE id=?').run(JSON.stringify(original),id)
  assert.deepEqual(await f.query('router.inbox',{conversationId:f.conversationId}),before)
+})
+
+test('Router task handoff binds original sources and strips subjective supplemental text at the Host sink',async t=>{
+ const f=await fixture(t);await f.plan({dependencies:[],tasks:[{taskId:'a',title:'ROUTER_GUESS',request:'ROUTER_GUESS',requirements:['ROUTER_GUESS']}]})
+ let task=await f.query('task.get',{taskId:'a'});assert.equal(task.metadata.routerInputPolicy,'source-only-v1')
+ await f.command('source.record-direct',{source:{sourceId:'real-supplement',groupId:f.conversationId,messageId:'next',actorId:'alice',version:1,text:'继续原任务，只读查看原来五分钟日志，输出范围并脱敏'},conversation:{conversationId:f.conversationId}})
+ await f.command('router.task-action',{conversationId:f.conversationId,generation:f.generation,sourceId:'real-supplement',messageVersion:1,operationId:'faithful-delta',kind:'task.supplement',action:{taskId:'a',messageId:'faithful-delta',text:'ROUTER_GUESS: try a new host and enlarge the investigation',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}})
+ task=await f.query('task.get',{taskId:'a'});assert.equal(task.currentInput.text,'继续原任务，只读查看原来五分钟日志，输出范围并脱敏');assert.equal(task.supplements.at(-1).text,task.currentInput.text)
+ assert.ok(task.sourceRefs.includes('real-supplement'))
+ await f.command('source.record-direct',{source:{sourceId:'other-room',groupId:'other',messageId:'foreign',actorId:'bob',version:1,text:'Foreign context'},conversation:{conversationId:'other'}})
+ await assert.rejects(f.command('router.plan',{conversationId:f.conversationId,generation:f.generation,sourceId:f.sourceId,messageVersion:1,operationId:'foreign-context',tasks:[{taskId:'foreign-task',request:'No',sourceRefs:['other-room']}],dependencies:[]}),/CONVERSATION_SCOPE/)
+})
+
+for(const kind of ['task.resume','task.revise','task.reopen','task.control','task.arrange'])test('source-only execution projection covers Router '+kind,async t=>{
+ const {executionContext}=await import('../src/tasks/execution-context.js')
+ const f=await fixture(t);await f.plan({tasks:[{taskId:'a',request:'ROUTER_GUESS',objective:'ROUTER_GUESS',requirements:['ROUTER_GUESS']}],dependencies:[]})
+ const before=await f.query('task.get',{taskId:'a'})
+ const action={taskId:'a',expectedRequirementRevision:before.requirementRevision,expectedControlRevision:before.controlRevision,text:'ROUTER_GUESS',reason:'ROUTER_GUESS',...(kind==='task.control'?{control:'active'}:{}),...(['task.revise','task.reopen'].includes(kind)?{request:'ROUTER_GUESS',objective:'ROUTER_GUESS',requirements:['ROUTER_GUESS']}:{}),...(kind==='task.arrange'?{dependencies:[],expectedArrangementRevision:1}:{})}
+ await f.command('router.task-action',{conversationId:f.conversationId,generation:f.generation,operationId:'variant-'+kind,sourceId:f.sourceId,messageVersion:1,kind,action,inputSource:false})
+ const task=await f.query('task.get',{taskId:'a'}),source=await f.query('source.get',{sourceId:f.sourceId})
+ const body=executionContext({task,sources:[source]})
+ assert.doesNotMatch(JSON.stringify(body),/ROUTER_GUESS/);assert.equal(body.sources[0].text,source.text);assert.equal(task.currentInput,undefined,'source-less scheduling does not invent a new user utterance')
+})
+
+test('creation context references and exact source selection cannot be replaced by model metadata',async t=>{
+ const {executionContext}=await import('../src/tasks/execution-context.js'),f=await fixture(t)
+ await f.command('source.record-direct',{source:{sourceId:'extra-context',groupId:f.conversationId,messageId:'context',actorId:'alice',version:1,text:'Still use the original read-only limit',quote:{text:'Original quoted evidence'},resources:[{id:'synthetic-attachment',name:'evidence.txt'}]},conversation:{conversationId:f.conversationId}})
+ await f.plan({tasks:[{taskId:'a',request:'ROUTER_GUESS',quote:'First verify A',sourceRefs:['extra-context'],metadata:{routerSourceSelection:{quote:'ROUTER_GUESS'}}}],dependencies:[]})
+ const task=await f.query('task.get',{taskId:'a'}),sources=await Promise.all(task.sourceRefs.map(sourceId=>f.query('source.get',{sourceId})))
+ const body=executionContext({task,sources})
+ assert.equal(body.task.sourceSelection.quote,'First verify A');assert.equal(body.task.sourceSelection.sourceId,f.sourceId);assert.doesNotMatch(JSON.stringify(body),/ROUTER_GUESS/)
+ assert.ok(body.sources.some(row=>row.text==='Still use the original read-only limit'&&row.resources[0].name==='evidence.txt'))
+})
+
+test('Host internal system dispatch keeps its own text and is not reclassified as human input',async t=>{
+ const {executionContext}=await import('../src/tasks/execution-context.js'),f=await fixture(t)
+ await f.command('source.record-direct',{source:{sourceId:'system-dispatch',groupId:f.conversationId,messageId:'system-tick',actorId:'system',channel:'internal',version:1,text:'Recorded scheduled event'},conversation:{conversationId:f.conversationId}})
+ await f.command('router.plan',{conversationId:f.conversationId,generation:f.generation,sourceId:'system-dispatch',messageVersion:1,operationId:'system-plan',tasks:[{taskId:'scheduled',request:'System-owned scheduled query'}],dependencies:[]})
+ await f.command('router.task-action',{conversationId:f.conversationId,generation:f.generation,sourceId:'system-dispatch',messageVersion:1,operationId:'system-resume',inputSource:false,kind:'task.resume',action:{taskId:'scheduled',expectedRequirementRevision:1,expectedControlRevision:1,text:'System-owned continuation'}})
+ const task=await f.query('task.get',{taskId:'scheduled'}),body=executionContext({task,sources:[await f.query('source.get',{sourceId:'system-dispatch'})]})
+ assert.equal(task.metadata.routerInputPolicy,undefined);assert.equal(body.task.request,'System-owned scheduled query');assert.equal(body.updates[0].text,'System-owned continuation');assert.equal(body.sources[0].channel,'internal')
 })
