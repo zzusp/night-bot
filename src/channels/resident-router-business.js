@@ -146,7 +146,12 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
       const refuse=()=>{throw routerPreexecutionFailure('ROUTER_PRIOR_SESSION_EFFECT_UNKNOWN')}
       if(args.sourceId&&held.has(args.sourceId))refuse()
       const taskId=args.taskId??args.taskDelivery?.taskId
-      if(taskId){const task=await query('task.get',{taskId});if(heldTasks.has(taskId)||task?.sourceRefs?.some(id=>held.has(id)))refuse()}
+      // 普通调度继续使用事务和执行层校验；修改依赖仍受旧交接保护。
+      const scheduling=tool.name==='resident_task_action'&&args.kind!=='arrange'
+      if(taskId&&!scheduling){
+        const task=await query('task.get',{taskId})
+        if(heldTasks.has(taskId)||task?.sourceRefs?.some(id=>held.has(id)))refuse()
+      }
       if(args.dependencyId){const dependency=(await query('router.dependencies',{conversationId})).find(row=>row.id===args.dependencyId);if(dependency&&[dependency.taskId,dependency.prerequisiteTaskId].some(id=>heldTasks.has(id)))refuse()}
       const history=exec.agent.piSession.sessionManager.getBranch().filter(entry=>entry.type==='message').map(entry=>entry.message)
       // The current fresh call is not historical. Unresolved original operations
