@@ -68,6 +68,13 @@ test('real Host updates an alias into original memory/Skill identities, preserve
  const after=await f.host.ctx.reflection.state(scope);assert.deepEqual(after.skills,state.skills);assert.deepEqual((await f.host.ctx.memory.store.read(scope,{topic:'experience'})).entries,rows);assert.equal(Object.values(after.reviews).find(r=>r.taskId==='third').status,'skipped');assert.equal(f.requests.filter(body=>JSON.stringify(body).includes('NIGHT_BOT_SKILL_GENERATION')).length,creatorCalls);
  mode='special';await completed(store,f.host.ctx.runtimePaths.workspaces,'one-off');f.host.ctx.reflection.scan();await f.host.ctx.reflection.whenIdle();assert.equal(Object.values((await f.host.ctx.reflection.state(scope)).reviews).find(r=>r.taskId==='one-off').status,'skipped');assert.deepEqual((await f.host.ctx.memory.store.read(scope,{topic:'experience'})).entries,rows);assert.deepEqual((await f.host.ctx.reflection.state(scope)).skills,state.skills);
  assert.doesNotMatch(rows[0].text,/first|second|one-off/);assert.equal(Object.values(state.reviews).find(r=>r.taskId==='second').lessons[0].admission.memory.category,'Interrupted writes with durable receipts');
+ const policyFor=marker=>f.requests.flatMap(request=>request.messages??[]).find(message=>message.role==='system'&&typeof message.content==='string'&&message.content.includes(marker))?.content??'';
+ const memoryPolicy=policyFor('NIGHT_BOT_TASK_REFLECTION'),skillPolicy=policyFor('NIGHT_BOT_SKILL_GENERATION');
+ assert.match(memoryPolicy,/同一事实能从权威、稳定来源可靠重查/);
+ assert.match(memoryPolicy,/能翻到旧任务不是跳过经验的理由/);
+ assert.match(memoryPolicy,/标明日期|按日期|另记日期/);
+ assert.match(skillPolicy,/不是使用 Skill 的前置读物/);
+ assert.match(skillPolicy,/情况不同怎么选以及如何验证结果/);
 });
 
 test('a concurrent learned catalog revision fences a prepared new plan and retry cannot bypass it',async t=>{
