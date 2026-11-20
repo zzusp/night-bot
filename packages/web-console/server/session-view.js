@@ -229,6 +229,10 @@ const stamp = (message, entry) => {
 function taskInstruction(input) {
   const task = input?.task
   if (!task || typeof task !== 'object' || Array.isArray(task)) return ''
+  if (task.inputPolicy === 'faithful-handoff-v1') {
+    return [input.handoffs, input.updates].flatMap(rows => Array.isArray(rows) ? rows.map(row => row?.text) : [])
+      .filter(value => typeof value === 'string' && value.trim()).join('\n\n')
+  }
   const updates = [...(Array.isArray(input.updates) ? input.updates.map(row => row?.text) : []), input.supplement?.text].filter(value => typeof value === 'string' && value.trim())
   const request = typeof task.request === 'string' && task.request.trim() ? task.request : ''
   const objective = typeof task.objective === 'string' && task.objective.trim() ? task.objective : ''
@@ -349,12 +353,6 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           try {input = JSON.parse(texts(message.content))} catch {fail('SESSION_SOURCE_INVALID', 503)}
           const instruction = taskInstruction(input)
           if (instruction) add(entry, 'instruction-' + index, 'user', instruction, {kind: 'instruction'}, message)
-          else {
-            // Old packets without an instruction retain their real source text;
-            // do not invent a Router directive or hide an otherwise readable turn.
-            const originals = Array.isArray(input?.sources) ? input.sources.filter(row => typeof row?.text === 'string') : []
-            originals.forEach((row, n) => sourceText(entry, 'source-' + index + '-' + n, {...row, text: '原始消息：\n' + row.text}))
-          }
         } else if (source?.kind === 'schedule') {
           const content = texts(message.content)
           const prompts = scheduledPrompts(content, source)
