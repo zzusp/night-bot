@@ -265,7 +265,7 @@ Windows 默认 `dingtalk_account_mode:"system"`，使用当前 OS 用户受 DPAP
 
 插件保留带署源的历史、资源、mention、文件与 receipt/readback 适配能力，typed 入站保留真实发送人及原引用。额外 operator 私聊须显式开启 `dingtalk_operator_notifications` 并提供非空 `dingtalk_operator_peers`，且单独核对账号、对端及授权；不要因业务私聊实例已配置就启用 operator 范围。
 
-资源读取保留图片、UTF-8 文本、XLSX、在线 adoc 的既有返回形态；其它可下载附件（如 PDF、Word、未知二进制）返回完整 `file: {data: Uint8Array, name, mediaType}`，不把平台 ID 当路径或公开链接。Host 校验名称、MIME、大小与完整性，在本任务 materials 发布安全哈希名原件，计算字节数/SHA-256，并将 `{name,mediaType,path,bytes,sha256}` 传给任务。文件描述符不携带账号、签名链接、下载目录或内联二进制；临时文件在返回字节后清理。单资源上限 8 MiB，文件不可读时明确 unavailable，不以静默文本降级掩盖错误。该形态不增加格式解析器，不自动执行文件，不覆盖历史 unavailable 快照。
+资源读取保留图片、UTF-8 文本、XLSX、在线 adoc 的既有返回形态；其它可下载附件（如 PDF、Word、未知二进制）返回完整 `file: {data: Uint8Array, name, mediaType}`，不把平台 ID 当路径或公开链接。Host 校验名称、MIME、大小与完整性，在本任务 materials 发布安全哈希名原件，计算字节数/SHA-256，并将 `{name,mediaType,path,bytes,sha256}` 传给任务。文件描述符不携带账号、签名链接、下载目录或内联二进制；临时文件在返回字节后清理。单资源上限 8 MiB，文件不可读时明确 unavailable，不以静默文本降级掩盖错误。该形态不增加格式解析器，不自动执行文件，不覆盖历史 unavailable 快照。Router 准备和执行器领取同时请求本任务的同一材料快照时，共用一次首次下载与发布；等待方读回并校验已发布快照，后续续办仍核对绑定和哈希。
 
 群消息不会仅因发送者与当前账号相同、显示名相同或带通用 DWS 标记就被视为本实例回声；Host 使用同 conversation 下精确消息 ID 与持久 outbox / send ACK / receipt 识别自己的发送。对于 Router/任务队列的通知，关闭 `dingtalk_operator_notifications` 仍使用该 DWS 插件自身 adapter 查询发送身份，经持久渠道 context 将内部 conversation 映射为原生会话并精确核对，再在消息事实和来源持久登记之前过滤自己的消息；身份回读不改变附件交付状态，也不替代文件字节验证。
 
@@ -459,7 +459,7 @@ Router 仍负责创建、选任务、接续及依赖调度；这些操作及其�
 `task_result` 不再提供 question/audience；Host 同样拒绝这两项，不从旧待答记录新建自动问询或追问通知。
 成功以 complete 交付；资料不足且无安全路径时，以 blocked 记录真实缺项、证据和限制，不伪造完成或自旋。
 普通 wait 仅保留内部决定/审计，不进入 Router 收件箱；blocked 以持久 task.blocked 事件交 Router。
-若当前执行实际提交的新阻断结果引用了旧代际留置的来源，同一任务当前版本有真实、未留置的渠道续办来源时，文字回报可绑定该续办来源；保留明确指定的收件人，不引用旧消息，按阻断事件去重。普通回复、附件、旧结果及无有效续办来源的请求仍受原防重放限制。
+完成和阻断的文字回报走同一 `resident_router_reply`：填写本批结果的 `outcomeEventId`（取 `taskEventId`），使用同一任务仍有效的原渠道来源。Host 核对事件和原发起人，复用同一通知身份。Web 补充只影响执行上下文，不是渠道来源；回报不按 Router 交接代际另分流程，不放行旧普通回复或附件。Router 决定是否和如何回报；没有冻结通知也可以结清，账本明确区分 `not-reported`（未回报）和 `notification-frozen`（已冻结，仍需查送达）。已结清旧结果不自动补发。
 未知效果、异常退出等仍走原巡检与恢复协议，只产生巡检事件，避免同一次停态重复回传。
 用户主动补充、任务对话、权限审批、依赖、既有冻结通知及其回读不因此获得新权限，也不删除旧记录或重放历史。
 

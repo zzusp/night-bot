@@ -1,4 +1,4 @@
-import {completionReplyId} from '../../src/channels/router-task-context.js'
+import {blockedReplyId,completionReplyId,currentOutcomeBinding} from '../../src/channels/router-task-context.js'
 import {inspectionVersion,taskInspectionReason,taskWaitIdentity,inspectionIsCurrent,inspectionHoldsExecution} from '../../src/tasks/inspection.js'
 import {sourceHistorySchema} from '../../src/channels/source-history.js'
 import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
@@ -1753,6 +1753,11 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if(a.payload?.completionBinding){
         const p=a.payload,b=record(p.completionBinding),completed=get('dynamic_tasks',b.taskId),event=get('dynamic_task_events',b.eventId)
         if(a.routerGeneration===undefined||event.kind!=='task.completed'||event.taskId!==completed.taskId||event.commandId!==b.commandId||completed.completion?.commandId!==b.commandId||completed.groupId!==p.conversationId||completed.status!=='completed'||completed.archivedAt||completed.archiveRestoreHold||completed.archiveRestore?.reviewRequired||!completed.sourceRefs?.includes(p.sourceId)||event.requirementRevision!==b.requirementRevision||completed.requirementRevision!==b.requirementRevision||event.controlRevision!==b.controlRevision||completed.controlRevision!==b.controlRevision||id!==completionReplyId(p.conversationId,b.eventId,p.sourceId,p.sourceVersion))fail('ROUTER_COMPLETION_REPLY_STALE')
+      }
+      if(a.payload?.blockedBinding){
+        const p=a.payload,b=record(p.blockedBinding),task=get('dynamic_tasks',b.taskId),event=get('dynamic_task_events',b.eventId)
+        if(a.routerGeneration===undefined||a.kind!=='router-reply'||p.completionBinding||p.taskDelivery||p.artifactFiles?.length||event.kind!=='task.blocked'||!task.sourceRefs?.includes(p.sourceId)
+          ||digest(b)!==digest(currentOutcomeBinding(task,event,p.conversationId)??null)||id!==blockedReplyId(p.conversationId,b.eventId))fail('ROUTER_TASK_OUTCOME_REPLY_STALE')
       }
       if (a.kind === 'topic-reply' && (!Array.isArray(a.payload?.fact?.topicRefs) || !a.payload.fact.topicRefs.length)) fail('DYNAMIC_ARGUMENT_INVALID', 'topicRefs')
       if (a.kind === 'fixed-topic-reply') {
