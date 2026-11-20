@@ -271,3 +271,15 @@ test('effect hold racing a durable user supplement keeps it pending without fail
  assert.deepEqual(rows.map(row=>row.kind),['enqueued'])
  assert.equal(f.requests.length,1);assert.equal(f.effects,1)
 })
+
+test('execution cannot ask during work and can finish with a truthful blocked result',async t=>{
+ let submissions=0
+ const f=await fixture(t,(_context,n)=>({calls:[{name:'task_result',arguments:{decision:n===1
+  ?{action:'blocked',summary:'Missing target',question:'Which target?',evidence:[],limitations:[]}
+  :{action:'blocked',summary:'Stopped: no authorized target can be established',evidence:['Checked supplied material'],limitations:['Target identity missing']}}}]}))
+ const result=await run(f,{submit:async decision=>{submissions++;assert.equal(decision.action,'blocked');assert.equal(decision.question,undefined);return{accepted:true}}})
+ assert.equal(result.status,'submitted');assert.equal(submissions,1)
+ const stored=await f.persistence.readNative('single')
+ const outcomes=stored.entries.filter(entry=>entry.message?.role==='toolResult'&&entry.message.toolName==='task_result')
+ assert.equal(outcomes.length,2);assert.equal(outcomes[0].message.isError,true);assert.ok(!outcomes[1].message.isError)
+})
