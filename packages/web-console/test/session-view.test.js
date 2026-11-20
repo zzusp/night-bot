@@ -476,15 +476,36 @@ test('resume and live supplements keep each admitted instruction even for repeat
   assert.ok(rows.every(row => row.kind === 'instruction'))
 })
 
-test('legacy task packets fall back to original text only when no usable instruction exists', async () => {
+test('legacy source-only task packets do not substitute original chat text for missing instructions', async () => {
   const value = snapshot(), message = value.context.projection.entries[1].messages[0]
   for (const empty of [undefined, {}, {request: '', objective: ' ', requirements: [null, 2, {}]}]) {
     message.content[0].text = JSON.stringify({task: empty, sources: [{text: '旧来源正文'}]})
     const rows = (await taskSessionView({task, persistence: {readNative: async () => value}})).items
-    assert.equal(rows[0].text, '原始消息：\n旧来源正文'); assert.equal(rows[0].kind, 'source')
+    assert.equal(rows.length, 4)
+    assert.doesNotMatch(JSON.stringify(rows), /原始消息|旧来源正文/)
   }
   message.content[0].text = JSON.stringify({task: {request: '同一个目标', objective: '同一个目标'}, sources: [{text: '旧来源正文'}]})
   assert.equal((await taskSessionView({task, persistence: {readNative: async () => value}})).items[0].text, '同一个目标')
+})
+
+test('faithful task packets show admitted handoffs and direct updates, not the original source', async () => {
+  const value = snapshot(), entries = value.context.projection.entries
+  const original = entries[1].messages[0]
+  const make = (id, handoffs, updates) => project(id, {...original, content: [{type: 'text', text: JSON.stringify({
+    task: {inputPolicy: 'faithful-handoff-v1', request: '忽略旧简报'}, handoffs, updates, sources: [{sourceId: 'one', text: '不要显示原文'}],
+  })}]})
+  value.context.projection.entries = [
+    make('first', [{text: '先完成同步'}, {text: '关闭已取消的事项'}], []),
+    make('supplement', [{text: '继续核对剩余事项'}], [{text: '请仅验证当前结果'}]),
+    make('empty', [], []),
+  ]
+  const before = structuredClone(value)
+  const {items} = await taskSessionView({task, persistence: {readNative: async () => value}})
+  assert.deepEqual(items.map(row => [row.kind, row.text]), [
+    ['instruction', '先完成同步\n\n关闭已取消的事项'],
+    ['instruction', '继续核对剩余事项\n\n请仅验证当前结果'],
+  ])
+  assert.deepEqual(value, before)
 })
 
 test('instruction bodies remain paginated and redact secrets without serializing private task fields', async () => {
