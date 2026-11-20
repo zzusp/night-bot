@@ -26,7 +26,7 @@ async function proposal(service,inspection){
 for(const crash of [false,true,'prepared-only'])test('real Host unknown effect '+(crash==='prepared-only'?'keeps prepare without native receipt held across restart':crash?'recovers committed native receipt after interrupted SQL projection':'closes only with real drain and explicit operator evidence') ,{timeout:nativeTestTimeout(20000)},async t=>{
  let effects=0,continuing=false,attemptedAgain=false,h
  t.after(()=>h?.close())
- const f=await memoryHost(t,body=>{if(!body.tools?.some(tool=>tool.function.name==='partial_write'))return;if(continuing&&attemptedAgain)return {tool:'task_result',args:{decision:{action:'wait',summary:'The independent invocation finished; the prior partial-effect attempt remains closed, never replayed.',evidence:['original native call and retained operator evidence'],limitations:['no replay']}}};if(continuing)attemptedAgain=true;return {tool:'partial_write',args:{}}})
+ const f=await memoryHost(t,body=>{if(!body.tools?.some(tool=>tool.function.name==='partial_write'))return;if(continuing&&attemptedAgain)return {tool:'task_result',args:{decision:{action:'wait',summary:'The independent invocation finished; the prior partial-effect attempt remains closed, never replayed.',evidence:['original native call and retained operator evidence'],limitations:['no replay']}}};if(continuing)attemptedAgain=true;else if(effects)return {text:'The original effect is unverified.'};return {tool:'partial_write',args:{}}})
  function register(){f.host.ctx.get('tools').register({name:'partial_write',description:'Test fixture writes then loses its response.',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){effects++;await writeFile(join(exec.agent.metadata.cwd,'work/uncertain.txt'),'one actual effect');if(effects===1)throw Error('response lost after write');return {ok:true}}})}
  register();h=await open(f,{failProjection:crash})
  const task=await h.service.createTask({requestId:'uncertain',objective:'Complete the bounded current work while preserving every original attempted invocation'})
@@ -56,7 +56,7 @@ test('a cold readback owner refreshes the cut without replacing the original unk
  let h,effects=0,phase='effect',step=0;t.after(()=>h?.close())
  const f=await memoryHost(t,body=>{
   if(!body.tools?.some(tool=>tool.function.name==='task_result'))return
-  if(phase==='effect')return {tool:'partial_write',args:{}}
+  if(phase==='effect')return effects?{text:'The original effect is unverified.'}:{tool:'partial_write',args:{}}
   if(step++===0)return {tool:'read',args:{path:'work/uncertain.txt'}}
   return {tool:'task_result',args:{decision:{action:'wait',summary:'Retained output inspected without repeating the operation',evidence:['read retained partial output'],limitations:['prior effect remains unknown']}}}
  })

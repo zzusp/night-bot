@@ -30,7 +30,7 @@ async function fixture(t,register,{notices=false,maxConcurrentJobsPerOwner}={}){
  })
  const detach=h.ctx.agents.enter(h.owner)
  if(publish)h.deferCleanup(bindBusinessNotices(h.owner,{enqueue:publish,isLive:actor=>h.ctx.agents.get(actor.id)===actor}))
- h.deferCleanup(async()=>{try{await h.ctx.jobs.drainOwner(h.owner)}catch(error){if(!expectUnknown||!(error.code==='NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY'||error instanceof AggregateError&&error.errors.length&&error.errors.every(item=>['NIGHT_JOB_JOURNAL_UNCERTAIN','NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN'].includes(item.code??item.message))))throw error}finally{detach();await store.close()}})
+ h.deferCleanup(async()=>{try{await h.ctx.jobs.drainOwner(h.owner)}catch(error){if(!expectUnknown||!(error.code==='NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN'||error instanceof AggregateError&&error.errors.length&&error.errors.every(item=>['NIGHT_JOB_JOURNAL_UNCERTAIN','NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN'].includes(item.code??item.message))))throw error}finally{detach();await store.close()}})
  return {...h,get store(){return store},backend,settlement:settlement.promise,async reopenReceipts(){await store.close();store=await backend.openNative(h.owner.id,{auditKinds:{...jobReceiptKinds,...admissionAuditKinds}})},get starts(){return starts},expectUnknown:()=>{expectUnknown=true}}
 }
 test('real official SDK starts producer only after native typed registration commit and settles with no Session facade',async t=>{
@@ -38,7 +38,7 @@ test('real official SDK starts producer only after native typed registration com
  await h.run([{id:'official-job-call',name:'launch'}]);await setImmediate();await setImmediate()
  const receipts=await h.store.readAudit(),registered=receipts.find(receipt=>receipt.kind==='registered'),settled=receipts.find(receipt=>receipt.kind==='settled')
  assert.equal(h.starts,1);assert.equal(registered.payload.toolCall.callId,'official-job-call');assert.equal(settled.payload.producerReported,true);assert.equal(h.owner.session,undefined)
- assert.deepEqual(unresolvedNativeJobReceipts(receipts,h.owner.id),[]);await h.ctx.jobs.assertCanRun(h.owner)
+ assert.deepEqual(unresolvedNativeJobReceipts(receipts,h.owner.id),[]);
  const cold=await h.backend.readNative(h.owner.id,{auditKinds:{...jobReceiptKinds,...admissionAuditKinds}});assert.deepEqual(unresolvedNativeJobReceipts(cold.audit,h.owner.id),[])
 })
 test('failed native registration commit never launches producer or falls back to ephemeral execution',async t=>{
@@ -51,7 +51,7 @@ test('failed native registration commit never launches producer or falls back to
 test('durable running job drain cancels and awaits real producer and terminal commit',async t=>{
  const cancelled=Promise.withResolvers(),release=Promise.withResolvers();let jobId
  const h=await fixture(t,({ctx,owner,started})=>ctx.tools.register(definition('launch',async(_args,exec)=>({id:jobId=await ctx.jobs.startDurable({kind:'fixture',label:'drained producer',owner:owner.id,run(){started();return{done:release.promise,cancel(){cancelled.resolve()}}}},exec)}))))
- await h.run([{id:'running-registration',name:'launch'}]);await h.ctx.jobs.assertCanRun(h.owner)
+ await h.run([{id:'running-registration',name:'launch'}]);
  let drained=false;const pending=h.ctx.jobs.drainOwner(h.owner).then(()=>{drained=true});await cancelled.promise;assert.equal(drained,false)
  await assert.rejects(h.ctx.jobs.resumeOwner(h.owner),error=>error.code==='NIGHT_JOB_OWNER_NOT_DRAINED')
  assert.throws(()=>h.ctx.agents.withInitiator(h.owner,()=>h.ctx.jobs.start({kind:'fixture',label:'late admission',owner:h.owner.id,run(){throw Error('must remain held')}})),error=>error.code==='NIGHT_JOB_OWNER_DRAINING')
@@ -90,12 +90,19 @@ test('same-id foreign exec and a missing trusted initiator cannot start an offic
  assert.throws(()=>h.ctx.jobs.start({kind:'fixture',label:'outside initiator',owner:h.owner.id,run(){throw Error('must not start')}}),error=>error.code==='NIGHT_JOB_CALL_OWNERSHIP_REQUIRED')
 })
 
-test('an official producer startup throw persists unknown effects and fences cold/live continuation without restart',async t=>{
- const h=await fixture(t,({ctx,owner,started})=>ctx.tools.register(definition('launch',async(_args,exec)=>({id:await ctx.jobs.startDurable({kind:'fixture',label:'uncertain startup',owner:owner.id,run(){started();throw Error('producer may have started before throwing')}},exec)}))))
+for(const receiptFailure of [false,true])test(`producer startup throw refuses unproven drain and resume without restart (failed receipt: ${receiptFailure})`,async t=>{
+ const h=await fixture(t,({ctx,owner,started})=>{
+  if(receiptFailure){const port=owner.receipts;owner.receipts={...port,append(receipt){if(receipt.kind==='start-uncertain')throw Error('terminal receipt append failed');return port.append(receipt)}}}
+  ctx.tools.register(definition('launch',async(_args,exec)=>({id:await ctx.jobs.startDurable({kind:'fixture',label:'uncertain startup',owner:owner.id,run(){started();throw Error('producer may have started before throwing')}},exec)})))
+ })
  h.expectUnknown();await h.run([{id:'uncertain-startup',name:'launch'}]);assert.equal(h.starts,1)
- const receipts=await h.store.readAudit();assert.ok(receipts.some(receipt=>receipt.kind==='start-uncertain'&&receipt.payload.externalEffectsPossible===true));assert.equal(unresolvedNativeJobReceipts(receipts,h.owner.id)[0].uncertain,true)
- await assert.rejects(h.ctx.jobs.assertCanRun(h.owner),error=>error.code==='NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY')
- await assert.rejects(h.ctx.jobs.drainOwner(h.owner),error=>error.code==='NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY');assert.equal(h.starts,1)
+ const receipts=await h.store.readAudit(),unresolved=unresolvedNativeJobReceipts(receipts,h.owner.id)
+ assert.equal(receipts.some(receipt=>receipt.kind==='start-uncertain'&&receipt.payload.externalEffectsPossible===true),!receiptFailure)
+ assert.equal(unresolved.length,1)
+ assert.equal(!!unresolved[0].uncertain,!receiptFailure)
+ await assert.rejects(h.ctx.jobs.drainOwner(h.owner),{code:'NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN'})
+ await assert.rejects(h.ctx.jobs.resumeOwner(h.owner),{code:'NIGHT_JOB_OWNER_NOT_DRAINED'})
+ assert.equal(h.starts,1)
 })
 
 test('maintenance hold remains through the host action and explicit verified resume allows future jobs',async t=>{
@@ -239,14 +246,13 @@ test('official resource audit failed commit never acknowledges the scripted nati
  await h.run([{id:'resource-no-ack',name:'launch'}]);await entered.promise;assert.equal(effects,0)
  const rejected=assert.rejects(h.ctx.jobs.wait(jobId,10000,h.owner.id),{code:'NIGHT_JOB_JOURNAL_UNCERTAIN'});release.resolve();await rejected
  assert.equal(effects,0);assert.deepEqual(published,[]);assert.equal(h.ctx.jobs.get(jobId,h.owner.id).status,'stopping')
- await assert.rejects(h.ctx.jobs.assertCanRun(h.owner),{code:'NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY'})
 })
 
 test('official resource audit unknown survives producer failure and cold reopen while altered sequence binding or release proof cannot clear it',async t=>{
  const planned=plannedResource(),unknown={...planned,status:'unknown-retained',profileSid:'S-1-15-2-1-2-3-4-5-6-7',preparationPending:false,retainedHandles:1,childSettled:true,jobEmpty:true,threadRestored:true};let starts=0
  const h=await fixture(t,({ctx,owner})=>ctx.tools.register(definition('launch',async(_args,exec)=>({id:await ctx.jobs.startDurable({kind:'fixture',label:'unknown resource retained',owner:owner.id,run(){starts++;const record=currentProcessResourceRecorder();return{done:(async()=>{await record(planned);await record(unknown);return{status:'failed',detail:'producer exited; owned resource remains unknown'}})(),cancel(){}}}},exec)}))))
  h.expectUnknown();await h.run([{id:'resource-unknown-cold',name:'launch'}]);await h.settlement
- await assert.rejects(h.ctx.jobs.assertCanRun(h.owner),{code:'NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY'});await h.reopenReceipts()
+ await h.reopenReceipts()
  const receipts=await h.store.readAudit(),pending=unresolvedNativeJobReceipts(receipts,h.owner.id);assert.equal(pending.length,1);assert.equal(pending[0].resourceOwnership.status,'unknown-retained');assert.equal(pending[0].uncertain,true);assert.equal(starts,1)
  await assert.rejects(h.ctx.jobs.drainOwner(h.owner),/Job drain proof is uncertain/);assert.equal(starts,1)
  const registered=receipts.find(receipt=>receipt.kind==='registered'),resource=receipts.find(receipt=>receipt.kind==='resource-ownership'),terminal=receipts.find(receipt=>receipt.kind==='settled'),base={...resource.payload,seq:2,resource:releasedResource(planned)}
@@ -315,7 +321,6 @@ test('official private resource proof rejects altered bindings and failed commit
  h.expectUnknown();await h.run([{id:'private-proof-no-ack',name:'launch'}]);await entered.promise;assert.equal(effects,0)
  const rejected=assert.rejects(h.ctx.jobs.wait(jobId,10000,h.owner.id),{code:'NIGHT_JOB_JOURNAL_UNCERTAIN'});release.resolve();await rejected
  assert.equal(effects,0);assert.equal(ack,undefined);assert.equal(h.ctx.jobs.get(jobId,h.owner.id).status,'stopping');await assert.rejects(record.readScopeProofs(['a'.repeat(48)]),{code:'NIGHT_JOB_JOURNAL_UNCERTAIN'})
- await assert.rejects(h.ctx.jobs.assertCanRun(h.owner),{code:'NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY'})
 })
 
 test('official private resource proof retains the released source anchor and borrow closure across live and cold Pi reads',async t=>{

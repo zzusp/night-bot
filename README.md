@@ -221,4 +221,4 @@ Night Bot 使用 Pi SDK，早期移植来源为 `HiQ-AI/dingtalk-dsh-assistant@9
 
 原生作业的已提交终态保留有界模型可见输出（默认沿用 16 KiB 终态保留预算，遵守作业自身更小的输出上限）；不保存 observer log。执行者释放或进程重启后，原会话可按 job ID 用 `job_output` 回读快照，`job_kill` 返回已结束，不重跑 producer；`job_list` 仍只列当前注册作业。截断会明确提示，完整输出仍需保存为工作区文件。旧收据没有快照时只能回读可信终态并明确输出不可恢复；升级不会补造旧输出。快照属于私有运行数据，不得入 Git；含新字段的 journal 不交旧版本打开。
 
-丢失终态的原生 shell 作业须先核对真实进程与效果，再用离线操作者 `night-bot-jobs` 的 `inspect` / `close --check` / `close` 精确结清。它只记录可能存在部分效果和原调用禁止重放，不伪造成功或任务排空；边界及用法见 [效果对账](docs/EFFECT-RECONCILIATION.md#丢失终态的原生-shell-作业)。
+丢失终态的旧 shell 作业不阻止原会话接收新输入、推理或只读核验，也不自动重跑。需要结清旧作业时，核对真实进程与效果，再用离线操作者 `night-bot-jobs` 的 `inspect` / `close --check` / `close`；它只记录可能存在的部分效果和原调用禁止重放，不伪造成功或旧资源已排空。见 [效果对账](docs/EFFECT-RECONCILIATION.md#丢失终态的原生-shell-作业)。

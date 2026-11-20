@@ -5,6 +5,7 @@ import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {createHash} from 'node:crypto'
 import {createServer} from 'node:http'
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {nativeRuntimeHost,nativeShell,latestInput,topicTaskCalls,waitUntil} from './fixtures/runtime-official-host.js'
 import {handleRequest} from '../packages/dingtalk-core/http.js'
 import {createEffectOperatorAuth,readEffectOperatorToken} from '../src/tasks/effect-operator-auth.js'
@@ -107,7 +108,7 @@ async function unknown(t){
  h.ctx.get('tools').register({name:'uncertain_native',description:'Original local effect loses its acknowledgement',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){calls++;await writeFile(join(exec.agent.metadata.cwd,'work/evidence.txt'),'Original partial effect');throw Error('lost acknowledgement')}})
  const id=await create(h);await idle(h);return {h,id,get calls(){return calls},stored:await snapshot(h,id)}
 }
-test('unknown effect holds future side effects while explicit input permits readback but cannot authorize replay',{timeout:20000},async t=>{
+test('unknown effect holds future side effects while explicit input permits readback but cannot authorize replay',{timeout:nativeTestTimeout(20000)},async t=>{
  const f=await unknown(t),{h,id,stored}=f,intent=stored.auditEntries.find(e=>e.data.domain==='task'&&e.data.kind==='effect-intent'),before=modelCount(h)
  const inspection=await h.service.inspectTaskEffect({taskId:id,intentEntryId:intent.entryId});assert.equal(inspection.outcome,'unknown');assert.equal(inspection.noReplay,true);assert.equal(await readFile(join(taskRoot(h,id),'work/evidence.txt'),'utf8'),'Original partial effect')
  await h.service.appendTaskContext({taskId:id,requestId:'investigate',progressImpact:'replan',context:'Read the existing evidence; this is not effect reconciliation.'});await idle(h);assert.equal(f.calls,1);assert.equal(modelCount(h),before+1,'explicit input may open only the held readback turn')

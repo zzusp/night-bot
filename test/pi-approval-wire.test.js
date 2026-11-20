@@ -528,7 +528,7 @@ test('operator full native task committed write with render failure remains unkn
  const root=await mkdtemp(join(tmpdir(),'night-full-task-unknown-')),external=join(root,'external-business'),target=join(external,'committed-once.txt');let h,cold,off,renderFailures=0
  t.after(async()=>{off?.();await cold?.close();await h?.close()})
  await mkdir(external)
- h=await nativeTaskHost(root,request=>!request.tools.some(tool=>tool.name==='task_result')?[]:[{name:'write',args:{path:target,content:'FULL_UNKNOWN_ORIGINAL'}}],{permissionMode:'full',config:{dbPath:join(root,'data','state','tasks.sqlite')}})
+ h=await nativeTaskHost(root,request=>!request.tools.some(tool=>tool.name==='task_result')||renderFailures?[]:[{name:'write',args:{path:target,content:'FULL_UNKNOWN_ORIGINAL'}}],{permissionMode:'full',config:{dbPath:join(root,'data','state','tasks.sqlite')}})
  off=h.ctx.on('tools/execute',async(exec,next)=>{
   if(exec.name!=='write'||exec.arguments.path!==target)return next()
   const definition=h.ctx.get('tools').get(exec.name,exec.agent),render=definition.output.render

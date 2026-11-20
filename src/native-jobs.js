@@ -1,7 +1,7 @@
 import {renderJobOutput} from './runtime/job-output.js'
 import {boundText} from './runtime/output-window.js'
 import {randomUUID} from 'node:crypto'
-import {prepareJobJournal,JobLedgerError,unresolvedJobReceipts,unresolvedNativeJobReceipts,assertOfficialJobOwner} from './runtime/job-ledger.js'
+import {prepareJobJournal,JobLedgerError,unresolvedNativeJobReceipts,assertOfficialJobOwner} from './runtime/job-ledger.js'
 import {Service} from '@deepseek-ai/cordis'
 import {runWithProcessResourceRecorder} from './process/contracts.js'
 import z from '@deepseek-ai/schemastery'
@@ -15,9 +15,8 @@ export default class NativeJobs extends Service {
  static Config=z.object(Object.fromEntries(Object.entries(defaults).map(([key,value])=>[key,z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(value)])))
  constructor(ctx,config={}){
   super(ctx,'jobs');this.config={...defaults,...config};for(const n of Object.values(this.config))if(!Number.isSafeInteger(n)||n<1)throw new TypeError('Invalid job registry limits')
-  this.host=ctx;this.records=new Map();this.counts=new Map();this.controllers=new Set();this.listeners=new Set();this.cleanups=new Map();this.closing=false;this.pending=new Set();this.admissions=new Set();this.admissionOwners=new WeakMap();this.drainingOwners=new WeakSet()
+  this.host=ctx;this.records=new Map();this.counts=new Map();this.controllers=new Set();this.listeners=new Set();this.cleanups=new Map();this.closing=false;this.pending=new Set();this.admissions=new Set();this.admissionOwners=new WeakMap();this.drainingOwners=new WeakMap();this.unprovenStarts=new WeakMap()
   ctx.effect(()=>()=>this.disposeAll(),'native jobs teardown')
-  ctx.on('agent/pre-step',({agent},next)=>{if(agent.piSession)return this.assertCanRun(agent).then(()=>next());const unresolved=unresolvedJobReceipts(agent.session.snapshotEvents(),agent.id);return unresolved.some(receipt=>{const live=this.records.get(receipt.jobId);return receipt.uncertain||!live||live.journalError||live.drainUncertain})?{kind:'reject',reason:'NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY'}:next()})
   ctx.on('workspace/session-activity',async({sessionId},next)=>{const rest=await next(),jobs=this.list(sessionId).filter(j=>j.owner===sessionId&&!terminal(j));return jobs.length?[{kind:'job',items:jobs.map(({id,label})=>({id,label}))},...rest]:rest})
   ctx.on('workspace/session-stop',({sessionId})=>{for(const job of this.list(sessionId))if(job.owner===sessionId&&!terminal(job))try{this.kill(job.id,sessionId,'session archived')}catch(error){this.warn(error)}})
  }
@@ -27,29 +26,25 @@ export default class NativeJobs extends Service {
  get events(){const ctx=this.ctx;return{subscribe:(filter,listener)=>{const cell={scope:scopeOf(ctx),filter,listener};return ctx.effect(()=>{this.listeners.add(cell);return()=>this.listeners.delete(cell)},'native jobs subscription')}}}
  emit(event,owner){for(const cell of this.listeners){const f=cell.filter;if('owner'in f&&owner!==undefined&&f.owner!==owner.id)continue;if(f.owners==='scope'&&!this.visible(cell.scope,owner))continue;try{cell.listener(event)}catch(error){this.warn(error)}}}
  owner(id){if(id===undefined)return;const owner=this.host.get('agents')?.get(id);if(!owner)throw new Error(`session "${id}" has no live agent`);if(owner.piSession)assertOfficialJobOwner(this.host,owner,{requireInitiator:true});return owner}
- async assertCanRun(actor){
-  assertOfficialJobOwner(this.host,actor)
-  if(typeof actor.receipts?.read!=='function')throw new JobLedgerError('NIGHT_JOB_RECEIPTS_REQUIRED')
-  const unresolved=unresolvedNativeJobReceipts(await actor.receipts.read(),actor.id)
-  if(unresolved.some(receipt=>{const live=this.records.get(receipt.jobId);return receipt.uncertain||!live||live.owner!==actor||live.journalError||live.drainUncertain}))throw new JobLedgerError('NIGHT_JOB_OUTCOME_UNCERTAIN_NO_REPLAY')
- }
  async resumeOwner(actor){
   assertOfficialJobOwner(this.host,actor)
-  if(!this.drainingOwners.has(actor))throw new JobLedgerError('NIGHT_JOB_OWNER_NOT_DRAINING')
-  const busy=()=>[...this.pending].some(record=>record.owner===actor)||[...this.admissions].some(action=>this.admissionOwners.get(action)===actor)||[...this.records.values()].some(job=>job.owner===actor&&(!terminal(job)||job.journalError||job.drainUncertain))
-  if(busy())throw new JobLedgerError('NIGHT_JOB_OWNER_NOT_DRAINED')
-  await this.assertCanRun(actor)
-  assertOfficialJobOwner(this.host,actor)
-  if(busy())throw new JobLedgerError('NIGHT_JOB_OWNER_NOT_DRAINED')
+  const drain=this.drainingOwners.get(actor)
+  if(!drain)throw new JobLedgerError('NIGHT_JOB_OWNER_NOT_DRAINING')
+  if(!drain.complete)throw new JobLedgerError('NIGHT_JOB_OWNER_NOT_DRAINED')
   this.drainingOwners.delete(actor)
  }
  async drainOwner(actor,{reason='owner drained'}={}){
   assertOfficialJobOwner(this.host,actor)
-  this.drainingOwners.add(actor)
+  const drain={complete:false};this.drainingOwners.set(actor,drain)
   await Promise.allSettled([...this.admissions].filter(action=>this.admissionOwners.get(action)===actor))
   await this.disposeJobs([...this.records.values()].filter(job=>job.owner===actor),reason)
-  await this.assertCanRun(actor)
+  const startFailure=this.unprovenStarts.get(actor);if(startFailure)throw new JobLedgerError('NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN',startFailure)
+  if(typeof actor.receipts?.read!=='function')throw new JobLedgerError('NIGHT_JOB_RECEIPTS_REQUIRED')
+  const unresolved=unresolvedNativeJobReceipts(await actor.receipts.read(),actor.id)
+  // A cold registration can have an unknown outcome without retaining resources of this owner.
+  if(unresolved.some(job=>job.uncertain||job.resourceOwnership&&job.resourceOwnership.status!=='released'))throw new JobLedgerError('NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN')
   const cleanup=this.cleanups.get(actor);if(cleanup)await cleanup()
+  drain.complete=true
  }
  expect(id,caller){const job=this.records.get(id);if(!job)throw new Error(`unknown job ${id}`);if(job.owner!==undefined&&job.owner.id!==caller)throw new Error(`job ${id} belongs to another session`);return job}
  view(j){return{id:j.id,kind:j.kind,label:j.label,...j.owner?{owner:j.owner.id}:{},...j.outputLimitBytes!==undefined?{outputLimitBytes:j.outputLimitBytes}:{},status:j.status,...j.progress!==undefined?{progress:j.progress}:{},...j.detail!==undefined?{detail:j.detail}:{},startedAt:j.startedAt,...j.finishedAt!==undefined?{finishedAt:j.finishedAt}:{},output:{total:j.total,earliest:j.chunks[0]?.at??j.total,...j.spills.size?{spillPaths:[...j.spills]}:{}}}}
@@ -77,7 +72,12 @@ export default class NativeJobs extends Service {
     this.pending.delete(reservation)
     return startJob(this,spec,{id,startedAt,journal,onLaunch:()=>{invoked=true}})
    }catch(error){
-    if(journal)try{if(invoked)await journal.startUncertain(error);else await journal.notStarted('admission ended before producer invocation')}catch(cause){throw new JobLedgerError('NIGHT_JOB_START_UNCERTAIN',new AggregateError([error,cause],'Job admission and audit are uncertain'))}
+    if(journal)try{if(invoked)await journal.startUncertain(error);else await journal.notStarted('admission ended before producer invocation')}catch(cause){
+     const failure=new JobLedgerError('NIGHT_JOB_START_UNCERTAIN',new AggregateError([error,cause],'Job admission and audit are uncertain'))
+     // A failed receipt must not make this owner's attempted launch look like a cold registration.
+     if(invoked)this.unprovenStarts.set(owner,failure)
+     throw failure
+    }
     if(invoked)throw new JobLedgerError('NIGHT_JOB_START_UNCERTAIN',error)
     throw error
    }finally{this.pending.delete(reservation)}

@@ -59,10 +59,11 @@ packet digest 和原任务绑定；同一次已登记调用不可再次执行业
 可以同参；不同命令文字也不证明业务效果不同。原 Night v1 收据只在实际原输入和调用
 唯一匹配时读取，不改写历史，歧义保持阻断，详见 [输入与重试](PI-TASK-INPUT-AND-RETRY.md)。
 
-崩溃后的未决 intent 以 `TASK_EFFECT_UNCERTAIN_NO_REPLAY` 阻止自动继续；最终结果
-还要求没有活动后台 job。未知外部效果须对账；provider retry、换 call ID 或恢复目录
-不授权重放，已对账旧效果的新动作仍须真实新来源授权。取消或工具失败可能已有部分
-效果，须如实报告。
+活跃任务接收原会话 steer；不活跃时唤起原会话并交付新输入。未决 intent 或旧后台作业
+不会阻拦推理、只读核验或 `wait` / `blocked` 报告；未核实的副作用及完成提交仍受保护。
+当前 owner 的进程和作业必须真正排空；旧收据缺终态既不等于当前 owner 未排空，也不证明
+旧作业已退出。provider retry、换 call ID 或恢复目录不授权重放原调用；取消或工具失败
+可能已有部分效果，须如实报告。
 
 Completed tasks trigger the independent scoped retrospective. Failure to learn or
 send a notification cannot reverse task completion. 旧任务 Owner/多执行 session
