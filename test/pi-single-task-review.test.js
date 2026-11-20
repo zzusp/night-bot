@@ -1,3 +1,4 @@
+import {restoreLegacyHumanWait} from './fixtures/legacy-human-wait.js'
 import {nativeLifecycle,nativeLifecycleTimeout} from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import {DatabaseSync} from 'node:sqlite'
@@ -25,7 +26,7 @@ test('actual Host legacy non-Router human review and dialogue stay read-only, re
   if(!body.tools?.some(tool=>tool.function.name==='task_result'))return
   if(['dialogue','followup','answer'].includes(stage))for(const name of ['write',shell,'memory_remember'])assert.ok(body.tools.some(tool=>tool.function.name===name),'review must deny an actual available tool: '+name)
   const n=step++
-  if(stage==='initial')return call('task_result',{decision:{action:'blocked',summary:'Original work waits for the designated business owner’s conditions.',question:'Please confirm the UAT2-only scope and persistence condition.',audience:'requester',evidence:['original authorized objective'],limitations:[],attemptedActions:['Read the original scope']}})
+  if(stage==='initial')return wait('Historical-session scaffold, no question capability.')
   if(stage==='dialogue')return [call('write',{path:'work/dialogue-forbidden.txt',content:'forbidden'}),forbiddenShell('work/dialogue-shell-forbidden.txt'),remember(),wait('Current facts only; the original business question remains pending.')][n]
   if(stage==='followup')return [call('write',{path:'work/review-forbidden.txt',content:'forbidden'}),forbiddenShell('work/review-shell-forbidden.txt'),remember(),wait('A fact reply cannot resolve the original business approval.',{replySourceId:'foreign-source'}),wait('Read evidence is necessary.',{replySourceId:candidate,evidence:[]}),wait('Only existing local evidence is known; no implementation approval was inferred.',{replySourceId:candidate})][n]
   if(stage==='answer')return [call('task_human_resolve',{requestId:'foreign-request',sourceId:candidate,reason:'not the current question',evidence:['not authority']}),call('task_human_resolve',{requestId,sourceId:'foreign-source',reason:'not a candidate',evidence:['not authority']}),call('task_human_resolve',{requestId,sourceId:candidate,reason:'empty evidence cannot authorize',evidence:[]}),call('task_human_resolve',{requestId,sourceId:candidate,reason:'business-person is designated by the original objective; the full reply answers this question and preserves the UAT2-only condition.',evidence:['business-person: UAT2 only; edits must persist on save. No other environment is approved.']}),call('write',{path:'work/after-resolve-forbidden.txt',content:'forbidden'}),remember(),wait('The original reply and all conditions were recorded; this review remains read-only.')][n]
@@ -50,9 +51,7 @@ test('actual Host legacy non-Router human review and dialogue stay read-only, re
     observations.push({kind:'submit',stage,decision})
     if(extra.dialogue)return command('task.dialogue.reply',{binding,messageId:extra.dialogue.id,reply:decision.summary,decision})
     if(decision.action==='complete')return command('task.complete',{binding,summary:decision.summary,result:decision})
-    const replySource=decision.replySourceId?sources.find(source=>source.sourceId===decision.replySourceId):undefined
-    const notification=replySource?{conversationId:replySource.groupId,sourceMessageId:replySource.messageId,actorId:replySource.actorId,sourceId:replySource.sourceId,sourceVersion:replySource.version,replyToMessageId:replySource.messageId,replyToSenderOpenDingTalkId:replySource.actorId,atOpenDingTalkIds:[replySource.actorId],text:decision.summary}:undefined
-    return command('task.wait',{binding,...decision,...decision.question?{humanRequest:{requestId,reason:decision.summary,audience:decision.audience}}:{},...decision.replySourceId?{humanReply:{requestId,sourceId:decision.replySourceId,notification}}:{}})
+    return command('task.wait',{binding,...decision,...decision.replySourceId?{humanReply:{requestId,sourceId:decision.replySourceId}}:{}})
    },
   })
   assert.equal(result.status,'submitted');await finish(claimed)
@@ -71,6 +70,9 @@ test('actual Host legacy non-Router human review and dialogue stay read-only, re
   sessions=createSingleTaskSessions({ctx,isCurrent:async expected=>{const task=await row();return task.status==='active'&&task.control==='active'&&!task.drained&&task.leaseEpoch===expected.leaseEpoch&&task.requirementRevision===expected.requirementRevision&&task.controlRevision===expected.controlRevision&&(task.contextRevision??0)===(expected.contextRevision??0)},getWorkspaceDir:async()=>{const task=await row();await taskWorkspace(ctx.runtimePaths.workspaces,taskId);await registerTaskSession(ctx.runtimePaths,ctx.get('taskSessionRoutes'),task);return taskWorkspace(ctx.runtimePaths.workspaces,taskId)}})
   await t.beginBusiness()
   await execute(await command('task.claim',{taskId}))
+  await store.close()
+  restoreLegacyHumanWait(join(ctx.runtimePaths.state,'review-tasks.sqlite'),taskId,{action:'blocked',summary:'Original work waits for the designated business owner’s conditions.',question:'Please confirm the UAT2-only scope and persistence condition.',evidence:['original authorized objective'],limitations:[],attemptedActions:['Read the original scope']},{requestId})
+  store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'review-tasks.sqlite'),workspaceDir:ctx.runtimePaths.workspaces,instanceId:'review-test',ownerActorId:'owner',webActorId:'owner'})
   const initial=await ctx.sessionPersistence.readNative((await row()).sessionId,{requireComplete:true}),standing=initial.audit.filter(receipt=>['permission','sandbox','approval'].includes(receipt.domain))
   assert.ok(standing.some(receipt=>receipt.domain==='permission'&&receipt.payload.sandbox==='workspace-write'))
   await command('task.dialogue.add',{taskId,requestId:'dialogue-one',text:'What is currently known?',actorId:'owner'})
@@ -79,7 +81,7 @@ test('actual Host legacy non-Router human review and dialogue stay read-only, re
   await source(candidate,'What is already implemented? This is a factual question, not approval.')
   let current=await row();await command('task.supplement',{taskId,expectedRequirementRevision:current.requirementRevision,expectedControlRevision:current.controlRevision,messageId:'fact-supplement',text:'A factual follow-up',sourceRefs:[candidate]})
   stage='followup';step=0;const followup=await command('task.claim',{taskId,humanReview:true});review=followup.humanReview;await execute(followup,{humanReview:review})
-  current=await row();assert.equal(current.humanRequests[0].status,'waiting-reply');assert.equal(current.humanRequests[0].followupReplies.length,1);assert.equal(current.humanRequests[0].followupReplies[0].sourceId,candidate)
+  current=await row();assert.equal((await store.query({kind:'notification.list'})).length,0,'legacy read-only reports never create automatic follow-up sends');assert.equal(current.humanRequests[0].status,'waiting-reply');assert.equal(current.humanRequests[0].followupReplies.length,1);assert.equal(current.humanRequests[0].followupReplies[0].sourceId,candidate)
   candidate='answer-source';const reply='business-person: UAT2 only; edits must persist on save. No other environment is approved.'
   await source(candidate,reply);await source('foreign-source','A different message with no review binding.','foreign-person')
   current=await row();await command('task.supplement',{taskId,expectedRequirementRevision:current.requirementRevision,expectedControlRevision:current.controlRevision,messageId:'answer-supplement',text:'The designated business reply',sourceRefs:[...current.sourceRefs,candidate]})

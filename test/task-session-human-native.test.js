@@ -1,3 +1,4 @@
+import {restoreLegacyHumanWait} from './fixtures/legacy-human-wait.js'
 import { nativeLifecycle, nativeLifecycleTimeout, nativeTestTimeout, nativeTemporaryDirectory as mkdtemp, nativeRemove as rm } from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -14,42 +15,55 @@ const call = (name, args) => ({ name, args })
 const humanRequest=args=>call('task_result',{decision:{action:'blocked',summary:args.reason,question:args.question,...(args.audience === undefined ? {} : {audience:args.audience}),evidence:args.evidence??[],attemptedActions:args.attemptedActions??[],limitations:[]}})
 const requestHuman = (audience = 'requester') => call('task_result', { decision:{action:'blocked',audience, summary: '目标环境尚未明确，不能自行扩大授权', question: '请明确本次允许的环境和操作范围', evidence: ['已读取原始交办'],limitations:[], attemptedActions: ['核对现有需求，未执行外部修改']} })
 const finish = summary => call('task_result', { decision: { action: 'complete', summary, evidence: ['已核对人工原文和原执行结果'], limitations: [] } })
-async function fixture(t, decide, options) {
+async function fixture(t, decide, options={}) {
   const root = await mkdtemp(join(tmpdir(), 'task-human-native-'))
-  const modelTaskMessages=[]
-  const h = await nativeRuntimeHost(root,async(request,...args)=>{modelTaskMessages.push(...taskSessionMessages(request));if(latestInput(request).trigger==='task-facts')return topicTaskCalls(request);return decide(request,...args)},options)
+  const modelTaskMessages=[],snapshots=new Map(),historicalSnapshots=[];let serviceOptions
+  const factory=options.serviceFactory
+  const h = await nativeRuntimeHost(root,async(request,...args)=>{
+    modelTaskMessages.push(...taskSessionMessages(request))
+    if(latestInput(request).trigger==='task-facts')return topicTaskCalls(request)
+    const calls=await decide(request,...args)
+    if(options.currentContract)return calls
+    return calls?.map(call=>{
+      if(call.name!=='task_result'||!call.args.decision.question)return call
+      const input=latestInput(request)
+      snapshots.set(input.task.taskId,structuredClone(call.args.decision))
+      // Only create an ordinary stopped scaffold via current Pi. Once drained,
+      // restore the historical SQL snapshot offline before opening the service.
+      const {question,audience,...decision}=call.args.decision
+      return {...call,args:{decision:{...decision,action:'wait'}}}
+    })
+  },{...options,serviceFactory:async args=>{serviceOptions=args;return (factory??openTaskSessionService)(args)}})
   h.humanModelTaskMessages=modelTaskMessages
+  h.historicalSnapshots=historicalSnapshots
+  function bindIdle(){
+    const idle=h.service.whenIdle.bind(h.service)
+    h.service.whenIdle=async()=>{
+      await idle()
+      if(!snapshots.size)return
+      const rows=[...snapshots];snapshots.clear()
+      const legacyAudience=h.service.historicalAudience,prepareNotice=h.service.historicalPrepareNotice??true
+      await h.service.close()
+      for(const [taskId,decision] of rows)historicalSnapshots.push(restoreLegacyHumanWait(root+'/dynamic.db',taskId,decision,{audience:legacyAudience??decision.audience??'requester',prepareNotice,operatorUserId:options.config?.operatorUserId}))
+      h.service=await openTaskSessionService({...serviceOptions,config:{...serviceOptions.config,initialize:false}})
+      bindIdle();await h.service.recover();await h.service.whenIdle()
+    }
+  }
+  bindIdle()
   t.after(async () => { try { await h.close() } finally { await rm(root, { recursive: true, force: true }) } })
   return h
 }
-// 模拟旧版已保存的等待记录及出箱，升级后仍用真实发送、回读和答复路径处理。
+// Historical metadata only; snapshot restoration is offline, never task.wait.
 async function legacyOperatorService(options, prepareNotice = true) {
-  const {config}=options, store=await openDynamicTaskStore({...config})
-  try {
-    const service=await openTaskSessionService({...options,store:{...store,async command(entry){
-      if(entry.kind!=='task.wait'||!entry.args.humanRequest)return store.command(entry)
-      const humanRequest={...entry.args.humanRequest,audience:'operator'}
-      const receipt=await store.command({...entry,args:{...entry.args,audience:'operator',humanRequest}})
-      if(prepareNotice){
-        const {task}=receipt.result, notificationId=`operator-request:${humanRequest.requestId}`
-        await store.command({id:`prepare-notification:${notificationId}`,kind:'notification.prepare',args:{
-          notificationId,taskId:task.taskId,requirementRevision:task.requirementRevision,kind:'question',payload:{
-            text:`${entry.args.question}\n\n请在人工介入页答复，或引用本消息回复处理结果。`,audience:'operator',
-            humanRequestId:humanRequest.requestId,recipientUserId:config.operatorUserId,fact:{taskId:task.taskId},kind:'question',
-          },
-        }})
-      }
-      return receipt
-    }}})
-    return {...service,async close(){try{await service.close()}finally{await store.close()}}}
-  } catch(error){await store.close();throw error}
+ const service=await openTaskSessionService(options)
+ return Object.assign(service,{historicalAudience:'operator',historicalPrepareNotice:prepareNotice})
 }
 async function pending(h) { return (await h.service.listAuthorizationRequests()).find(item => item.status === 'waiting-reply') }
 
 function routeTask(request,task){return topicTaskCalls(request,{task})}
 async function createGroupTask(h,id,objective){await h.service.ingest({groupId:'native-group',messageId:id,senderOpenDingTalkId:'native-user',text:'测试助手，'+objective,occurredAt:new Date().toISOString()});await h.service.whenIdle();return h.query('task.get',{taskId:(await h.query('task.list')).at(-1).taskId})}
 
-for (const operatorUserId of [undefined,'legacy-operator']) test(`环境资料问题引用原消息，不依赖操作者配置：${Boolean(operatorUserId)}`,{timeout:nativeTestTimeout(30000)},async t=>{
+for (const operatorUserId of [undefined,'legacy-operator']) test(`历史冻结问题保留原消息，不依赖操作者配置：${Boolean(operatorUserId)}`,{timeout:nativeTestTimeout(30000)},async t=>{
   const question='请指向已获准的生产日志入口，不需要提供凭据。'
   const h=await fixture(t,request=>routeTask(request)??[humanRequest({reason:'需要核实环境归属',question,evidence:['仅内部证据'],attemptedActions:['仅内部排查过程']})],{config:{operatorUserId}})
   const task=await createGroupTask(h,'environment-source','只读核对生产服务的错误数')
@@ -63,6 +77,8 @@ for (const operatorUserId of [undefined,'legacy-operator']) test(`环境资料�
   assert.ok(notice.payload.text.includes(question))
   assert.doesNotMatch(notice.payload.text,/仅内部|legacy-operator/)
   assert.equal((await h.query('notification.get',{notificationId:notice.id})).state,'delivered')
+  const frozen=h.historicalSnapshots[0].notification,current=await h.query('notification.get',{notificationId:notice.id})
+  assert.deepEqual(current.payload,frozen.payload);assert.equal(current.payloadDigest,frozen.payloadDigest)
   await h.service.recover();await h.service.whenIdle()
   assert.equal(notices().length,1)
 })
@@ -238,29 +254,19 @@ test('历史操作者私信保留精确引用，只接纳真实接收者答复�
   assert.equal(sent.filter(item => item.payload.audience === 'operator').length, 1)
 }))
 
-test('普通等待不转发私密请求，公开问题先校验身份且只外发问题',{timeout:nativeTestTimeout(30000)},async t=>{
- let step=0,internalId;const business='请核对 PR #253 与订单 SG18：https://example.com/orders/SG18'
- const h=await fixture(t,request=>{
-  const routed=routeTask(request);if(routed)return routed
-  internalId=latestInput(request).task.taskId
-  const args={reason:'需要核对业务信息',question:business,evidence:[`内部诊断：${internalId}`],attemptedActions:['已检查 '+internalId]}
-  if(step===0){args.audience='operator';args.question='这是私密问题，不得转发'}
-  if(step===1)args.question='请处理 '+internalId
-  step++;return [humanRequest(args)]
- },{config:{operatorUserId:'actual-login-user'}})
- const current=await createGroupTask(h,'public-human-copy','核对业务信息')
- assert.equal(step,3);assert.equal(current.humanRequests.length,1)
- assert.deepEqual(current.humanRequests[0].evidence,[`内部诊断：${internalId}`])
- const notices=h.sent.filter(item=>item.taskId===current.taskId&&item.kind==='question')
- assert.equal(notices.length,1);assert.equal(notices[0].payload.text,business)
- assert.ok(!notices[0].payload.text.includes(current.humanRequests[0].requestId))
- const rejected=h.toolResults.filter(item=>item.name==='task_result'&&item.result.isError)
- assert.equal(rejected.length,2)
- assert.match(JSON.stringify(rejected[0].result),/TASK_CONVERSATION_QUESTION_PUBLIC_REQUIRED/)
- assert.match(JSON.stringify(rejected[1].result),/GROUP_REPLY_INTERNAL_DETAILS/)
+test('new executions reject public and private questions and record a truthful blocked result',{timeout:nativeTestTimeout(30000)},async t=>{
+ let step=0
+ const h=await fixture(t,request=>routeTask(request)??(++step<=2?[humanRequest({reason:'Missing target',question:'Which target?',...step===1?{audience:'operator'}:{}})]:[call('task_result',{decision:{action:'blocked',summary:'Stopped: trusted target missing',evidence:['Checked supplied scope'],limitations:['No safe path remains']}})]),{currentContract:true})
+ const task=await createGroupTask(h,'disabled-question','Read supplied material only')
+ assert.equal(step,3);assert.equal(task.lastDecision.action,'blocked');assert.equal(task.humanRequests?.length??0,0)
+ const stored=await h.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
+ const rejected=stored.entries.filter(entry=>entry.message?.role==='toolResult'&&entry.message.toolName==='task_result'&&entry.message.isError)
+ assert.equal(rejected.length,2,'Pi rejects invalid question fields before Host execution')
+ assert.ok(!h.sent.some(row=>row.kind==='question'))
+ const count=h.requests.length;await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,count)
 })
 
-test('native human request waits without repeat wakes; authenticated HTTP reply resumes the original session from actual source text', { ...({ skip: !available ? reason : false, timeout: 30000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
+test('historical human request waits without repeat wakes; authenticated HTTP reply resumes the original session from actual source text', { ...({ skip: !available ? reason : false, timeout: 30000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
   let turns = 0, replyInput
   const h = await fixture(t, async request => {
     const input = latestInput(request); turns++
@@ -315,25 +321,14 @@ test('an original official task tool result cannot bypass human waiting and surv
  const saved=await h.ctx.sessionPersistence.readNative(after.sessionId);assert.equal(saved.entries.filter(entry=>entry.type==='message'&&entry.message.role==='toolResult'&&entry.message.toolName==='read').length,1);assert.deepEqual(await h.query('execution.list'),[])
 })
 
-test('a native blocked decision without a human question is corrected into an explicit durable request', { ...({ skip: !available ? reason : false, timeout: 30000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
-  let steps = 0
-  const h = await fixture(t, async request => {
-    steps++
-    if (steps === 1) return [call('task_result', { decision: { action: 'blocked', summary: '需要人工', evidence: [], limitations: [] } })]
-    assert.match(JSON.stringify(request.messages), /TASK_QUESTION_REQUIRED/)
-    return [requestHuman()]
-  })
-  await t.beginBusiness()
-
-  const created = await t.step(async () => h.service.createTask({ groupId: 'native-group', requestId: 'human-correction', objective: '按实际边界处理' }))
-  await t.step(async () => h.service.whenIdle())
-  assert.equal(steps, 2)
-  const task = await t.step(async () => h.query('task.get', { taskId: created.taskId }))
-  assert.equal(task.humanRequests.length, 1)
-  assert.equal(task.humanRequests[0].status, 'waiting-reply')
-  assert.equal(task.lastDecision.question, '请明确本次允许的环境和操作范围')
-  assert.ok(h.toolResults.some(item => item.name === 'task_result' && item.result.isError))
-}))
+test('a native blocked decision concludes without a question or another model turn',{timeout:nativeTestTimeout(30000)},async t=>{
+ let steps=0
+ const h=await fixture(t,()=>{steps++;return [call('task_result',{decision:{action:'blocked',summary:'Stopped: missing trusted target',evidence:['Existing material checked'],limitations:['Target not established']}})]},{currentContract:true})
+ const created=await h.service.createTask({requestId:'blocked-final',objective:'Check only trusted target'});await h.service.whenIdle()
+ const task=await h.query('task.get',{taskId:created.taskId})
+ assert.equal(steps,1);assert.equal(task.lastDecision.action,'blocked');assert.equal(task.humanRequests?.length??0,0);assert.equal(task.drained,true)
+ assert.equal(h.toolResults.filter(row=>row.name==='task_result'&&row.result.isError).length,0)
+})
 
 for(const changed of [false,true])test(`original-group human input preserves clarification and fences explicit authorization changes: changed=${changed}`,{timeout:nativeTestTimeout(30000)},async t=>{
  let original,answeredInput;const reply='测试助手，本次只允许 UAT3 只读核对，不得发布生产。'
@@ -407,14 +402,10 @@ test('历史无出箱的操作者问题在恢复后仍只留在 Web', { timeout:
   assert.ok(!h.sent.some(item => item.kind === 'question'))
 })
 
-for (const withGroup of [false, true]) test(`Web 单独保留普通问题，不发群或私信：withGroup=${withGroup}`, { skip: !available ? reason : false, timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async t => {
-  let attempted = false, asked = false, resumedInput
+for (const withGroup of [false, true]) test(`历史 Web 待答只留本地，不新建群或私信：withGroup=${withGroup}`, { skip: !available ? reason : false, timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async t => {
+  let asked = false, resumedInput
   const h = await fixture(t, async request => {
     const routed = topicTaskCalls(request); if (routed) return routed
-    if (!attempted) {
-      attempted = true
-      return [humanRequest({reason:'使用旧的私密通知路径',question:'此问题不能直接转发',audience:'operator'})]
-    }
     if (!asked) {
       asked = true
       return [humanRequest({reason:'需要核实验证入口',question:'请提供现有验证入口'})]
@@ -430,7 +421,6 @@ for (const withGroup of [false, true]) test(`Web 单独保留普通问题，不�
   const question=task.humanRequests[0]
   assert.equal(question.audience,'requester');assert.equal(question.status,'waiting-reply')
   assert.equal(question.question,'请提供现有验证入口')
-  assert.match(JSON.stringify(h.toolResults.find(item=>item.name==='task_result'&&item.result.isError)?.result ?? null),/TASK_CONVERSATION_QUESTION_PUBLIC_REQUIRED/)
   assert.equal((await h.query('notification.list')).length,0);assert.equal(h.sent.length,0)
   const reply={taskId:task.taskId,humanRequestId:question.requestId,requestId:'unbound-web-answer',reply:'已提供原Web验证入口，仅限原授权只读范围',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}
   await assert.rejects(h.service.respondHumanRequest({...reply,expectedRequirementRevision:task.requirementRevision+1}),{code:'DYNAMIC_HUMAN_REQUEST_STALE'})

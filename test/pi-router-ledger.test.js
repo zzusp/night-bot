@@ -588,14 +588,14 @@ test('new authenticated task revisions invalidate an older inspection execution 
   assert.ok((await f.command('task.claim',{taskId:'a'})).result.binding.leaseEpoch>claim.binding.leaseEpoch)
 })
 
-for(const wait of ['user','external-event','future-time'])test('24-hour '+wait+' wait receives a durable Router review without execution or five-minute duplicates',async t=>{
+for(const wait of ['missing-input','external-event','future-time'])test('24-hour '+wait+' wait receives a durable Router review without execution or five-minute duplicates',async t=>{
   const {inspectionVersion,taskInspectionReason,WAIT_REVIEW_INTERVAL_MS}=await import('../src/tasks/inspection.js')
   t.mock.timers.enable({apis:['Date'],now:Date.now()-2*WAIT_REVIEW_INTERVAL_MS})
   const f=await fixture(t);await f.plan()
   const claimed=(await f.command('task.claim',{taskId:'a'})).result
   const until=new Date(Date.now()+7*WAIT_REVIEW_INTERVAL_MS).toISOString()
   await f.command('task.wait',{binding:claimed.binding,action:'wait',summary:'Waiting for '+wait,decision:{action:'wait',summary:'Waiting for '+wait,...wait==='future-time'?{until}:{}},
-    ...wait==='user'?{question:'Which target?',humanRequest:{requestId:'wait-user',audience:'requester',reason:'Need target',waitingReason:'Waiting for actual user answer'}}:{}})
+    limitations:wait==='missing-input'?['Target identity is missing; no safe authorized path remains']:[]})
   await f.command('wake.ack',{binding:claimed.binding,wakeIds:claimed.wakeIds});await f.command('task.drained',{binding:claimed.binding})
   let task=await f.query('task.get',{taskId:'a'})
   t.mock.timers.tick(WAIT_REVIEW_INTERVAL_MS-1)
@@ -729,4 +729,37 @@ test('new notification cannot mix task A completion and task B attachments with 
  const before=await f.query('notification.list')
  await assert.rejects(f.command('notification.prepare',args),{code:'TASK_DELIVERY_COMPLETION_MISMATCH'})
  assert.deepEqual(await f.query('notification.list'),before,'no frozen notice or outbox effect exists for the mismatch')
+})
+
+test('execution waits stay internal; final blocked and completion each enter Router once across restart',async t=>{
+ const f=await fixture(t);await f.plan()
+ const before=await f.query('router.inbox',{conversationId:f.conversationId})
+ const claim=(await f.command('task.claim',{taskId:'a'})).result
+ const args={binding:claim.binding,action:'wait',summary:'Internal checkpoint',evidence:['Local state'],limitations:[]}
+ await assert.rejects(f.command('task.wait',{...args,question:'Which target?',humanRequest:{requestId:'forbidden-question',audience:'requester'}}),{code:'TASK_QUESTION_DISABLED'})
+ assert.equal((await f.query('task.get',{taskId:'a'})).humanRequests?.length??0,0)
+ await f.command('task.wait',args,'internal-wait')
+ assert.deepEqual(await f.query('router.inbox',{conversationId:f.conversationId}),before)
+ assert.ok((await f.query('task.events')).events.some(event=>event.commandId==='internal-wait'),'internal lifecycle audit is retained')
+ await f.command('task.wait',{...args,action:'blocked',summary:'Stopped: required target missing',limitations:['No safe authorized path']},'final-blocked')
+ await f.command('task.wait',{...args,action:'blocked',summary:'Stopped: required target missing',limitations:['No safe authorized path']},'final-blocked')
+ const blocked=(await f.query('router.inbox',{conversationId:f.conversationId})).filter(event=>event.kind==='task.blocked')
+ assert.equal(blocked.length,1);assert.equal(blocked[0].taskEvent.result.summary,'Stopped: required target missing')
+ await f.command('task.complete',{binding:claim.binding,summary:'Verified result',result:{evidence:['Proof'],limitations:[]}},'final-complete')
+ await f.command('task.complete',{binding:claim.binding,summary:'Verified result',result:{evidence:['Proof'],limitations:[]}},'final-complete')
+ await f.reopen()
+ assert.equal((await f.query('router.inbox',{conversationId:f.conversationId})).filter(event=>event.kind==='task.completed').length,1)
+})
+
+
+test('an unresolved stopped execution keeps one inspection event rather than duplicate final notices',async t=>{
+ const f=await fixture(t);await f.plan()
+ const claim=(await f.command('task.claim',{taskId:'a'})).result
+ await f.command('task.wait',{binding:claim.binding,action:'blocked',summary:'Effect unresolved',evidence:[],limitations:['TASK_EFFECT_UNCERTAIN_NO_REPLAY']},'held-final')
+ assert.equal((await f.query('router.inbox',{conversationId:f.conversationId})).filter(event=>event.kind==='task.blocked').length,0)
+ const task=await f.query('task.get',{taskId:'a'})
+ const expected=Object.fromEntries(['requirementRevision','controlRevision','contextRevision','leaseEpoch','drained','recovering'].map(key=>[key,task[key]??(key==='contextRevision'?0:null)]))
+ await f.command('task.inspect',{taskId:'a',expected},'inspect-held-final')
+ await f.command('task.inspect',{taskId:'a',expected},'inspect-held-final-again')
+ assert.equal((await f.query('router.inbox',{conversationId:f.conversationId})).filter(event=>event.kind==='task.inspection').length,1)
 })

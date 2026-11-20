@@ -132,6 +132,11 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     const task = read('tasks',event.taskId,true)
     if (task?.conversationId) {
       if(!readEvent(event.id))db.prepare('INSERT INTO dynamic_task_events(id,body) VALUES (?,?)').run(event.id,JSON.stringify({...event,eventVersion:1,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,recordedAt:new Date().toISOString()}))
+      // Ordinary waits remain audit-only. Failed/unknown stopped runs use the
+      // existing inspection event, not a second final-result notification.
+      const inspectionReport=event.kind==='task.blocked'&&(task.technicalFailure||task.sessionFailure
+        ||task.lastDecision?.limitations?.some(code=>['TASK_SESSION_NO_SUBMISSION','TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(code)))
+      if(event.kind==='task.waiting'||inspectionReport)return
       return enqueue(task.conversationId,event.id,{kind:event.kind,taskId:task.taskId,taskEventId:event.id})
     }
   }

@@ -970,6 +970,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       return changed({ wakeIds: acknowledged, ...(remaining.length ? { remainingWakeIds: remaining } : {}) })
     }
     if (kind === 'task.wait') {
+      if(a.question!==undefined||a.decision?.question!==undefined||a.humanRequest!==undefined)fail('TASK_QUESTION_DISABLED')
       const task = currentTask(a.binding, { active: false, allowHumanReview: true })
       if (task.humanReviewLease === a.binding.leaseEpoch && (a.question?.trim() || a.decision?.question?.trim())) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
       let notification = null
@@ -981,7 +982,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         const source = get('dynamic_sources', a.humanReply.sourceId)
         if (task.status !== 'active' || task.control !== 'active' || source.groupId !== task.groupId || source.channel !== 'im'
           || !task.sourceRefs.includes(source.sourceId) || !(Date.parse(source.timestamp) >= Date.parse(request.createdAt) && Date.parse(source.timestamp) <= Date.parse(stamp))) fail('DYNAMIC_HUMAN_RESPONSE_FORBIDDEN')
-        const payload = a.topicFacts === true ? null : clone(record(a.humanReply.notification))
+        const payload = a.topicFacts === true || a.humanReply.notification === undefined ? null : clone(record(a.humanReply.notification))
         if (payload) {
           const audience=notificationAudience(payload)
           const quoteFields=[payload.sourceMessageId,payload.actorId,audience.replyToMessageId,audience.replyToActorId]
@@ -2170,8 +2171,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           }
         }
         if (args.topicFacts === true && recordsDecision && (kind === 'task.complete'
-          || kind === 'task.wait' && (args.action === 'blocked' || args.humanReply || ['requester', 'topic'].includes(args.audience ?? args.humanRequest?.audience)
-            || triggers.some(trigger => trigger.kind === 'execution.stage.progress')))) {
+          || kind === 'task.wait' && args.action === 'blocked')) {
           const task = get('dynamic_tasks', args.binding.taskId)
           value.topicFacts = topicFacts.record(task, kind === 'task.complete' ? 'completed' : args.humanReply ? 'followup' : args.question ? 'needs-input' : args.action === 'blocked' ? 'blocked' : 'progress',
             value.taskDecision.decision, id, args.replyBindings)
@@ -2186,7 +2186,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           saveTask(task)
           value.result.task = task
         }
-        if(['task.wait','task.revise','task.reopen','task.control','task.supplement'].includes(kind)&&value.result.task?.conversationId)routerLedger.taskEvent({id:`task-changed:${id}`,kind:kind==='task.wait'?'task.waiting':'task.changed',taskId:value.result.task.taskId,commandId:id})
+        if(['task.wait','task.revise','task.reopen','task.control','task.supplement'].includes(kind)&&value.result.task?.conversationId)routerLedger.taskEvent({id:`task-changed:${id}`,kind:kind==='task.wait'?(args.action==='blocked'?'task.blocked':'task.waiting'):'task.changed',taskId:value.result.task.taskId,commandId:id,...kind==='task.wait'&&args.action==='blocked'?{result:clone(value.result.task.lastDecision)}:{}})
         if(reassessStart) {
           // 未授许可的父件等待可按原 ID 重评估；保留热/冷收据序号，授过许可后永不重发。
           const table=db.prepare('SELECT 1 FROM dynamic_archived_receipts WHERE id=?').get(id)?'dynamic_archived_receipts':'dynamic_receipts'

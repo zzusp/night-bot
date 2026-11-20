@@ -45,7 +45,6 @@ import { resolveTopicMessages, topicSourceEntries, stableId, fingerprint, replyT
 import { ingestTaskResidentMessage, projectTaskNotification, stableTaskResourceIdentity, mergeTaskResources, taskBoardState, messageProcessingSources } from './task-message-projections.js'
 import { taskWorkspace, taskDirectories, taskFilePath, checkedTaskDirectory, taskWorkspaceReady, assertTaskWorkspaceReady, initializeTaskDirectories } from './session-workspaces.js'
 import {conversationNotificationRouting,finalConversationNotificationRouting,prepareConversationNotification,notificationAudience,conversationMessageActorId} from './group-notification.js'
-import {formatTaskConversationReply} from './group-reply-format.js'
 import {assertConversationReply,assertNoConversationReplySecrets,replyInternalTaskId,conversationQuote} from '../../src/channels/message-safety.js'
 import { taskExecutionContext } from './execution-context.js'
 import { assertTaskContextSemantics } from './task-input-contract.js'
@@ -1120,26 +1119,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
               `human-review:${taskId}:${humanReview.requestId}:${binding.leaseEpoch}`)).result
           },
           submit: async (decision,submittedBinding,exec) => {
+            if(Object.hasOwn(decision,'question')||Object.hasOwn(decision,'audience'))fail('TASK_QUESTION_DISABLED')
             const replyBinding={...submittedBinding}
-            const hasQuestion = !!decision.question?.trim()
-            if (hasQuestion && decision.audience === 'operator') {
-              const code = 'TASK_CONVERSATION_QUESTION_PUBLIC_REQUIRED'
-              throw Object.assign(new Error(`${code}: 请省略 audience，重新提交不含私密内容的问题。有真实 IM 来源时会在原会话提问，否则留在 Web。`), { code })
-            }
-            if ((task.conversationId && decision.audience === 'topic') || (hasQuestion && decision.audience === undefined)) {
-              decision = { ...decision, audience: 'requester' }
-            }
-            if (decision.question?.trim() && decision.executionIds) for (const id of decision.executionIds) {
-              const execution = await query('execution.get', { executionId: id })
-              if (execution?.taskId !== taskId) fail('TASK_EXECUTION_SCOPE_MISMATCH')
-              // Cancel joins the native turn; join its existing ledger finalizer too.
-              if (execution.cancelRequested && !execution.drained) await inflightExecutions.get(id)
-            }
             if (humanReview && (decision.action !== 'wait' || decision.question?.trim())) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
             if (decision.replySourceId !== undefined && (!humanReview || decision.action !== 'wait' || !humanReview.sourceIds.includes(decision.replySourceId))) fail('DYNAMIC_HUMAN_REVIEW_SOURCE_INVALID')
-            const publicInternalIds = hasQuestion || dialogue || decision.replySourceId !== undefined ? await replyInternalIds(task, sources) : []
-            if (hasQuestion) assertConversationReply(decision.question, publicInternalIds)
-            if (hasQuestion && decision.audience === 'topic') for (const text of [task.title, ...(decision.attemptedActions ?? [])]) assertConversationReply(text, publicInternalIds)
+            const publicInternalIds = dialogue || decision.replySourceId !== undefined ? await replyInternalIds(task, sources) : []
             if (dialogue || decision.replySourceId !== undefined) assertConversationReply(decision.summary, publicInternalIds)
             if (dialogue) {
               if (decision.action !== 'wait' || decision.question?.trim()) fail('TASK_DIALOGUE_REPLY_ONLY')
@@ -1157,30 +1141,17 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
                 replyBindings }, `complete:${taskId}:${binding.requirementRevision}`)
             } else {
               let humanReply, replyBindings = await taskReplyBindings(task)
-              if (decision.question?.trim() && decision.audience === 'topic' && !replyBindings.length) fail('TASK_COORDINATION_TOPIC_REQUIRED')
               if (decision.replySourceId) {
                 const source = sources.find(item => item.sourceId === decision.replySourceId)
                 if (!source) fail('DYNAMIC_HUMAN_REVIEW_SOURCE_INVALID')
                 replyBindings = bindingsForSources([source])
                 humanReply = { requestId: humanReview.requestId, sourceId: source.sourceId }
-                if(task.conversationId){
-                  const reply=prepareConversationNotification({conversationId:source.groupId,text:decision.summary,recipientActorIds:[source.actorId],signature:legacy.getAgentConfig().replySignature,internalIds:publicInternalIds})
-                  humanReply.notification={...reply,conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceRef:{messageId:source.messageId,messageVersion:source.version,actorId:source.actorId},humanRequestId:humanReview.requestId,replyKind:'substantive',fact:{taskId:task.taskId}}
-                }
               }
-              if(task.conversationId){
-                if(humanReply?.notification)assertNoConversationReplySecrets(decision.summary)
-                else if(hasQuestion&&decision.audience==='requester'&&await requesterReplySource(task))assertNoConversationReplySecrets(decision.question)
-              }
+              // Legacy human-review sources remain consumable; they no longer
+              // create a fresh automatic channel follow-up during execution.
               exec?.signal.throwIfAborted()
               const topicFacts=!task.conversationId&&(replyBindings.length>0||!!task.replyBindings?.length||!!task.topicRefs?.length)
-              await command('task.wait', { binding:replyBinding, ...decision, topicFacts, replyBindings, ...(humanReply ? { humanReply } : {}), ...(decision.question?.trim() ? { humanRequest: {
-                requestId: `human-${hash([taskId, binding.requirementRevision, binding.controlRevision, binding.leaseEpoch])}`,
-                reason: decision.summary, audience: decision.audience, ...(decision.executionIds ? { executionIds: decision.executionIds } : {}), attemptedActions: decision.attemptedActions ?? [] } } : {}) }, `wait:${taskId}:${binding.leaseEpoch}`)
-              if (decision.question?.trim()) {
-                const current = await requireTask(taskId)
-                await queueHumanRequest(current, current.humanRequests.findLast(request => request.status === 'waiting-reply'))
-              }
+              await command('task.wait', { binding:replyBinding, ...decision, topicFacts, replyBindings, ...(humanReply ? { humanReply } : {}) }, `wait:${taskId}:${binding.leaseEpoch}`)
             }
             submitted = true
             return { accepted: true }
@@ -1249,33 +1220,6 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       ...sources.flatMap(source => [source.messageId, source.actorId]),
       ...(current?.humanRequests ?? task.humanRequests ?? []).map(item => item.requestId),
       ...executions.flatMap(item => [item.executionId, item.sessionId]), ...operations.map(item => item.operationId)].filter(Boolean)
-  }
-  async function requesterReplySource(task) {
-    const source=await sourceFor(task)
-    if(source&&source.channel!=='web'&&!source.sourceId.startsWith('web:'))return source
-  }
-  async function queueReply(task, source, decision, id, kind, humanRequest) {
-    if(!source)return
-    if ((await query('notification.list')).some(item => item.id === id)) {
-      void deliverNotifications()
-      return
-    }
-    const reply = formatTaskConversationReply({ source: { conversationId: source.groupId, messageId: source.messageId,
-      actorId: source.actorId, senderName: source.senderName, text: source.text }, summary: decision.summary,
-      evidence: decision.evidence, limitations: decision.limitations,
-      signature: legacy.getAgentConfig().replySignature, internalIds: await replyInternalIds(task) })
-    await command('notification.prepare', { notificationId: id, taskId: task.taskId, requirementRevision: task.requirementRevision,
-      kind, payload: { ...reply, conversationId: source.groupId, sourceMessageId: source.messageId, actorId: source.actorId,
-        sourceId: source.sourceId, sourceVersion: source.version,
-        ...(humanRequest ? { audience: humanRequest.audience, humanRequestId: humanRequest.requestId } : {}), fact: { taskId: task.taskId }, kind } }, `prepare-notification:${id}`)
-    void deliverNotifications()
-  }
-  async function queueHumanRequest(task, request) {
-    // 历史私信只由既有出箱继续对账，不从等待记录新建通知。
-    if (request?.audience !== 'requester' || request.topicFactIds?.length) return
-    const source = await requesterReplySource(task)
-    return queueReply(task, source, { summary: request.question, evidence: [], limitations: [] },
-      `question:${task.taskId}:${request.requestId}`, 'question', request)
   }
   function deliverNotifications(attempted = new Set()) {
     if (closed) return Promise.resolve()
@@ -1492,8 +1436,6 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         await command('group.drained', { binding: { kind: 'group-session', groupId: group.groupId, sessionId: group.sessionId, leaseEpoch: group.leaseEpoch, sessionBound: group.sessionBound } })
 
       await refreshTasks()
-      for (const task of taskCache.values()) if (!task.archivedAt && task.status === 'active' && task.control === 'active')
-        for (const request of task.humanRequests ?? []) if (request.status === 'waiting-reply') await queueHumanRequest(task, request)
       for(const candidate of recoveryCandidates)failures.set(candidate.taskId,{id:candidate.taskId,code:'TASK_LEGACY_OPERATION_REVIEW_REQUIRED'})
       for (const task of await query('task.list')) if (task.sessionBound) {
         const cwd = await taskWorkspace(root,task.taskId,task)
