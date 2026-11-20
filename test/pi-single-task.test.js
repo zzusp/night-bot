@@ -185,8 +185,9 @@ test('single-task delivery freezes only explicitly reported workspace files and 
 })
 
 test('an uncertain default task effect releases its physically drained actor and writer while keeping reconciliation held',{timeout:nativeTestTimeout(15000)},async()=>{
-  const cleanups=[],f=await memoryHost({after:fn=>cleanups.push(fn)},body=>body.tools?.some(tool=>tool.function.name==='fault_after_write')?{tool:'fault_after_write',args:{}}:undefined)
-  const ctx=f.host.ctx;let h,task,effects=0
+  let effects=0
+  const cleanups=[],f=await memoryHost({after:fn=>cleanups.push(fn)},body=>{if(body.tools?.some(tool=>tool.function.name==='fault_after_write'))return effects?{text:'The original effect is unverified.'}:{tool:'fault_after_write',args:{}}})
+  const ctx=f.host.ctx;let h,task
   ctx.get('tools').register({name:'fault_after_write',description:'Local fixture effect with an uncertain response.',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){
     effects++;await writeFile(join(exec.agent.metadata.cwd,'work','uncertain.txt'),'effect happened before response failed');throw Error('local effect response failed')
   }})
@@ -197,7 +198,7 @@ test('an uncertain default task effect releases its physically drained actor and
     await h.service.whenIdle()
     const row=await h.store.query({kind:'task.get',taskId:task.taskId}),dialogue=await h.service.taskDialogue(task.taskId),stored=await ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true})
     assert.equal(await readFile(join(stored.header.cwd,'work','uncertain.txt'),'utf8'),'effect happened before response failed')
-    assert.equal(effects,1);assert.equal(f.requests.length,1)
+    assert.equal(effects,1);assert.equal(f.requests.length,2)
     assert.equal(row.drained,true,JSON.stringify({error:dialogue.error,actorLive:!!ctx.agents.get(row.sessionId),writerLive:!!ctx.piAuthority.describe(row.sessionId)}))
     assert.equal(ctx.agents.get(row.sessionId),undefined);assert.equal(ctx.piAuthority.describe(row.sessionId),undefined)
     await assert.rejects(stat(ctx.sessionPersistence.path(row.sessionId)+'.lock'),{code:'ENOENT'})
@@ -206,7 +207,7 @@ test('an uncertain default task effect releases its physically drained actor and
     assert.equal(stored.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent').length,1)
     assert.equal(stored.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='effect-result').length,0)
     await h.service.recover();await h.service.whenIdle()
-    assert.equal(effects,1);assert.equal(f.requests.length,1)
+    assert.equal(effects,1);assert.equal(f.requests.length,2)
   }finally{
     const id=task?.session?.sessionId
     await closeAll([()=>id?ctx.agents.get(id)?.dispose():undefined,()=>h?.close(),...cleanups.reverse()])
@@ -301,7 +302,7 @@ test('Router room unknown effect drains and inspects with distinct conversation 
   if(names.includes('channel_triage_submit'))return {tool:'channel_triage_submit',args:{dispositions:triage.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'Perform the explicitly requested bounded local action'}))}}
   const handoff=requestEnvelope(body,'Router 交接请求：')
   if(!names.length&&handoff)return {text:JSON.stringify({currentIntent:'Retain authorized task evidence',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
-  if(names.includes('task_result'))return {tool:'room_partial_effect',args:{}}
+  if(names.includes('task_result'))return effects?{text:'The original effect is unverified.'}:{tool:'room_partial_effect',args:{}}
   if(names.includes('resident_router_settle')){
    const input=requestEnvelope(body,'Router 请求：'),task=await f.query('task.get',{taskId:'room-effect-scope'})
    if(!task){const source=(await f.query('source.list')).find(source=>source.messageId==='scope-request');return {tool:'resident_task_plan',args:{operationId:'scope-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'room-effect-scope',title:'Bounded room effect',objective:'Perform one local action without replay',requirements:[]}],dependencies:[]}}}

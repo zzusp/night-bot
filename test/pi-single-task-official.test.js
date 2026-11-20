@@ -18,6 +18,7 @@ import {apply as authority} from '../src/pi-authority.js'
 import PiPersistence from '../src/pi-session-persistence.js'
 import {admissionAuditKinds,createBusinessAdmission} from '../src/runtime/pi-business-admission.js'
 import {createNightOfficialSession} from '../src/runtime/pi-official-session.js'
+import {createOfficialBusinessDrain} from '../src/runtime/pi-business-drain.js'
 import {createSingleTaskSessions} from '../src/tasks/single-session.js'
 
 const usage={input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
@@ -27,6 +28,8 @@ async function fixture(t,plan,{effect=async()=>({ok:true}),isCurrent=async()=>tr
  const root=await mkdtemp(join(tmpdir(),'night-single-official-')),agentDir=join(root,'agent');await mkdir(agentDir)
  const ctx=new Context();new NativeAgents(ctx);new NativeSystemPrompt(ctx,{});new NativeTools(ctx);new NativeJobs(ctx);authority(ctx)
  const persistence=new PiPersistence(ctx,{root:join(root,'sessions')}),requests=[],actors=[];let effects=0
+ // This fixture uses controlled job producers; it never launches provider processes.
+ const drain=createOfficialBusinessDrain(ctx,{drainOwner:async()=>({processes:0,scope:'registered-owned-provider-ranges'})})
  ctx.provide('sandboxPolicy',{resolve:({actor})=>{assert.equal(ctx.agents.get(actor.id),actor);return{mode:'workspace-write',workspaceRoot:root,sessionId:actor.id}}})
  ctx.provide('agentPresets',{async mount(scope,id){assert.equal(id,'night-bot-task');scope.tools.register(definition('write',async(_args,exec)=>{effects++;return effect({ctx,exec})}))}})
  const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false}),model=runtime.getModels().find(m=>m.provider==='openai')??runtime.getModels()[0]
@@ -47,11 +50,11 @@ async function fixture(t,plan,{effect=async()=>({ok:true}),isCurrent=async()=>tr
   try{
    official=await createNightOfficialSession({ctx,store,agentDir,registry:ctx.tools,maxParallelToolCalls:2,resolved:{modelRuntime:runtime,model,thinkingLevel:'off',requestOptions:{maxRetries:0}},settingsManager:SettingsManager.inMemory({packages:[],compaction:{enabled:false},retry:{enabled:false}}),admission,
     createAudit:()=>({isLive:()=>!disposed&&ctx.agents.get(id)===actor,isTurnOpen:()=>official?.session.isStreaming===true,approvalPolicy:()=> 'never',append(){throw Error('approval not expected')},flush:receipts.commit}),
-    context:{systemPrompt:ctx.systemPrompt},onToolResult:options.onToolResult,beforeRequest:async()=>{await admission.beforeRequest();await options.beforeRequest(actor)},
+    context:{systemPrompt:ctx.systemPrompt},beforeRequest:async()=>{await admission.beforeRequest();await options.beforeRequest(actor)},
     prepareActor:async value=>{actor=value;actor.metadata=Object.freeze({...store.header});actor.receipts=receipts;scope=createScope(ctx,actor);actor.ctx=scope.ctx;await options.setup(scope.ctx,actor)},
-    beforeStoreClose:async()=>{admission.pause();await options.drainBusiness(actor)},
+    beforeStoreClose:async()=>{admission.pause();await drain(actor)},
    })
-   actor.piSession=official.session;unbindNotices=bindBusinessNotices(actor,{enqueue:publishNotice,isLive:()=>!disposed,finishTaskRun:()=>admission.finishTaskRun(official.session),holdTaskRun:()=>admission.holdTaskRun(official.session)});detach=ctx.agents.enter(actor,undefined);actors.push(actor)
+   actor.piSession=official.session;unbindNotices=bindBusinessNotices(actor,{enqueue:publishNotice,isLive:()=>!disposed,finishTaskRun:()=>admission.finishTaskRun(official.session)});detach=ctx.agents.enter(actor,undefined);actors.push(actor)
    unbindDirectory=bindWorkingDirectoryActor(actor,{initialDirectory:store.header.cwd,isLive:()=>!disposed&&ctx.agents.get(id)===actor,readDirectory:()=>store.header.cwd,appendChange:async()=>{throw Error('not used')},admitNotice:async()=>{throw Error('not used')}})
    actor.input={enqueue:packet=>admission.enqueue(packet),deliver:(id,options)=>{running=official.deliver(id,options);return running}}
    actor.whenIdle=async()=>{await Promise.allSettled([running]);await official.session.agent.waitForIdle()}
@@ -87,12 +90,12 @@ test('single task uses official SDK directly, cold-resumes one session and never
  assert.equal(stored.entries.filter(entry=>entry.type==='message'&&entry.message.role==='toolResult'&&entry.message.toolName==='write'&&!entry.message.isError).length,1)
  assert.equal((await f.persistence.list()).length,1)
 })
-test('ordinary tool error after an effect remains unknown and blocks retries, submission and cold replay',async t=>{
+test('ordinary tool error keeps effects and completion held while the model can report wait',async t=>{
  let submissions=0
  const f=await fixture(t,(_context,n)=>({calls:n===1?[{name:'write'},{name:'task_result',arguments:{decision}}]:[{name:'task_result',arguments:{decision:{action:'wait',summary:'Prior effect remains unknown',evidence:[],limitations:['Reconciliation required before new effects']}}}]}),{effect:async()=>{throw Error('failed after external write')}})
  const held=await run(f,{submit:async()=>{submissions++;return{accepted:true}}})
- assert.equal(held.status,'no_submission');assert.equal(held.reason,'TASK_EFFECT_UNCERTAIN_NO_REPLAY');assert.equal(held.effectDisposition,'held');assert.equal(held.failure.code,'TASK_EFFECT_UNCERTAIN_NO_REPLAY')
- assert.equal(f.effects,1);assert.equal(submissions,0);const count=f.requests.length;assert.equal(count,1)
+ assert.equal(held.status,'submitted')
+ assert.equal(f.effects,1);assert.equal(submissions,1);const count=f.requests.length;assert.equal(count,2)
  f.binding={...f.binding,sessionBound:true,leaseEpoch:2}
  // A cold session is intentionally allowed to inspect receipts and report wait,
  // but not replay the unknown write. An endless invalid complete/write script
@@ -222,7 +225,7 @@ test('cold new task lease retains old pending supplement without trace fields an
  const final=await f.persistence.readNative('single',{requireComplete:true});assert.deepEqual(final.audit.find(r=>r.domain==='admission'&&r.kind==='enqueued'&&r.payload.id===old.id).payload,old);assert.equal(final.audit.filter(r=>r.domain==='admission'&&r.kind==='admitted'&&r.payload.id===old.id).length,0);assert.equal(final.entries.filter(r=>r.type==='custom_message'&&r.details?.packetId===old.id).length,0)
 })
 
-test('unknown write ends its turn and retires 96 queued job completions without replay or failed follow-up turns',async t=>{
+test('unknown write permits a readback turn and its result retires queued job completions',async t=>{
  let f
  f=await fixture(t,(_context,n)=>n===1?{calls:[{name:'write'}]}:{calls:[{name:'task_result',arguments:{decision:{...decision,action:'wait'}}}]},
   {effect:async({exec})=>{
@@ -235,14 +238,14 @@ test('unknown write ends its turn and retires 96 queued job completions without 
    throw Error('write result lost after possible effect')
   }})
  const result=await run(f)
- assert.equal(result.status,'no_submission');assert.equal(result.reason,'TASK_EFFECT_UNCERTAIN_NO_REPLAY')
- assert.equal(f.requests.length,1);assert.equal(f.effects,1)
+ assert.equal(result.status,'submitted')
+ assert.equal(f.requests.length,2);assert.equal(f.effects,1)
  const snapshot=await f.persistence.readNative('single',{requireComplete:true})
- assert.equal(snapshot.audit.filter(row=>row.domain==='admission'&&row.kind==='cancelled'&&row.payload.reason==='task-effect-held').length,96)
+ assert.equal(snapshot.audit.filter(row=>row.domain==='admission'&&row.kind==='cancelled'&&row.payload.reason==='task-result-committed').length,96)
  assert.equal(snapshot.audit.filter(row=>row.domain==='admission'&&row.kind==='admitted'&&row.payload.id.startsWith('job:')).length,0)
  assert.equal(snapshot.audit.filter(row=>row.domain==='task'&&row.kind==='effect-intent').length,1)
  assert.equal(snapshot.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result').length,0)
- assert.equal(snapshot.entries.filter(row=>row.type==='message'&&row.message.role==='assistant').length,1)
+ assert.equal(snapshot.entries.filter(row=>row.type==='message'&&row.message.role==='assistant').length,2)
  assert.equal(f.ctx.agents.list().length,0);assert.equal(f.persistence.writers.size,0)
  f.binding={...f.binding,sessionBound:true,leaseEpoch:2}
  assert.equal((await run(f,{submit:async decision=>{
@@ -250,26 +253,24 @@ test('unknown write ends its turn and retires 96 queued job completions without 
   assert.ok(decision.evidence.some(text=>text.includes('write; intentEntryId=')))
   return {accepted:true}
  }})).status,'submitted','explicit resumed readback may report wait, without replaying the unknown effect')
- assert.equal(f.requests.length,2);assert.equal(f.effects,1)
+ assert.equal(f.requests.length,3);assert.equal(f.effects,1)
 })
 
-test('effect hold racing a durable user supplement keeps it pending without failing admission or restarting the run',async t=>{
- const entered=Promise.withResolvers(),failWrite=Promise.withResolvers(),queued=Promise.withResolvers(),continueEnqueue=Promise.withResolvers(),drain=Promise.withResolvers()
- t.after(()=>{failWrite.resolve();continueEnqueue.resolve();drain.resolve()})
- const f=await fixture(t,()=>({calls:[{name:'write'}]}),{effect:async()=>{entered.resolve();await failWrite.promise;throw Error('possible effect')}})
- const running=run(f);await entered.promise
- const actor=f.actors[0],enqueue=actor.input.enqueue,whenIdle=actor.whenIdle
- actor.whenIdle=async()=>{await whenIdle();await drain.promise}
- actor.input.enqueue=async packet=>{const result=await enqueue(packet);if(packet.id.startsWith('task-supplement:')){queued.resolve();await continueEnqueue.promise}return result}
- const supplement=f.sessions.supplement({task:{taskId:'task',liveSupplements:[{wakeId:'later',messageId:'user-later',state:'pending',leaseEpoch:1,contextRevision:1,request:'Keep this new user input',sourceRefs:[],sourceSnapshots:[]}]},sources:[],materials:[]})
- await queued.promise;failWrite.resolve()
- for(let n=0;n<200&&f.sessions.liveBinding('task');n++)await delay(5)
- assert.equal(f.sessions.liveBinding('task'),undefined)
- continueEnqueue.resolve();assert.deepEqual(await supplement,{delivered:false})
- drain.resolve();assert.equal((await running).reason,'TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+test('live supplement still reaches the same model after an unknown tool outcome',async t=>{
+ const entered=Promise.withResolvers(),failWrite=Promise.withResolvers()
+ t.after(()=>failWrite.resolve())
+ const f=await fixture(t,(context,n)=>{
+  if(n===1)return {calls:[{name:'write'}]}
+  assert.match(JSON.stringify(context.messages),/Keep this new user input/)
+  return {calls:[{name:'task_result',arguments:{decision:{...decision,action:'wait'}}}]}
+ },{effect:async()=>{entered.resolve();await failWrite.promise;throw Error('possible effect')}})
+ const admitted=[];const running=run(f,{onSupplementAdmitted:entry=>admitted.push(entry)});await entered.promise
+ const owner=f.actors[0],binding=f.sessions.liveBinding('task')
+ assert.deepEqual(await f.sessions.supplement({task:{taskId:'task',liveSupplements:[{wakeId:'later',messageId:'user-later',state:'pending',leaseEpoch:1,contextRevision:1,request:'Keep this new user input',sourceRefs:[],sourceSnapshots:[]}]},sources:[],materials:[]}),{delivered:true})
+ assert.deepEqual(f.sessions.liveBinding('task'),binding);assert.equal(f.actors[0],owner)
+ failWrite.resolve();assert.equal((await running).status,'submitted')
  const stored=await f.persistence.readNative('single',{requireComplete:true}),rows=stored.audit.filter(row=>row.domain==='admission'&&row.payload.id==='task-supplement:later')
- assert.deepEqual(rows.map(row=>row.kind),['enqueued'])
- assert.equal(f.requests.length,1);assert.equal(f.effects,1)
+ assert.deepEqual(rows.map(row=>row.kind),['enqueued','admitted']);assert.equal(f.requests.length,2);assert.equal(f.effects,1);assert.equal(f.actors.length,1);assert.equal(admitted.length,1)
 })
 
 test('execution cannot ask during work and can finish with a truthful blocked result',async t=>{

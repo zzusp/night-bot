@@ -24,7 +24,7 @@ test('a verified new source may intentionally repeat identical arguments while d
 
 test('an explicit verified source requesting identical unknown effects cannot authorize replay before reconciliation',{timeout:nativeTestTimeout(20000)},async t=>{
  let effects=0,turn=0
- const h=await providerHost(t,{decide:()=>{if(turn++<2)return [{name:'identity_unknown_effect',args:{value:'exact-original'}}];const waiting=result('wait','Readback remains blocked on the old unknown effect');waiting.args.decision.limitations=['TASK_EFFECT_UNCERTAIN_NO_REPLAY'];return [waiting]}})
+ const h=await providerHost(t,{decide:()=>{const current=turn++;if(current===0||current===2)return [{name:'identity_unknown_effect',args:{value:'exact-original'}}];const waiting=result('wait','Readback remains blocked on the old unknown effect');waiting.args.decision.limitations=['TASK_EFFECT_UNCERTAIN_NO_REPLAY'];return [waiting]}})
  h.ctx.get('tools').register({name:'identity_unknown_effect',description:'Fixture effect followed by a genuinely uncertain ordinary error',parameters:{type:'object',properties:{value:{type:'string'}},required:['value'],additionalProperties:false},output:{schema:{type:'object'},render:()=>[{type:'text',text:'Unexpected success'}]},async execute({value},exec){effects++;await writeFile(join(exec.agent.metadata.cwd,'work/identity-unknown-effect.txt'),value);throw new Error('The effect happened before its ordinary error; outcome must be reconciled')}})
  const id=await h.create('unknown-explicit-repeat');await h.service.whenIdle();assert.equal(effects,1)
  const before=await h.stored(id),requests=h.taskRequests().length;assert.ok(before.task.lastDecision.limitations.includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY'));assert.equal(before.task.drained,true)

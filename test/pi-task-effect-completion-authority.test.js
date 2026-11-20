@@ -24,7 +24,7 @@ async function proposal(service,inspection){
 test('closed partial effects do not require a separate operator grant for a later tool-free completion',{timeout:nativeTestTimeout(20000)},async t=>{
  let phase='unknown',effects=0,h
  t.after(()=>h?.close())
- const f=await memoryHost(t,body=>{if(!body.tools?.some(tool=>tool.function.name==='partial_write'))return;if(phase==='unknown')return {tool:'partial_write',args:{}};const action=phase==='wait'?'wait':'complete';phase='wait';return {tool:'task_result',args:{decision:{action,summary:action==='wait'?'Prior attempt remains closed with possible partial effects':'Completed the current evidence review; the prior attempt remains closed with possible partial effects',evidence:['retained original evidence'],limitations:[]}}}})
+ const f=await memoryHost(t,body=>{if(!body.tools?.some(tool=>tool.function.name==='partial_write'))return;if(phase==='unknown')return effects?{text:'The original effect is unverified.'}:{tool:'partial_write',args:{}};const action=phase==='wait'?'wait':'complete';phase='wait';return {tool:'task_result',args:{decision:{action,summary:action==='wait'?'Prior attempt remains closed with possible partial effects':'Completed the current evidence review; the prior attempt remains closed with possible partial effects',evidence:['retained original evidence'],limitations:[]}}}})
  f.host.ctx.get('tools').register({name:'partial_write',description:'A real local effect with an unknown result',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){effects++;await writeFile(join(exec.agent.metadata.cwd,'work/uncertain.txt'),'actual partial effect');throw Error('response lost')}})
  h=await open(f)
  const created=await h.service.createTask({requestId:'initial',objective:'Perform one original bounded effect'});await until(async()=>!!(await h.service.taskDialogue(created.taskId)).error);await h.service.whenIdle()
@@ -41,7 +41,7 @@ for(const cold of [false,true])test(`closed effects permit independent actual ef
  t.after(()=>h?.close())
  const f=await memoryHost(t,body=>{
   if(!body.tools?.some(tool=>tool.function.name==='partial_write'))return
-  if(phase==='unknown')return {tool:'partial_write',args:{}}
+  if(phase==='unknown')return effects?{text:'The original effect is unverified.'}:{tool:'partial_write',args:{}}
   if(step++===0)return {tool:'write',args:{path:'work/new-objective.txt',content:'independent current work'}}
   if(step===2)return {tool:'partial_write',args:{}}
   return {tool:'task_result',args:{decision:{action:'complete',summary:'Current independent work completed; prior partial effects remain closed, not replayed.',evidence:['work/new-objective.txt'],limitations:['Earlier partial effects retained']}}}
@@ -74,7 +74,7 @@ test('an unsettled effect does not prevent the original session from waking to r
  t.after(()=>h?.close())
  const f=await memoryHost(t,body=>{
   if(!body.tools?.some(tool=>tool.function.name==='partial_write'))return
-  if(phase==='unknown')return {tool:'partial_write',args:{}}
+  if(phase==='unknown')return effects?{text:'The original effect is unverified.'}:{tool:'partial_write',args:{}}
   if(step++===0)return {tool:'read',args:{path:'work/uncertain.txt'}}
   assert.match(JSON.stringify(body),/actual partial effect/)
   return {tool:'task_result',args:{decision:{action:'wait',summary:'Read the original file; the effect is still unknown and not replayed.',evidence:['work/uncertain.txt'],limitations:['Unknown effect not reconciled']}}}

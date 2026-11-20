@@ -144,6 +144,33 @@ test('real Host cold drains and resumes the same task/session on operator input 
  }finally{try{await h.close()}finally{await store.close()}}
 })
 
+test('new input wakes the original task with a cold unresolved shell job, without operator closure or replay',{timeout:60000},async t=>{
+ const f=await fixture(t,{effect:true}),store=await openDynamicTaskStore(f.options);let turns=0
+ const h=await nativeRuntimeHost(f.root,request=>{
+  if(!request.tools.some(tool=>tool.name==='task_result'))return topicTaskCalls(request)
+  turns++;assert.equal(latestInput(request).task.taskId,f.task.taskId)
+  if(turns%2===1)return [{name:'read',args:{path:'work/readback.txt'}}]
+  assert.match(JSON.stringify(request),/exit unknown; no success claimed/)
+  return [{name:'task_result',args:{decision:{action:'wait',summary:'Evidence read on the original session',evidence:['Retained local evidence'],limitations:[]}}}]
+ },{store,permissionMode:'full'})
+ try{
+  await h.service.recover();await h.service.whenIdle()
+  assert.equal(turns,0)
+  for(const requestId of ['first-explicit-input','later-explicit-input']){
+   const task=await h.query('task.get',{taskId:f.task.taskId})
+   await h.service.appendTaskContext({taskId:task.taskId,requestId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,progressImpact:'preserve',authorizationChange:'none',context:'Read the retained evidence; do not replay the old work.'})
+   await h.service.whenIdle()
+   const after=await h.query('task.get',{taskId:task.taskId})
+   assert.equal(after.sessionId,f.task.sessionId);assert.equal(after.drained,true);assert.equal(after.sessionFailure,null)
+   assert.equal(after.lastDecision.summary,'Evidence read on the original session');assert.ok(after.lastDecision.limitations.includes('TASK_JOB_UNCERTAIN_NO_REPLAY'))
+  }
+  assert.equal(turns,4);assert.equal(h.toolResults.some(row=>['pwsh','bash'].includes(row.name)),false)
+  const saved=await h.ctx.sessionPersistence.readNative(f.task.sessionId,{requireComplete:true})
+  assert.deepEqual(saved.audit.filter(row=>row.domain==='job').map(row=>row.kind),['registered'])
+  assert.deepEqual(unresolvedNativeJobReceipts(saved.audit,f.task.sessionId).map(row=>row.jobId),[f.bound.jobId])
+ }finally{try{await h.close()}finally{await store.close()}}
+})
+
 test('a registered job outside the selected Pi branch cannot be reconciled',{timeout:30000},async t=>{
  const f=await fixture(t),stored=await f.backend.readNative(f.task.sessionId,{requireComplete:true}),registered=stored.auditEntries.find(row=>row.data.domain==='job'&&row.data.kind==='registered')
  const writer=await f.backend.openNative(f.task.sessionId,{auditKinds:jobReceiptKinds})

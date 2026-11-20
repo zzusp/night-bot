@@ -150,19 +150,17 @@ export class OfficialAgentFactory {
     createAudit:()=>state.audit({isLive:()=>published&&live(),isTurnOpen:()=>!!actor.piSession?.isStreaming}),
     beforeRequest:async()=>{
      active();await admission.beforeRequest();assertPlatformScheduleSource(actor)
-     const jobs=actor.ctx.get('jobs');if(jobs){if(typeof jobs.assertCanRun!=='function')throw fail('PI_JOB_ADMISSION_REQUIRED');await jobs.assertCanRun(actor)}
      await options.beforeRequest?.(actor)
      for(const guard of requestGuards)await guard({actor,signal:lifecycle.signal})
      await routerResumeCheck?.()
     },
-    onToolResult:options.onToolResult,
     beforeStoreClose:async()=>{await ownerCtx.get('sessionNames')?.closeActor(actor);await skillRefresh?.close();if(published)await drain('dispose');await admission.close()},
    })
    actor.options=deepFreeze({...actor.options,...bundle.session.model?{provider:bundle.session.model.provider,model:bundle.session.model.id}:{},reasoningEffort:bundle.session.thinkingLevel})
    Object.defineProperty(actor,'status',{enumerable:true,get:()=>bundle.session.isStreaming?'running':'idle'})
    admission.bindSession(bundle.session,{signal:actor.lifecycle.signal})
    unbindInputs=bindBusinessInputAuthority(actor,{lookupPacket:admission.lookupPacket,lookupCommandEntry:admission.lookupCommandEntry,pending:admission.pending,isLive:live})
-   unbindNotices=bindBusinessNotices(actor,{enqueue:publishInternal,isLive:live,finishTaskRun:()=>admission.finishTaskRun(bundle.session),holdTaskRun:()=>admission.holdTaskRun(bundle.session)})
+   unbindNotices=bindBusinessNotices(actor,{enqueue:publishInternal,isLive:live,finishTaskRun:()=>admission.finishTaskRun(bundle.session)})
    options.signal.throwIfAborted();await measurePhase('session-publish',async()=>{await store.commit();detach=ownerCtx.agents.enter(actor,options.parentAgent);published=true})
    await measurePhase('session-bind-names',()=>ownerCtx.get('sessionNames')?.bind(actor,{automatic:false,...options.sessionNaming}))
    skillRefresh=await measurePhase('session-skills-bind',()=>installSessionSkillRefresh(actor.ctx,actor,{cwd:actor.metadata.cwd,signal:actor.lifecycle.signal}))
