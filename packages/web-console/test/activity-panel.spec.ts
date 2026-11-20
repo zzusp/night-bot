@@ -13,7 +13,7 @@ const timingMetric = (durationMs: number | null) => ({status:durationMs === null
 const timingPage = {status:'ready',items:[
   [4200,14800],[5100,19200],[3600,12200],[6800,null],[4100,16400],[8400,23100],[5900,17800],[4700,13900],
 ].map(([triage,router],index)=>({receivedAt:`2026-11-14T05:${String(40-index*4).padStart(2,'0')}:00Z`,triage:timingMetric(triage),router:timingMetric(router)}))};
-test.beforeEach(async({page})=>{await page.route('**/stage-times?limit=8',route=>route.fulfill({json:timingPage}));});
+test.beforeEach(async({page})=>{await page.route('**/stage-times?limit=8*',route=>route.fulfill({json:timingPage}));});
 
 async function login(page: import('@playwright/test').Page) {
   await page.goto('/#/chat'); await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
@@ -104,14 +104,14 @@ test('recent stage charts preserve gaps and expose equivalent point labels',asyn
 });
 
 test('stage chart unavailable data never becomes a zero plot',async({page})=>{
-  await page.route('**/stage-times?limit=8',route=>route.fulfill({json:{status:'unavailable',items:[]}}));
+  await page.route('**/stage-times?limit=8*',route=>route.fulfill({json:{status:'unavailable',items:[]}}));
   await login(page);
   await expect(page.getByRole('group',{name:'最近处理耗时',exact:true})).toContainText('来源暂不可读');
   await expect(page.locator('.stage-point')).toHaveCount(0);
 });
 
 test('single stage sample has a value but does not invent a trend or point',async({page})=>{
-  await page.route('**/stage-times?limit=8',route=>route.fulfill({json:{status:'ready',items:timingPage.items.slice(0,1)}}));
+  await page.route('**/stage-times?limit=8*',route=>route.fulfill({json:{status:'ready',items:timingPage.items.slice(0,1)}}));
   await login(page);
   const card=page.getByRole('region',{name:'路由耗时',exact:true});
   await expect(card).toContainText('15 秒');

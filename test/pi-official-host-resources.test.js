@@ -309,7 +309,7 @@ test('parallel skill mapping rechecks catalog revision after all scoped reads be
 })
 
 
-test('Router gets the native 500K target / 80% compaction waterline on create and resume without rewriting model metadata',async t=>{
+test('Router gets the native 472K target / 80% compaction waterline on create and resume without rewriting model metadata',async t=>{
  const f=await fixture(t)
  f.a.header.runtimeOwner='conversation-router'
  const resource=await f.resolve(f.a),model=resource.resolved.model
