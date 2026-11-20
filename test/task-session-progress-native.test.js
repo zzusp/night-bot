@@ -40,15 +40,15 @@ test('waiting progress with no new evidence neither repeats effects nor fabricat
  const after=await f.sole(task);assert.equal(after.audit.filter(receipt=>receipt.kind==='effect-intent').length,1);assert.equal(after.audit.filter(receipt=>receipt.kind==='effect-result').length,1);assert.equal(hash(await readFile(join(after.header.cwd,'work/once.txt'))),hash(Buffer.from('EXACTLY_ONCE_PROGRESS')));assert.equal(after.header.id,before.header.id)
 })
 
-test('human-wait progress answers only from actual evidence and cannot authorize a business write',{timeout:20000},async t=>{
+test('blocked final result answers an explicit progress question read-only without creating a human request',{timeout:20000},async t=>{
  let step=0;const f=await taskEvidenceFixture(t,request=>{
-  if(!latestInput(request).dialogue)return [decision('blocked','Need the allowed environment before proceeding',{question:'Which environment is authorized?',attemptedActions:['Inspected the original requirement']})]
+  if(!latestInput(request).dialogue)return [decision('blocked','Need the allowed environment before proceeding',{limitations:['Trusted target is missing'],attemptedActions:['Inspected the original requirement']})]
   if(step++===0)return [call('write',{path:'work/forbidden-progress.txt',content:'must not write'})]
   return [decision('wait','The original environment question remains unanswered',{evidence:['The original pending question'],limitations:['A progress question grants no execution permission']})]
  },{skills:false})
- const task=await f.create('human-progress','Wait for an explicit environment authorization'),before=await f.h.query('task.get',{taskId:task.taskId}),pending=before.humanRequests.find(item=>item.status==='waiting-reply')
- assert.ok(pending);const count=f.h.requests.length;await f.h.service.recover();await f.h.service.whenIdle();assert.equal(f.h.requests.length,count)
- const after=await f.dialogue(task,'human-progress-question','What is blocking progress?');assert.equal(after.humanRequests.find(item=>item.requestId===pending.requestId).status,'waiting-reply')
+ const task=await f.create('human-progress','Wait for an explicit environment authorization'),before=await f.h.query('task.get',{taskId:task.taskId}),pending=before.lastDecision
+ assert.equal(pending.action,'blocked');assert.equal(before.humanRequests?.length??0,0);const count=f.h.requests.length;await f.h.service.recover();await f.h.service.whenIdle();assert.equal(f.h.requests.length,count)
+ const after=await f.dialogue(task,'human-progress-question','What is blocking progress?');assert.equal(after.humanRequests?.length??0,0);assert.equal(after.lastDecision.action,'blocked')
  assert.ok(f.h.toolResults.some(row=>row.name==='write'&&row.result.isError));assert.equal((await f.sole(task)).audit.filter(receipt=>receipt.kind==='effect-intent').length,0)
 })
 
