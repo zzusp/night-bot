@@ -65,6 +65,14 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     const value={decisionId:row.id,conversationId:row.conversationId,sourceId:row.sourceId,messageVersion:row.messageVersion,...triageHandoff(decision.handoff)}
     return routerTriageConclusion({...event,source,triageConclusion:value})
   }
+  const pendingInbox = (conversationId, deliverable) => rows('router_inbox').filter(row=>row.conversationId===conversationId&&row.state==='pending'&&(!deliverable||!row.deliveryHold))
+  function independentSource(pending, excluded){
+    return pending.find(row=>{
+      if(excluded.has(row.id)||row.kind!=='source.message')return false
+      const source=read('sources',row.sourceId,true)
+      return source?.groupId===row.conversationId&&source.version===row.messageVersion&&!source.authorizationRevoked&&!source.retracted&&!source.triageHold&&!source.archiveRestoreHold&&latest(source)
+    })
+  }
   function inboxEvent(row){
     const source=row.sourceId?read('sources',row.sourceId):undefined,conclusion=triageConclusion(row,source)
     return {...row,source,triageReply:row.triageReplyId?read('notifications',row.triageReplyId):undefined,taskEvent:row.taskEventId?readEvent(row.taskEventId):undefined,...conclusion?{triageConclusion:conclusion}:{}}
@@ -338,6 +346,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         if(!row)fail('ROUTER_EVENT_SCOPE')
         if(row.kind==='operator.message'){if(a.webOnly!==true||row.operator?.destination!=='web'||!row.operatorReply)fail('ROUTER_OPERATOR_REPLY_REQUIRED')}else if(a.webOnly===true)fail('ROUTER_OPERATOR_BATCH_MIXED')
         if(row.state==='consumed')continue
+        if(row.deliveryHold)fail('ROUTER_EVENT_DELIVERY_HELD')
         const event=row.taskEventId?readEvent(row.taskEventId):null
         if(event?.kind==='task.inspection'&&event.reason==='wait-overdue'){
           const task=read('tasks',row.taskId),inspection=task.inspection
@@ -385,14 +394,20 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(kind==='router.handoff.recover'){
       const row=conversationOf(a)
       if(a.sessionId!==row.activeSessionId||a.generation!==row.generation)fail('ROUTER_GENERATION_STALE')
-      const pending=rows('router_inbox').filter(item=>item.conversationId===row.id&&item.state==='pending')
+      const pending=pendingInbox(row.id,true)
       if(!pending.length)fail('ROUTER_EVENTS_REQUIRED')
+      const blocking=a.reason==='ROUTER_BATCH_NO_PROGRESS'
       const prior=rows('router_rotations').find(rotation=>rotation.candidateSessionId===row.activeSessionId&&rotation.recovery&&rotation.cutoff===row.cursor)
-      if(prior)fail('ROUTER_RECOVERY_OWNER_UNAVAILABLE')
+      if(prior&&!blocking)fail('ROUTER_RECOVERY_OWNER_UNAVAILABLE')
       const scope=a.unknownEventIds===undefined?pending:(()=>{
         if(!Array.isArray(a.unknownEventIds)||a.unknownEventIds.length>30||new Set(a.unknownEventIds).size!==a.unknownEventIds.length)fail('ROUTER_ARGUMENT_INVALID')
         return a.unknownEventIds.map(id=>{const event=read('router_inbox',required(id),true);if(!event||event.conversationId!==row.id)fail('ROUTER_EVENT_SCOPE');return event})
       })()
+      if(blocking){
+        const ids=new Set(scope.map(event=>event.id))
+        if(!a.unknownEventIds?.length||scope.some(event=>event.state!=='pending'||event.deliveryHold)||independentSource(pending,ids)?.id!==a.freshEventId||!a.freshEventId)fail('ROUTER_RESUME_BATCH_STALE')
+        for(const event of scope)write('router_inbox',{...event,deliveryHold:{handoffId:a.handoffId,reason:a.reason}})
+      }
       // Earlier recovery rows retain their original restrictions. A new message
       // outside the frozen checkpoint is not evidence of an old unknown effect.
       if(a.unknownTaskIds!==undefined&&!Array.isArray(a.unknownTaskIds)||a.unknownSourceIds!==undefined&&!Array.isArray(a.unknownSourceIds))fail('ROUTER_ARGUMENT_INVALID')
@@ -447,9 +462,14 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(!Array.isArray(q.eventIds)||!q.eventIds.length||q.eventIds.length>30||new Set(q.eventIds).size!==q.eventIds.length)fail('ROUTER_ARGUMENT_INVALID')
       return q.eventIds.map(id=>{const row=read('router_inbox',required(id),true);if(!row||row.conversationId!==q.conversationId)fail('ROUTER_EVENT_SCOPE');return inboxEvent(row)})
     }
-    if(q.kind==='router.inbox')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').slice(0,bounded(q.limit,30)).map(inboxEvent)
+    if(q.kind==='router.inbox')return pendingInbox(q.conversationId,q.deliverable).slice(0,bounded(q.limit,30)).map(inboxEvent)
+    if(q.kind==='router.independent-source'){
+      if(!Array.isArray(q.eventIds)||!q.eventIds.length||q.eventIds.length>30)fail('ROUTER_ARGUMENT_INVALID')
+      return independentSource(pendingInbox(q.conversationId,true),new Set(q.eventIds))?.id??null
+    }
+    if(q.kind==='router.delivery-holds')return [...new Set(rows('router_inbox').filter(row=>row.state==='pending'&&row.deliveryHold).map(row=>row.conversationId))]
     if(q.kind==='router.pending-completion')return rows('router_inbox').some(row=>row.conversationId===q.conversationId&&row.state==='pending'&&row.taskEventId&&readEvent(row.taskEventId)?.kind==='task.completed')
-    if(q.kind==='router.inbox-count')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId&&row.state==='pending').length
+    if(q.kind==='router.inbox-count')return pendingInbox(q.conversationId,q.deliverable).length
     if(q.kind==='router.dependencies')return rows('dependencies').filter(row=>(!q.conversationId||row.conversationId===q.conversationId)&&(!q.taskId||row.taskId===q.taskId||row.prerequisiteTaskId===q.taskId))
     if(q.kind==='router.rotations')return rows('router_rotations').filter(row=>!q.conversationId||row.conversationId===q.conversationId)
     if(q.kind==='router.source-links')return rows('source_links').filter(row=>(!q.taskId||row.taskId===q.taskId)&&(!q.sourceId||row.sourceId===q.sourceId))

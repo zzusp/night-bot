@@ -1422,9 +1422,13 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
   }
   function recordRouterFailure(id,error){failures.set('router:'+id,{id:'router:'+id,conversationId:id,code:error.recoveryReason??error.code??error.message})}
-  function syncRouterFailures(){
+  async function syncRouterFailures(){
     for(const [id,error]of residentRouter.errors)recordRouterFailure(id,error)
     for(const [id,error]of failures)if(id==='router:'+error.conversationId&&!residentRouter.errors.has(error.conversationId))failures.delete(id)
+    for(const conversationId of await query('router.delivery-holds')){
+      const id='router-delivery-held:'+conversationId
+      failures.set(id,{id,conversationId,code:'ROUTER_EVENT_DELIVERY_HELD'})
+    }
   }
   let nextInspectionAt=0
   async function inspectTasks({force=false}={}){
@@ -1512,7 +1516,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       }
       await readonlyLookups.recover()
       await residentRouter.recover({wait:waitForRouter})
-      syncRouterFailures()
+      await syncRouterFailures()
 
 
       for (const task of await query('task.list')) void kickTask(task.taskId)
@@ -1843,7 +1847,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     },
     async resumeRouterBatch(args){
       if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
-      try{return await hostScheduler(()=>residentRouter.resumeRouterBatch(args))}finally{syncRouterFailures()}
+      try{return await hostScheduler(()=>residentRouter.resumeRouterBatch(args))}finally{await syncRouterFailures()}
     },
     async retryNotification({ groupId, notificationId, expectedToken }) {
       const notification = typeof notificationId === 'string' && notificationId
