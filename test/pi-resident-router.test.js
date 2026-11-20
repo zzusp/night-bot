@@ -109,6 +109,7 @@ test('conversation task questions use original requester and preserve the origin
 })
 
 test('Router returns review feedback to its author and freezes only its revised text',{timeout:nativeTestTimeout(30000)},async t=>{
+ const assertReleaseReplyRule=prompt=>assert.match(prompt,/默认不列版本号、PR、测试过程或工单.*关键功能未实测/u);
  let initial;let step=0;const answer='确认有一条空值误拦路径，但还不能证明是这次失败的根因。', draft='这次 UAT 失败的根因是空值误拦，已经修好了。', reviewed=[];
  const h=await residentRouterHost(t,body=>{
   const tools=requestTools(body),input=requestEnvelope(body,'Router 请求：');
@@ -116,6 +117,7 @@ test('Router returns review feedback to its author and freezes only its revised 
   if(!tools.includes('resident_router_reply'))return {text:'Settled'};
   const prompt=body.messages.filter(row=>row.role==='system').map(row=>row.content).join('\n');
   assert.match(prompt,/沟通规范索引/);assert.match(prompt,/NIGHT_NATURAL_CHANNEL_REPLY/);assert.doesNotMatch(prompt,/NIGHT_TASK_PUBLIC_COMMUNICATION/);
+  assertReleaseReplyRule(prompt);
   if(step===0){initial=body;step++;return {tool:'communication_guidance_read',args:{}}}
   assertSharedCommunicationGuidance(initial,body)
   assert.match(JSON.stringify(body.messages.filter(row=>row.role==='tool')),/本次事件根因分开/);
@@ -127,8 +129,9 @@ test('Router returns review feedback to its author and freezes only its revised 
   return {text:'Settled'};
  },{hostOptions:{replyQuality:async({candidates},body)=>{
    assert.deepEqual(requestTools(body),[]);assert.equal(body.messages.length,2);
+   assertReleaseReplyRule(body.messages[0].content);
    assert.equal((await h.query('notification.list')).length,0);
-   assert.equal(candidates.length,1);assert.match(candidates[0].sourceText,/本次UAT输入和日志还没核实/);
+   assert.equal(candidates.length,1);assert.equal(candidates[0].routerReply,true);assert.match(candidates[0].sourceText,/本次UAT输入和日志还没核实/);
    const [{index,text}]=candidates;reviewed.push(text);
    return {text:JSON.stringify({decisions:[{index,issues:text===draft?['overclaim']:[]}]})};
  }}});
