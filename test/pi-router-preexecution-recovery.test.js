@@ -11,8 +11,12 @@ import {residentRouterHost,channelMessage,requestTools,requestEnvelope} from './
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {piJournalFilename} from '../src/runtime/pi-journal.js'
 
-for(const legacy of [false,true])test(`26 -> 20+6 and independent query: ${legacy?'legacy failures remain unknown but scoped':'new call-bound pre-execution proofs'}`,{timeout:nativeTestTimeout(90000)},async t=>{
- let h,old,current,root,holdSource,phase='register',step=0,ids=[],replacementIds=[],reply=false,queried=false,attemptedHeld=false
+for(const [label,legacy,scheduleFailure] of [
+ ['new call-bound pre-execution proofs',false,false],
+ ['legacy failures remain unknown but scoped',true,false],
+ ['failed read-only schedule list stays in the old journal',false,true],
+])test(`26 -> 20+6 and independent query: ${label}`,{timeout:nativeTestTimeout(90000)},async t=>{
+ let h,old,current,root,holdSource,phase='register',step=0,scheduleReads=0,ids=[],replacementIds=[],reply=false,queried=false,attemptedHeld=false
  t.after(async()=>{await current?.close();await current?.host?.close();if(old!==current){await old?.close();await old?.host?.close()}if(root)await rm(root,{recursive:true,force:true})})
  const wrapStore=store=>({...store,query:async q=>{const rows=await store.query(q);return q.kind==='router.rotations'&&holdSource?[...rows,{id:'fixture-prior-unresolved-owner',state:'historical',recovery:{unknownSourceIds:[holdSource]}}]:rows}})
  const decide=async body=>{
@@ -26,7 +30,17 @@ for(const legacy of [false,true])test(`26 -> 20+6 and independent query: ${legac
    if(step++===0){ids=input.events.map(e=>e.id);assert.equal(ids.length,26);return {tool:'resident_router_settle',args:{operationId:'twenty',eventIds:ids.slice(0,20)}}}
    if(step<=3)return {tool:'resident_task_action',args:{...args,operationId:'old-blocked-'+step}}
    if(step===4)return {tool:'resident_router_reply',args:{operationId:'old-blocked-reply',sourceId:holdSource,messageVersion:1,text:'Must not send old-source reply'}}
-   if(step===5)return {tool:'resident_task_query',args:{detail:'INVALID_DETAIL'}}
+   if(step===5){
+    if(!scheduleFailure)return {tool:'resident_task_query',args:{detail:'INVALID_DETAIL'}}
+    const resident=h.residentStore, list=resident.listPlatformSchedules
+    resident.listPlatformSchedules=(...args)=>{
+     if(h.host.ctx.agents.currentInitiator()?.metadata.runtimeOwner!=='conversation-router')return list(...args)
+     resident.listPlatformSchedules=list
+     scheduleReads++
+     throw Error('FIXTURE_SCHEDULE_READ_FAILED')
+    }
+    return {tool:'platform_schedule_list',args:{}}
+   }
    return {text:'Stopped with paired rejected calls; no settlement of the remaining six'}
   }
   replacementIds=input.events.map(e=>e.id)
@@ -55,8 +69,18 @@ for(const legacy of [false,true])test(`26 -> 20+6 and independent query: ${legac
  assert.equal(await h.query('router.inbox-count',{conversationId}),6)
  const before=await h.query('router.get',{conversationId}),file=join(h.host.ctx.runtimePaths.state,'sessions',piJournalFilename(before.activeSessionId))
  const snapshot=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true}),proofs=snapshot.entries.filter(e=>e.type==='custom'&&e.customType==='night.audit'&&e.data?.domain==='router-tool'&&e.data.kind==='not-started')
- assert.equal(proofs.length,legacy?0:4)
+ assert.equal(proofs.length,legacy?0:scheduleFailure?3:4)
  const errors=snapshot.entries.filter(e=>e.type==='message'&&e.message.role==='toolResult'&&e.message.isError);assert.equal(errors.length,4)
+ if(scheduleFailure){
+  assert.equal(scheduleReads,1)
+  assert.equal(errors.at(-1).message.toolName,'platform_schedule_list')
+  assert.match(JSON.stringify(errors.at(-1).message.content),/FIXTURE_SCHEDULE_READ_FAILED/)
+  assert.ok(proofs.every(e=>e.data.payload.toolName!=='platform_schedule_list'))
+  await h.service.recover();await h.service.whenIdle()
+  assert.equal((await h.query('router.get',{conversationId})).activeSessionId,before.activeSessionId)
+  assert.equal(await h.query('router.inbox-count',{conversationId}),6)
+  assert.ok(h.service.listAlerts().some(a=>a.detail==='PI_ROUTER_RESUME_EFFECT_UNRESOLVED'))
+ }
  await h.residentStore.ingest({groupId:conversationId,messageId:'new-query',text:'What is the current state? Query only; do not start any task.',senderOpenDingTalkId:source.actorId,occurredAt:new Date().toISOString(),channelType:'chat-room',channelId:'resident-fixture'})
  await command('source.record-direct',{source:{sourceId:'independent-query',groupId:conversationId,messageId:'new-query',actorId:source.actorId,channel:'chat-room',version:1,text:'What is the current state? Query only; do not start any task.',resources:[]},conversation:{conversationId},routeDirect:true})
  await old.close();await old.host.close();const prefix=await readFile(file)
@@ -70,7 +94,12 @@ for(const legacy of [false,true])test(`26 -> 20+6 and independent query: ${legac
  assert.ok(h.results.some(r=>r.name==='resident_task_action'&&r.result.isError&&JSON.stringify(r.result).includes('ROUTER_PRIOR_SESSION_EFFECT_UNKNOWN')))
  assert.equal(h.sent.length,1);assert.equal(h.sent[0].text,'The existing task is paused; no execution has been started.')
  assert.deepEqual(await readFile(file),prefix,'old journal is retained byte-for-byte, without replay or fabricated results')
- const rotations=await h.query('router.rotations',{conversationId});const actual=rotations.find(r=>r.recovery?.reason===(legacy?'ROUTER_BATCH_ISOLATED':'ROUTER_BATCH_PARTIALLY_SETTLED'))
+ const rotations=await h.query('router.rotations',{conversationId});const actual=rotations.find(r=>r.recovery?.reason===(legacy||scheduleFailure?'ROUTER_BATCH_ISOLATED':'ROUTER_BATCH_PARTIALLY_SETTLED'))
  assert.ok(actual);assert.ok(!actual.recovery.unknownSourceIds.includes('independent-query'));if(legacy){assert.ok(actual.recovery.unknownSourceIds.includes(holdSource));assert.ok(actual.recovery.unknownTaskIds.includes('old-task'))}
+ if(scheduleFailure){
+  assert.equal((await h.query('router.get',{conversationId})).generation,before.generation+1)
+  assert.equal(h.results.filter(r=>r.name==='platform_schedule_list').length,1)
+  assert.ok(!h.service.listAlerts().some(a=>a.detail==='PI_ROUTER_RESUME_EFFECT_UNRESOLVED'))
+ }
  const requests=h.requests.length;await h.restart();await h.service.whenIdle();assert.equal(h.requests.length,requests);assert.equal(h.sent.length,1)
 })
