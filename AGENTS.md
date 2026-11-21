@@ -45,6 +45,12 @@ Do not turn repetition counts into a universal gate for skill creation: the mode
 assesses evidence/value/applicability, including strong single-task lessons; program
 code enforces scope, permissions, deduplication and traceability.
 
+## 模型与程序的分工
+
+- **业务语义由模型判断。** 把相关原文、当前状态、结果和回执交给模型，由它判断用户意图、下一步、是否回复和怎么回复。不要用关键词、流程阶段、历史分支或多层规则树替代模型判断，也不要为同一个判断再加审批模型或重试流程。
+- **模型接口保持简单、单一。** 同一种业务动作走同一工具、同一套输入和回执；不让模型选择内部实现、历史版本或运行代际。兼容旧数据和旧回执由 Host 处理，不把历史分支转嫁给模型。修故障先删掉错误门槛或统一入口，不给每种现场症状加特判。
+- **Host 只强制可核验的边界。** 认证、权限、来源和版本、并发、幂等以及真实副作用回执仍由程序保证。按实际动作的持久身份去重；旧效果未知只回查原回执，不把不确定性扩成新动作的授权门槛。无法执行就返回具体事实；不要把模型的正常判断变成额外的流程关卡。
+
 Use Node.js 24+ and pnpm. Install with `pnpm install --frozen-lockfile`.
 Read `docs/MIGRATION.md` and `docs/VALIDATION.md` before changing runtime boundaries.
 Pi core owns inference/tool iteration; Pi SessionManager owns durable history and

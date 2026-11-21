@@ -198,7 +198,7 @@ Pi 编辑出现多处匹配、找不到匹配等错误，或底层文件系统�
 
 结清不表示已经送达，不修改冻结正文、不重新执行任务、不自动补发说明或附件；文件仍须等待父说明确认送达。不要直接改 SQLite 或把状态手工置为 delivered。现场未运行修复版本前，不以源码回归通过宣称原通知已恢复。
 
-排查阻断结果漏报时，分别核对 `task_result(blocked)`、Router 收件箱及通知送达回执。若回复在冻结前被 `ROUTER_PRIOR_SESSION_EFFECT_UNKNOWN` 拦下，即使事件已结清，也没有可恢复的原冻结通知。修复随正常升级和重启生效，仅处理仍待处理的当前结果：合格的续办来源可承接新文字回报，不解除旧围栏、不自动补发已结清事件。无需改数据或配置。
+排查结果漏报时，分别核对 `task_result`、Router 收件箱和通知回执。新结果的 `outcomeDisposition.kind=not-reported` 表示结清时没有该结果的冻结回执；`notification-frozen` 仅表示有原通知，真正送达以通知的 `delivered` 为准。结清时原来源已失效或结果已被替代的，分别记录 `channel-source-unavailable` 或 `superseded`。Web 续办不替换原渠道收件人。升级不改旧账本、不自动补发已结清事件；无需改数据或配置。
 
 ## 渠道长期偏好
 

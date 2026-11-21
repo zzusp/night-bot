@@ -132,6 +132,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const inflightTasks = new Map(), inflightExecutions = new Map(), inflightGroups = new Map(), inflightNotifications = new Map()
   let nativeDws, residentRouter, readonlyLookups
   const admissions = new Map(), admissionHolds = new Set(), admissionGroups = new Map(), targetCommands = new Map()
+  const materializationFlights = new Map()
   const sourceProjections = new Set(), notificationSends = new Set(), notificationReadbacks = new Set()
   const failures = new Map(), taskSlots = new Set(), messageRecoveryFlights = new Set()
   const pendingDialogue = task => task.dialogue?.some(item => !item.reply&&!item.replyError)
@@ -643,36 +644,48 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if (!info.isFile() || info.isSymbolicLink()) fail('TASK_MATERIAL_PATH_INVALID')
       if (!(await readFile(path)).equals(bytes)) fail('TASK_MATERIAL_CONTENT_CHANGED')
     }
-    try {
-      return await readSnapshot()
-    } catch (error) { if (error.code !== 'ENOENT') throw error }
-    const resources = []
-    for (const resource of source.resources ?? []) {
-      if (!readResource) { resources.push({ resource, status: 'unavailable', reason: 'resource_reader_not_configured' }); continue }
-      try {
-        const value = await readResource(source.groupId, source.messageId, resource)
-        const text = typeof value?.text === 'string'
-        const image = value?.image?.data instanceof Uint8Array && value.image.data.byteLength > 0
-        const file = value?.file !== undefined
-        if (file && (!validMaterialFile(value.file) || !(value.file.data instanceof Uint8Array) || !value.file.data.byteLength || text || image)) fail('RESOURCE_FILE_DESCRIPTOR_INVALID')
-        if (!value || value.complete === false || value.hasMore === true || value.failures?.length || value.mediaUnavailable?.length || !text && !image && !file) fail('RESOURCE_READ_INCOMPLETE')
-        const bytes = file ? Buffer.from(value.file.data) : text ? Buffer.from(value.text, 'utf8') : Buffer.from(value.image.data)
-        if (bytes.length > 8 * 1024 * 1024) fail('RESOURCE_READ_TOO_LARGE')
-        const sha256 = createHash('sha256').update(bytes).digest('hex')
-        const originalExtension = file ? extname(value.file.name).toLowerCase() : ''
-        const extension = file ? (/^\.[a-z0-9]{1,16}$/u.test(originalExtension) ? originalExtension : '.bin') : text ? '.txt' : ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' }[value.image.mediaType] ?? '.bin')
-        const path = join(directories.materials, `resource-${hash([source.sourceId, resource]).slice(0, 16)}-${sha256.slice(0, 16)}${extension}`)
-        await publish(path, bytes)
-        resources.push({ resource, status: 'read', complete: true, path, bytes: bytes.length, sha256,
-          value: file ? { file: { name: value.file.name, mediaType: value.file.mediaType, path, bytes: bytes.length, sha256 } }
-            : text ? clean(value) : { image: { mediaType: value.image.mediaType, name: value.image.name, path, bytes: bytes.length, sha256 } } })
-      }
-      catch (error) { resources.push({ resource, status: 'unavailable', reason: error.code ?? 'RESOURCE_READ_FAILED' }) }
+    // Router preparation and a claimed execution may reach the same snapshot together.
+    const existing = materializationFlights.get(target)
+    if (existing) {
+      await existing
+      return readSnapshot()
     }
-    const material = clean({ taskId, sourceId: source.sourceId, version: source.version, actorId: source.actorId, messageId: source.messageId,
-      text, quote, resources, path: target })
-    await publish(target, Buffer.from(JSON.stringify(bindTaskMaterialPaths(material,directories.materials))))
-    return readSnapshot()
+    const flight = readOrPublish()
+    materializationFlights.set(target, flight)
+    try { return await flight } finally { materializationFlights.delete(target) }
+
+    async function readOrPublish() {
+      try {
+        return await readSnapshot()
+      } catch (error) { if (error.code !== 'ENOENT') throw error }
+      const resources = []
+      for (const resource of source.resources ?? []) {
+        if (!readResource) { resources.push({ resource, status: 'unavailable', reason: 'resource_reader_not_configured' }); continue }
+        try {
+          const value = await readResource(source.groupId, source.messageId, resource)
+          const text = typeof value?.text === 'string'
+          const image = value?.image?.data instanceof Uint8Array && value.image.data.byteLength > 0
+          const file = value?.file !== undefined
+          if (file && (!validMaterialFile(value.file) || !(value.file.data instanceof Uint8Array) || !value.file.data.byteLength || text || image)) fail('RESOURCE_FILE_DESCRIPTOR_INVALID')
+          if (!value || value.complete === false || value.hasMore === true || value.failures?.length || value.mediaUnavailable?.length || !text && !image && !file) fail('RESOURCE_READ_INCOMPLETE')
+          const bytes = file ? Buffer.from(value.file.data) : text ? Buffer.from(value.text, 'utf8') : Buffer.from(value.image.data)
+          if (bytes.length > 8 * 1024 * 1024) fail('RESOURCE_READ_TOO_LARGE')
+          const sha256 = createHash('sha256').update(bytes).digest('hex')
+          const originalExtension = file ? extname(value.file.name).toLowerCase() : ''
+          const extension = file ? (/^\.[a-z0-9]{1,16}$/u.test(originalExtension) ? originalExtension : '.bin') : text ? '.txt' : ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' }[value.image.mediaType] ?? '.bin')
+          const path = join(directories.materials, `resource-${hash([source.sourceId, resource]).slice(0, 16)}-${sha256.slice(0, 16)}${extension}`)
+          await publish(path, bytes)
+          resources.push({ resource, status: 'read', complete: true, path, bytes: bytes.length, sha256,
+            value: file ? { file: { name: value.file.name, mediaType: value.file.mediaType, path, bytes: bytes.length, sha256 } }
+              : text ? clean(value) : { image: { mediaType: value.image.mediaType, name: value.image.name, path, bytes: bytes.length, sha256 } } })
+        }
+        catch (error) { resources.push({ resource, status: 'unavailable', reason: error.code ?? 'RESOURCE_READ_FAILED' }) }
+      }
+      const material = clean({ taskId, sourceId: source.sourceId, version: source.version, actorId: source.actorId, messageId: source.messageId,
+        text, quote, resources, path: target })
+      await publish(target, Buffer.from(JSON.stringify(bindTaskMaterialPaths(material,directories.materials))))
+      return readSnapshot()
+    }
   }
   async function cancelLiveTask(taskId, oldTask, oldExecutions) {
     const list = await query('execution.list', { taskId })
@@ -856,12 +869,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const source=args.source,selection=args.taskDelivery,kind=selection?'status':args.kind??'router-reply',notificationId=args.outboundId
     const audience=notificationAudience(args)
     const explicitAudience=kind!=='platform-reply'&&audience.recipientActorIds!==undefined
-    const boundTaskId=selection?.taskId??args.completionBinding?.taskId
+    const boundTaskId=selection?.taskId??args.completionBinding?.taskId??args.blockedBinding?.taskId
     const finalReply=kind==='platform-reply'||!!selection||explicitAudience
     const explicitQuote=args.replyToSource===true
     const previous=await measure('router-reply-lookup',()=>query('notification.get',{notificationId}))
     const channels=ctx.get('channels'),context=channels.groupContext(source.groupId)
-    const targetedReply=finalReply||!!args.completionBinding&&context?.type==='chat-room'
+    const targetedReply=finalReply||!!boundTaskId&&context?.type==='chat-room'
     let boundTask,requestedRecipients=audience.recipientActorIds
     if(boundTaskId&&!explicitAudience&&!explicitQuote&&!args.atAll){
       if(previous)requestedRecipients=notificationAudience(previous.payload).recipientActorIds
@@ -879,7 +892,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const replyToMessageId=quoteSource?source.messageId:targetedReply?args.replyToMessageId:args.replyToMessageId??source.messageId
     const replyToActorId=quoteSource?source.actorId:targetedReply?audience.replyToActorId:audience.replyToActorId??source.actorId
     const recipients=[...new Set(requestedRecipients??(explicitQuote||targetedReply&&!defaultQuote?[]:[source.actorId]))]
-    const request=clean({kind,sourceId:source.sourceId,sourceVersion:source.version,text:args.text,taskDelivery:selection,...args.completionBinding?{completionBinding:args.completionBinding}:{},...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
+    const bindings=clean({completionBinding:args.completionBinding,blockedBinding:args.blockedBinding})
+    const request=clean({kind,sourceId:source.sourceId,sourceVersion:source.version,text:args.text,taskDelivery:selection,...bindings,...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
       replyToMessageId,replyToActorId,recipientActorIds:recipients,...(args.atAll?{atAll:true}:{}),artifactFiles:args.artifactFiles??[]})
     if(previous){
       const p=previous.payload
@@ -919,7 +933,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       exec.signal.throwIfAborted()
     }
     const receipt=await measure('router-reply-register',()=>command('notification.prepare',{notificationId,...exec?{routerGeneration:args.generation}:{},taskId:selection?.taskId??null,requirementRevision:selection?.requirementRevision??1,kind,
-      payload:{text,...args.completionBinding?{completionBinding:args.completionBinding}:{},conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceMessageId:replyToMessageId,actorId:replyToActorId,
+      payload:{text,...bindings,conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceMessageId:replyToMessageId,actorId:replyToActorId,
         sourceRef:{messageId:source.messageId,messageVersion:source.version,actorId:source.actorId},replyToMessageId,replyToActorId,
         recipientActorIds:recipients,...(args.atAll?{atAll:true}:{}),replyKind:'substantive',taskIds:selection?[selection.taskId]:[],topicRefs:[],replyRequest:request,...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
         ...(selection?{taskDelivery:selection}:{}),...(artifactFiles.length?{artifactFiles,deliveryId:notificationId}:{})}},'prepare-notification:'+notificationId))

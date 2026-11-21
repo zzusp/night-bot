@@ -2,6 +2,7 @@ import {triageHandoff,routerTriageConclusion} from './triage-conclusion.js'
 import {inspectionIsCurrent,taskWaitIdentity,MIN_WAIT_RECHECK_MS} from '../tasks/inspection.js'
 import {queryTaskIndex,queryReplyHistory} from './conversation-context.js'
 import {createHash} from 'node:crypto'
+import {blockedReplyId,completionReplyId,currentOutcomeBinding,isOutcomeChannelSource,isTaskOutcome,outcomeOriginId} from './router-task-context.js'
 import {querySourceHistory,queryCurrentSource,sourceHistorySchema} from './source-history.js'
 import {normalizeRouterHandoff,recordRouterHandoff,ROUTER_HANDOFF_POLICY} from './router-handoff.js'
 
@@ -138,8 +139,22 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       const inspectionReport=event.kind==='task.blocked'&&event.resultSource!=='pi-task-result'&&(task.technicalFailure||task.sessionFailure
         ||task.lastDecision?.limitations?.some(code=>['TASK_SESSION_NO_SUBMISSION','TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(code)))
       if(event.kind==='task.waiting'||inspectionReport)return
-      return enqueue(task.conversationId,event.id,{kind:event.kind,taskId:task.taskId,taskEventId:event.id})
+      return enqueue(task.conversationId,event.id,{kind:event.kind,taskId:task.taskId,taskEventId:event.id,...isTaskOutcome(event)?{trackOutcome:true}:{}})
     }
+  }
+  function settleOutcome(row,event){
+    const task=read('tasks',row.taskId,true),binding=currentOutcomeBinding(task,event,row.conversationId)
+    if(!binding)return {kind:'superseded'}
+    const sources=(task.sourceRefs??[]).map(id=>read('sources',id,true)).filter(Boolean)
+    const ids=event.kind==='task.blocked'?[blockedReplyId(row.conversationId,event.id)]
+      :sources.map(source=>completionReplyId(row.conversationId,event.id,source.sourceId,source.version))
+    for(const id of ids){
+      const notice=read('notifications',id,true),p=notice?.payload,b=p?.completionBinding??p?.blockedBinding
+      if(b?.eventId===event.id&&b.taskId===task.taskId&&p.conversationId===row.conversationId&&(!p.taskDelivery||p.taskDelivery.taskId===task.taskId))return {kind:'notification-frozen',notificationId:id}
+    }
+    const origin=sources.find(source=>source.sourceId===outcomeOriginId(task))
+    if(!isOutcomeChannelSource(origin,row.conversationId)||origin.actorId!==task.ownerActorId||origin.authorizationRevoked||origin.retracted||origin.triageHold||origin.archiveRestoreHold||!latest(origin))return {kind:'channel-source-unavailable'}
+    return {kind:'not-reported'}
   }
   function taskMutation(kind, task, {sameGoal,previousRequirementRevision}={}) {
     for(const row of rows('dependencies').filter(row=>row.taskId===task.taskId)) {
@@ -376,6 +391,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         if(row.state==='consumed')continue
         if(row.deliveryHold)fail('ROUTER_EVENT_DELIVERY_HELD')
         const event=row.taskEventId?readEvent(row.taskEventId):null
+        if(row.trackOutcome===true)row.outcomeDisposition=settleOutcome(row,event)
         if(event?.kind==='task.inspection'&&event.reason==='wait-overdue'){
           const task=read('tasks',row.taskId),inspection=task.inspection
           const reviews=(a.inspectionReviews??[]).filter(review=>review.taskId===task.taskId&&review.inspectionKey===event.inspectionKey)

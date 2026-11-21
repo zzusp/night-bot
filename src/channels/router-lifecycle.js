@@ -374,7 +374,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     }
     const original=events.map(event=>{
       if(event.state!=='consumed')return event
-      const {operationId,processedGeneration,processedCursor,noTaskDisposition,inspectionDisposition,...input}=event
+      const {operationId,processedGeneration,processedCursor,noTaskDisposition,inspectionDisposition,outcomeDisposition,...input}=event
       return {...input,state:'pending'}
     })
     if(!routerPacketViews(row,original).some(value=>sameRouterPacket(value,packet)))fail('ROUTER_PACKET_ID_CONFLICT')
