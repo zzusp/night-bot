@@ -130,8 +130,8 @@ export function buildLayeredWrites(scope,{meta,topics,candidates,indexEntries=[]
       const encoded=encodeEntry(topic,entry,scope);writes.set(entryPath(topic,entry.key),encoded.text)
       if(encoded.sourceText)writes.set(sourcePath(entry.id),encoded.sourceText)
       const {id,key,revision,createdAt,updatedAt,expiresAt,provenance,origins,migration,source,instructionScope}=entry
-      const prior=indexEntries.find(row=>row.path===entryPath(topic,key)&&row.sha256===hash(encoded.text))
-      descriptors.push({id,key,topic,title:prior?.title??key,summary:prior?.summary??entrySummary(entry),path:'entries/'+encode(key)+'.md',sha256:hash(encoded.text),revision,createdAt,updatedAt,...expiresAt?{expiresAt}:{},...entry.context?.subject?{subject:entry.context.subject}:{},...instructionScope?{instructionScope:checkedInstructionScope(instructionScope)}:{},...source?.actor?{sourceActor:source.actor}:{},...provenance?{provenance}:{},...origins?{origins}:{},...migration?{migration}:{}})
+      const prior=indexEntries.find(row=>row.id===id&&row.path===entryPath(topic,key))
+      descriptors.push({id,key,topic,title:prior?.title??key,summary:prior?.summary??entrySummary(entry),...prior?.customSummary===true?{customSummary:true}:{},path:'entries/'+encode(key)+'.md',sha256:hash(encoded.text),revision,createdAt,updatedAt,...expiresAt?{expiresAt}:{},...entry.context?.subject?{subject:entry.context.subject}:{},...instructionScope?{instructionScope:checkedInstructionScope(instructionScope)}:{},...source?.actor?{sourceActor:source.actor}:{},...provenance?{provenance}:{},...origins?{origins}:{},...migration?{migration}:{}})
     }
     rows.push(...descriptors.map(row=>({...row,path:entryPath(topic,row.key)})))
   }

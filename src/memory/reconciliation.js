@@ -8,6 +8,8 @@ export async function reconcileCompletion(memory,agent,proof,args,validate){
  if(args.topic===STANDING_TOPIC)throw failure('MEMORY_INSTRUCTION_WRITE_FORBIDDEN')
  const {task,event}=proof
  if(!['keep','update','delete'].includes(args.decision)||!Number.isSafeInteger(args.expectedRevision)||args.expectedRevision<1)throw failure('MEMORY_RECONCILIATION_INVALID')
+ const editingIndex=args.title!==undefined||args.indexSummary!==undefined
+ if((editingIndex||args.content!==undefined)&&args.decision!=='update'||args.decision==='update'&&!editingIndex&&args.content===undefined)throw failure('MEMORY_RECONCILIATION_INVALID')
  const reason=checkedText(args.reason),channel=memory.host.get('channels')?.groupContext(task.groupId)
  const binding=structuredClone(channel?.memoryBinding)
  const check=async()=>{
@@ -19,7 +21,7 @@ export async function reconcileCompletion(memory,agent,proof,args,validate){
  }
  await check()
  const scope=memoryScope({...binding,actorId:memory.actorId(agent)},{},true)
- const reconciliation={id:hash(JSON.stringify([task.sessionId??task.taskId,event.id,args.topic,args.key])),inputHash:hash(JSON.stringify({taskId:args.taskId,completionEventId:args.completionEventId,topic:args.topic,key:args.key,expectedRevision:args.expectedRevision,decision:args.decision,reason,content:args.content?{summary:args.content.summary,why:args.content.why,howToApply:args.content.howToApply}:null}))}
+ const reconciliation={id:hash(JSON.stringify([task.sessionId??task.taskId,event.id,args.topic,args.key])),inputHash:hash(JSON.stringify({taskId:args.taskId,completionEventId:args.completionEventId,topic:args.topic,key:args.key,expectedRevision:args.expectedRevision,decision:args.decision,reason,content:args.content?{summary:args.content.summary,why:args.content.why,howToApply:args.content.howToApply}:null,title:args.title,indexSummary:args.indexSummary}))}
  const receipt=await memory.store.reconciliationReceipt(scope,reconciliation.id)
  if(receipt&&receipt.inputHash!==reconciliation.inputHash)throw failure('MEMORY_RECONCILIATION_CONFLICT')
  const prior=(await memory.store.read(scope,{topic:args.topic,key:args.key,includeSources:true})).entries[0]
@@ -32,18 +34,25 @@ export async function reconcileCompletion(memory,agent,proof,args,validate){
  const provenance={...memory.provenance({task}),memoryReview:{kind:'task-completion',completionEventId:event.id,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,sourceRefs:proof.sources.map(source=>({sourceId:source.sourceId,messageVersion:source.version})),resultSha256:hash(JSON.stringify(event.result)),reason}}
  let result,text,context
  if(args.decision==='update'){
-  text=renderMemoryContent(args.content??{})
-  // Preserve the original observations and applicability rather than allowing
-  // completion output to become a synthetic human quote or a new scope.
-  context=prior?.context?.version===3?{...prior.context,...args.content}:undefined
-  if(prior?.context&&prior.context.version!==3)throw failure('MEMORY_RECONCILIATION_CONTEXT_UNSUPPORTED')
-  if(!receipt)result=await memory.store.remember(scope,{topic:args.topic,key:args.key,expectedRevision:args.expectedRevision,text,content:args.content,context,source,originSource:prior.originSource??prior.source,provenance,...prior.expiresAt?{expiresAt:prior.expiresAt}:{},validate:check,reconciliation})
+  if(args.content){
+   text=renderMemoryContent(args.content)
+   // Completion evidence must not masquerade as a human quote or widen scope.
+   context=prior?.context?.version===3?{...prior.context,...args.content}:undefined
+   if(prior?.context&&prior.context.version!==3)throw failure('MEMORY_RECONCILIATION_CONTEXT_UNSUPPORTED')
+  }
+  if(!receipt)result=await memory.store.remember(scope,{topic:args.topic,key:args.key,title:args.title,indexSummary:args.indexSummary,expectedRevision:args.expectedRevision,text,content:args.content,context,source,originSource:prior.originSource??prior.source,provenance,...prior.expiresAt?{expiresAt:prior.expiresAt}:{},validate:check,reconciliation})
  }else if(!receipt)result=await memory.store.forget(scope,{topic:args.topic,key:args.key,expectedRevision:args.expectedRevision,source,validate:check,reconciliation})
  try{
   await check()
-  const saved=(await memory.store.read(scope,{topic:args.topic,key:args.key,includeSources:true})).entries[0]
-  if(args.decision==='delete'?!!saved:!saved||saved.revision!==args.expectedRevision+1||saved.text!==text||saved.source.messageId!==event.id||!isDeepStrictEqual(saved.context,context))throw failure('MEMORY_WRITE_UNCONFIRMED')
-  if(args.topic==='experience')await memory.host.get('reflection')?.forget(scope,args.key)
-  return {...result,...receipt?{duplicate:true}:{},ok:true,persisted:true,decision:args.decision,...saved?{entry:saved}:{}}
+  const read=await memory.store.read(scope,{topic:args.topic,key:args.key,includeSources:true}),saved=read.entries[0]
+  if(args.decision==='delete'?!!saved:!saved||saved.revision!==args.expectedRevision+1||saved.source.messageId!==event.id||args.content&&(saved.text!==text||!isDeepStrictEqual(saved.context,context)))throw failure('MEMORY_WRITE_UNCONFIRMED')
+  let row
+  if(editingIndex){
+   const index=await memory.store.index(scope,{topic:args.topic})
+   row=index.entries.find(row=>row.id===saved.id)
+   if(read.revision!==index.revision||!row||args.title!==undefined&&row.title!==args.title.trim()||args.indexSummary!==undefined&&row.summary!==args.indexSummary.trim())throw failure('MEMORY_WRITE_UNCONFIRMED')
+  }
+  if(args.topic==='experience'&&(args.decision==='delete'||args.content))await memory.host.get('reflection')?.forget(scope,args.key)
+  return {...result,...receipt?{duplicate:true}:{},ok:true,persisted:true,decision:args.decision,...saved?{entry:row?{...saved,title:row.title,indexSummary:row.summary,path:row.path}:saved}:{}}
  }catch(cause){throw Object.assign(failure('MEMORY_WRITE_UNCONFIRMED'),{committed:true,cause})}
 }

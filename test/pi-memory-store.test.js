@@ -221,3 +221,30 @@ test('pure Markdown is authoritative for index titles and summaries without a se
     await assert.rejects(store.index(scope),/MEMORY_INDEX_INVALID/)
   }
 })
+
+test('memory title, index hint and body evolve independently on one stable link',async t=>{
+  const {store,root}=await fixture(t)
+  const input=item('initial','deployment','Original guidance')
+  const first=await store.remember(scope,input)
+  const original=(await store.index(scope)).entries[0]
+  const edit={topic:input.topic,key:input.key,source:source('rename'),expectedRevision:1,title:'Production deployment guide',indexSummary:'Original guidance'}
+  const updated=await store.remember(scope,edit)
+  assert.equal(updated.entry.id,first.entry.id)
+  assert.equal(updated.entry.text,input.text)
+  assert.equal(updated.entry.originSource.messageId,'initial')
+  assert.equal((await store.remember(scope,edit)).duplicate,true)
+  await assert.rejects(store.remember(scope,{...edit,source:source('stale')}),/MEMORY_REVISION_CONFLICT/)
+  await assert.rejects(store.remember(scope,{...edit,source:source('unsafe'),expectedRevision:2,title:'Password: fake'}),/MEMORY_SECRET_REFUSED/)
+  await store.remember(scope,{...item('body','deployment','Revised deployment guidance'),expectedRevision:2})
+  const restarted=new MarkdownMemoryStore(root)
+  const index=await restarted.index(scope)
+  assert.equal(index.entries.length,1)
+  assert.equal(index.entries[0].path,original.path)
+  assert.equal(index.entries[0].title,edit.title)
+  assert.equal(index.entries[0].summary,edit.indexSummary)
+  assert.equal((await restarted.search(scope,{query:'Production deployment guide'})).entries[0].id,first.entry.id)
+  assert.equal((await restarted.read(scope,{topic:input.topic,key:input.key})).entries[0].text,'Revised deployment guidance')
+  const disk=await readFile(join(store.directory(scope),'scope.json'),'utf8')
+  assert.doesNotMatch(disk,/Production deployment guide|Original guidance/)
+  assert.match(index.markdown,/\[Production deployment guide\]\(.*deployment\.md\) — Original guidance/)
+})
