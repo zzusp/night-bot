@@ -57,7 +57,7 @@ test('task verification reconciles an existing memory without a repeated memory 
     if(step===1){
      const reviewed=result(body);assert.equal(reviewed.ok,true,JSON.stringify(reviewed));const read=reviewed.memory;reads.set(item.key,read)
      assert.equal(read.entries[0].key,item.key)
-     const call={tool:'resident_memory_reconcile',args:{taskId:completion.taskId,completionEventId:completion.taskEventId??completion.eventId,topic:'projects',key:item.key,expectedRevision:read.entries[0].revision,decision:item.decision,reason:item.summary,...item.decision==='update'?{content:{summary:item.summary,why:'后续验证区分冷启动等待与扩容根因，尚未确认后者。',howToApply:'先检查 readiness；保留原现场反馈，不把未确认扩容原因写成事实。'}}:{}}}
+     const call={tool:'resident_memory_reconcile',args:{taskId:completion.taskId,completionEventId:completion.taskEventId??completion.eventId,topic:'projects',key:item.key,expectedRevision:read.entries[0].revision,decision:item.decision,reason:item.summary,...item.decision==='update'?{title:'Cold start troubleshooting',indexSummary:'Use readiness to distinguish a slow startup from a replica event.',content:{summary:item.summary,why:'后续验证区分冷启动等待与扩容根因，尚未确认后者。',howToApply:'先检查 readiness；保留原现场反馈，不把未确认扩容原因写成事实。'}}:{}}}
      completionCalls.set(item.key,call)
      return item.decision==='update'?{...call,args:{...call.args,expectedRevision:999}}:call
     }
@@ -96,6 +96,8 @@ test('task verification reconciles an existing memory without a repeated memory 
   assert.equal((await h.query('task.get',{taskId:'verify-'+item.key})).status,'completed')
   if(item.decision==='update'){
    assert.equal(outcome.persisted,true);assert.equal(after.revision,2);assert.match(after.text,/readiness/)
+   assert.equal(outcome.entry.title,'Cold start troubleshooting');assert.match(outcome.entry.indexSummary,/readiness/)
+   assert.match((await h.host.ctx.memory.store.index(scope)).markdown,/Cold start troubleshooting/)
    assert.equal(after.context.evidence[0].sourceId,sources.get(item.key).sourceId,'original report remains attributable')
    assert.notEqual(after.source.messageId,sources.get(item.key).sourceId,'completion is not impersonated as a fresh human message')
    assert.equal(after.originSource.messageId,sources.get(item.key).sourceId)
@@ -240,4 +242,38 @@ test('store rejects conflicting concurrent reconciliation receipts inside the wr
   assert.equal(outcomes.filter(row=>row.status==='fulfilled').length,1)
   assert.equal(outcomes.find(row=>row.status==='rejected')?.reason?.code,'MEMORY_RECONCILIATION_CONFLICT')
  }
+})
+
+test('authenticated Router edits only the existing memory index and refreshes its direct link',{timeout:nativeTestTimeout(90000)},async t=>{
+ const topic='projects',key='fixture-memory',title='Verify release state',indexSummary='Before reporting a release, verify the exact version.'
+ const steps=new Map(),outcomes=new Map()
+ const h=await residentRouterHost(t,request=>{
+  if(!requestTools(request).includes('resident_router_settle'))return {text:'No additional action'}
+  const {events}=requestEnvelope(request,'Router 请求：'),event=events.find(item=>item.source),source=event?.source
+  assert.ok(source)
+  const step=steps.get(source.messageId)??0;steps.set(source.messageId,step+1)
+  const create=source.messageId==='seed-index'
+  if(step===0)return {tool:'resident_memory_remember',args:{topic,key,sourceId:source.sourceId,messageVersion:source.version,sourceQuote:source.text,expectedRevision:create?0:1,...create?{memory:{summary:'Report only verified release state.',why:'Avoid confusing merge with deployment.',howToApply:'Check the release state before reporting.',appliesTo:{kind:'context',description:'Release reporting'},evidence:[{id:'source',source:'message',sourceId:source.sourceId,messageVersion:source.version,quote:source.text}]}}:{title,indexSummary}}}
+  if(step===1){outcomes.set(source.messageId,result(request));return {tool:'resident_router_reply',args:{operationId:'reply:'+source.messageId,sourceId:source.sourceId,messageVersion:source.version,text:'已处理这条记忆。'}}}
+  if(step===2)return {tool:'resident_router_settle',args:{operationId:'settle:'+source.messageId,eventIds:events.map(item=>item.id),noTaskDispositions:[{eventId:event.id,outcome:'handled-inline',reason:'直接维护并核对记忆，无需创建任务。',sourceQuote:source.text}]}}
+  return {text:'Completed directly'}
+ },{strictModelDecisions:true})
+ await h.receive(channelMessage('seed-index',{text:'记住发布状态只报告已核实的结果。'}));await h.service.whenIdle()
+ const first=outcomes.get('seed-index')
+ assert.equal(first?.persisted,true)
+ const before=(await h.host.ctx.memory.store.index(scope,{topic})).entries[0]
+ await h.receive(channelMessage('edit-index',{text:'把刚才的记忆标题改得清楚些，索引提示要说明核对版本，正文别改。'}));await h.service.whenIdle()
+ const edit=outcomes.get('edit-index')
+ assert.equal(edit?.persisted,true,JSON.stringify(edit))
+ assert.equal(edit.entry.title,title)
+ assert.equal(edit.entry.indexSummary,indexSummary)
+ assert.equal(edit.entry.id,first.entry.id)
+ assert.equal(edit.entry.path,before.path)
+ assert.equal(edit.entry.text,first.entry.text)
+ assert.deepEqual(edit.entry.context,first.entry.context)
+ assert.deepEqual(await h.query('task.list'),[])
+ await h.restart()
+ const index=await h.host.ctx.memory.store.index(scope,{topic})
+ assert.match(index.markdown,/Verify release state/)
+ assert.equal(index.entries[0].revision,2)
 })
