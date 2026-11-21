@@ -193,7 +193,7 @@ for(const output of ['channel reply','Issue comment','PR review reply'])test(`of
   const prompt=taskSystemPrompt(request)
   assert.match(prompt,/沟通规范索引/)
   assert.match(prompt,/默认只讲重点，不列排查过程和内部状态；用户要求细节再展开/u)
-  assert.match(prompt,/同一限制只说一次，省略无关的未做事项和例行范围声明/u)
+  assert.match(prompt,/问题或正文已说清的范围，不再另起一句重申。只补尚未交代、且会改变读者对结果、风险或下一步判断的限制/u)
   assert.match(prompt,/必须保留的技术词，第一次用时顺手说清/u)
   assert.doesNotMatch(prompt,/NIGHT_NATURAL_CHANNEL_REPLY|NIGHT_TASK_PUBLIC_COMMUNICATION|好，我看看是什么原因/)
   const loaded=f.requests.find(body=>body.messages.some(message=>message.role==='tool'&&JSON.stringify(message.content).includes('NIGHT_TASK_PUBLIC_COMMUNICATION')))
