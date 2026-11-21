@@ -72,6 +72,44 @@ test('one task preserves its effect through a held missing result and explicit c
   const nextHost=await createHost(nextConfig,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});const next=await serviceFor({host:nextHost,config:nextConfig},false);try{await next.service.recover();await nextHost.ctx.reflection.whenIdle();assert.equal((await next.store.query({kind:'task.get',taskId:task.taskId})).status,'completed');const header=(await nextHost.ctx.sessionPersistence.stat(sessionId)).header;assert.ok(header.cwd.startsWith(relocated));assert.equal(await readFile(join(header.cwd,'work/proof.txt'),'utf8'),'single-session-proof');assert.equal(reviews,1)}finally{await next.close();await nextHost.close()}
 })
 
+test('native task overflow preserves the next verification and resumes without replaying completed writes',{timeout:nativeTestTimeout(30000)},async t=>{
+  t=cleanupContext(t)
+  let h,step=0;t.after(()=>h?.close())
+  const proof='isolated-original-proof',checkpoint='NEXT_CHECK: read work/proof.txt before completing',summaries=[]
+  let resumed=false
+  const f=await memoryHost(t,body=>{
+    const wire=JSON.stringify(body.messages)
+    if(wire.includes('You are a context summarization assistant')){
+      summaries.push(body)
+      return {text:'# Goal\nRead back the original file.\n# Progress\nThe writes succeeded once.\n# Next Steps\n'+checkpoint}
+    }
+    if(!requestTools(body).includes('task_result'))return
+    if(wire.includes(checkpoint)){
+      resumed=true
+      if(body.messages.at(-1)?.role==='tool'&&JSON.stringify(body.messages.at(-1)).includes(proof))return result
+      return {tool:'read',args:{path:'work/proof.txt'}}
+    }
+    if(step++===0)return {tool:'write',args:{path:'work/proof.txt',content:proof}}
+    if(step===2)return {tool:'write',args:{path:'work/background.txt',content:'synthetic prior evidence '.repeat(3600)}}
+    if(step===3)return {error:'maximum context length is 64000 tokens'}
+    return {text:'Missing the task continuation checkpoint'}
+  },{hostConfig:config=>{config.providers.fixture.models[0].contextWindow=64000}})
+  h=await serviceFor(f)
+  const task=await h.service.createTask({requestId:'task-overflow',objective:'Write the fixture files, then verify the original proof by reading it back'})
+  const row=await until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.drained&&(row.lastDecision||row.status==='completed')&&row})
+  assert.equal(summaries.length,1,'Pi performs its existing overflow compaction')
+  const summaryRequest=JSON.stringify(summaries[0].messages)
+  assert.ok(summaryRequest.includes('NIGHT_ROLE_SUMMARY=task'),'the compact request uses task-specific instructions')
+  assert.ok(summaryRequest.includes('当前目标与验收要求')&&summaryRequest.includes('核验入口'),'the request tells Pi to retain verification criteria and evidence references')
+  assert.ok(resumed,'the compacted checkpoint reaches task execution')
+  assert.equal(row.status,'completed');assert.equal(row.sessionId,task.session.sessionId)
+  const stored=await f.host.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true})
+  assert.ok(stored.entries.some(e=>e.type==='compaction'&&e.summary.includes(checkpoint)))
+  const tools=stored.entries.filter(e=>e.type==='message'&&e.message.role==='toolResult'&&!e.message.isError).map(e=>e.message)
+  assert.equal(tools.filter(m=>m.toolName==='write').length,2,'no completed write is replayed')
+  assert.ok(tools.some(m=>m.toolName==='read'&&m.content.some(block=>block.text?.includes(proof))))
+})
+
 for(const output of ['channel reply','Issue comment','PR review reply'])test(`official task ${output} request carries public communication and execution boundaries`,{timeout:nativeTestTimeout(15000)},async t=>{
   t=cleanupContext(t)
   let h;t.after(()=>h?.close())

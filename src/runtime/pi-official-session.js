@@ -46,7 +46,8 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
   }
   if(!resolved?.modelRuntime||!agentDir||!registry||!settingsManager)throw new TypeError('Explicit model, settings, resources and registry required')
   tools=createPiOfficialTools({registry,owner:actor,businessAudit:audit,maxParallelToolCalls})
-  const bridge=createNightOfficialContext({...context,cwd:store.header.cwd,agentDir,getActor:()=>actor,settingsManager,measurePhase,compactionRole:store.header.runtimeOwner,hasTools:()=>tools.customTools.length>0})
+  const compactionRole=store.header.runtimeOwner??(store.header.agentPreset==='night-bot-task'?'task':undefined)
+  const bridge=createNightOfficialContext({...context,cwd:store.header.cwd,agentDir,getActor:()=>actor,settingsManager,measurePhase,compactionRole,hasTools:()=>tools.customTools.length>0})
   await bridge.reloadResources()
   await measurePhase('session-sdk-create',async()=>{
    ;({session}=await createAgentSession({cwd:store.header.cwd,agentDir,modelRuntime:resolved.modelRuntime,model:resolved.model,thinkingLevel:resolved.thinkingLevel,settingsManager,resourceLoader:bridge.resourceLoader,sessionManager:store.manager,noTools:'builtin',tools:tools.customTools.map(tool=>tool.name),customTools:tools.customTools}))
