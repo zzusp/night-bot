@@ -55,6 +55,34 @@ for(const newInput of [false,true])test(`unconfigured task provider/model cannot
  if(newInput){await h.close();restored=await providerHost(t,{root,initialize:false,config:{model:'later-model'},models:['later-model'],decide:()=>[result('complete')]});h=restored;await h.service.appendTaskContext({taskId:id,requestId:'model-route-restored',progressImpact:'replan',context:'The explicitly configured model route is restored.'});await h.service.whenIdle();assert.equal((await h.query('task.get',{taskId:id})).status,'completed');assert.equal(h.taskRequests()[0].model,'later-model')}
 })
 
+for(const [providerReason,errorMessage] of [
+ ['TIMEOUT','504 Gateway Timeout'],
+ ['CONTEXT_WINDOW_EXCEEDED','400 Input length (473459) exceeds the maximum allowed input length of 472000 tokens.'],
+ ['POLICY_REFUSAL','400 litellm.ContentPolicyViolationError: fixture-private-provider-detail'],
+ [undefined,'400 Invalid request: unrecognized field named policy'],
+])test(`Single stores only the known terminal provider reason: ${providerReason??'generic'}`,{timeout:nativeTestTimeout(20000)},async t=>{
+ let earlierTimeout=false
+ const h=await providerHost(t,{intercept:request=>{
+  if(!taskRequest(request))return
+  if(providerReason==='POLICY_REFUSAL'&&!earlierTimeout){earlierTimeout=true;return {stopReason:'error',errorMessage:'504 Gateway Timeout'}}
+  if(providerReason==='POLICY_REFUSAL'&&!sawEffect(request))return
+  return {stopReason:'error',errorMessage}
+ },decide:()=>[effect]})
+ const id=await h.create();await h.service.whenIdle();const {task,entries}=await h.stored(id)
+ const expected={code:'TASK_PI_PROVIDER_ERROR',phase:'decision',stopReason:'error',...providerReason?{providerReason}:{}}
+ assert.deepEqual(task.technicalFailure,expected)
+ assert.deepEqual(task.lastDecision.technicalFailure,expected)
+ assert.equal(task.lastDecision.action,'wait');assert.equal(task.drained,true);assert.equal(task.completion??null,null)
+ assert.ok((await h.query('wake.list',{taskId:id})).every(wake=>wake.state==='acked'))
+ assert.ok(entries.some(entry=>entry.type==='message'&&entry.message.errorMessage===errorMessage))
+ assert.ok(!JSON.stringify(task).includes(errorMessage))
+ if(providerReason==='POLICY_REFUSAL'){
+  assert.ok(h.events.some(event=>event.type==='auto_retry_end'&&event.success))
+  assert.equal(h.effects,1)
+  assert.deepEqual(entries.filter(entry=>entry.type==='message'&&entry.message.stopReason==='error').map(entry=>entry.message.errorMessage),['504 Gateway Timeout',errorMessage])
+ }
+})
+
 for(const mode of ['provider-error','successful-text-without-task-result'])test(`Single ${mode} never creates a Host retry window, including after a one-hour clock advance and cold restore`,{timeout:nativeTestTimeout(20000)},async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()})
  const root=await mkdtemp(join(tmpdir(),'single-no-host-retry-'));let first,cold;t.after(async()=>{await cold?.close();await first?.close();await rm(root,{recursive:true,force:true})})

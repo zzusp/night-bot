@@ -1,4 +1,5 @@
 import {executionTaskBrief,executionContext,retainExecutionPacket,routerHandoffTaskInput,sourceOnlyTaskInput} from './execution-context.js'
+import {classifyPiFailure} from '../pi-provider-events.js'
 import {traceSourcesMetadata} from '../runtime/pi-agent-observation.js'
 import {finishTaskBusinessInputs} from '../runtime/pi-business-notices.js'
 import {taskToolInputOrigin,unresolvedTaskInputOrigins,taskEffectIntentOrigin} from './input-origin.js'
@@ -232,13 +233,23 @@ export function createSingleTaskSessions({ctx,isCurrent,isOwnerCurrent=isCurrent
       entry.handle=await withPersistenceWriter(binding,()=>stored?ctx.agents.resume({...options,resumeSessionId:binding.sessionId}):ctx.agents.create({...options,sessionId:binding.sessionId,meta:{cwd,agentPreset:'night-bot-task'}}))
       await entry.handle.agent.receipts.commit();await onSessionBound(binding)
       if(!await current())return {status:'stale'}
-      await entry.handle.agent.input.enqueue(packet)
-      await entry.handle.agent.input.deliver(packet.id,{deliverAs:'followUp'})
-      await entry.handle.agent.whenIdle()
+      const session=entry.handle.agent.piSession
+      let native
+      // Pi may remove an overflow response from the active context before compaction.
+      // Observe this execution only; a later response replaces a recovered failure.
+      const unsubscribe=session.subscribe(event=>{if(event.type==='message_end'&&event.message.role==='assistant')native=event.message})
+      try{
+        await entry.handle.agent.input.enqueue(packet)
+        await entry.handle.agent.input.deliver(packet.id,{deliverAs:'followUp'})
+        await entry.handle.agent.whenIdle()
+      }finally{unsubscribe()}
       if(!entry.submitted&&effectHold())throw fail(effectHold())
       if(!entry.submitted&&await current()){
-        const native=entry.handle.agent.piSession.messages.findLast(message=>message.role==='assistant')
-        throw Object.assign(fail(native?.stopReason==='error'?'TASK_PI_PROVIDER_ERROR':entry.reviewFailure??'TASK_SESSION_NO_SUBMISSION'),{phase:'decision',...native?.stopReason?{nativeAssistantStopReason:native.stopReason}:{}})
+        const providerFailed=native?.stopReason==='error'
+        throw Object.assign(fail(providerFailed?'TASK_PI_PROVIDER_ERROR':entry.reviewFailure??'TASK_SESSION_NO_SUBMISSION'),{
+          phase:'decision',nativeAssistantStopReason:native?.stopReason,
+          nativeProviderFailureCode:providerFailed?classifyPiFailure(native).code:undefined,
+        })
       }
       return {status:entry.submitted?'submitted':'cancelled'}
     }catch(cause){

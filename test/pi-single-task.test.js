@@ -110,6 +110,63 @@ test('native task overflow preserves the next verification and resumes without r
   assert.ok(tools.some(m=>m.toolName==='read'&&m.content.some(block=>block.text?.includes(proof))))
 })
 
+test('comparison: two failed reads through a missing source do not prevent reading independent evidence',{timeout:nativeTestTimeout(20000)},async t=>{
+  t=cleanupContext(t)
+  let h,step=0;t.after(()=>h?.close())
+  const proof='independent-observation-042',calls=[
+    {tool:'read',args:{path:'work/unavailable/first.txt'}},
+    {tool:'read',args:{path:'work/unavailable/second.txt'}},
+    {tool:'read',args:{path:'work/independent.txt'}},
+    {tool:'task_result',args:{decision:{action:'complete',summary:'Verified the value from the independent source',evidence:[proof],limitations:[]}}},
+  ]
+  const f=await memoryHost(t,async body=>{
+    if(!requestTools(body).includes('task_result'))return
+    const call=calls[step++]
+    if(step===1){
+      const [task]=await h.store.query({kind:'task.list'})
+      await writeFile(join(f.host.ctx.runtimePaths.workspaces,'tasks',task.taskId,'work/independent.txt'),proof)
+    }
+    return call
+  })
+  h=await serviceFor(f)
+  const task=await h.service.createTask({requestId:'comparison-independent-source',objective:'Verify the value using the authorized local sources. The first two share one directory; independent.txt is a separate source.'})
+  await h.service.whenIdle()
+  const done=await h.store.query({kind:'task.get',taskId:task.taskId})
+  assert.equal(done.status,'completed',done.lastDecision?.summary);assert.equal(done.drained,true);assert.equal(done.sessionId,task.session.sessionId)
+  assert.deepEqual(done.completion.result.evidence,[proof])
+  const stored=await f.host.ctx.sessionPersistence.readNative(done.sessionId,{requireComplete:true})
+  const tools=stored.entries.filter(entry=>entry.type==='message'&&entry.message.role==='toolResult').map(entry=>entry.message)
+  assert.deepEqual(tools.filter(m=>m.toolName==='read').map(m=>m.isError),[true,true,false])
+  assert.ok(tools.find(m=>m.toolName==='read'&&!m.isError).content.some(block=>block.text?.includes(proof)))
+  assert.equal(step,calls.length)
+})
+
+test('comparison: a passed intermediate check is followed by a real final artifact readback',{timeout:nativeTestTimeout(20000)},async t=>{
+  t=cleanupContext(t)
+  let h,step=0;t.after(()=>h?.close())
+  const proof='final-artifact-verified',path='work/final.txt',calls=[
+    {tool:'write',args:{path:'work/staging.txt',content:'intermediate-check-passed'}},
+    {tool:'read',args:{path:'work/staging.txt'}},
+    {tool:'write',args:{path,content:proof}},
+    {tool:'read',args:{path}},
+    {tool:'task_result',args:{decision:{action:'complete',summary:'Generated and read back final.txt',evidence:[proof],artifacts:[path],limitations:[]}}},
+  ]
+  const f=await memoryHost(t,body=>{if(requestTools(body).includes('task_result'))return calls[step++]})
+  h=await serviceFor(f)
+  const task=await h.service.createTask({requestId:'comparison-final-verification',objective:'Check staging, then generate and independently read back the final artifact before submitting.'})
+  await h.service.whenIdle()
+  const done=await h.store.query({kind:'task.get',taskId:task.taskId})
+  assert.equal(done.status,'completed',done.lastDecision?.summary);assert.equal(done.drained,true);assert.equal(done.sessionId,task.session.sessionId)
+  assert.equal(await readFile(join(task.session.workspaceDir,path),'utf8'),proof)
+  assert.deepEqual(done.completion.result.artifacts,[path])
+  const stored=await f.host.ctx.sessionPersistence.readNative(done.sessionId,{requireComplete:true})
+  const tools=stored.entries.filter(entry=>entry.type==='message'&&entry.message.role==='toolResult').map(entry=>entry.message)
+  assert.deepEqual(tools.slice(0,4).map(m=>[m.toolName,m.isError]),[['write',false],['read',false],['write',false],['read',false]])
+  assert.ok(tools[1].content.some(block=>block.text?.includes('intermediate-check-passed')))
+  assert.ok(tools[3].content.some(block=>block.text?.includes(proof)))
+  assert.equal(step,calls.length)
+})
+
 for(const output of ['channel reply','Issue comment','PR review reply'])test(`official task ${output} request carries public communication and execution boundaries`,{timeout:nativeTestTimeout(15000)},async t=>{
   t=cleanupContext(t)
   let h;t.after(()=>h?.close())
