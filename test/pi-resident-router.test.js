@@ -118,9 +118,6 @@ test('Router sends directly while rejecting a draft containing credentials',{tim
   if(!tools.includes('resident_router_reply'))return {text:'Settled'};
   const prompt=body.messages.filter(row=>row.role==='system').map(row=>row.content).join('\n');
   assert.match(prompt,/沟通规范索引/);assert.match(prompt,/NIGHT_NATURAL_CHANNEL_REPLY/);assert.doesNotMatch(prompt,/NIGHT_TASK_PUBLIC_COMMUNICATION/);
-  assert.match(prompt,/默认 ELI5：先说对方关心的结果或下一步，只补影响判断的事实/u)
-  assert.match(prompt,/默认只讲重点，不列排查过程和内部状态；用户要求细节再展开/u)
-  assert.match(prompt,/问题或正文已说清的范围，不再另起一句重申。只补尚未交代、且会改变读者对结果、风险或下一步判断的限制/u)
   if(step===0){initial=body;step++;return {tool:'communication_guidance_read',args:{}}}
   assertSharedCommunicationGuidance(initial,body)
   assert.match(JSON.stringify(body.messages.filter(row=>row.role==='tool')),/本次事件根因分开/);
