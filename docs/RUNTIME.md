@@ -81,7 +81,7 @@ and real local Pi-protocol tests. Neither test category proves live vendor acces
 |---|---|
 | Router、普通原生会话、任务执行 | 共用官方 context 注入；没有原生工具时不注入，不增加工具。Router 动作/回执和任务结果仍互斥；任务仍为唯一执行会话，原禁止 subagent/委派/子执行的工具限制不变。 |
 | Router 只读工具 | 明确声明任务、来源、回复、当前配置与排期列表可并行；每调用仍校验会话身份/当前 generation。`platform_task_query` 会更新分页消费状态，继续互斥；记忆/Skill 读取、加载或维护也不凭名称放开。 |
-| 普通文件/网页工具 | 原生文件只读与 web_search/web_fetch 本来已有安全声明；write/edit、shell、job_output/job_list/job_kill 等未因本轮规则被自动放开。job_output 会消费读游标，wait 可能持有独占租约，取消/终态/通知/模型结果的原守卫保留。 |
+| 普通文件/网页工具 | 原生文件只读与 web_search/web_fetch 本来已有安全声明。内置 HTTP 抓取的传输失败报告所在环节和已识别的底层错误码，不暴露底层原文，也不自动切换协议或路径。write/edit、shell、job_output/job_list/job_kill 等未因此自动放开。job_output 会消费读游标，wait 可能持有独占租约，取消/终态/通知/模型结果的原守卫保留。 |
 | 诊断 | 独立官方 Pi 会话复用同一规则，只有原来的 diagnosis_evidence；证据别名、缓存和调查预算共享，未证明可重入，仍按 SDK 默认串行，不另建 Host 工具或放宽证据范围。 |
 | Skill 生成 | 现有 creator 加载/起草流程复用规则；只有原有 creator 读取工具，先加载再起草的依赖不改变，没有新增委派或评测工具。 |
 | 审批、复盘、压缩等无工具推理 | 不增加工具或伪造并行调用；原来的输入、证据与恢复边界保留。 |

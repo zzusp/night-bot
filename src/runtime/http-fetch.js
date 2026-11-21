@@ -3,12 +3,25 @@ import {WebError} from '../native-capability-errors.js'
 
 const redirectStatuses = new Set([301, 302, 303, 307, 308])
 
-function transportError(error, signal) {
+// Expose stable transport facts, not nested messages that can contain private
+// addresses or provider details. An unknown cause remains unknown.
+const transportCodes = new Set([
+  'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ENETUNREACH', 'EHOSTUNREACH', 'ETIMEDOUT', 'EPROTO',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET',
+  'ERR_SSL_WRONG_VERSION_NUMBER', 'ERR_SSL_UNEXPECTED_EOF_WHILE_READING', 'ERR_TLS_CERT_ALTNAME_INVALID',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'SELF_SIGNED_CERT_IN_CHAIN', 'CERT_HAS_EXPIRED', 'CERT_NOT_YET_VALID',
+])
+
+function transportError(error, signal, phase = 'exchange') {
   const timeout = timeoutOf(signal, 'WEB_FETCH_TIMEOUT')
   if (timeout) return new WebError('web fetch timed out', 'WEB_FETCH_TIMEOUT', {cause: timeout})
   if (signal.aborted) return new WebError('web fetch aborted', 'WEB_ABORTED', {cause: error})
   if (error instanceof WebError) return error
-  return new WebError(`web fetch failed: ${String(error)}`, 'WEB_PROVIDER_ERROR', {cause: error})
+  for (let cause = error, depth = 0; cause instanceof Error && depth < 6; cause = cause.cause, depth++) {
+    if (transportCodes.has(cause.code)) return new WebError(`web fetch failed during ${phase}: ${cause.code}`, 'WEB_PROVIDER_ERROR', {cause: error})
+  }
+  return new WebError(`web fetch failed during ${phase}: cause unknown`, 'WEB_PROVIDER_ERROR', {cause: error})
 }
 
 // A stream supplied by a provider need not implement signal cancellation itself.
@@ -90,16 +103,20 @@ export class HttpFetchExecution {
       'user-agent': this.limits.userAgent,
       accept: 'text/html,application/xhtml+xml,text/*;q=0.9,application/json;q=0.8'
     }
+    let phase = 'routing'
     try {
       signal.throwIfAborted()
       const route = this.route(url)
       if (route.proxied && !this.policy.isNonPublicIpLiteral(url.hostname)) {
+        phase = 'proxy request'
         return await this.network.requestVia(route.dispatcher, url, headers, signal)
       }
+      phase = 'address resolution'
       const addresses = await this.resolveAddresses(url.hostname, signal)
       signal.throwIfAborted()
+      phase = 'request'
       return await this.network.request(url, addresses, headers, signal)
-    } catch (error) { throw transportError(error, signal) }
+    } catch (error) { throw transportError(error, signal, phase) }
   }
 
   async readBody(response, finalUrl, signal) {
@@ -138,7 +155,7 @@ export class HttpFetchExecution {
         length += part.byteLength
         if (value.byteLength > remaining) { truncatedByBytes = true; break }
       }
-    } catch (error) { throw transportError(error, signal) }
+    } catch (error) { throw transportError(error, signal, 'response body') }
     finally {
       try { await reader.cancel() } catch {}
       reader.releaseLock()

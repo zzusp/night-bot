@@ -81,7 +81,7 @@ test('bounded reader owns retained chunk bytes and unlocks a faulting stream',as
  assert.equal(body.locked,false)
  const broken=new ReadableStream({pull(controller){controller.error(new Error('connection dropped'))}})
  const fault=fixture([new Response(broken,{headers:{'content-type':'text/plain'}})])
- await assert.rejects(fault.provider.fetch({url:'https://fixture.example/'}),e=>e.code==='WEB_PROVIDER_ERROR')
+ await assert.rejects(fault.provider.fetch({url:'https://fixture.example/'}),e=>e.code==='WEB_PROVIDER_ERROR'&&e.message==='web fetch failed during response body: cause unknown')
  assert.equal(broken.locked,false)
  assert.equal(fault.closed.length,1)
 })

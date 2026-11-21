@@ -30,6 +30,9 @@ for(const action of ['complete','blocked','wait','runtime-failure','silent'])tes
    replied=true
    assert.equal(outcome.taskEvent.result.summary,summary)
    if(action==='blocked'){
+    const prompt=body.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
+    assert.match(prompt,/沿原会话推进；没有新依据不重复唤醒/u)
+    assert.match(prompt,/尚未核实的后续条件不写成已确认的卡点/u)
     assert.equal(outcome.taskEvent.resultSource,'pi-task-result')
     assert.deepEqual(outcome.taskEvent.result.evidence,evidence)
     assert.deepEqual(outcome.taskEvent.result.limitations,limitations)

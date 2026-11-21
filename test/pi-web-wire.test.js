@@ -10,6 +10,36 @@ const nativeCall=(entries,id)=>entries.some(e=>e.type==='message'&&e.message.rol
 test('actual Pi web tools use native provider gates and pinned transport, preserve receipts and block private destinations',{timeout:20000},async t=>{
  const f=await subagentFixture(t,(_body,f)=>f.requests.length===1?{tools:[{id:'fetch-public',name:'web_fetch',args:{url:'https://fixture.example/resource'}},{id:'fetch-private',name:'web_fetch',args:{url:'http://127.0.0.1/private'}},{id:'search-native',name:'web_search',args:{queries:['fixture query']}}]}:{text:'web tools verified'},{web:{fetchProvider:'http',searchProvider:'fixture-search'},webFetch:{userAgent:'fixture-native-agent',maxRedirects:2,maxResponseBytes:2000,maxBodyChars:2000}}),handle=await owner(f,'web-wire'),agent=handle.agent,network=[],provider=f.host.ctx.get('nativeHttpFetch').provider;assert.equal(f.host.ctx.web.constructor.name,'NativeWeb');assert.equal(provider.constructor.name,'NativeHttpFetchProvider');provider.resolveAddresses=(host,signal)=>httpPolicy.resolvePublicAddresses(host,signal,async()=>[{address:'93.184.216.34',family:4}]);provider.route=()=>({proxied:false});provider.network={async request(url,pinned,headers){assert.ok(nativeCall(await nativeEntries(f,agent.id),'fetch-public'),'intent before transport');network.push({url:url.href,pinned,headers});return{response:new Response('<p>WEBNATIVEBODYMARKER</p>',{headers:{'content-type':'text/html'}}),close:async()=>{}}},async requestVia(){throw new Error('unexpected proxy')}};const remove=f.host.ctx.web.registerSearchProvider({id:'fixture-search',available:()=>true,search:async request=>{assert.equal(request.query,'fixture query');assert.ok(nativeCall(await nativeEntries(f,agent.id),'search-native'));return{sources:[{url:'https://fixture.example/source',title:'fixture source',snippet:'SEARCH_NATIVE_MARKER'}],answer:'SEARCH_NATIVE_ANSWER_MARKER',truncated:false}}});t.after(()=>remove());await handle.enqueue({id:'web-input',source:{kind:'fixture-user'},content:[{type:'text',text:'Use the fixture web tools'}]});await handle.deliver('web-input');await handle.whenIdle();assert.ok(handle.session instanceof AgentSession);assert.equal(agent.session,undefined);assert.equal(f.requests.length,2);assert.equal(network.length,1);assert.equal(network[0].url,'https://fixture.example/resource');assert.deepEqual(network[0].pinned,[{address:'93.184.216.34',family:4}]);assert.equal(network[0].headers.authorization,undefined);assert.equal(network[0].headers['user-agent'],'fixture-native-agent');assert.equal(provider.limits.maxRedirects,2);const entries=await nativeEntries(f,agent.id),results=entries.filter(e=>e.type==='message'&&e.message.role==='toolResult').map(e=>e.message);assert.equal(results.length,3);assert.equal(results.find(e=>e.toolCallId==='fetch-private').isError,true);assert.match(JSON.stringify(results.find(e=>e.toolCallId==='fetch-private')),/WEB_BLOCKED_URL/);for(const id of ['fetch-public','search-native'])assert.equal(results.find(e=>e.toolCallId===id).isError,false);assert.match(JSON.stringify(f.requests[1].messages.filter(m=>m.role==='tool')),/WEBNATIVEBODYMARKER/);assert.match(JSON.stringify(f.requests[1]),/SEARCH_NATIVE_MARKER/);assert.doesNotMatch(JSON.stringify(f.requests[1].messages.filter(m=>m.role==='tool')),/SEARCH_NATIVE_ANSWER_MARKER/);assert.equal(entries.findLast(e=>e.type==='message'&&e.message.role==='assistant').message.stopReason,'stop');assert.equal(entries.filter(e=>e.type==='custom_message'&&e.customType==='night.business-input').length,1)
 })
+test('Pi receives the actual transport error and chooses whether to make a new request',{timeout:20000},async t=>{
+ const urls=[],secret='fixture transport secret'
+ const f=await subagentFixture(t,(body,f)=>{
+  const result=JSON.stringify(body.messages.filter(message=>message.role==='tool'))
+  if(f.requests.length===1)return {tools:[{id:'try-https',name:'web_fetch',args:{url:'https://fixture.example/health'}}]}
+  if(f.requests.length===2){
+   assert.deepEqual(urls,['https://fixture.example/health'])
+   assert.match(result,/web fetch failed during request: ERR_SSL_WRONG_VERSION_NUMBER/)
+   assert.ok(!result.includes(secret))
+   return {tools:[{id:'try-public-http',name:'web_fetch',args:{url:'http://fixture.example/health'}}]}
+  }
+  assert.match(result,/PUBLIC_HEALTH_VERIFIED/)
+  return {text:'Public health endpoint returned a result.'}
+ },{web:{fetchProvider:'http'}})
+ const handle=await owner(f,'web-transport-cause'),provider=f.host.ctx.get('nativeHttpFetch').provider
+ provider.resolveAddresses=(host,signal)=>httpPolicy.resolvePublicAddresses(host,signal,async()=>[{address:'93.184.216.34',family:4}])
+ provider.route=()=>({proxied:false})
+ provider.network={async request(url,_addresses,headers){
+  urls.push(url.href)
+  assert.equal(headers.authorization,undefined)
+  assert.equal(headers.cookie,undefined)
+  if(url.protocol==='https:')throw new TypeError('fetch failed',{cause:Object.assign(new Error(secret),{code:'ERR_SSL_WRONG_VERSION_NUMBER'})})
+  return {response:new Response('PUBLIC_HEALTH_VERIFIED'),close:async()=>{}}
+ }}
+ await handle.enqueue({id:'web-input',source:{kind:'fixture-user'},content:'Check the public health endpoint; both documented schemes may be used without authentication.'})
+ await handle.deliver('web-input');await handle.whenIdle()
+ assert.deepEqual(urls,['https://fixture.example/health','http://fixture.example/health'])
+ assert.equal(f.requests.length,3)
+})
+
 test('default HTTP capability remains one Host provider across retained night-bot preset generations',{timeout:20000},async t=>{
  const f=await subagentFixture(t),registry=f.host.ctx.agentPresets,raw=registry[symbols.original]??registry,parent=await f.parent('web-old-generation'),record=raw.definitions.get('night-bot'),definition=structuredClone(record.config),provider=f.host.ctx.get('nativeHttpFetch').provider;await record.context.fiber.dispose();assert.equal(registry.composedPreset(parent.ctx),'night-bot');const remove=await registry.register(definition);t.after(()=>remove());const newer=await f.parent('web-new-generation'),web=f.host.ctx.web[symbols.original]??f.host.ctx.web;assert.equal(web.fetchProviders.size,1);assert.equal(f.host.ctx.get('nativeHttpFetch').provider,provider);assert.notEqual(raw.generationFor(parent.ctx).key,raw.generationFor(newer.ctx).key);assert.equal((await registry.resolve('night-bot')).broken,undefined);assert.ok(registry.serviceFor(parent,'nativeAgentInstructions'));assert.ok(registry.serviceFor(newer,'nativeAgentInstructions'))
 })
