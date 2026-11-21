@@ -573,18 +573,29 @@ test('Router recovery retry budgets and exponential backoff persist across resta
   assert.equal((await f.query('router.get',{conversationId:f.conversationId})).recoveryRetry.attempts,1)
 })
 
-test('new authenticated task revisions invalidate an older inspection execution fence',async t=>{
+test('new authenticated task revisions invalidate an older inspection execution and reply binding',async t=>{
   const {inspectionVersion}=await import('../src/tasks/inspection.js')
+  const {blockedReplyId,currentOutcomeBinding}=await import('../src/channels/router-task-context.js')
   const f=await fixture(t);await f.plan()
   const claim=(await f.command('task.claim',{taskId:'a'})).result
   await f.command('task.wait',{binding:claim.binding,action:'wait',summary:'Provider failed',technicalFailure:{code:'TASK_PI_PROVIDER_ERROR',phase:'decision'}})
   await f.command('wake.ack',{binding:claim.binding,wakeIds:claim.wakeIds});await f.command('task.drained',{binding:claim.binding})
   let task=await f.query('task.get',{taskId:'a'})
   await f.command('task.inspect',{taskId:'a',expected:inspectionVersion(task)})
+  const event=(await f.query('router.inbox',{conversationId:f.conversationId})).find(row=>row.kind==='task.inspection')
+  task=await f.query('task.get',{taskId:'a'})
+  const blockedBinding=currentOutcomeBinding(task,event.taskEvent,f.conversationId)
+  assert.ok(blockedBinding);assert.equal(event.trackOutcome,true)
   await assert.rejects(f.command('task.claim',{taskId:'a'}),/TASK_INSPECTION_ROUTER_REQUIRED/)
   await f.command('task.revise',{taskId:'a',request:'Actual new instructions with retained original receipts',expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision})
   task=await f.query('task.get',{taskId:'a'})
   assert.equal(task.inspection.pending,false);assert.equal(task.inspection.resolution,'state-changed')
+  const original=await f.query('source.get',{sourceId:f.sourceId})
+  await assert.rejects(f.command('notification.prepare',{notificationId:blockedReplyId(f.conversationId,event.taskEventId),kind:'router-reply',requirementRevision:blockedBinding.requirementRevision,routerGeneration:f.generation,
+    payload:{conversationId:f.conversationId,sourceId:original.sourceId,sourceVersion:original.version,sourceRef:{messageId:original.messageId,messageVersion:original.version,actorId:original.actorId},text:'The old turn stopped.',blockedBinding}}),/ROUTER_TASK_OUTCOME_REPLY_STALE/)
+  await f.command('router.settle',{conversationId:f.conversationId,generation:f.generation,operationId:'settle-stale-inspection',eventIds:[event.id]})
+  const [settled]=await f.query('router.batch-events',{conversationId:f.conversationId,eventIds:[event.id]})
+  assert.equal(settled.outcomeDisposition.kind,'superseded')
   assert.ok((await f.command('task.claim',{taskId:'a'})).result.binding.leaseEpoch>claim.binding.leaseEpoch)
 })
 

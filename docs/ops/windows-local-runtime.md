@@ -137,7 +137,7 @@ Invoke-RestMethod http://127.0.0.1:19198/state/recovery-issues
 Invoke-RestMethod 'http://127.0.0.1:19198/state/supervisor/alerts?limit=10&type=task'
 ```
 
-完整分类和分页合同见 [HTTP 路由](../HTTP-ROUTES.md#健康与任务待处理)。任务技术等待应回查当前任务决策里的 `technicalFailure`：超时与输入超限不是供应方策略拒绝，正常返回但没提交 `task_result` 也不是供应方错误。诊断记录不会自动重试；明确拒绝须按供应方支持的方式处理，不要改路重送被拒请求。
+完整分类和分页合同见 [HTTP 路由](../HTTP-ROUTES.md#健康与任务待处理)。任务技术等待应回查当前任务决策里的 `technicalFailure`：超时与输入超限不是供应方策略拒绝，正常返回但没提交 `task_result` 也不是供应方错误。诊断记录不会自动重试；明确拒绝须按供应方支持的方式处理，不要改路重送被拒请求。核对是否通知了原发起人时，区分巡检已结清、回复已冻结和原通知已有送达回执；旧巡检不会自动补发。
 
 标准入口的 `transport` 为 `channels`。当前兼容 `/health` 的 `inboundConfigured` 只识别旧 `dws` 模式，`outboundAuthorized` 只反映是否注册了 transport，不能据此判断插件监听状态或 `dingtalk_writes_authorized`。`status:ok` 也不证明 DWS 已登录、指定群已订阅或消息已送达。
 
