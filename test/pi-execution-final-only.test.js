@@ -39,7 +39,7 @@ for(const action of ['complete','blocked','wait','runtime-failure','policy-refus
    }else assert.equal(outcome.taskEvent.result.summary,summary)
    const prompt=body.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
    assert.match(prompt,/默认只讲重点/u)
-   if(technical||action==='blocked')assert.match(prompt,/已核实的结果、本轮还没做完的事，以及继续所需的最小证据或条件/u)
+   if(technical||action==='blocked')assert.match(prompt,/只在有助于判断或推进时补充未完成项或下一步/u)
    if(action==='blocked'){
     assert.match(prompt,/沿原会话推进；没有新依据不重复唤醒/u)
     assert.match(prompt,/尚未核实的后续条件不写成已确认的卡点/u)

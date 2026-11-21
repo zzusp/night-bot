@@ -120,6 +120,7 @@ test('Router sends directly while rejecting a draft containing credentials',{tim
   assert.match(prompt,/沟通规范索引/);assert.match(prompt,/NIGHT_NATURAL_CHANNEL_REPLY/);assert.doesNotMatch(prompt,/NIGHT_TASK_PUBLIC_COMMUNICATION/);
   assert.match(prompt,/默认 ELI5：先说对方关心的结果或下一步，只补影响判断的事实/u)
   assert.match(prompt,/默认只讲重点，不列排查过程和内部状态；用户要求细节再展开/u)
+  assert.match(prompt,/同一限制只说一次，省略无关的未做事项和例行范围声明/u)
   if(step===0){initial=body;step++;return {tool:'communication_guidance_read',args:{}}}
   assertSharedCommunicationGuidance(initial,body)
   assert.match(JSON.stringify(body.messages.filter(row=>row.role==='tool')),/本次事件根因分开/);
