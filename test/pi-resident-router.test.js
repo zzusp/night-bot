@@ -111,15 +111,17 @@ test('historical conversation task questions reach the original requester and re
 })
 
 test('Router sends directly while rejecting a draft containing credentials',{timeout:nativeTestTimeout(30000)},async t=>{
- const assertReleaseReplyRule=prompt=>assert.match(prompt,/默认 ELI5：先说对方关心的结果或下一步，只补影响判断的事实/u);
- let initial;let step=0;const answer='确认有一条空值误拦路径，但还不能证明是这次失败的根因。', draft='api_key: synthetic-fixture-only';
+ let initial;let step=0;const answer='代码里有一处会把缺少值的保存请求拦下来。这次是不是被它拦了，还要看当时的请求和日志。', draft='api_key: synthetic-fixture-only';
  const h=await residentRouterHost(t,body=>{
   const tools=requestTools(body),input=requestEnvelope(body,'Router 请求：');
   assert.ok(!tools.includes('channel_triage_submit'));
   if(!tools.includes('resident_router_reply'))return {text:'Settled'};
   const prompt=body.messages.filter(row=>row.role==='system').map(row=>row.content).join('\n');
   assert.match(prompt,/沟通规范索引/);assert.match(prompt,/NIGHT_NATURAL_CHANNEL_REPLY/);assert.doesNotMatch(prompt,/NIGHT_TASK_PUBLIC_COMMUNICATION/);
-  assertReleaseReplyRule(prompt);
+  assert.match(prompt,/默认 ELI5：先说对方关心的结果或下一步，只补影响判断的事实/u)
+  assert.match(prompt,/站在读者角度自查/u)
+  assert.match(prompt,/哪句话删掉也不影响判断或行动/u)
+  assert.match(body.tools.find(tool=>tool.function.name==='resident_router_reply').function.parameters.properties.text.description,/按共享 ELI5 规则自查/u)
   if(step===0){initial=body;step++;return {tool:'communication_guidance_read',args:{}}}
   assertSharedCommunicationGuidance(initial,body)
   assert.match(JSON.stringify(body.messages.filter(row=>row.role==='tool')),/本次事件根因分开/);
