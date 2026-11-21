@@ -179,7 +179,7 @@ Router 按当前用户目标和完成条件安排工作，仅执行目标所必�
 
 两角色附当前/直接引用来源及直接相关任务的回复索引：通知 ID、来源版本、用途、冻结正文预览与读取时的实际状态。`prepared` 仅冻结，`unknown` 需读回原通知，只有 `delivered` 已确认送达；不能因为旧 packet 中还是 prepared 而重复承接，也不能因避免重复而省略真正的进度答复。索引不输出发送许可、恢复 token 或底层回执凭据。引用当前版本仍需核对 source-current 的状态，旧引文不成为新授权。
 
-Router 另附现有任务表/归档表的只读轻量索引：本会话非终态任务及本批直接关联的终态任务，默认 10 项、最多 100 项；返回版本、状态、依赖就绪、待答问题数、asOf 和分页信息，不内联完整简报与完成证据。使用 `resident_task_query(detail=index,offset,limit)` 翻页；`detail=full,taskId` 保持原完整要求/证据/依赖查询。
+Router 另附现有任务表/归档表的只读轻量索引：本会话非终态任务及本批直接关联的终态任务，默认 10 项、最多 100 项；返回版本、状态、依赖就绪、待答问题数、asOf 和分页信息，不内联完整简报与完成证据。使用 `resident_task_query(detail=index,offset,limit)` 翻页。索引为空仍可能有已完成任务；可回查原始交办，`resident_source_get` 返回同会话、当前来源版本的关联 `taskIds`，再按 `detail=full,taskId` 查看完整要求、结果、证据和依赖。过期、撤回或不可用来源不提供任务绑定。
 
 `resident_task_query(detail=progress,taskId,cursor,limit)` 读取同会话原任务的严格已提交 Pi journal，核对 task identity audit 和当前需求/控制/租约边界，通过 Pi 官方 projection 返回最近活动（默认 10 条，最多 100 条，文本预览 1200 字符，明确截断）。模型陈述与记录的工具结果分别标记，不把意图当证据；读取期间版本变化拒绝返回旧结果。无持久记录或没有当前执行边界返回明确 unavailable；严格 journal 错误保持失败，不宽松解析物理尾部。查询不唤醒、重开或恢复任务。
 

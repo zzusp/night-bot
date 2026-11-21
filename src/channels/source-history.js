@@ -47,14 +47,19 @@ export async function recentSourceBackground(query,conversationId,messages){
   return {...result,sources:result.sources.filter(source=>!current.has(source.messageId)).map(source=>({...source,text:source.text.slice(0,600),truncated:source.truncated||source.text.length>600,quote:source.quote?{...source.quote,text:source.quote.text?.slice(0,200)}:undefined}))}
 }
 
-export function queryCurrentSource(db,{conversationId,sourceId}){
+export function queryCurrentSource(db,{conversationId,sourceId,includeTaskIds=false}){
   const row=db.prepare("SELECT body FROM dynamic_sources WHERE id=? AND json_extract(body,'$.groupId')=?").get(sourceId,conversationId)
   if(!row)return {status:'unavailable'}
   const source=JSON.parse(row.body)
   const latest=JSON.parse(db.prepare("SELECT body FROM dynamic_sources WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId')=? ORDER BY json_extract(body,'$.version') DESC LIMIT 1").get(conversationId,source.messageId).body)
   if([source,latest].some(row=>row.authorizationRevoked||row.triageHold||row.archiveRestoreHold||row.channel==='internal'))return {status:'unavailable'}
   if(source.version!==latest.version)return {sourceId:source.sourceId,messageVersion:source.version,status:'superseded',latestSourceId:latest.sourceId,latestMessageVersion:latest.version}
-  return conversationSource(withCurrentQuote(db,source))
+  const value=conversationSource(withCurrentQuote(db,source))
+  if(!includeTaskIds||source.retracted)return value
+  const taskIds=db.prepare(`SELECT DISTINCT json_extract(body,'$.taskId') AS taskId
+    FROM dynamic_source_links WHERE json_extract(body,'$.conversationId')=?
+      AND json_extract(body,'$.sourceId')=? AND json_extract(body,'$.messageVersion')=? ORDER BY taskId`).all(conversationId,sourceId,source.version)
+  return {...value,taskIds:taskIds.map(row=>row.taskId)}
 }
 
 // An embedded quote is evidence of what was quoted, not current message authority.
