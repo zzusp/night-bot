@@ -3,12 +3,13 @@ import assert from 'node:assert/strict'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestText} from './fixtures/resident-router-host.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 
-for(const action of ['complete','blocked','wait','runtime-failure','silent'])test('execution final-only Router delivery: '+action,{timeout:nativeTestTimeout(30000)},async t=>{
+for(const action of ['complete','blocked','wait','runtime-failure','policy-refusal','silent'])test('execution final-only Router delivery: '+action,{timeout:nativeTestTimeout(30000)},async t=>{
  let h,planned=false,replied=false,source,executions=0
- const terminal=new Set(),inspections=new Set(),reports=action==='complete'||action==='blocked',hasOutcome=reports||action==='silent'
+ const technical=action==='runtime-failure'||action==='policy-refusal',privateError='400 litellm.ContentPolicyViolationError: fixture-private-provider-detail'
+ const terminal=new Set(),inspections=new Set(),reports=action==='complete'||action==='blocked'||technical,hasOutcome=reports||action==='silent'
  const summary=action==='blocked'?'Stopped: no trusted target was supplied':'Verified synthetic outcome'
  const evidence=['Synthetic material checked'],limitations=action==='blocked'?['Target unavailable; no side effects performed','TASK_EFFECT_UNCERTAIN_NO_REPLAY']:[]
- const replyText=action==='blocked'?'材料已核对，但还没在测试环境验证：目前没有已获准的测试入口。没有改动外部系统。':'这份测试材料已核对，没有改动外部系统。'
+ const replyText=action==='policy-refusal'?'模型服务拒绝了这轮请求，核验尚未完成。':action==='runtime-failure'?'这轮没有拿到核验结果，任务还未完成。':action==='blocked'?'材料已核对，但还没在测试环境验证：目前没有已获准的测试入口。没有改动外部系统。':'这份测试材料已核对，没有改动外部系统。'
  h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
   if(requestText(body).some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION')))return {text:'{"lessons":[]}'}
@@ -17,6 +18,7 @@ for(const action of ['complete','blocked','wait','runtime-failure','silent'])tes
    const schema=body.tools.find(tool=>tool.function.name==='task_result').function.parameters.properties.decision.properties
    assert.equal(schema.question,undefined);assert.equal(schema.audience,undefined)
    if(action==='runtime-failure')return {text:'No decision submitted'}
+   if(action==='policy-refusal')return {error:privateError}
    return {tool:'task_result',args:{decision:{action:action==='silent'?'blocked':action,summary,evidence,limitations}}}
   }
   if(!tools.includes('resident_router_settle'))return {text:'No work'}
@@ -26,12 +28,18 @@ for(const action of ['complete','blocked','wait','runtime-failure','silent'])tes
   if(!planned){planned=true;return {tool:'resident_task_plan',args:{operationId:'final-only-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'final-only-task',title:'Synthetic bounded check',objective:'Check provided synthetic material',requirements:['No external changes'],handoff:'Read the test material without making external changes. Do not send an attachment.'}],dependencies:[]}}}
   for(const event of input.events)if(['task.completed','task.blocked','task.waiting'].includes(event.kind))terminal.add(event.id)
   for(const event of input.events)if(event.kind==='task.inspection')inspections.add(event.id)
-  const outcome=input.events.find(event=>event.kind==='task.completed'||event.kind==='task.blocked')
+  const outcome=input.events.find(event=>['task.completed','task.blocked'].includes(event.kind)||technical&&event.kind==='task.inspection')
   if(outcome&&reports&&!replied){
    replied=true
-   assert.equal(outcome.taskEvent.result.summary,summary)
+   if(technical){
+    assert.equal(outcome.taskEvent.reason,'execution-failed')
+    assert.equal(outcome.taskEvent.brief.technicalFailure.code,action==='policy-refusal'?'TASK_PI_PROVIDER_ERROR':'TASK_SESSION_NO_SUBMISSION')
+    assert.equal(outcome.taskEvent.brief.technicalFailure.providerReason,action==='policy-refusal'?'POLICY_REFUSAL':undefined)
+    assert.ok(!JSON.stringify(body).includes(privateError))
+   }else assert.equal(outcome.taskEvent.result.summary,summary)
    const prompt=body.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
    assert.match(prompt,/默认只讲重点/u)
+   if(technical||action==='blocked')assert.match(prompt,/已核实的结果、本轮还没做完的事，以及继续所需的最小证据或条件/u)
    if(action==='blocked'){
     assert.match(prompt,/沿原会话推进；没有新依据不重复唤醒/u)
     assert.match(prompt,/尚未核实的后续条件不写成已确认的卡点/u)
@@ -40,26 +48,35 @@ for(const action of ['complete','blocked','wait','runtime-failure','silent'])tes
     assert.deepEqual(outcome.taskEvent.result.limitations,limitations)
    }
    const context=requestText(body).flatMap(text=>text.split('\n')).find(line=>line.startsWith('{"asOf":')&&line.includes('"sourceTaskLinks"'))
-   const [reply]=JSON.parse(context).taskOutcomeReplies
-   assert.deepEqual(reply,{operationId:outcome.taskEventId,sourceId:source.sourceId,messageVersion:source.version,outcomeEventId:outcome.taskEventId})
-   return {tool:'resident_router_reply',args:{...reply,text:replyText}}
+   const reply=JSON.parse(context).taskOutcomeReplies?.[0]
+   if(reply){
+    assert.deepEqual(reply,{operationId:outcome.taskEventId,sourceId:source.sourceId,messageVersion:source.version,outcomeEventId:outcome.taskEventId})
+    return {tool:'resident_router_reply',args:{...reply,text:replyText}}
+   }
   }
   return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
  })
  await h.receive(channelMessage('final-only',{text:'Assistant, check this synthetic material. Do not modify external systems or send an attachment.'}));await h.service.whenIdle()
- assert.equal(executions,1);assert.equal(terminal.size,hasOutcome?1:0);assert.equal(h.sent.length,reports?1:0)
+ assert.equal(executions,1);assert.equal(terminal.size,hasOutcome&&!technical?1:0);assert.equal(h.sent.length,reports?1:0)
  if(reports)assert.equal(h.sent[0].text,replyText)
  const task=await h.query('task.get',{taskId:'final-only-task'})
  if(hasOutcome){
-  const [event]=await h.query('router.batch-events',{conversationId:task.groupId,eventIds:[...terminal]})
+  const [event]=await h.query('router.batch-events',{conversationId:task.groupId,eventIds:[...technical?inspections:terminal]})
   assert.equal(event.state,'consumed')
   assert.equal(event.outcomeDisposition.kind,reports?'notification-frozen':'not-reported')
+  if(technical){
+   const notice=await h.query('notification.get',{notificationId:event.outcomeDisposition.notificationId})
+   assert.equal(notice.state,'delivered');assert.ok(notice.receipt)
+   assert.equal(notice.payload.sourceId,source.sourceId);assert.equal(notice.payload.sourceVersion,source.version)
+   assert.deepEqual(notice.payload.recipientActorIds,[source.actorId])
+  }
  }
  assert.equal(task.drained,true);assert.equal(task.status,action==='complete'?'completed':'active');assert.equal(task.humanRequests?.length??0,0)
- if(action==='runtime-failure'){
+ if(technical){
   assert.equal(inspections.size,1)
-  assert.equal(task.lastDecision.resultSource,undefined)
-  assert.equal(task.technicalFailure.code,'TASK_SESSION_NO_SUBMISSION')
+  assert.equal(task.lastDecision.action,'wait');assert.equal(task.lastDecision.resultSource,undefined)
+  assert.equal(task.completion??null,null);assert.equal(task.inspection.pending,true)
+  assert.equal(task.technicalFailure.code,action==='policy-refusal'?'TASK_PI_PROVIDER_ERROR':'TASK_SESSION_NO_SUBMISSION')
  }else if(action!=='complete')assert.equal(task.lastDecision.resultSource,'pi-task-result')
  assert.equal((await h.query('notification.list')).filter(item=>item.kind==='question').length,0)
  const count=h.requests.length,sent=h.sent.length

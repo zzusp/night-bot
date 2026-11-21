@@ -130,7 +130,7 @@ test('real Host cold drains and resumes the same task/session on operator input 
   if(!request.tools.some(tool=>tool.name==='task_result'))return topicTaskCalls(request)
   turns++;const input=latestInput(request);assert.equal(input.task.taskId,f.task.taskId)
   assert.equal(input.jobReconciliations.length,1);assert.equal(input.jobReconciliations[0].noReplay,true);assert.equal(input.jobReconciliations[0].exitStatus,'unknown')
-  return [{name:'task_result',args:{decision:{action:'wait',summary:'The original objective continued after readback; no old producer was replayed.',question:'Review the retained unknown original exit before continuing the bounded objective.',evidence:['original operator evidence'],limitations:['Old build exit remains unknown']}}}]
+  return [{name:'task_result',args:{decision:{action:'wait',summary:'The original objective continued after readback; no old producer was replayed.',evidence:['original operator evidence'],limitations:['Old build exit remains unknown']}}}]
  },{store,permissionMode:'full'})
  try{
   await resumeFromOperatorAfterColdDrain(h,f.task.taskId)
@@ -220,7 +220,7 @@ test('cold shell effect closes through real job CLI and Host readback, then a ne
  const h=await nativeRuntimeHost(f.root,async request=>{
   if(!request.tools.some(tool=>tool.name==='task_result'))return topicTaskCalls(request)
   if(phase==='continue'&&!shellIssued){shellIssued=true;return [{name:nativeShell,args:{description:'Run a new independent local shell after exact old-effect closure',command:'echo independent-shell-ok'}}]}
-  return [{name:'task_result',args:{decision:{action:'wait',summary:phase==='continue'?'Independent shell finished':'Original output retained; no old shell replay',question:'Review the original unknown outcome before continuing.',evidence:['retained operator readback'],limitations:['Original exit and effects remain unknown']}}}]
+  return [{name:'task_result',args:{decision:{action:'wait',summary:phase==='continue'?'Independent shell finished':'Original output retained; no old shell replay',evidence:['retained operator readback'],limitations:['Original exit and effects remain unknown']}}}]
  },{store,permissionMode:'full'})
  try{
   await resumeFromOperatorAfterColdDrain(h,f.task.taskId)

@@ -1757,7 +1757,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       }
       if(a.payload?.blockedBinding){
         const p=a.payload,b=record(p.blockedBinding),task=get('dynamic_tasks',b.taskId),event=get('dynamic_task_events',b.eventId)
-        if(a.routerGeneration===undefined||a.kind!=='router-reply'||p.completionBinding||p.taskDelivery||p.artifactFiles?.length||event.kind!=='task.blocked'||!task.sourceRefs?.includes(p.sourceId)
+        if(a.routerGeneration===undefined||a.kind!=='router-reply'||p.completionBinding||p.taskDelivery||p.artifactFiles?.length||event.kind==='task.completed'||!task.sourceRefs?.includes(p.sourceId)
           ||digest(b)!==digest(currentOutcomeBinding(task,event,p.conversationId)??null)||id!==blockedReplyId(p.conversationId,b.eventId))fail('ROUTER_TASK_OUTCOME_REPLY_STALE')
       }
       if (a.kind === 'topic-reply' && (!Array.isArray(a.payload?.fact?.topicRefs) || !a.payload.fact.topicRefs.length)) fail('DYNAMIC_ARGUMENT_INVALID', 'topicRefs')

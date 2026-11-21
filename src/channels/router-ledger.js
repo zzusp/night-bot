@@ -134,8 +134,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     const task = read('tasks',event.taskId,true)
     if (task?.conversationId) {
       if(!readEvent(event.id))db.prepare('INSERT INTO dynamic_task_events(id,body) VALUES (?,?)').run(event.id,JSON.stringify({...event,eventVersion:1,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,recordedAt:new Date().toISOString()}))
-      // Ordinary waits remain audit-only. Failed/unknown stopped runs use the
-      // existing inspection event, not a second final-result notification.
+      // 普通等待只保留审计；已排空的技术失败复用自己的巡检事件回报。
       const inspectionReport=event.kind==='task.blocked'&&event.resultSource!=='pi-task-result'&&(task.technicalFailure||task.sessionFailure
         ||task.lastDecision?.limitations?.some(code=>['TASK_SESSION_NO_SUBMISSION','TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(code)))
       if(event.kind==='task.waiting'||inspectionReport)return
@@ -146,8 +145,8 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     const task=read('tasks',row.taskId,true),binding=currentOutcomeBinding(task,event,row.conversationId)
     if(!binding)return {kind:'superseded'}
     const sources=(task.sourceRefs??[]).map(id=>read('sources',id,true)).filter(Boolean)
-    const ids=event.kind==='task.blocked'?[blockedReplyId(row.conversationId,event.id)]
-      :sources.map(source=>completionReplyId(row.conversationId,event.id,source.sourceId,source.version))
+    const ids=event.kind==='task.completed'?sources.map(source=>completionReplyId(row.conversationId,event.id,source.sourceId,source.version))
+      :[blockedReplyId(row.conversationId,event.id)]
     for(const id of ids){
       const notice=read('notifications',id,true),p=notice?.payload,b=p?.completionBinding??p?.blockedBinding
       if(b?.eventId===event.id&&b.taskId===task.taskId&&p.conversationId===row.conversationId&&(!p.taskDelivery||p.taskDelivery.taskId===task.taskId))return {kind:'notification-frozen',notificationId:id}
