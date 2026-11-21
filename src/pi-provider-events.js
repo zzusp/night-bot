@@ -11,12 +11,15 @@ export function capturePiReplay(message,model=message.model) {
   })}
 }
 export function classifyPiFailure(message,contextWindow) {
+  const {errorMessage}=message
+  if(message.stopReason==='error'&&/(?:^|[\s:])(?:litellm\.)?ContentPolicyViolationError(?=:|$)|"(?:code|type)"\s*:\s*"(?:ContentPolicyViolationError|content_policy_violation)"/i.test(errorMessage??''))return{code:'POLICY_REFUSAL',message:errorMessage}
   if(isContextOverflow(message,contextWindow)||message.stopReason==='error'&&/context[ _-](?:length|window)[ _-](?:exceed(?:ed|s)?|overflow(?:ed)?|limit[ _-]exceeded)|\b(?:max|maximum)(?: allowed| supported)? context (?:length|window)\b|\b(?:request|prompt|input|messages?) (?:is |are )?too (?:long|large) for (?:this |the )?(?:model(?:'s)? )?context|\b(?:input|prompt|request) (?:is )?too (?:long|large) for (?:this|the) model\b|\b(?:input|prompt|request|messages?)\b.{0,40}\b(?:exceeds?|exceeded|overflows?|is larger than)\b.{0,40}\b(?:the )?(?:model(?:'s)? )?context\b/i.test(message.errorMessage??''))return{code:'CONTEXT_WINDOW_EXCEEDED',message:message.errorMessage??'Model context window exceeded'}
   if(message.stopReason==='aborted')return{code:'ABORTED',message:message.errorMessage??'Request aborted'}
   if(message.stopReason==='stop'&&!message.content.length)return{code:'EMPTY_RESPONSE',message:'Model returned a completed response with no content'}
   if(['pending','deferred'].includes(message.stopReason))return{code:'PI_AI_ERROR',message:'Unsupported provider terminal state: '+message.stopReason}
   if(message.stopReason!=='error')return undefined
-  const text=message.errorMessage??'Pi provider error'
+  const text=errorMessage??'Pi provider error'
+  if(/^(?:(?:HTTP )?(?:408|504)\b|[\w -]+ API error \((?:408|504)\):)/i.test(text))return{code:'TIMEOUT',message:text}
   const patterns=[['AUTH',/\b(?:401|403)\b/],['QUOTA',/\binsufficient[ _-]+(?:quota|balance|credits?)\b|\b(?:quota|usage[ _-]+limit)[ _-]+(?:exceeded|exhausted|reached)\b|\bexceed(?:ed|s)?[ _-]+(?:(?:your|the)[ _-]+)?(?:current[ _-]+)?quota\b|\b(?:balance|credits?)[ _-]+(?:exhausted|depleted)\b|\bout[ _-]+of[ _-]+(?:credits?|budget)\b/i],['RATE_LIMIT',/\b429\b|rate.?limit/i],['INVALID_REQUEST',/\b(?:400|413)\b|invalid.?request|payload too large|request body too large|failed to buffer the request body/i],['SERVER',/\b5\d\d\b/],['TIMEOUT',/time(?:d)?\s*out|timeout/i],['TRANSPORT',/stream ended (?:before|without)|network|connection|socket|fetch|ECONN[A-Z]+|other side closed|HTTP2 request did not get a response|WebSocket closed unexpectedly|terminated|premature close/i]]
   return{code:patterns.find(([,pattern])=>pattern.test(text))?.[0]??'PI_AI_ERROR',message:text}
 }

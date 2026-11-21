@@ -1,4 +1,9 @@
 // Only positive lifecycle evidence is actionable. Silence is never a timeout.
+export const taskProviderFailureLabels=Object.freeze({
+  TIMEOUT:'模型请求超时。',
+  CONTEXT_WINDOW_EXCEEDED:'本轮输入超过模型服务允许的大小。',
+  POLICY_REFUSAL:'模型服务因内容策略拒绝了本轮请求。',
+})
 export const WAIT_REVIEW_INTERVAL_MS=24*60*60*1000
 export const MIN_WAIT_RECHECK_MS=60*60*1000
 export const inspectionVersion=task=>Object.fromEntries(['requirementRevision','controlRevision','contextRevision','leaseEpoch','drained','recovering'].map(key=>[key,task[key]??(key==='contextRevision'?0:null)]))

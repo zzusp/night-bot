@@ -1,7 +1,7 @@
 import {createRouterReadonlyLookups} from '../../src/channels/router-readonly-lookup.js'
 import {interruptedTimingEvidence} from '../../src/tasks/observer-durations.js'
 import {mapIndependentReads} from '../../src/runtime/parallel-read.js'
-import {inspectionVersion,taskInspectionReason,inspectionHoldsExecution} from '../../src/tasks/inspection.js'
+import {inspectionVersion,taskInspectionReason,inspectionHoldsExecution,taskProviderFailureLabels} from '../../src/tasks/inspection.js'
 import {cancelNotificationBeforeSend} from './notification-delivery.js'
 import {bindTaskMaterialPaths,resolveTaskMaterialPaths} from '../../src/tasks/material-paths.js'
 import {SessionManager} from '@earendil-works/pi-coding-agent'
@@ -1198,11 +1198,13 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         }
         if(drained&&['TASK_PI_PROVIDER_ERROR','TASK_SESSION_NO_SUBMISSION','TASK_SESSION_PROVIDER_TRANSIENT','TASK_DIALOGUE_NO_REPLY'].includes(error.code)){
           if(!await currentTask(binding))return
-          const failure={code:error.code,...typeof error.phase==='string'?{phase:error.phase}:{},...typeof error.nativeAssistantStopReason==='string'?{stopReason:error.nativeAssistantStopReason}:{}}
+          const providerReason=error.code==='TASK_PI_PROVIDER_ERROR'&&Object.hasOwn(taskProviderFailureLabels,error.nativeProviderFailureCode)?error.nativeProviderFailureCode:undefined
+          const failure={code:error.code,...typeof error.phase==='string'?{phase:error.phase}:{},...typeof error.nativeAssistantStopReason==='string'?{stopReason:error.nativeAssistantStopReason}:{},...providerReason?{providerReason}:{}}
           failures.set(taskId,{id:taskId,code:error.code})
           if(dialogue)await command('task.dialogue.failed',{binding,messageId:dialogue.id,failure},`dialogue-failed:${taskId}:${dialogue.id}:${binding.leaseEpoch}`)
           else{
-            await command('task.wait',{binding,action:humanReview?'blocked':'wait',summary:'模型本轮未能提交有效决定；自动处理已停止，原任务和输入已保留，等待新的明确输入。',evidence:[],limitations:[error.code],technicalFailure:failure,...humanReview?{reviewFailureCode:error.code}:{}},`task-technical-failure:${taskId}:${binding.leaseEpoch}`)
+            const reason=providerReason?taskProviderFailureLabels[providerReason]:error.code==='TASK_SESSION_NO_SUBMISSION'&&failure.stopReason==='stop'?'模型已返回，但没有提交任务结果。':'模型本轮未能提交有效决定。'
+            await command('task.wait',{binding,action:humanReview?'blocked':'wait',summary:reason+'自动处理已停止，原任务和输入已保留，等待新的明确输入。',evidence:[],limitations:[error.code],technicalFailure:failure,...humanReview?{reviewFailureCode:error.code}:{}},`task-technical-failure:${taskId}:${binding.leaseEpoch}`)
             if(!humanReview)await command('wake.ack',{binding,wakeIds},`wake-ack:${taskId}:${binding.leaseEpoch}`)
           }
           return

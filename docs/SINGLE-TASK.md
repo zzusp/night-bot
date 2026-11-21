@@ -38,6 +38,8 @@ resumed by the ordinary conversation/reminder controller.
 
 任务只在 Pi 原有压缩时机使用任务摘要，保留当前目标、必需验收、已核实的决定、未决问题和原证据入口，方便同一会话从下一项待验证工作继续。摘要不替代原始历史、当前授权或效果回执，也不触发额外的审核或重试。
 
+任务技术停下时，记录本轮最后的模型结果：请求超时、输入超限、供应方明确拒绝和正常返回但没有提交结果应分开看，不用一次后来恢复的报错解释最后的停止。技术等待不是业务结论，不增加自动续办。详见[输入与重试](PI-TASK-INPUT-AND-RETRY.md#retry-behavior)。
+
 关联 conversation 的任务带问题等待后，常驻 Router 负责判断真实补充是否足以继续；`resident_task_action(kind: "resume")` 绑定原 `humanRequestId`、来源/任务版本和判断理由，Host 校验后原子保存补充及 answered 状态，再通过原 session 的普通执行输入接纳。普通 supplement 保留等待，不启动执行侧重复语义复核。任务原要求、权限模式、单调用批准、依赖与未知效果对账保持不变；未关联 Router 的既有人工答复路径不变。
 
 执行输入 `packet.task.dependencies` 仅包含当前任务的真实入边：依赖条件、匹配的当前前置完成记录、原完成事件引用与评估，以及授权来源的 `sourceId` / `messageVersion` / `actorId`。Host 在入模前核对要求、控制、安排及前置完成版本和事件一致性，拒绝旧评估或版本错配；首次执行与 Router、Web 两条实时补充路径复用同一构造器。该依赖字段不复制前置任务会话、完整来源正文或全依赖图；上下文说明不创造授权，调度、claim 与 CAS 仍由 Host 强制校验。

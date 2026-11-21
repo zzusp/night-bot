@@ -1,5 +1,5 @@
 import {blockedReplyId,completionReplyId,currentOutcomeBinding} from '../../src/channels/router-task-context.js'
-import {inspectionVersion,taskInspectionReason,taskWaitIdentity,inspectionIsCurrent,inspectionHoldsExecution} from '../../src/tasks/inspection.js'
+import {inspectionVersion,taskInspectionReason,taskWaitIdentity,inspectionIsCurrent,inspectionHoldsExecution,taskProviderFailureLabels} from '../../src/tasks/inspection.js'
 import {sourceHistorySchema} from '../../src/channels/source-history.js'
 import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
 import {missingInterruptedTimings,readTaskTimingRows} from '../../src/tasks/observer-durations.js'
@@ -81,8 +81,9 @@ const clone = value => JSON.parse(JSON.stringify(value))
 const changed = result => ({ result, dispatchEligible: false })
 function taskBusinessFailure(value){
   record(value)
-  if(Object.keys(value).some(key=>!['code','phase','stopReason'].includes(key))||!['TASK_PI_PROVIDER_ERROR','TASK_SESSION_NO_SUBMISSION','TASK_SESSION_PROVIDER_TRANSIENT','TASK_DIALOGUE_NO_REPLY','TASK_PI_HOST_RETRY_DISABLED'].includes(value.code)
-    ||value.phase!==undefined&&typeof value.phase!=='string'||value.stopReason!==undefined&&!['pending','stop','length','toolUse','error','aborted','deferred'].includes(value.stopReason))fail('DYNAMIC_ARGUMENT_INVALID')
+  if(Object.keys(value).some(key=>!['code','phase','stopReason','providerReason'].includes(key))||!['TASK_PI_PROVIDER_ERROR','TASK_SESSION_NO_SUBMISSION','TASK_SESSION_PROVIDER_TRANSIENT','TASK_DIALOGUE_NO_REPLY','TASK_PI_HOST_RETRY_DISABLED'].includes(value.code)
+    ||value.phase!==undefined&&typeof value.phase!=='string'||value.stopReason!==undefined&&!['pending','stop','length','toolUse','error','aborted','deferred'].includes(value.stopReason)
+    ||value.providerReason!==undefined&&(value.code!=='TASK_PI_PROVIDER_ERROR'||typeof value.providerReason!=='string'||!Object.hasOwn(taskProviderFailureLabels,value.providerReason)))fail('DYNAMIC_ARGUMENT_INVALID')
   return clone(value)
 }
 const hasUnknownTaskEffect=task=>task.lastDecision?.limitations?.some(code=>['TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(code))
