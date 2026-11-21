@@ -17,7 +17,7 @@ Pi 负责模型与工具迭代、会话历史和模型上下文。Night Bot 在�
 - **使用文件与工具**：提供文件读写、编辑、检索、Bash/PowerShell、后台作业、工作目录、待办及 HTTP 获取。Web 搜索和额外业务系统需单独配置，不随核心安装自动可用。
 - **选择渠道与模型**：Web 与钉钉均为可选渠道。可在同一 API 路由下管理多个模型，并分别为 Router 和任务执行选择模型（旧分诊配置仅保留历史）。见 [渠道](docs/CHANNELS.md)与[模型配置](docs/ops/shared-settings.md)。
 
-任务执行会话可加载实例私有的 `data/config/execution/AGENTS.md`，在 Web「设置 → 工作原则」编辑。见[工作原则配置](docs/ops/shared-settings.md#执行会话工作原则)。Pi 压缩长任务历史时保留验收要求、已核实进展和待查事项的引用，续办仍用原会话。
+任务执行会话默认采用[通用执行方法](docs/SINGLE-TASK.md#目标推进)：简单任务直接做，复杂任务在原会话规划结果、依赖和验法；遇阻按证据换策略，续办从未完成的环节继续。实例可通过 `data/config/execution/AGENTS.md` 补充私有工作原则，在 Web「设置 → 工作原则」编辑。见[工作原则配置](docs/ops/shared-settings.md#执行会话工作原则)。Pi 压缩长任务历史时保留验收要求、已核实进展和待查事项的引用。
 
 ## 快速开始
 
