@@ -111,7 +111,7 @@ test('historical conversation task questions reach the original requester and re
 })
 
 test('Router sends directly while rejecting a draft containing credentials',{timeout:nativeTestTimeout(30000)},async t=>{
- const assertReleaseReplyRule=prompt=>assert.match(prompt,/默认 ELI5 方式交流/u);
+ const assertReleaseReplyRule=prompt=>assert.match(prompt,/默认 ELI5：先说对方关心的结果或下一步，只补影响判断的事实/u);
  let initial;let step=0;const answer='确认有一条空值误拦路径，但还不能证明是这次失败的根因。', draft='api_key: synthetic-fixture-only';
  const h=await residentRouterHost(t,body=>{
   const tools=requestTools(body),input=requestEnvelope(body,'Router 请求：');
