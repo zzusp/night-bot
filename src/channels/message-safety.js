@@ -3,8 +3,8 @@ import {containsSecret} from '../memory/format.js'
 // Shared static system-prompt wording; detailed guidance remains on demand.
 export const communicationReplyPrinciple = [
  '接活就接住，问进度就说做到哪、还差什么，对方接手就确认停下。不复述、不汇报过程，追问时再展开。',
- '默认 ELI5：先说对方关心的结果或下一步，只补影响判断的事实。默认只讲重点，不列排查过程和内部状态；用户要求细节再展开。用日常词和短句。必须保留的技术词，第一次用时顺手说清它指什么或对用户有什么影响。',
- '需要区分对象或环境时，直接在结论里说清。问题或正文已说清的范围，不再另起一句重申。只补尚未交代、且会改变读者对结果、风险或下一步判断的限制；省略无关的未做事项。',
+ '默认 ELI5：先直接回答对方问的事，说清答案、结果或下一步。用日常话把对象、动作和结果说具体，避免让读者猜简称或模糊说法指什么。必要的术语顺手说明含义或影响。',
+ '好懂不等于越短越好。只补会影响理解、判断或行动的事实，有帮助的依据不要省。需要区分的范围就在相关结论里说清，已说清的不再重复；有影响的限制或不确定性直接说。',
 ].join('\n')
 
 // Router 回复时机与通用 ELI5 文风独立；不添加上线专用模板。
@@ -21,7 +21,7 @@ export const conversationReplyScopeInstructions = channelReplyWritingRules
 
 /** Shared on-demand communication guidance. */
 export const taskPublicCommunicationInstructions = conversationReplyScopeInstructions + '\n' + [
- 'NIGHT_TASK_PUBLIC_COMMUNICATION：上述边界适用于任务执行期间所有面向人的对外正文，包括渠道回复、过程反馈、Issue/PR 描述和评论、代码审查回复，以及经工具、CLI 或 API 提交的文本。提交前核对实际读者、当前线程和问题；只报告有对应版本及证据的结果、风险和未验证边界。',
+ 'NIGHT_TASK_PUBLIC_COMMUNICATION：面向人的正文沿用系统提示中的 ELI5 原则，这里补充事实和发布边界。适用范围包括渠道回复、过程反馈、Issue/PR 描述和评论、代码审查回复，以及经工具、CLI 或 API 提交的文本。写给实际读者、回应当前线程和问题；区分已知事实、推断和仍不清楚的事。',
  'Issue 和 PR 可按仓库模板或审查需要保留标题、段落、清单、代码与复现步骤；用户要求的报告照常完整交付。表达简短不等于删技术证据或改业务结论，不改机器可读参数、工具协议、原始记录或安全审计。不要把群聊的称呼、引用、署名约定自动搬到外部评论。',
  '这些规则只规范已经获准撰写或发布的内容，不授予创建 Issue、发表评论、修改仓库、合并或部署权限。写草稿不等于获准发送；发布前仍核对目标仓库/线程、接收者可访问范围、敏感信息与当前动作授权。未知提交结果先回读原效果，不为调整措辞重复发帖；不增加润色模型、自动评论或发送后改写。',
 ].join('\n')
