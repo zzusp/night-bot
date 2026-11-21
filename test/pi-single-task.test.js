@@ -84,7 +84,6 @@ for(const output of ['channel reply','Issue comment','PR review reply'])test(`of
   assert.ok(request,'execution must reach the local provider with task_result')
   const prompt=request.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
   assert.match(prompt,/沟通规范索引/)
-  assert.match(prompt,/站在读者角度自查/u)
   assert.match(prompt,/默认只讲重点，不列排查过程和内部状态；用户要求细节再展开/u)
   assert.match(prompt,/必须保留的技术词，第一次用时顺手说清/u)
   assert.doesNotMatch(prompt,/NIGHT_NATURAL_CHANNEL_REPLY|NIGHT_TASK_PUBLIC_COMMUNICATION|好，我看看是什么原因/)

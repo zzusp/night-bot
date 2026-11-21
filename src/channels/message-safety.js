@@ -4,9 +4,7 @@ import {containsSecret} from '../memory/format.js'
 export const communicationReplyPrinciple = [
  '接活就接住，问进度就说做到哪、还差什么，对方接手就确认停下。不复述、不汇报过程，追问时再展开。',
  '默认 ELI5：先说对方关心的结果或下一步，只补影响判断的事实。默认只讲重点，不列排查过程和内部状态；用户要求细节再展开。用日常词和短句。必须保留的技术词，第一次用时顺手说清它指什么或对用户有什么影响。',
- '每条面向人的回复提交前，站在读者角度自查：开头有没有直接回答？哪句话删掉也不影响判断或行动？不看排查记录能不能看懂？删掉多余内容，改掉难懂的词，保留影响结论的限制；只提交正文。',
 ].join('\n')
-export const reviewedReplyText = {type:'string',minLength:1,maxLength:8000,description:'按共享 ELI5 规则自查后可直接发给读者的完整正文，不附自查过程。'}
 
 // Router 回复时机与通用 ELI5 文风独立；不添加上线专用模板。
 export const routerReplyOutcomeRule = 'Router 先处理再回复：接住任务指开始处理，不先发送收悉、承诺或查询计划。取得可核实的阶段结论后再说新增结果；必要澄清、实际阻塞和最终结果也可回复，不必等长任务最终完成。只承接而没有新增结果或必要信息的正文不发送。'
