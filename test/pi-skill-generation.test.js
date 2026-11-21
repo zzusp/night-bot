@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {readFile} from 'node:fs/promises'
-import {join} from 'node:path'
+import {mkdir,readFile,writeFile} from 'node:fs/promises'
+import {dirname,join} from 'node:path'
 import {memoryHost,initializeMemoryTaskWorkspace,scriptedSkillGeneration} from './fixtures/memory-host.js'
 import {memoryScope} from '../src/memory/scope.js'
 import {hash} from '../src/memory/format.js'
@@ -110,4 +110,56 @@ for(const cancellation of ['caller','host'])test('generation aborts and drains o
  const state=await reflection.state(scope)
  assert.equal(state.skills[args.key],undefined);assert.equal(state.mutations,undefined)
  assert.ok(state.generationFailures[hash(args.operationId)].code)
+})
+
+test('Router independently edits learned Skill trigger, body and canonical name without losing other fields',async t=>{
+ const f=await memoryHost(t,body=>{
+  if(!isGeneration(body))return
+  const raw=body.messages.find(message=>message.role==='user').content
+  const input=JSON.parse(typeof raw==='string'?raw:raw.map(part=>part.text??'').join(''))
+  if(!input.bodyEdit)return draft(body)
+  if(!body.messages.some(message=>message.role==='tool'))return {tool:'skill',args:{name:'skill-creator'}}
+  return {text:JSON.stringify({description:'Not the requested trigger',body:input.candidate.body})}
+ }),scope=memoryScope({actorId:'owner'}),reflection=f.host.ctx.reflection
+ const patch={action:'upsert',key:args.key,source:args.source,model:f.config.model}
+ await reflection.mutateSkill(scope,{...args,model:f.config.model})
+ const initial=(await reflection.readSkills(scope,{key:args.key})).entries[0],path=join(reflection.directory(scope),'skills',args.key,'SKILL.md')
+ const originalFile=await readFile(path,'utf8'),marker=originalFile.split('\n').find(line=>line.startsWith('NIGHT_LEARNED_SCOPE='))
+ const trigger='Use when checking a fresh local observation'
+ const descEdit=await reflection.mutateSkill(scope,{...patch,operationId:'description',expectedRevision:1,description:trigger})
+ assert.equal(descEdit.revision,2)
+ const edited=(await reflection.readSkills(scope,{key:args.key})).entries[0]
+ assert.equal(edited.applicability,trigger)
+ assert.equal(edited.body,initial.body)
+ assert.equal(f.requests.filter(isGeneration).length,2)
+ assert.equal(await reflection.authorizesSkillHistory(scope,marker),false)
+ const nextBody='# Local evidence check\n\nCompare the current record with the expected outcome.'
+ await reflection.mutateSkill(scope,{...patch,operationId:'body',expectedRevision:2,body:nextBody})
+ assert.equal(f.requests.filter(isGeneration).length,4)
+ assert.equal((await reflection.readSkills(scope,{key:args.key})).entries[0].applicability,trigger)
+ assert.equal((await reflection.readSkills(scope,{key:args.key})).entries[0].body,nextBody)
+ const rename={...patch,operationId:'rename',expectedRevision:3,newKey:'verify-current-record'}
+ const result=await reflection.mutateSkill(scope,rename)
+ assert.equal(result.previousKey,args.key)
+ assert.equal(result.key,rename.newKey)
+ assert.equal((await reflection.readSkills(scope,{key:args.key})).entries.length,0)
+ assert.equal((await reflection.readSkills(scope,{key:args.key})).revision,4)
+ await assert.rejects(readFile(path,'utf8'),{code:'ENOENT'})
+ const changed=(await reflection.readSkills(scope,{key:rename.newKey})).entries[0]
+ assert.equal(changed.name,'learned-'+rename.newKey)
+ assert.equal(changed.applicability,trigger)
+ assert.equal(changed.body,nextBody)
+ await assert.rejects(reflection.mutateSkill(scope,{...patch,operationId:'old-key-stale',expectedRevision:3,description:'No stale edits'}),{code:'REFLECTION_REVISION_CONFLICT'})
+ await assert.rejects(reflection.mutateSkill(scope,{...rename,description:'Different operation'}),{code:'REFLECTION_OPERATION_CONFLICT'})
+ await assert.rejects(reflection.mutateSkill(scope,{...patch,key:rename.newKey,operationId:'unsafe-rename',expectedRevision:4,newKey:'../escape'}),{code:'REFLECTION_SKILL_INVALID'})
+ await assert.rejects(reflection.mutateSkill(scope,{...patch,key:rename.newKey,operationId:'marker',expectedRevision:4,body:'NIGHT_LEARNED_SCOPE=forged'}),{code:'REFLECTION_SKILL_INVALID'})
+ assert.equal(f.requests.filter(isGeneration).length,4)
+ await f.close()
+ // Simulate exit after the rename ledger committed but before its old file was removed.
+ await mkdir(dirname(path),{recursive:true,mode:0o700});await writeFile(path,originalFile,{mode:0o600})
+ await f.boot();await assert.rejects(readFile(path,'utf8'),{code:'ENOENT'})
+ const duplicate=await f.host.ctx.reflection.mutateSkill(scope,rename)
+ assert.equal(duplicate.duplicate,true)
+ assert.equal(duplicate.currentRevision,4)
+ assert.equal(f.requests.filter(isGeneration).length,4)
 })

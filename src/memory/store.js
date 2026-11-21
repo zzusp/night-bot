@@ -6,7 +6,7 @@ import {readdir,unlink,lstat} from 'node:fs/promises'
 import {randomUUID} from 'node:crypto'
 import {privateDirectory,atomicWrite,withLock,failure} from '../runtime/files.js'
 import {hash,label,checkedText,checkedTextWithLimit,encodeTopic,decodeTopic,checkedMemoryContext,memoryContextText,renderRouterMemory,renderMemoryContent} from './format.js'
-import {LAYOUT_VERSION,buildLayeredWrites,decodeRootIndex,decodeLegacyRootIndex,decodeCategoryIndex,renderIndex,decodeEntry,entrySourceReference,categoryPath,entryPath,sourcePath} from './layered-format.js'
+import {LAYOUT_VERSION,buildLayeredWrites,decodeRootIndex,decodeLegacyRootIndex,decodeCategoryIndex,renderIndex,decodeEntry,entrySourceReference,categoryPath,entryPath,sourcePath,entrySummary} from './layered-format.js'
 
 const withoutPrevious=({previous,...entry})=>entry
 const empty=()=>({version:1,revision:0,forgotten:[],seen:[]})
@@ -208,34 +208,57 @@ export class MarkdownMemoryStore {
     })
   }
   async reconciliationReceipt(scope,id){return this.locked(scope,async(_dir,meta)=>structuredClone(meta.reconciliations?.[id]))}
-  async remember(scope,{topic,key,text,source,originSource,provenance,context,content,instructionScope,expectedRevision,expiresAt,candidate=false,scopeRevision,validate,reconciliation}={}){
+  async remember(scope,{topic,key,title,indexSummary,text,source,originSource,provenance,context,content,instructionScope,expectedRevision,expiresAt,candidate=false,scopeRevision,validate,reconciliation}={}){
     if(!label(topic)||!label(key)||!source?.messageId||!source?.sessionId)throw failure('MEMORY_RECORD_INVALID')
+    const editingIndex=title!==undefined||indexSummary!==undefined
+    if(editingIndex){
+      if(scope.kind!=='bot'||candidate||topic===STANDING_TOPIC||!Number.isSafeInteger(expectedRevision)||expectedRevision<0)throw failure('MEMORY_INDEX_EDIT_INVALID')
+      const indexLine=(value,limit)=>{if(typeof value!=='string'||/[\r\n]/.test(value))throw failure('MEMORY_INDEX_EDIT_INVALID');return checkedTextWithLimit(value,limit)}
+      if(title!==undefined)title=indexLine(title,120)
+      if(indexSummary!==undefined)indexSummary=indexLine(indexSummary,240)
+    }
+    const preserveBody=text===undefined
+    if(preserveBody&&(!editingIndex||expectedRevision===0||context!==undefined||content!==undefined))throw failure('MEMORY_TEXT_INVALID')
     if(topic===STANDING_TOPIC){if(candidate||content||context)throw failure('MEMORY_INSTRUCTION_WRITE_FORBIDDEN');instructionScope=checkedInstructionScope(instructionScope)}else if(instructionScope!==undefined)throw failure('MEMORY_INSTRUCTION_SCOPE_INVALID')
     if(context!==undefined)context=checkedMemoryContext(context)
     const structured=context?.version===2||context?.version===3||content!==undefined
     if(content!==undefined&&text!==renderMemoryContent(content))throw failure('MEMORY_CONTEXT_CONTENT_CHANGED')
-    text=structured?checkedTextWithLimit(text,CONTENT_LIMIT):checkedText(text)
-    if(structured&&Buffer.byteLength(text)>CONTENT_LIMIT)throw failure('MEMORY_TEXT_INVALID')
-    if(context&&structured&&text!==renderRouterMemory(context))throw failure('MEMORY_CONTEXT_CONTENT_CHANGED')
+    if(!preserveBody){
+      text=structured?checkedTextWithLimit(text,CONTENT_LIMIT):checkedText(text)
+      if(structured&&Buffer.byteLength(text)>CONTENT_LIMIT)throw failure('MEMORY_TEXT_INVALID')
+      if(context&&structured&&text!==renderRouterMemory(context))throw failure('MEMORY_CONTEXT_CONTENT_CHANGED')
+    }
     checkedText(topic);checkedText(key)
     if(expiresAt!==undefined&&(!Number.isFinite(Date.parse(expiresAt))||Date.parse(expiresAt)<=this.now()||!/(Z|[+-]\d\d:\d\d)$/.test(expiresAt)))throw failure('MEMORY_EXPIRY_INVALID')
     return this.transaction(scope,async s=>{
       await validate?.()
       if(reconciliation&&s.meta.reconciliations?.[reconciliation.id]&&s.meta.reconciliations[reconciliation.id].inputHash!==reconciliation.inputHash)throw failure('MEMORY_RECONCILIATION_CONFLICT')
       if(scopeRevision!==undefined&&s.meta.revision!==scopeRevision)throw failure('MEMORY_SCOPE_CHANGED')
-      const seen=hash(source.sessionId+':'+source.messageId+':'+topic+':'+key+':'+candidate)
+      const seen=hash(source.sessionId+':'+source.messageId+':'+topic+':'+key+':'+candidate+(editingIndex?':index:'+expectedRevision:''))
       if(s.meta.seen.includes(seen))return {ok:true,duplicate:true,revision:s.meta.revision}
       const topicState=s.topics.get(topic)??{topic,entries:[]},entries=candidate?s.candidates:topicState.entries,prior=entries.find(e=>e.key===key&&(candidate?e.topic===topic:true))
       if(topic===STANDING_TOPIC&&(!Number.isSafeInteger(expectedRevision)||expectedRevision<0))throw failure('MEMORY_INSTRUCTION_REVISION_REQUIRED')
       if(topic===STANDING_TOPIC&&prior&&JSON.stringify(prior.instructionScope)!==JSON.stringify(instructionScope))throw failure('MEMORY_INSTRUCTION_SCOPE_FORBIDDEN')
       if(expectedRevision!==undefined&&(prior?.revision??0)!==expectedRevision)throw failure('MEMORY_REVISION_CONFLICT')
+      if(preserveBody&&(!prior||!active(prior,this.now())))throw failure('MEMORY_NOT_FOUND')
+      if(preserveBody){text=prior.text;context=prior.context}
       if(candidate&&(s.meta.forgotten.includes(hash(text))||topicState.entries.some(e=>e.key===key)))return {ok:false,code:'MEMORY_CANDIDATE_SUPPRESSED'}
-      const now=new Date(this.now()).toISOString(),entry={id:prior?.id??randomUUID(),key,...candidate?{topic}: {},text,...context?{context}:{},...instructionScope?{instructionScope}:{},revision:(prior?.revision??0)+1,scope:scope.kind,createdAt:prior?.createdAt??now,updatedAt:now,source:{sessionId:source.sessionId,messageId:source.messageId,observedAt:source.observedAt??now,...source.quoteSha256?{quoteSha256:source.quoteSha256}:{},actor:scope.actor},...(provenance?{provenance:structuredClone(provenance)}:{}),origins:[...new Map([...(prior?.origins??[]),...prior?.provenance?[prior.provenance]:[],...provenance?[provenance]:[]].map(value=>[JSON.stringify(value),value])).values()].slice(-32),...expiresAt?{expiresAt}:{}}
-      if(prior)entry.previous=contentSnapshot(prior.text,prior.revision,prior.updatedAt)
+      const expiry=expiresAt??(prior&&active(prior,this.now())?prior.expiresAt:undefined)
+      const now=new Date(this.now()).toISOString(),entry={id:prior?.id??randomUUID(),key,...candidate?{topic}: {},text,...context?{context}:{},...instructionScope?{instructionScope}:{},revision:(prior?.revision??0)+1,scope:scope.kind,createdAt:prior?.createdAt??now,updatedAt:now,source:{sessionId:source.sessionId,messageId:source.messageId,observedAt:source.observedAt??now,...source.quoteSha256?{quoteSha256:source.quoteSha256}:{},actor:scope.actor},...(provenance?{provenance:structuredClone(provenance)}:{}),origins:[...new Map([...(prior?.origins??[]),...prior?.provenance?[prior.provenance]:[],...provenance?[provenance]:[]].map(value=>[JSON.stringify(value),value])).values()].slice(-32),...expiry?{expiresAt:expiry}:{}}
+      if(prior)entry.previous=preserveBody?prior.previous:contentSnapshot(prior.text,prior.revision,prior.updatedAt)
+      originSource??=prior?.originSource??(editingIndex?prior?.source:undefined)
       if(originSource)entry.originSource={sessionId:originSource.sessionId,messageId:originSource.messageId,observedAt:originSource.observedAt,quoteSha256:originSource.quoteSha256,actor:originSource.actor}
       if(prior){entries.splice(entries.indexOf(prior),1);if(prior.text!==text)s.meta.forgotten.push(hash(prior.text))}
       entries.push(entry)
-      if(!candidate){s.topics.set(topic,topicState);s.candidates=s.candidates.filter(e=>!(e.key===key&&e.topic===topic));s.meta.forgotten=s.meta.forgotten.filter(h=>h!==hash(text))}
+      if(!candidate){
+        s.topics.set(topic,topicState);s.candidates=s.candidates.filter(e=>e.topic!==topic||e.key!==key);s.meta.forgotten=s.meta.forgotten.filter(h=>h!==hash(text))
+        if(s.indexEntries){
+          const path=entryPath(topic,key),row=prior&&s.indexEntries.find(r=>r.id===prior.id)
+          const customSummary=indexSummary!==undefined||row?.customSummary===true||!!(row&&row.summary!==entrySummary(prior))
+          const index={id:entry.id,path,title:title??row?.title??key,summary:indexSummary??(customSummary?row.summary:entrySummary(entry)),...customSummary?{customSummary:true}:{}}
+          s.indexEntries=s.indexEntries.filter(r=>r.id!==entry.id).concat(index)
+        }
+      }
       if(reconciliation){s.meta.reconciliations??={};s.meta.reconciliations[reconciliation.id]={inputHash:reconciliation.inputHash,revision:entry.revision};}
       s.meta.seen.push(seen);s.mark()
       return ()=>({ok:true,entry:withoutPrevious(entry),revision:s.meta.revision,candidate})

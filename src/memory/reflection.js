@@ -30,6 +30,8 @@ export default class Reflection extends Service {
   async [Service.init](){
     await this.host.memory.bindingReady
     const scope=memoryScope({actorId:'host'}),state=await this.state(scope),entries=await this.supportEntries(scope,state),revision=(await this.host.memory.store.index(scope)).revision
+    const renamed=new Set(Object.values(state.mutations??{}).filter(row=>validKey(row.key)&&validKey(row.newKey)&&row.newKey!==row.key&&!state.skills[row.key]).map(row=>row.key))
+    if(renamed.size){const skills=join(this.directory(scope),'skills');await privateDirectory(skills);for(const key of renamed)await rm(join(skills,key),{recursive:true,force:true})}
     for(const [key,value]of Object.entries(state.skills))if(value.active&&validKey(key)&&learnedSkillSupported(value,entries))await atomicWrite(join(this.directory(scope),'skills',key,'SKILL.md'),this.renderSkill(scope,key,value,revision))
   }
   attachStore(store,{ownerActorId,model,credentials,onReview,responsibilityFor}={}){
@@ -234,10 +236,19 @@ export default class Reflection extends Service {
   }
   async mutateSkill(scope,args){
     const {action,key,source,operationId}=args
-    if(!['upsert','delete'].includes(action)||!validKey(key)||typeof operationId!=='string'||!operationId.trim())throw failure('REFLECTION_SKILL_INVALID')
-    const content=action==='upsert'?{steps:Array.isArray(args.steps)&&args.steps.length?args.steps.map(checkedText):null,reason:checkedText(args.reason),applicability:checkedText(args.applicability)}:null
-    if(action==='upsert'&&!content.steps)throw failure('REFLECTION_SKILL_INVALID')
-    const operation=hash(operationId),inputHash=hash(JSON.stringify({action,key,content,expectedRevision:args.expectedRevision,source:{sessionId:source.sessionId,messageId:source.messageId,actor:source.actor,quoteSha256:source.quoteSha256}})),directory=this.directory(scope)
+    const {newKey,description,body}=args,patch=[newKey,description,body].some(field=>field!==undefined),targetKey=newKey??key
+    if(!['upsert','delete'].includes(action)||!validKey(key)||typeof operationId!=='string'||!operationId.trim()||!validKey(targetKey)||newKey===null)throw failure('REFLECTION_SKILL_INVALID')
+    if(patch&&(action!=='upsert'||!Number.isInteger(args.expectedRevision)||[args.steps,args.reason,args.applicability].some(field=>field!==undefined)))throw failure('REFLECTION_SKILL_INVALID')
+    const edit=patch?{...targetKey!==key?{newKey:targetKey}:{},...description===undefined?{}:{description:checkedText(description)},...body===undefined?{}:{body:checkedTextWithLimit(body,24000)}}:null
+    if(edit&&(!Object.keys(edit).length||edit.body&&(/^---(?:\r?\n|$)/.test(edit.body)||/NIGHT_LEARNED_SCOPE=/.test(edit.body))))throw failure('REFLECTION_SKILL_INVALID')
+    const content=action==='upsert'&&!patch?{steps:Array.isArray(args.steps)&&args.steps.length?args.steps.map(checkedText):null,reason:checkedText(args.reason),applicability:checkedText(args.applicability)}:null
+    if(action==='upsert'&&!patch&&!content.steps)throw failure('REFLECTION_SKILL_INVALID')
+    const revisionAt=(state,name)=>state.skills[name]?.revision??state.skillRevisions?.[name]??0
+    const checkEdit=state=>{
+      if(!state.skills[key])throw failure('REFLECTION_SKILL_NOT_FOUND')
+      if(targetKey!==key&&state.skills[targetKey])throw failure('REFLECTION_SKILL_TARGET_EXISTS')
+    }
+    const operation=hash(operationId),inputHash=hash(JSON.stringify({action,key,content,...edit?{edit}:{},expectedRevision:args.expectedRevision,source:{sessionId:source.sessionId,messageId:source.messageId,actor:source.actor,quoteSha256:source.quoteSha256}})),directory=this.directory(scope)
     return withLock(join(directory,'mutation-locks',operation),async()=>{
       const before=await withLock(join(directory,'.lock'),async()=>{
         await args.validate?.()
@@ -245,11 +256,12 @@ export default class Reflection extends Service {
         const known=receipt??state.generationFailures?.[operation]
         if(known&&known.inputHash!==inputHash)throw failure('REFLECTION_OPERATION_CONFLICT')
         if(!receipt&&args.expectedRevision!==undefined&&revision!==args.expectedRevision)throw failure('REFLECTION_REVISION_CONFLICT')
-        return {receipt,prior,revision,forgetGeneration:state.forgetGeneration??0}
+        if(patch&&!receipt)checkEdit(state)
+        return {receipt,prior,revision,targetRevision:revisionAt(state,targetKey),forgetGeneration:state.forgetGeneration??0}
       })
       let generated
-      if(action==='upsert'&&!before.receipt){
-        try{generated=await this.generateSkill({key,candidate:content,source,previous:before.prior?{body:before.prior.body,steps:before.prior.steps,applicability:before.prior.applicability,revision:before.revision}:null},{model:args.model,signal:args.signal??this.abort?.signal})}
+      if(action==='upsert'&&!before.receipt&&(!patch||edit.body!==undefined)){
+        try{generated=await this.generateSkill({key:targetKey,candidate:content??{body:edit.body,applicability:edit.description??before.prior.applicability},...patch?{bodyEdit:true}:{},source,previous:before.prior?{body:before.prior.body,steps:before.prior.steps,applicability:before.prior.applicability,revision:before.revision}:null},{model:args.model,signal:args.signal??this.abort?.signal})}
         catch(error){await withLock(join(directory,'.lock'),async()=>{const state=await this.state(scope);state.generationFailures??={};state.generationFailures[operation]={inputHash,key,source,code:error.code??'SKILL_GENERATION_FAILED',at:new Date().toISOString()};await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+String.fromCharCode(10))});throw error}
       }
       return withLock(join(directory,'.lock'),async()=>{
@@ -258,30 +270,34 @@ export default class Reflection extends Service {
         if(receipt&&receipt.inputHash!==inputHash)throw failure('REFLECTION_OPERATION_CONFLICT')
         if(!receipt&&args.expectedRevision!==undefined&&currentRevision!==args.expectedRevision)throw failure('REFLECTION_REVISION_CONFLICT')
         if(!receipt&&(currentRevision!==before.revision||(state.forgetGeneration??0)!==before.forgetGeneration||!isDeepStrictEqual(prior,before.prior)))throw failure('REFLECTION_REVISION_CONFLICT')
+        if(patch&&!receipt){checkEdit(state);if(revisionAt(state,targetKey)!==before.targetRevision)throw failure('REFLECTION_REVISION_CONFLICT')}
         let committed=!!receipt
         try{
           if(!receipt){
-            const now=new Date().toISOString(),revision=currentRevision+1
+            const now=new Date().toISOString(),revision=Math.max(currentRevision,revisionAt(state,targetKey))+1
             // 提交新版本前撤销旧加载内容；删除保留版本，防止同名重建的 ABA 冲突。
             const generation=await this.host.memory.store.transaction(scope,async state=>{await args.validate?.();state.mark();return ()=>state.meta.revision})
             await args.validate?.()
             if(action==='upsert'){
-              const value={...content,applicability:generated.description,body:generated.body,generation:generated.generation,signature:hash(JSON.stringify(content.steps)),supports:[],taskIds:[],memoryKeys:[],active:true,origin:'router',source,provenance:args.provenance,revision,updatedAt:now}
+              const value=patch?{...prior,applicability:edit.description??prior.applicability,...generated?{body:generated.body,generation:generated.generation}:{},...prior.origin==='router'?{source}:{},provenance:args.provenance,revision,updatedAt:now}:{...content,applicability:generated.description,body:generated.body,generation:generated.generation,signature:hash(JSON.stringify(content.steps)),supports:[],taskIds:[],memoryKeys:[],active:true,origin:'router',source,provenance:args.provenance,revision,updatedAt:now}
               if(prior)value.previous=contentSnapshot(this.renderSkill(scope,key,prior,generation).replace(/^NIGHT_LEARNED_SCOPE=[^\n]*\n?/gm,''),prior.revision,prior.updatedAt)
-              state.skills[key]=value
+              if(targetKey!==key)delete state.skills[key]
+              state.skills[targetKey]=value
             }else delete state.skills[key]
             state.skillRevisions??={};state.skillRevisions[key]=revision
-            state.mutations??={};state.mutations[operation]={inputHash,action,key,revision,source,...generated?{generation:generated.generation}:{},at:now}
+            if(targetKey!==key)state.skillRevisions[targetKey]=revision
+            state.mutations??={};state.mutations[operation]={inputHash,action,key,...targetKey!==key?{newKey:targetKey}:{},revision,source,...generated?{generation:generated.generation}:{},at:now}
             if(state.generationFailures)delete state.generationFailures[operation]
             await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');committed=true
           }
           this.host.skills.invalidateCache()
           // 重试只修复当前状态的派生文件，绝不重放旧回执覆盖后来的修改或删除。
           await this.publishSkill(scope,key,state)
+          if(targetKey!==key)await this.publishSkill(scope,targetKey,state)
           const saved=await this.state(scope)
           if(saved.mutations?.[operation]?.inputHash!==inputHash)throw failure('REFLECTION_WRITE_UNCONFIRMED')
         }catch(cause){if(committed||cause.committed)throw Object.assign(failure('REFLECTION_WRITE_UNCONFIRMED'),{committed:true,cause});throw cause}
-        return {ok:true,persisted:true,...receipt?{duplicate:true}:{},action,key,revision:state.mutations[operation].revision,currentRevision:state.skills[key]?.revision??state.skillRevisions?.[key]??0,active:!!state.skills[key]?.active,...state.mutations[operation].generation?{generation:state.mutations[operation].generation}:{}}
+        return {ok:true,persisted:true,...receipt?{duplicate:true}:{},action,key:targetKey,...targetKey!==key?{previousKey:key}:{},revision:state.mutations[operation].revision,currentRevision:revisionAt(state,targetKey),active:!!state.skills[targetKey]?.active,...state.mutations[operation].generation?{generation:state.mutations[operation].generation}:{}}
       })
     })
   }

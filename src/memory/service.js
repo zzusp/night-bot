@@ -195,6 +195,8 @@ export default class NativeMemory extends Service {
   }
   async mutateChannelSource(agent,original,args,validate,evidenceSources=[]){
     const context=this.channelSourceContext(original),action=args.action??'remember',standing=args.topic===STANDING_TOPIC
+    const editingIndex=args.title!==undefined||args.indexSummary!==undefined
+    if(editingIndex&&(standing||action!=='remember'))throw failure('MEMORY_INDEX_EDIT_INVALID')
     if(standing){
       if(!Number.isSafeInteger(args.expectedRevision)||args.expectedRevision<0)throw failure('MEMORY_INSTRUCTION_REVISION_REQUIRED')
       if(args.memory||action==='remember'&&(!args.instruction||!original.text.includes(args.instruction.text)))throw failure('MEMORY_INSTRUCTION_SOURCE_REQUIRED')
@@ -203,16 +205,22 @@ export default class NativeMemory extends Service {
     if(!['remember','forget'].includes(action))throw failure('MEMORY_ACTION_INVALID')
     context.validate=async()=>{await validate();this.channelSourceContext(original);for(const item of evidenceSources)this.channelSourceContext(item);await this.writeContext(agent,args,context)}
     const instructionScope=standing?{kind:'actor',id:hash(original.actorId)}:undefined
-    const prepared=action==='remember'?(standing?{text:checkedText(args.instruction.text),instructionScope}:buildRouterMemory(args.memory,{actor:hash(original.actorId),message:context.message,sources:evidenceSources})):standing?{instructionScope}:{}
+    const metadataOnly=editingIndex&&args.memory===undefined
+    const prepared=action==='remember'?(standing?{text:checkedText(args.instruction.text),instructionScope}:metadataOnly?{}:buildRouterMemory(args.memory,{actor:hash(original.actorId),message:context.message,sources:evidenceSources})):standing?{instructionScope}:{}
     const result=await this.mutate(agent,{...args,...prepared,action,sourceMessageId:context.message.id},context)
     if(!result.ok||result.persisted===false)return result
     const scope=memoryScope(context.binding,{},true)
-    let saved
-    try{saved=await this.store.read(scope,args)}catch(cause){throw Object.assign(failure('MEMORY_WRITE_UNCONFIRMED'),{committed:true,cause})}
-    const entry=saved.entries.find(row=>row.key===args.key)
-    if(action==='forget'?!!entry:!entry||entry.text!==prepared.text||entry.source.messageId!==context.message.id||entry.source.actor!==scope.actor||!isDeepStrictEqual(entry.context,prepared.context)||!isDeepStrictEqual(entry.instructionScope,prepared.instructionScope))throw Object.assign(failure('MEMORY_WRITE_UNCONFIRMED'),{committed:true})
-    if(args.topic==='experience')try{await this.host.get('reflection')?.forget(scope,args.key)}catch(cause){throw Object.assign(failure('MEMORY_DERIVED_CLEANUP_UNCERTAIN'),{committed:true,cause})}
-    return {...result,revision:saved.revision,...action==='remember'?{entry}:{},persisted:true,kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id}
+    let saved,index
+    const key=args.key
+    try{
+      saved=await this.store.read(scope,{topic:args.topic,key})
+      if(editingIndex)index=await this.store.index(scope,{topic:args.topic})
+    }catch(cause){throw Object.assign(failure('MEMORY_WRITE_UNCONFIRMED'),{committed:true,cause})}
+    const entry=saved.entries.find(row=>row.key===key),row=index?.entries.find(row=>row.key===key)
+    if(action==='forget'?!!entry:!entry||entry.source.messageId!==context.message.id||entry.source.actor!==scope.actor||!metadataOnly&&(entry.text!==prepared.text||!isDeepStrictEqual(entry.context,prepared.context)||!isDeepStrictEqual(entry.instructionScope,prepared.instructionScope)))throw Object.assign(failure('MEMORY_WRITE_UNCONFIRMED'),{committed:true})
+    if(editingIndex&&(saved.revision!==index.revision||row?.id!==entry.id||row.revision!==args.expectedRevision+1||args.title!==undefined&&row.title!==args.title.trim()||args.indexSummary!==undefined&&row.summary!==args.indexSummary.trim()))throw Object.assign(failure('MEMORY_WRITE_UNCONFIRMED'),{committed:true})
+    if(args.topic==='experience'&&!metadataOnly)try{await this.host.get('reflection')?.forget(scope,args.key)}catch(cause){throw Object.assign(failure('MEMORY_DERIVED_CLEANUP_UNCERTAIN'),{committed:true,cause})}
+    return {...result,revision:saved.revision,...action==='remember'?{entry:row?{...entry,title:row.title,indexSummary:row.summary,path:row.path}:entry}:{},persisted:true,kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id}
   }
   async reconcileCompletion(agent,proof,args,validate){return reconcileCompletion(this,agent,proof,args,validate)}
   async readSkills(agent,args){return this.host.get('reflection').readSkills(await this.scope(agent,{}),args)}
@@ -259,7 +267,8 @@ export default class NativeMemory extends Service {
     if(!sourceContext)checkedText(args.text)
     if(args.expiresAt&&!sourceContext&&!messageText(message).includes(args.expiresAt))throw failure('MEMORY_EXPIRY_SOURCE_REQUIRED')
     if(!sourceContext&&temporary(args.text)&&!args.expiresAt)return {ok:true,persisted:false,code:'MEMORY_TEMPORARY_NOT_PERSISTED'}
-    if(!sourceContext?.standingInstruction&&(sourceContext||durablePreferenceRequest(messageText(message)))&&args.context===undefined)throw failure('MEMORY_CONTEXT_REQUIRED')
+    const indexOnly=sourceContext&&args.text===undefined&&(args.title!==undefined||args.indexSummary!==undefined)
+    if(!indexOnly&&!sourceContext?.standingInstruction&&(sourceContext||durablePreferenceRequest(messageText(message)))&&args.context===undefined)throw failure('MEMORY_CONTEXT_REQUIRED')
     const context=sourceContext?args.context:args.context!==undefined||args.topic==='preferences'?buildMemoryContext(args.context,{actor:scope.actor,message:{...message,content:messageText(message)},quote:conversationQuote(message.source?.quotedMessage)}):undefined
     const provenance=sourceContext?.provenance??this.provenance({agent,message});
     const result=await this.store.remember(scope,{...args,context,source,provenance,validate:sourceContext?.validate});if(args.topic==='experience'&&!sourceContext)try{await this.host.get('reflection')?.forget(scope,args.key)}catch(cause){throw Object.assign(failure('MEMORY_DERIVED_CLEANUP_UNCERTAIN'),{committed:true,cause})}return result
