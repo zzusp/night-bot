@@ -8,6 +8,7 @@ for(const action of ['complete','blocked','wait','runtime-failure','silent'])tes
  const terminal=new Set(),inspections=new Set(),reports=action==='complete'||action==='blocked',hasOutcome=reports||action==='silent'
  const summary=action==='blocked'?'Stopped: no trusted target was supplied':'Verified synthetic outcome'
  const evidence=['Synthetic material checked'],limitations=action==='blocked'?['Target unavailable; no side effects performed','TASK_EFFECT_UNCERTAIN_NO_REPLAY']:[]
+ const replyText=action==='blocked'?'材料已核对，但还没在测试环境验证：目前没有已获准的测试入口。没有改动外部系统。':'这份测试材料已核对，没有改动外部系统。'
  h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
   if(requestText(body).some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION')))return {text:'{"lessons":[]}'}
@@ -29,21 +30,26 @@ for(const action of ['complete','blocked','wait','runtime-failure','silent'])tes
   if(outcome&&reports&&!replied){
    replied=true
    assert.equal(outcome.taskEvent.result.summary,summary)
+   const prompt=body.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
+   assert.match(prompt,/站在读者角度自查/u)
+   assert.match(body.tools.find(tool=>tool.function.name==='resident_router_reply').function.parameters.properties.text.description,/按共享 ELI5 规则自查/u)
    if(action==='blocked'){
-    const prompt=body.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
     assert.match(prompt,/沿原会话推进；没有新依据不重复唤醒/u)
     assert.match(prompt,/尚未核实的后续条件不写成已确认的卡点/u)
     assert.equal(outcome.taskEvent.resultSource,'pi-task-result')
     assert.deepEqual(outcome.taskEvent.result.evidence,evidence)
     assert.deepEqual(outcome.taskEvent.result.limitations,limitations)
    }
-   return {tool:'resident_router_reply',args:{operationId:'final-only-reply',sourceId:source.sourceId,messageVersion:source.version,outcomeEventId:outcome.taskEventId,text:outcome.taskEvent.result.summary}}
+   const context=requestText(body).flatMap(text=>text.split('\n')).find(line=>line.startsWith('{"asOf":')&&line.includes('"sourceTaskLinks"'))
+   const [reply]=JSON.parse(context).taskOutcomeReplies
+   assert.deepEqual(reply,{operationId:outcome.taskEventId,sourceId:source.sourceId,messageVersion:source.version,outcomeEventId:outcome.taskEventId})
+   return {tool:'resident_router_reply',args:{...reply,text:replyText}}
   }
   return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
  })
  await h.receive(channelMessage('final-only',{text:'Assistant, check this synthetic material. Do not modify external systems or send an attachment.'}));await h.service.whenIdle()
  assert.equal(executions,1);assert.equal(terminal.size,hasOutcome?1:0);assert.equal(h.sent.length,reports?1:0)
- if(reports)assert.equal(h.sent[0].text,summary)
+ if(reports)assert.equal(h.sent[0].text,replyText)
  const task=await h.query('task.get',{taskId:'final-only-task'})
  if(hasOutcome){
   const [event]=await h.query('router.batch-events',{conversationId:task.groupId,eventIds:[...terminal]})

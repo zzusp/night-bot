@@ -16,6 +16,11 @@ test('Web operator shares the channel Router but cannot borrow its writes or ext
   if(body.messages.at(-1)?.role==='tool'&&body.messages.findLast(message=>message.role==='assistant')?.tool_calls?.at(-1)?.function?.name==='resident_router_settle')return {text:'Settled'}
   if(!web){originalSource=input.events.find(event=>event.source)?.source??originalSource;return {tool:'resident_router_settle',args:{operationId:'channel:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}}
   const event=input.events[0],step=steps.get(event.id)??0;steps.set(event.id,step+1)
+  if(step===4){
+   const text=body.tools.find(tool=>tool.function.name==='resident_operator_reply').function.parameters.properties.text
+   assert.match(text.description,/按共享 ELI5 规则自查/u)
+   assert.ok(body.messages.some(message=>message.role==='system'&&String(message.content).includes('站在读者角度自查')))
+  }
   if(step===0){batches.push(input.events);if(event.operator.requestId==='web-one'){entered.resolve();await release.promise}return {tool:'resident_router_reply',args:{operationId:'must-not-send',sourceId:originalSource.sourceId,messageVersion:originalSource.version,text:'Must remain local'}}}
   if(step===1)return {tool:'resident_task_action',args:{operationId:'must-not-control',kind:'control',taskId:'unrelated',expectedRequirementRevision:1,expectedControlRevision:1,control:'cancelled'}}
   if(step===2)return {tool:'resident_operator_reply',args:{eventId:'foreign-event',text:'Must be refused'}}

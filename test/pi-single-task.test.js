@@ -84,6 +84,9 @@ for(const output of ['channel reply','Issue comment','PR review reply'])test(`of
   assert.ok(request,'execution must reach the local provider with task_result')
   const prompt=request.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
   assert.match(prompt,/沟通规范索引/)
+  assert.match(prompt,/站在读者角度自查/u)
+  assert.match(prompt,/默认只讲重点，不列排查过程和内部状态；用户要求细节再展开/u)
+  assert.match(prompt,/必须保留的技术词，第一次用时顺手说清/u)
   assert.doesNotMatch(prompt,/NIGHT_NATURAL_CHANNEL_REPLY|NIGHT_TASK_PUBLIC_COMMUNICATION|好，我看看是什么原因/)
   const loaded=f.requests.find(body=>body.messages.some(message=>message.role==='tool'&&JSON.stringify(message.content).includes('NIGHT_TASK_PUBLIC_COMMUNICATION')))
   assert.ok(loaded,'native tool result reaches the same execution session on demand')
@@ -114,6 +117,8 @@ for(const output of ['channel reply','Issue comment','PR review reply'])test(`of
   assert.match(prompt,/Continue independently within authorization/)
   const tool=request.tools.find(tool=>tool.function.name==='task_result').function
   assert.match(tool.description,/Do not ask questions or send intermediate progress/)
+  assert.match(tool.description,/different commands or targets that still depend on that same failed boundary do not rule out an independent source or an independent part of the work/)
+  assert.match(tool.description,/grounded authorized alternative that can materially change the finding, even if it cannot finish the entire task/)
   assert.match(tool.description,/Distinguish that blocker from later checks you have not reached/)
   assert.match(tool.description,/Do not require inputs or outputs that the task itself is authorized and expected to produce/)
   assert.equal(tool.parameters.properties.decision.properties.question,undefined)
