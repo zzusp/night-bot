@@ -120,6 +120,26 @@ test('来源版本并发变化或非法动作使整个维护计划拒绝，不�
  })
 })
 
+test('维护索引或计划格式错误分阶段留据，拒绝非字符串暂缓项且不应用任何动作',async t=>{
+ for(const stage of ['index','plan'])await t.test(stage,async t=>{
+  let planCalls=0
+  const f=await memoryHost(t,body=>{
+   if(!isIndex(body)&&!isPlan(body))return
+   const prompt=body.messages[0].content,items=input(body).items
+   assert.match(prompt,/deferred 是字符串数组/)
+   if(isIndex(body))return reply({groups:[items.map(row=>row.id)],deferred:stage==='index'?[{reason:'格式不符'}]:[]})
+   planCalls++;return reply({actions:[action('memory','delete',[items[0].id],[])],deferred:[{reason:'格式不符'}]})
+  },{hostConfig:{reflection:{maintenance:{enabled:true}}}})
+  const prior=await remember(f,'experience','original','必须保留的原经验')
+  const m=f.host.ctx.reflection.maintenance,before=(await m.store.index(scope)).revision
+  await m.trigger('manual');await f.host.ctx.reflection.whenIdle()
+  const code=`MEMORY_MAINTENANCE_${stage.toUpperCase()}_INVALID`
+  assert.equal(planCalls,Number(stage==='plan'));assert.equal(m.status().status,'failed');assert.equal(m.status().code,code)
+  const report=await audit(m);assert.equal(report.code,code);assert.doesNotMatch(JSON.stringify(report),/格式不符/)
+  const view=await m.store.read(scope,{topic:'experience'});assert.equal(view.revision,before);assert.equal(view.entries[0].text,'必须保留的原经验');assert.ok(prior.ok)
+ })
+})
+
 test('维护 journal 中断后恢复同一原子结果，冷启动不重复模型调用或重放动作',async t=>{
  const f=await memoryHost(t,body=>{
   if(isIndex(body))return reply({groups:[input(body).items.map(row=>row.id)],deferred:[]})
