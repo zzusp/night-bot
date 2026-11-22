@@ -43,6 +43,8 @@ decision/effect chronology when global SQLite rowids are reassigned. It includes
 executed as commands. It does not contain other tasks, channel account credentials
 or entire shared memory/skill catalogs.
 
+在任务领取后，SQLite 提交即可把 `task.json` 投影交给后台队列。任务执行会在打开 Pi 会话前核验并登记准确的任务目录和 journal 路由；挂接工作区时重新核对任务根目录与会话的绑定。材料读取只准备材料目录，仍核验快照来源、版本以及附件字节和哈希。归档投影、Pi journal 和材料分别在自己的文件操作边界校验路径，不把启动时的检查结果长期缓存。
+
 After committed task-related commands, a coalescing per-task queue writes the
 latest projection through a private file lease and atomic replacement. A projection
 is labeled `live-projection`; the ledger and session can continue changing and an

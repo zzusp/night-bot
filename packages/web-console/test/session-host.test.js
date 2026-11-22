@@ -199,7 +199,7 @@ test('learning HTTP 使用真实复盘落库与当前 memory/skill，正文按 s
   } finally {await web?.close(); detach?.(); await store.close()}
 })
 
-test('real Host drain failure reaches HTTP waiting state without replay, ACK or forged drain', {timeout:nativeTestTimeout(30000)}, async t=>{
+test('real Host drain failure reaches HTTP interrupted state without replay, ACK or forged drain', {timeout:nativeTestTimeout(30000)}, async t=>{
  const {fork}=await import('node:child_process'),{once}=await import('node:events'),{rm}=await import('node:fs/promises')
  const child=fork(new URL('../../../test/fixtures/task-drain-failure-host.js',import.meta.url),[],{stdio:['ignore','pipe','pipe','ipc']})
  let root,proof,output=''
@@ -208,5 +208,5 @@ test('real Host drain failure reaches HTTP waiting state without replay, ACK or 
  t.after(async()=>{if(child.exitCode===null&&child.signalCode===null){child.kill();await once(child,'exit')}if(root)await rm(root,{recursive:true,force:true})})
  const [code]=await once(child,'exit')
  assert.equal(code,0,output);assert.equal(proof?.passed,true,output)
- assert.equal(proof.state,'waiting');assert.equal(proof.session,'failed');assert.equal(proof.drained,false);assert.equal(proof.noReplay,true);assert.equal(proof.unacked,true)
+ assert.equal(proof.state,'interrupted');assert.equal(proof.session,'failed');assert.equal(proof.drained,false);assert.equal(proof.noReplay,true);assert.equal(proof.unacked,true)
 })

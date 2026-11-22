@@ -3,7 +3,7 @@ import type { Task } from './api';
 // Only explicit, already-redacted Host result fields. Never infer a conclusion
 // from the last tool response, reasoning, delivery receipt or live Pi text.
 export function taskConclusion(task: Task): string | null {
-  if (!['completed', 'waiting', 'cancelled', 'failed'].includes(task.state)
+  if (!['completed', 'cancelled', 'interrupted'].includes(task.state)
       || !['idle', 'failed'].includes(task.session?.status || '')) return null;
   const result = task.result;
   if (typeof result === 'string') return result.trim() || null;

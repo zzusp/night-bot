@@ -16,6 +16,7 @@ export function TaskOverview({ task }: { task: Task }) {
       <dl className="task-facts">
         <div><dt>创建时间</dt><dd><time dateTime={task.createdAt}>{dateTime(task.createdAt)}</time></dd></div>
         <div><dt>最近更新</dt><dd><time dateTime={task.updatedAt}>{dateTime(task.updatedAt)}</time></dd></div>
+        {task.state === 'cancelled' && <div><dt>取消原因</dt><dd>{task.cancellationReason || '未记录'}</dd></div>}
       </dl>
     </section>
     <section className="detail-section task-objective-card"><h3>任务目标</h3>{task.objective ? <Markdown text={task.objective} /> : <p className="task-empty">暂无任务目标</p>}</section>

@@ -118,7 +118,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
   const page = query => ({offset: pageNumber(query, 'offset', 0), limit: pageNumber(query, 'limit', 30, 100)})
   const taskOptions = query => {
     const state = query.get('state') || undefined
-    if (state && !['queued', 'running', 'waiting', 'completed'].includes(state)) fail('TASK_FILTER_INVALID')
+    if (state && !['queued', 'running', 'interrupted', 'completed', 'cancelled'].includes(state)) fail('TASK_FILTER_INVALID')
     return {...page(query), limit: pageNumber(query, 'limit', 10, 100), state, archived: query.get('archived') === 'all' ? 'all' : query.get('archived') === 'true',
       ...(query.get('revision') ? {revision: query.get('revision')} : {}), ...(query.get('groupId') ? {groupId: query.get('groupId')} : {})}
   }
@@ -343,7 +343,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
     if(request.method==='GET'&&activity){
       if([...url.searchParams.keys()].length)fail('PAGE_INVALID')
       const id=decodeURIComponent(activity[1]),groupId=executionContext('conversations',id)
-      const states=[undefined,'running','waiting'],keys=['tasks','running','waiting']
+      const states=[undefined,'running','interrupted'],keys=['tasks','running','interrupted']
       const results=await Promise.allSettled(states.map(state=>tasks({groupId,state,offset:0,limit:5,archived:false})))
       executionContext('conversations',id)
       const values=Object.fromEntries(keys.map((key,index)=>[key,results[index].status==='fulfilled'?results[index].value:null]))
@@ -355,7 +355,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const sections = {
         tasks: () => tasks({offset: 0, limit: 12, archived: false}),
         running: () => tasks({offset: 0, limit: 8, state: 'running', archived: false}),
-        waiting: () => tasks({offset: 0, limit: 8, state: 'waiting', archived: false}),
+        interrupted: () => tasks({offset: 0, limit: 8, state: 'interrupted', archived: false}),
         channels: async () => (await channelView(app)).items,
         conversations: () => conversations(app, channels).items,
       }

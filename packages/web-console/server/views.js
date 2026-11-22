@@ -57,7 +57,8 @@ function blockerViews(value) {
 // List rows do not include execution-derived board state. Preserve their recorded
 // status rather than infer that an active task is currently running.
 export function taskSummaryView(task, secrets = []) {
-  const state = task.state ?? (task.status === 'completed' ? 'completed' : task.control === 'cancelled' ? 'cancelled' : task.control === 'paused' || task.sessionFailure?.code === 'TASK_SESSION_DRAIN_FAILED' ? 'waiting' : task.status)
+  const state = task.state ?? (task.status === 'completed' ? 'completed' : task.status === 'cancelled' || task.control === 'cancelled' ? 'cancelled'
+    : task.control === 'paused' ? 'paused' : task.sessionFailure?.code === 'TASK_SESSION_DRAIN_FAILED' ? 'interrupted' : 'inactive')
   return Object.fromEntries(['taskId', 'title', 'state', 'updatedAt'].flatMap(key => {
     const value = key === 'state' ? state : task[key]
     return typeof value === 'string' ? [[key, displayText(value, secrets)]] : []
@@ -67,7 +68,7 @@ export function taskSummaryView(task, secrets = []) {
 export function taskView(task, secrets = []) {
   return {
     ...(task.durations ? {durations: task.durations} : {}),
-    ...displayFields(task, ['taskId', 'title', 'objective', 'request', 'state', 'status', 'controlState', 'groupId', 'createdAt', 'updatedAt', 'archivedAt', 'requirementRevision', 'controlRevision', 'waitingReason'], secrets),
+    ...displayFields(task, ['taskId', 'title', 'objective', 'request', 'state', 'status', 'controlState', 'groupId', 'createdAt', 'updatedAt', 'archivedAt', 'requirementRevision', 'controlRevision', 'cancellationReason', 'waitingReason'], secrets),
     ...(task.result ? {result: resultView(task.result, secrets)} : {}),
     ...(task.session ? {session: pick(task.session, ['role', 'sessionId', 'sessionBound', 'status'])} : {}),
     ...(task.timeline ? {timeline: timelineView(task.timeline, secrets)} : {}),

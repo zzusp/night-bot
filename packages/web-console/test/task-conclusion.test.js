@@ -5,15 +5,15 @@ import ts from 'typescript';
 const input = readFileSync(new URL('../src/task-conclusion.ts', import.meta.url), 'utf8');
 const js = ts.transpileModule(input, {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}}).outputText;
 const {taskConclusion, taskConclusionDuration} = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
-const task = {state: 'waiting', session: {status: 'idle'}, result: {summary: '已完成核对，等待发布窗口。', question: '是否继续？', evidence: ['测试已通过'], limitations: ['尚未部署']}};
+const task = {state: 'completed', session: {status: 'idle'}, result: {summary: '已完成核对，等待发布窗口。', question: '是否继续？', evidence: ['测试已通过'], limitations: ['尚未部署']}};
 test('only conclusion and distinct question are shown by default, retaining detail data', () => {
  assert.equal(taskConclusion(task), '已完成核对，等待发布窗口。\n\n是否继续？');
- assert.equal(taskConclusion({...task, state: 'completed'}), taskConclusion(task));
+ assert.equal(taskConclusion({...task, state: 'interrupted'}), taskConclusion(task));
  assert.deepEqual(task.result,{summary:'已完成核对，等待发布窗口。',question:'是否继续？',evidence:['测试已通过'],limitations:['尚未部署']});
  assert.doesNotMatch(taskConclusion(task),/测试已通过|尚未部署/);
 });
 test('running, unknown, missing, or reasoning/tool content cannot become conclusion', () => {
- for (const state of ['running', 'queued', 'unknown']) assert.equal(taskConclusion({...task, state}), null);
+ for (const state of ['running', 'queued', 'paused', 'inactive', 'unknown']) assert.equal(taskConclusion({...task, state}), null);
  assert.equal(taskConclusion({...task, session: {status: 'running'}}), null);
  assert.equal(taskConclusion({...task, session: undefined}), null);
  for(const result of [undefined, {}, {text:'tool raw'}, {thinking:'reason'}, {summary:' '}]) assert.equal(taskConclusion({...task, result}), null);

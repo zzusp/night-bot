@@ -21,12 +21,14 @@ test('Single running progress stays on the same live actor and cancellation join
 
 test('Single preserves round evidence and native decision entries without rewriting prior work',{timeout:20000},async t=>{
  let step=0;const f=await taskEvidenceFixture(t,request=>{
-  if(!latestInput(request).dialogue){if(step++===0)return [call('write',{path:'work/proof.txt',content:'ROUND_ONE_VERIFIED_PROOF'})];return [decision('wait','ROUND_ONE_PLAN_AND_RESULT',{evidence:['work/proof.txt'],limitations:['Awaiting the second evidence question']})]}
+  if(latestInput(request).task.requirementRevision===1){if(step++===0)return [call('write',{path:'work/proof.txt',content:'ROUND_ONE_VERIFIED_PROOF'})];return [decision('wait','ROUND_ONE_PLAN_AND_RESULT',{evidence:['work/proof.txt'],limitations:['Awaiting the second evidence question']})]}
   if(step++===2)return [call('read',{path:'work/proof.txt'})]
-  assert.match(JSON.stringify(request),/ROUND_ONE_VERIFIED_PROOF/);return [decision('wait','ROUND_TWO_REVIEW_RESULT',{evidence:['work/proof.txt'],limitations:['No additional work authorized']})]
+  assert.match(JSON.stringify(request),/ROUND_ONE_VERIFIED_PROOF/);return [decision('complete','ROUND_TWO_REVIEW_RESULT',{evidence:['work/proof.txt'],limitations:['No additional work authorized']})]
  },{skills:false})
- const task=await f.create('round-progress','Create proof once then await evidence review'),before=await f.sole(task),path=join(task.workspaceDir??before.header.cwd,'work/proof.txt'),bytes=await readFile(path),prefix=before.entries.filter(entry=>entry.type==='message')
- await f.dialogue(task,'round-two','Review the original proof without changing it')
+ const task=await f.create('round-progress','Create proof once, keeping the evidence for explicit review'),before=await f.sole(task),path=join(task.workspaceDir??before.header.cwd,'work/proof.txt'),bytes=await readFile(path),prefix=before.entries.filter(entry=>entry.type==='message')
+ assert.equal(task.status,'completed');assert.equal(task.completion.result.action,'wait')
+ await f.h.service.reopenTask({taskId:task.taskId,requestId:'round-two',context:'Review the original proof without changing it'});await f.h.service.whenIdle()
+ const current=await f.h.query('task.get',{taskId:task.taskId});assert.equal(current.sessionId,task.sessionId);assert.equal(current.status,'completed');assert.equal(current.completion.result.summary,'ROUND_TWO_REVIEW_RESULT')
  const after=await f.sole(task);assert.equal(hash(await readFile(path)),hash(bytes));for(const entry of prefix)assert.deepEqual(after.entries.find(item=>item.id===entry.id),entry)
  assert.match(JSON.stringify(after.entries),/ROUND_ONE_PLAN_AND_RESULT/);assert.match(JSON.stringify(after.entries),/ROUND_TWO_REVIEW_RESULT/)
  assert.equal(after.audit.filter(receipt=>receipt.kind==='effect-intent').length,1);assert.equal(after.audit.filter(receipt=>receipt.kind==='effect-result').length,1)
@@ -40,16 +42,14 @@ test('waiting progress with no new evidence neither repeats effects nor fabricat
  const after=await f.sole(task);assert.equal(after.audit.filter(receipt=>receipt.kind==='effect-intent').length,1);assert.equal(after.audit.filter(receipt=>receipt.kind==='effect-result').length,1);assert.equal(hash(await readFile(join(after.header.cwd,'work/once.txt'))),hash(Buffer.from('EXACTLY_ONCE_PROGRESS')));assert.equal(after.header.id,before.header.id)
 })
 
-test('blocked final result answers an explicit progress question read-only without creating a human request',{timeout:20000},async t=>{
- let step=0;const f=await taskEvidenceFixture(t,request=>{
-  if(!latestInput(request).dialogue)return [decision('blocked','Need the allowed environment before proceeding',{limitations:['Trusted target is missing'],attemptedActions:['Inspected the original requirement']})]
-  if(step++===0)return [call('write',{path:'work/forbidden-progress.txt',content:'must not write'})]
-  return [decision('wait','The original environment question remains unanswered',{evidence:['The original pending question'],limitations:['A progress question grants no execution permission']})]
- },{skills:false})
- const task=await f.create('human-progress','Wait for an explicit environment authorization'),before=await f.h.query('task.get',{taskId:task.taskId}),pending=before.lastDecision
- assert.equal(pending.action,'blocked');assert.equal(before.humanRequests?.length??0,0);const count=f.h.requests.length;await f.h.service.recover();await f.h.service.whenIdle();assert.equal(f.h.requests.length,count)
- const after=await f.dialogue(task,'human-progress-question','What is blocking progress?');assert.equal(after.humanRequests?.length??0,0);assert.equal(after.lastDecision.action,'blocked')
- assert.ok(f.h.toolResults.some(row=>row.name==='write'&&row.result.isError));assert.equal((await f.sole(task)).audit.filter(receipt=>receipt.kind==='effect-intent').length,0)
+test('completed round retains the blocked conclusion without starting another task dialogue',{timeout:20000},async t=>{
+ const f=await taskEvidenceFixture(t,()=>[decision('blocked','Need the allowed environment before proceeding',{limitations:['Trusted target is missing'],attemptedActions:['Inspected the original requirement']})],{skills:false})
+ const task=await f.create('human-progress','Report what can be verified without the target environment'),before=await f.h.query('task.get',{taskId:task.taskId})
+ assert.equal(before.status,'completed');assert.equal(before.completion.result.action,'blocked');assert.deepEqual(before.completion.result.limitations,['Trusted target is missing']);assert.equal(before.humanRequests?.length??0,0)
+ const count=f.h.requests.length;await f.h.service.recover();await f.h.service.whenIdle();assert.equal(f.h.requests.length,count)
+ await assert.rejects(f.h.service.sendTaskDialogue({taskId:task.taskId,requestId:'human-progress-question',text:'What is blocking progress?'}),{code:'DYNAMIC_TASK_NOT_ACTIVE'})
+ const after=await f.h.query('task.get',{taskId:task.taskId});assert.deepEqual(after.completion,before.completion);assert.equal(after.dialogue?.length??0,0);assert.equal(after.humanRequests?.length??0,0)
+ assert.equal(f.h.requests.length,count);assert.equal((await f.sole(task)).audit.filter(receipt=>receipt.kind==='effect-intent').length,0)
 })
 
 test('final progress verifies a real file, freezes the reported artifact and retains the official read evidence',{timeout:20000},async t=>{

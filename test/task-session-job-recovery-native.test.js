@@ -49,7 +49,7 @@ test('serial native results stay in one task journal; explicit stage and final r
   return [shell(`require('node:fs').appendFileSync('work/serial.txt','SERIAL_${n}\\n');console.log(require('node:fs').readFileSync('work/serial.txt','utf8'))`)]
  })
  const id=await create(h);await idle(h);const first=await snapshot(h,id),before=modelCount(h);single(first);await h.service.recover();await idle(h);assert.equal(modelCount(h),before,'ordinary tool results do not schedule an extra model owner')
- await h.service.appendTaskContext({taskId:id,requestId:'continue-final-stage',progressImpact:'replan',context:'Complete the third local stage and verify the original file.'});await idle(h)
+ await h.service.reopenTask({taskId:id,requestId:'continue-final-stage',context:'Complete the third local stage and verify the original file.'});await idle(h)
  const stored=await snapshot(h,id);single(stored);assert.equal(stored.task.sessionId,first.task.sessionId);assert.equal(stored.task.status,'completed');assert.equal(step,5);assert.equal(facts(stored,'registered').length,3);assert.equal(facts(stored,'settled').length,3);assert.equal((await h.query('execution.list')).length,0);assert.equal((await readFile(join(taskRoot(h,id),'work/serial.txt'),'utf8')).trim(),'SERIAL_1\nSERIAL_2\nSERIAL_3')
 })
 
@@ -104,16 +104,23 @@ for(const background of [false,true])test(`task cancellation joins the original 
 
 async function unknown(t){
  let calls=0
- const h=await fixture(t,async request=>request.messages.some(message=>message.role==='toolResult'&&message.isError&&JSON.stringify(message.content).includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY'))?[result()]:[call('uncertain_native',{})])
+ const h=await fixture(t,async request=>{
+  if(latestInput(request).sources.some(source=>source.text==='Read the existing evidence; this is not effect reconciliation.')){
+   if(!request.messages.some(message=>message.role==='toolResult'&&message.toolName==='read'&&JSON.stringify(message.content).includes('Original partial effect')))return [readCall(request,'work/evidence.txt')]
+   return [result('complete','Read back the partial evidence; the original effect is still unknown')]
+  }
+  return request.messages.some(message=>message.role==='toolResult'&&message.isError&&JSON.stringify(message.content).includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY'))?[result()]:[call('uncertain_native',{})]
+ })
  h.ctx.get('tools').register({name:'uncertain_native',description:'Original local effect loses its acknowledgement',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){calls++;await writeFile(join(exec.agent.metadata.cwd,'work/evidence.txt'),'Original partial effect');throw Error('lost acknowledgement')}})
  const id=await create(h);await idle(h);return {h,id,get calls(){return calls},stored:await snapshot(h,id)}
 }
-test('unknown effect holds future side effects while explicit input permits readback but cannot authorize replay',{timeout:nativeTestTimeout(20000)},async t=>{
+test('explicit readback can finish the current round without authorizing replay of the original unknown effect',{timeout:nativeTestTimeout(20000)},async t=>{
  const f=await unknown(t),{h,id,stored}=f,intent=stored.auditEntries.find(e=>e.data.domain==='task'&&e.data.kind==='effect-intent'),before=modelCount(h)
+ assert.equal(stored.task.completion??null,null)
  const inspection=await h.service.inspectTaskEffect({taskId:id,intentEntryId:intent.entryId});assert.equal(inspection.outcome,'unknown');assert.equal(inspection.noReplay,true);assert.equal(await readFile(join(taskRoot(h,id),'work/evidence.txt'),'utf8'),'Original partial effect')
- await h.service.appendTaskContext({taskId:id,requestId:'investigate',progressImpact:'replan',context:'Read the existing evidence; this is not effect reconciliation.'});await idle(h);assert.equal(f.calls,1);assert.equal(modelCount(h),before+1,'explicit input may open only the held readback turn')
+ await h.service.appendTaskContext({taskId:id,requestId:'investigate',progressImpact:'replan',context:'Read the existing evidence; this is not effect reconciliation.'});await idle(h);assert.equal(f.calls,1);assert.equal(modelCount(h),before+2,'only the explicit read and its conclusion reach the model')
  const after=await snapshot(h,id),packet=latestInput(h.requests.filter(request=>request.tools.some(tool=>tool.name==='task_result')).at(-1))
- assert.ok(packet.sources.some(source=>source.text==='Read the existing evidence; this is not effect reconciliation.'));assert.equal(after.task.lastDecision.action,'wait');assert.equal(after.task.completion??null,null)
+ assert.ok(packet.sources.some(source=>source.text==='Read the existing evidence; this is not effect reconciliation.'));assert.equal(after.task.status,'completed');assert.match(after.task.completion.summary,/original effect is still unknown/)
  assert.equal(after.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,1);assert.equal(after.audit.filter(r=>r.domain==='task'&&['effect-result','effect-reconciled'].includes(r.kind)).length,0)
  const count=modelCount(h);await h.service.recover();await idle(h);assert.equal(modelCount(h),count,'ordinary recovery cannot retry an unresolved effect');assert.equal(f.calls,1)
 })

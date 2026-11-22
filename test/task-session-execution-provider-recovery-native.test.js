@@ -7,6 +7,7 @@ import {providerHost,taskRequest,result,latestInput,topicTaskCalls,modelToolValu
 import {nativeRuntimeHost} from './fixtures/runtime-official-host.js'
 import {nativeLifecycle,nativeLifecycleTimeout,nativeTestTimeout,nativeTemporaryDirectory as mkdtemp,nativeRemove as rm} from './fixtures/native-lifecycle.js'
 import {lifecycleStages} from './fixtures/lifecycle-stages.js'
+import {restoreLegacyHumanWait} from './fixtures/legacy-human-wait.js'
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {openTaskSessionService} from '../packages/dingtalk-core/task-session-service.js'
 import {disabledExecutionSessions} from '../src/tasks/single-session.js'
@@ -40,17 +41,24 @@ for(const restored of [false,true])test(`SDK budget exhaustion stays technical a
  if(!restored){assert.equal(cold.taskRequests().length,3);const before=cold.taskRequests().length;await cold.service.recover();await cold.service.whenIdle();assert.equal(cold.taskRequests().length,before)}
 })
 test('authenticated human answer survives official retry and is read before the original task resumes',async t=>{
- let failed=false,reviewed=false,authenticatedSource
- const h=await providerHost(t,{intercept:request=>{if(taskRequest(request)&&(latestInput(request).humanReview||latestInput(request).sources.some(source=>source.text==='Only UAT3; keep all existing limits'))&&!failed){failed=true;return {stopReason:'error',errorMessage:transient}}},decide:request=>{
-  const input=latestInput(request)
-  if(!sawEffect(request))return [effect]
-  if(!input.sources.some(source=>source.text==='Only UAT3; keep all existing limits'))return [{name:'task_result',args:{decision:{action:'blocked',summary:'Original effect is retained; target evidence is required',question:'Which exact environment is authorized?',audience:'requester',evidence:['original effect receipt'],limitations:[]}}}]
-  if(input.humanReview){const source=input.sources.find(source=>input.humanReview.sourceIds.includes(source.sourceId));assert.ok(source);assert.match(source.text,/Only UAT3; keep all existing limits/);reviewed=true;authenticatedSource=source.sourceId;return [effect,{name:'task_human_resolve',args:{requestId:input.humanReview.requestId,sourceId:source.sourceId,reason:'The actual requester supplied only the bounded UAT3 target',evidence:[source.text]}},result('wait')]}
-  const source=input.sources.find(source=>source.text?.includes('Only UAT3; keep all existing limits'));assert.ok(source);authenticatedSource=source.sourceId;reviewed=true;return [result('complete')]
+ let failed=false,authenticatedSource
+ const f=await roots(t),answer='Only UAT3; keep all existing limits'
+ const before=await f.host({decide:request=>sawEffect(request)?[result('blocked','Target evidence is required')]:[effect]})
+ const id=await before.create();await before.service.whenIdle();const initial=await before.stored(id)
+ assert.equal(initial.task.status,'completed');assert.equal(before.effects,1)
+ await before.close()
+ const {task:waiting}=restoreLegacyHumanWait(join(f.root,'dynamic.db'),id,{action:'blocked',summary:'Target evidence is required',question:'Which exact environment is authorized?',evidence:['original effect receipt']})
+ const h=await f.host({initialize:false,compactionSummary:'The original authorized effect was recorded; no new scope is authorized.',intercept:request=>{
+  if(taskRequest(request)&&latestInput(request).sources?.some(source=>source.text===answer)&&!failed){failed=true;return {stopReason:'error',errorMessage:transient}}
+ },decide:request=>{
+  const source=latestInput(request).sources.find(source=>source.text===answer)
+  assert.ok(source);authenticatedSource=source.sourceId;return [result('complete')]
  }})
- const id=await h.create();await h.service.whenIdle();const waiting=await h.query('task.get',{taskId:id});assert.equal(waiting.humanRequests.length,1)
- await h.service.respondHumanRequest({taskId:id,humanRequestId:waiting.humanRequests[0].requestId,requestId:'actual-target',expectedRequirementRevision:waiting.requirementRevision,expectedControlRevision:waiting.controlRevision,reply:'Only UAT3; keep all existing limits'});await h.service.whenIdle();const after=await h.stored(id)
- assert.equal(reviewed,true);assert.equal(after.task.humanRequests[0].status,'answered');assert.equal(h.effects,1);assert.equal(h.events.filter(e=>e.type==='auto_retry_start').length,1);const source=await h.query('source.get',{sourceId:authenticatedSource});assert.equal(source.actorId,'native-user');assert.equal(source.channel,'web');assert.equal(source.text,'Only UAT3; keep all existing limits');assert.equal(await readFile(work(h,id),'utf8'),'one original effect')
+ await h.service.recover();await h.service.whenIdle();assert.equal(h.taskRequests().length,0)
+ await h.service.respondHumanRequest({taskId:id,humanRequestId:waiting.humanRequests[0].requestId,requestId:'actual-target',expectedRequirementRevision:waiting.requirementRevision,expectedControlRevision:waiting.controlRevision,reply:answer});await h.service.whenIdle();const after=await h.stored(id)
+ assert.equal(after.task.status,'completed');assert.equal(after.task.sessionId,initial.task.sessionId);assert.equal(after.task.humanRequests[0].status,'answered');assert.equal(h.effects,0);assert.equal(h.events.filter(e=>e.type==='auto_retry_start').length,1)
+ assert.equal(after.audit.filter(row=>row.domain==='task'&&row.kind==='effect-intent').length,1);assert.equal(after.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result').length,1)
+ const source=await h.query('source.get',{sourceId:authenticatedSource});assert.equal(source.actorId,'native-user');assert.equal(source.channel,'web');assert.equal(source.text,answer);assert.equal(await readFile(work(h,id),'utf8'),'one original effect')
 })
 test('anonymous field error is retained byte-for-byte by Pi and retries without asking a business question or replaying effects',async t=>{
  const {fieldV12Error}=await import('./fixtures/execution-provider-field-sample.js');let failed=false
@@ -64,10 +72,10 @@ test('requirement supplement during SDK retry replaces the stale binding before 
  const id=await h.create();await (await import('./fixtures/provider-official-host.js')).waitUntil(()=>h.events.some(event=>event.type==='auto_retry_start'),'actual SDK retry wait');injected=true
  await h.service.appendTaskContext({taskId:id,requestId:'supplement-during-retry',progressImpact:'replan',context:'LATEST_SCOPE_UAT3: preserve the original effect and read current scope only.'});await h.service.whenIdle();const stored=await h.stored(id);assert.equal(stored.task.status,'completed');assert.equal(stored.task.leaseEpoch,2);assert.equal(h.effects,1);assert.equal(stored.audit.filter(r=>r.domain==='task'&&r.kind==='effect-intent').length,1);assert.equal(await readFile(work(h,id),'utf8'),'one original effect')
 })
-test('three explicit bounded reviews survive restart without autonomous retries or effect replay',async t=>{
- const f=await roots(t);let h=await f.host({decide:()=>[result()]});const id=await h.create();await h.service.whenIdle();const first=await h.stored(id)
- for(let review=1;review<=3;review++){await h.close();h=await f.host({initialize:false,decide:()=>[result()]});await h.service.recover();await h.service.whenIdle();assert.equal(h.taskRequests().length,0);await h.service.appendTaskContext({taskId:id,requestId:'real-review-'+review,progressImpact:'replan',context:'Explicit bounded review '+review+'; do not execute any original effect.'});await h.service.whenIdle();assert.equal(h.taskRequests().length,1);assert.equal(h.events.length,0);assert.equal(h.effects,0)}
- const stored=await h.stored(id);assert.equal(stored.task.sessionId,first.task.sessionId);assert.equal(stored.task.completion??null,null);assert.equal(stored.task.humanRequests.length,0);assert.equal(stored.entries.filter(e=>e.type==='custom_message'&&e.customType==='night.business-input'&&e.details.source.kind==='task-input').length,4);const before=h.taskRequests().length;for(let i=0;i<4;i++){await h.service.recover();await h.service.whenIdle()}assert.equal(h.taskRequests().length,before)
+test('three explicit reopens survive restart without autonomous retries or effect replay',async t=>{
+ const f=await roots(t),model={decide:()=>[result()],compactionSummary:'The prior bounded review retained its original evidence and made no external changes.'};let h=await f.host(model);const id=await h.create();await h.service.whenIdle();const first=await h.stored(id);assert.equal(first.task.status,'completed')
+ for(let review=1;review<=3;review++){await h.close();h=await f.host({initialize:false,...model});await h.service.recover();await h.service.whenIdle();assert.equal(h.taskRequests().length,0);await h.service.reopenTask({taskId:id,requestId:'real-review-'+review,reason:'Explicit bounded review '+review+'; do not execute any original effect.'});await h.service.whenIdle();assert.equal(h.taskRequests().length,1);assert.equal(h.events.length,0);assert.equal(h.effects,0)}
+ const stored=await h.stored(id);assert.equal(stored.task.sessionId,first.task.sessionId);assert.equal(stored.task.status,'completed');assert.equal(stored.task.completion.result.action,'wait');assert.equal(stored.task.humanRequests.length,0);assert.equal(stored.entries.filter(e=>e.type==='custom_message'&&e.customType==='night.business-input'&&e.details.source.kind==='task-input').length,4);const before=h.taskRequests().length;for(let i=0;i<4;i++){await h.service.recover();await h.service.whenIdle()}assert.equal(h.taskRequests().length,before)
 }, {timeout:nativeTestTimeout(40000)})
 test('lifecycle timeout drains an acquired native host before removing its workspace', async t => {
   let root, rootReady, opening, h, release, closed = false, continued = false
@@ -141,9 +149,16 @@ test('explicit Pi backend accepts derived legacy read-only labels without select
 for(const mode of ['provider-error','successful-text-without-task-result'])test(`failed task dialogue preserves its real source and never becomes a model retry or fabricated reply: ${mode}`,async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()})
  const f=await roots(t),bad='FIRST_DIALOGUE_SOURCE '+mode
- const decide=request=>{const input=latestInput(request);if(input.dialogue){assert.equal(input.dialogue.text,'SECOND_GENUINE_DIALOGUE');return [result('wait','Read the retained evidence for the second genuine dialogue source')]}return [result()]}
- const h=await f.host({decide,intercept:request=>taskRequest(request)&&latestInput(request).dialogue?.text===bad?mode==='provider-error'?{stopReason:'error',errorMessage:transient}:{stopReason:'stop',content:[{type:'text',text:'An assistant response without the required dialogue result'}]}:undefined})
- const id=await h.create('dialogue-failure');await h.service.whenIdle();await h.service.sendTaskDialogue({taskId:id,requestId:'first-dialogue',text:bad});await h.service.whenIdle();const before=await h.stored(id),failed=before.task.dialogue.find(message=>message.id==='first-dialogue'),code=mode==='provider-error'?'TASK_PI_PROVIDER_ERROR':'TASK_SESSION_NO_SUBMISSION'
+ const decide=request=>{const input=latestInput(request);assert.equal(input.dialogue?.text,'SECOND_GENUINE_DIALOGUE');return [result('wait','Read the retained evidence for the second genuine dialogue source')]}
+ const h=await f.host({decide,intercept:request=>{
+  if(!taskRequest(request))return
+  const dialogue=latestInput(request).dialogue
+  if(!dialogue)return {stopReason:'error',errorMessage:'401 invalid account configuration'}
+  if(dialogue.text===bad)return mode==='provider-error'?{stopReason:'error',errorMessage:transient}:{stopReason:'stop',content:[{type:'text',text:'An assistant response without the required dialogue result'}]}
+ }})
+ const {taskId:id}=await h.service.createTask({requestId:'dialogue-failure',objective:'Read the retained evidence only'});await h.service.whenIdle()
+ const interrupted=await h.query('task.get',{taskId:id});assert.equal(interrupted.technicalFailure.code,'TASK_PI_PROVIDER_ERROR');assert.equal(interrupted.drained,true)
+ await h.service.sendTaskDialogue({taskId:id,requestId:'first-dialogue',text:bad});await h.service.whenIdle();const before=await h.stored(id),failed=before.task.dialogue.find(message=>message.id==='first-dialogue'),code=mode==='provider-error'?'TASK_PI_PROVIDER_ERROR':'TASK_SESSION_NO_SUBMISSION'
  assert.equal(failed.text,bad);assert.equal(failed.reply,null);assert.equal(failed.replyError.code,code);assert.equal(failed.replyError.stopReason,mode==='provider-error'?'error':'stop');assert.ok(failed.replyFailedAt);assert.equal(before.task.providerRecovery??null,null);const count=h.taskRequests().length
  for(let n=0;n<3;n++){t.mock.timers.setTime(Date.now()+3600000);await h.service.recover();await h.service.whenIdle()}assert.equal(h.taskRequests().length,count);await h.close()
  const cold=await f.host({initialize:false,decide});await cold.service.recover();await cold.service.whenIdle();assert.equal(cold.taskRequests().length,0);assert.deepEqual((await cold.query('task.get',{taskId:id})).dialogue[0],failed)
@@ -154,36 +169,39 @@ for(const mode of ['provider-error','successful-text-without-task-result'])test(
 // Legacy non-Router review remains covered by pi-single-task-review.test.js.
 
 
-test('Router-confirmed group answer survives provider failure and cold restore before a new real answer resumes the same task',async t=>{
+test('A genuine Router follow-up survives provider failure and cold restore before another source resumes the same task',async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()})
  let task,failExecution=true;const reviewed=[]
  const route=async(request,host)=>{
   const calls=topicTaskCalls(request,{task})
   if(task&&calls?.[0]?.name==='resident_task_action'){
-   const current=await host.query('task.get',{taskId:task.taskId}),pending=current.humanRequests.find(question=>question.status==='waiting-reply')
-   calls[0].args={...calls[0].args,kind:'resume',expectedRequirementRevision:current.requirementRevision,expectedControlRevision:current.controlRevision,...pending?{humanRequestId:pending.requestId,expectedContextRevision:current.contextRevision??0,reason:'The real business source supplies the bounded target'}:{}}
+   const current=await host.query('task.get',{taskId:task.taskId})
+   calls[0].args={...calls[0].args,kind:current.status==='completed'?'reopen':'resume',expectedRequirementRevision:current.requirementRevision,expectedControlRevision:current.controlRevision}
   }
   return calls
  }
+ const handoff=(request,marker)=>latestInput(request).handoffs?.find(item=>item.text.includes(marker))
  const decide=request=>{
-  const input=latestInput(request),answer=input.sources.find(source=>source.text.includes('SECOND_REAL_ANSWER'))
-  if(!answer)return [{name:'task_result',args:{decision:{action:'blocked',summary:'The business target must be confirmed',question:'请业务负责人确认原事项的只读目标。',audience:'requester',evidence:[],limitations:[]}}}]
+  const answer=handoff(request,'SECOND_REAL_ANSWER')
+  if(!answer)return [result('complete','Read-only review stopped: target is not established')];
   assert.match(JSON.stringify(request.messages),/FIRST_REAL_ANSWER/,'the first genuine answer remains in Pi history')
   reviewed.push(answer.sourceId);return [result('complete')]
  }
- const intercept=request=>taskRequest(request)&&latestInput(request).sources.some(source=>source.text.includes('FIRST_REAL_ANSWER'))&&failExecution?{stopReason:'error',errorMessage:transient}:undefined
- const f=await roots(t),h=await f.host({route,decide,intercept})
+ const intercept=request=>taskRequest(request)&&handoff(request,'FIRST_REAL_ANSWER')&&failExecution?{stopReason:'error',errorMessage:transient}:undefined
+ const compactionSummary='The original UAT3 task is read-only. After FIRST_REAL_ANSWER it kept the original limits and did not establish the target before the provider failed. Preserve the first source and await the next genuine input.'
+ const f=await roots(t),h=await f.host({route,decide,intercept,compactionSummary})
  await h.service.ingest({groupId:'native-group',messageId:'review-origin',senderOpenDingTalkId:'native-user',text:'测试助手，等业务负责人确认原事项的UAT3只读目标，不要实施变更。',occurredAt:new Date().toISOString()});await h.service.whenIdle();task=(await h.query('task.list'))[0]
  await h.service.ingest({groupId:'native-group',messageId:'first-review-source',senderOpenDingTalkId:'business-responsible',text:'测试助手，FIRST_REAL_ANSWER：先保留原限制，只核对目标事实。',occurredAt:new Date().toISOString()});await h.service.whenIdle()
- const before=await h.stored(task.taskId),question=before.task.humanRequests[0]
- assert.equal(question.status,'answered');assert.equal(before.task.technicalFailure.code,'TASK_PI_PROVIDER_ERROR');assert.equal(before.task.completion??null,null)
+ const before=await h.stored(task.taskId)
+ assert.equal(before.task.humanRequests?.length??0,0);assert.equal(before.task.technicalFailure.code,'TASK_PI_PROVIDER_ERROR');assert.equal(before.task.completion??null,null)
  const sources=await Promise.all(before.task.sourceRefs.map(sourceId=>h.query('source.get',{sourceId})));assert.ok(sources.some(source=>source.text.includes('FIRST_REAL_ANSWER')))
  const count=h.taskRequests().length
  for(let n=0;n<3;n++){t.mock.timers.setTime(Date.now()+3600000);await h.service.recover();await h.service.whenIdle()}
  assert.equal(h.taskRequests().length,count);await h.close();failExecution=false
- const cold=await f.host({initialize:false,route,decide,intercept});await cold.service.recover();await cold.service.whenIdle();assert.equal(cold.taskRequests().length,0)
+ const cold=await f.host({initialize:false,route,decide,intercept,compactionSummary});await cold.service.recover();await cold.service.whenIdle();assert.equal(cold.taskRequests().length,0)
  task=await cold.query('task.get',{taskId:task.taskId});for(const source of sources)assert.deepEqual(await cold.query('source.get',{sourceId:source.sourceId}),source)
  await cold.service.ingest({groupId:'native-group',messageId:'second-review-source',senderOpenDingTalkId:'business-responsible',text:'测试助手，SECOND_REAL_ANSWER：仅确认UAT3只读目标，原有禁止实施的限制全部保留。',occurredAt:new Date().toISOString()});await cold.service.whenIdle()
  const after=await cold.stored(task.taskId)
- assert.equal(after.task.status,'completed');assert.equal(after.task.drained,true);assert.equal(after.task.humanRequests[0].status,'answered');assert.equal(reviewed.length,1);assert.equal(cold.effects,0);assert.equal(after.task.sessionId,before.task.sessionId)
+ assert.equal(after.task.status,'completed');assert.equal(after.task.drained,true);assert.equal(after.task.humanRequests?.length??0,0);assert.equal(reviewed.length,1);assert.ok(after.task.sourceRefs.includes(reviewed[0]));assert.equal(cold.effects,0);assert.equal(after.task.sessionId,before.task.sessionId)
+ assert.ok(after.entries.some(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'&&JSON.stringify(entry.content).includes('FIRST_REAL_ANSWER：先保留原限制')),'the real first input stays in the physical Pi journal, not only in the summary')
 },{timeout:nativeTestTimeout(30000)})

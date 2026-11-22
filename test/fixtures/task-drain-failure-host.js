@@ -24,7 +24,7 @@ try{
  const created=await app.tasks.createTask({requestId:'drain-failure',title:'排空故障隔离验收',objective:'Run the fixture probe exactly once.'})
  await app.tasks.whenIdle()
  const task=await app.tasks.taskDetail(created.taskId)
- assert.equal(task.state,'waiting');assert.equal(task.session.status,'failed');assert.equal(task.drained,false)
+ assert.equal(task.state,'interrupted');assert.equal(task.session.status,'failed');assert.equal(task.drained,false)
  assert.equal(task.sessionFailure.code,'TASK_SESSION_DRAIN_FAILED');assert.equal(task.lastDecision??null,null)
  const journal=await f.host.ctx.sessionPersistence.readNative(task.session.sessionId,{requireComplete:true})
  assert.equal(journal.audit.filter(r=>r.domain==='job'&&r.kind==='registered').length,1)
@@ -34,11 +34,11 @@ try{
  const login=await fetch(web.origin+'/api/login',{method:'POST',headers:{origin:web.origin,'content-type':'application/json'},body:JSON.stringify({token:(await readFile(web.credentialPath,'utf8')).trim()})})
  assert.equal(login.status,200)
  const cookie=login.headers.get('set-cookie').split(';')[0],api=async path=>{const response=await fetch(web.origin+path,{headers:{origin:web.origin,cookie}});assert.equal(response.status,200);return response.json()}
- const detail=await api('/api/tasks/'+created.taskId),waiting=await api('/api/tasks?state=waiting'),running=await api('/api/tasks?state=running')
- assert.equal(detail.state,'waiting');assert.equal(detail.session.status,'failed')
+ const detail=await api('/api/tasks/'+created.taskId),interrupted=await api('/api/tasks?state=interrupted'),running=await api('/api/tasks?state=running')
+ assert.equal(detail.state,'interrupted');assert.equal(detail.session.status,'failed')
  assert.equal(detail.blockers.find(b=>b.kind==='session').status,'failed');assert.match(detail.blockers[0].title,/排空失败/)
  assert.doesNotMatch(JSON.stringify(detail),/PRIVATE_FAULT_DETAILS|fixture-unresolved-job/)
- assert.ok(waiting.items.some(t=>t.taskId===created.taskId));assert.ok(!running.items.some(t=>t.taskId===created.taskId))
+ assert.ok(interrupted.items.some(t=>t.taskId===created.taskId));assert.ok(!running.items.some(t=>t.taskId===created.taskId))
  const wakes=await app.tasks.store.query({kind:'wake.list',taskId:created.taskId});assert.ok(wakes.some(w=>w.state==='claimed'))
  let browserVerified=false
  if(process.argv.includes('--browser')){
@@ -51,7 +51,7 @@ try{
    await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
    await page.goto(web.origin+'/#/tasks/'+created.taskId)
    await page.locator('.blockers').getByText(/执行会话排空失败/).waitFor()
-   assert.equal(await page.locator('.task-facts').getByText('等待中',{exact:true}).count(),1)
+   assert.equal(await page.locator('.task-facts').getByText('执行中断',{exact:true}).count(),1)
    assert.equal(await page.locator('.agent-progress.is-running').count(),0)
    await page.getByRole('navigation',{name:'任务信息分类'}).getByRole('link',{name:'执行',exact:true}).click()
    await page.locator('.task-execution-states').getByText('失败',{exact:true}).waitFor()

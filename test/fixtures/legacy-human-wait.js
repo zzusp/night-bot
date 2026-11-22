@@ -11,7 +11,14 @@ export function restoreLegacyHumanWait(dbPath,taskId,decision,{audience=decision
   const task=JSON.parse(db.prepare('SELECT body FROM dynamic_tasks WHERE id=?').get(taskId).body)
   assert.equal(task.drained,true,'restore only into a stopped isolated fixture')
   assert.ok(!task.humanRequests?.length,'never overwrite a historical request')
-  const stamp=task.lastDecision.at
+  const stamp=task.completion?.at??task.lastDecision?.at
+  assert.ok(stamp,'the scaffold must have a recorded stop')
+  if(task.status==='completed'){
+   assert.ok(['wait','blocked'].includes(task.completion?.result?.action),'only a synthetic stopped scaffold can become a legacy wait')
+   // Place the historical wait in a later run; keep the scaffold's real completion receipt intact.
+   task.status='active';task.completion=null;task.requirementRevision++;task.controlRevision++;task.runSequence++
+  }
+  assert.equal(task.status,'active')
   const request={requestId,audience,status:'waiting-reply',question:decision.question,reason:decision.summary,waitingReason:decision.summary,objective:task.objective,evidence:decision.evidence??[],attemptedActions:decision.attemptedActions??[],requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,createdAt:stamp}
   task.humanRequests=[request]
   task.lastDecision={...task.lastDecision,...decision,question:decision.question,action:'blocked'}

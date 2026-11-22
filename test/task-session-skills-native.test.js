@@ -25,7 +25,7 @@ test('a missing skill is a correctable read without an unknown external effect',
 
 test('task dialogue keeps business effects denied while allowing the original evidence reader',{timeout:nativeTestTimeout(20000)},async t=>{
  let step=0,lateEffects=0;const f=await taskEvidenceFixture(t,request=>{
-  if(!latestInput(request).dialogue)return [decision('wait','Awaiting an evidence question')]
+  if(!latestInput(request).dialogue)throw Error('Fixture provider stopped before the evidence question')
   if(step++===0){const actor=f.h.ctx.agents.get(latestInput(request).task.sessionId),late=name=>({name,description:'Late fixture business tool',parameters:{type:'object',properties:{}},output:{schema:{type:'object'},render:()=>[]},execute(){lateEffects++;return {}}});f.h.ctx.get('tools').register(late('late_global_business'));actor.ctx.get('tools').register(late('late_scoped_business'));return [call('write',{path:'work/forbidden.txt',content:'forbidden'}),call('late_global_business',{}),call('late_scoped_business',{}),call('read',{path:join(f.skillRoot,names[0],'SKILL.md')})]}
   return [decision('wait','Read the original guide; did not perform a write',{evidence:['BODY_ONLY_personal-alpha']})]
  })
@@ -45,7 +45,7 @@ test('a same-name skill replacement is accounted as an effect and cannot inherit
   if(input.dialogue){if(reviewStep++===0){replace();return [call('skill',{name:names[0]})]}return [decision('wait','Read-only review refused the replacement effect')]}
   if(step++===0)return [call('skill',{name:names[0]})]
   if(step===2){replace();return [call('skill',{name:names[0]})]}
-  return [decision('wait','The replacement effect was recorded; await a read-only review')]
+  throw Error('Fixture provider stopped after the effect receipt, before a read-only review')
  })
  const task=await f.create('skill-shadow','Read a guide and account for an effectful same-name replacement');assert.equal(effects,1)
  let stored=await f.sole(task);assert.equal(reads(stored).length,1);assert.equal(stored.audit.filter(receipt=>receipt.kind==='effect-intent'&&receipt.payload.name==='skill').length,1);assert.equal(stored.audit.filter(receipt=>receipt.kind==='effect-result').length,1)
@@ -72,6 +72,8 @@ test('cold Single continuation restores read versions and notices a changed refe
   assert.match(JSON.stringify(request),/COLD_CHANGED_REFERENCE/);return [decision('wait','Reread the changed reference',{evidence:['COLD_CHANGED_REFERENCE']})]
  })
  const task=await f.create('skill-cold','Read the skill now and await a reference check');const before=reads(await f.sole(task));assert.equal(before.length,2)
- await f.cold();phase='cold';step=0;await writeFile(join(f.skillRoot,names[0],'references/procedure.md'),'COLD_CHANGED_REFERENCE');await f.dialogue(task,'cold-reference','Check the current reference')
+ await f.cold();phase='cold';step=0;await writeFile(join(f.skillRoot,names[0],'references/procedure.md'),'COLD_CHANGED_REFERENCE')
+ await f.h.service.reopenTask({taskId:task.taskId,requestId:'cold-reference',context:'Check the current reference'});await f.h.service.whenIdle()
+ const current=await f.h.query('task.get',{taskId:task.taskId});assert.equal(current.status,'completed');assert.deepEqual(current.completion.result.evidence,['COLD_CHANGED_REFERENCE'])
  const stored=await f.sole(task);assert.equal(reads(stored).length,3);assert.equal(stored.header.id,task.sessionId);assert.equal(reads(stored).filter(r=>r.payload.record.kind==='reference').length,2)
 })

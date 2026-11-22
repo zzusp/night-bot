@@ -44,10 +44,33 @@ test('direct Router keeps silent background in the original bounded session, ans
  assert.ok(!h.requests.some(body=>requestTools(body).includes('channel_triage_submit')))
 })
 
-test('direct Router dispatches explicit work but answers an independent message while execution waits',{timeout:nativeTestTimeout(45000)},async t=>{
- let planned=false,answered=false
+test('Router puts Markdown in its real system prompt, freezes it unchanged and preserves explicitly quoted replies',{timeout:nativeTestTimeout(30000)},async t=>{
+ const markdown='## 核对结果\n\n**已核实**：使用 `status`。\n\n- 保留原证据\n\n| 项目 | 状态 |\n| --- | --- |\n| 账本 | 已完成 |\n\n[查看说明](https://example.org/result)\n\n```text\nverified\n```'
+ const answered=new Set()
  const h=await residentRouterHost(t,body=>{
-  if(requestTools(body).includes('task_result'))return {tool:'task_result',args:{decision:{action:'wait',summary:'Synthetic execution is waiting for input',evidence:[],limitations:[]}}}
+  const input=checked(body);if(!input||isSettleResult(body))return {text:'Done'}
+  const {source}=input.events.find(event=>event.source)
+  if(answered.has(source.sourceId))return settle(input,'handled-inline')
+  answered.add(source.sourceId)
+  assert.match(body.messages.filter(message=>message.role==='system').map(message=>message.content).join('\n'),/正文使用 Markdown.*标题.*加粗.*列表.*表格/)
+  return {tool:'resident_router_reply',args:{operationId:'markdown:'+source.messageId,sourceId:source.sourceId,messageVersion:source.version,text:markdown,...source.messageId==='quote'?{replyToSource:true,recipientActorIds:[source.actorId]}:{}}}
+ },{transportCapabilities:{standaloneMarkdown:true,quotedReplies:['chat-room']}})
+ for(const id of ['markdown','quote']){await h.receive(channelMessage(id));await h.service.whenIdle()}
+ const notices=await h.query('notification.list'),plain=notices.find(row=>row.payload.sourceRef.messageId==='markdown'),quoted=notices.find(row=>row.payload.sourceRef.messageId==='quote')
+ assert.equal(plain.state,'delivered');assert.equal(plain.payload.text,markdown);assert.equal(plain.payload.textFormat,'markdown');assert.equal(plain.payload.sourceMessageId,undefined)
+ assert.equal(quoted.state,'delivered');assert.equal(quoted.payload.text,markdown);assert.equal(quoted.payload.sourceMessageId,'quote');assert.equal(quoted.payload.textFormat,undefined)
+ assert.deepEqual(h.sent.map(row=>[row.text,row.replyToMessageId,row.recipientIds]),[[markdown,undefined,['alice']],[markdown,'quote',['alice']]])
+ await h.restart();await h.service.whenIdle();assert.equal(h.sent.length,2)
+})
+
+test('direct Router answers an independent message before the running task finishes',{timeout:nativeTestTimeout(45000)},async t=>{
+ let planned=false,answered=false
+ const entered=Promise.withResolvers(),release=Promise.withResolvers()
+ const h=await residentRouterHost(t,async body=>{
+  if(requestTools(body).includes('task_result')){
+   entered.resolve();await release.promise
+   return {tool:'task_result',args:{decision:{action:'wait',summary:'Synthetic result with missing input',evidence:[],limitations:['No input was supplied']}}}
+  }
   const input=checked(body);if(!input)return {text:'No work'}
   if(isSettleResult(body))return {text:'Done'}
   const event=input.events.find(event=>event.source)
@@ -59,11 +82,16 @@ test('direct Router dispatches explicit work but answers an independent message 
   if(!answered){answered=true;return {tool:'resident_router_reply',args:{operationId:'independent-answer',sourceId:event.sourceId,messageVersion:event.messageVersion,text:'Independent query answered without waiting for the task.'}}}
   return settle(input,'handled-inline')
  })
- await h.receive(channelMessage('work',{text:'EXPLICIT task'}));await h.service.whenIdle()
- assert.equal((await h.query('task.list')).length,1)
- await h.receive(channelMessage('independent',{text:'A separate read-only query'}));await h.service.whenIdle()
- assert.equal(h.sent.length,1);assert.equal((await h.query('task.get',{taskId:'direct-work'})).lastDecision.action,'wait')
- assert.ok(!h.requests.some(body=>requestTools(body).includes('channel_triage_submit')))
+ try{
+  await h.receive(channelMessage('work',{text:'EXPLICIT task'}));await entered.promise
+  assert.equal((await h.query('task.list')).length,1)
+  await h.receive(channelMessage('independent',{text:'A separate read-only query'}))
+  await eventually(()=>h.sent.length===1,'independent reply before task release')
+  const running=await h.query('task.get',{taskId:'direct-work'});assert.equal(running.drained,false);assert.equal(running.completion??null,null)
+ }finally{release.resolve()}
+ await h.service.whenIdle()
+ const task=await h.query('task.get',{taskId:'direct-work'});assert.equal(task.status,'completed');assert.equal(task.completion.result.action,'wait')
+ assert.equal(h.sent.length,1);assert.ok(!h.requests.some(body=>requestTools(body).includes('channel_triage_submit')))
 })
 
 for(const edit of ['update','retract'])test('direct versions remain auditable without stale-source batch failure: '+edit,{timeout:nativeTestTimeout(45000)},async t=>{

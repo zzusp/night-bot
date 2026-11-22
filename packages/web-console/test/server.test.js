@@ -258,7 +258,7 @@ test('transport delivery uses durable exact receipts, supports readback after re
 test('task/channel views only project existing facts and never return configuration secrets or private paths', async t => {
   const f = await fixture(t); await f.login()
   const overview = await f.fetchApi('/api/overview')
-  assert.equal(overview.body.running.total, 1); assert.equal(overview.body.waiting.total, 0)
+  assert.equal(overview.body.running.total, 1); assert.equal(overview.body.interrupted.total, 0)
   assert.equal(overview.body.channels[0].connected, undefined, 'configured is not proof of live connection')
   const task = await f.fetchApi('/api/tasks/task-one')
   assert.equal(task.body.session.sessionId, 'pi-one'); assert.deepEqual(task.body.timeline.executions, [])
@@ -314,11 +314,20 @@ test('渠道连接阶段只用真实 health 白名单，启用状态和私有错
   assert.equal(f.received.length, 0, 'reading connection state cannot admit or replay business work')
 })
 
+test('task details preserve a cancellation reason without exposing secrets', async t => {
+  const f = await fixture(t); await f.login()
+  f.app.tasks.taskDetail = async taskId => ({taskId, state: 'cancelled', cancellationReason: '用户取消，关联 token=SYNTHETIC_PRIVATE_TOKEN'})
+  const result = await f.fetchApi('/api/tasks/task-one')
+  assert.equal(result.status, 200); assert.equal(result.body.state, 'cancelled')
+  assert.match(result.body.cancellationReason, /用户取消/)
+  assert.doesNotMatch(result.body.cancellationReason, /SYNTHETIC_PRIVATE_TOKEN/)
+})
+
 test('partial overview failure preserves other sections without reflecting internal errors', async t => {
-  const f = await fixture(t, {taskError: query => query.state === 'waiting'}); await f.login()
+  const f = await fixture(t, {taskError: query => query.state === 'interrupted'}); await f.login()
   const result = await f.fetchApi('/api/overview')
-  assert.equal(result.status, 200); assert.equal(result.body.waiting, null)
-  assert.equal(result.body.sectionErrors.waiting, 'SECTION_UNAVAILABLE'); assert.equal(result.body.running.total, 1)
+  assert.equal(result.status, 200); assert.equal(result.body.interrupted, null)
+  assert.equal(result.body.sectionErrors.interrupted, 'SECTION_UNAVAILABLE'); assert.equal(result.body.running.total, 1)
   assert.doesNotMatch(JSON.stringify(result.body), /PRIVATE_INTERNAL_ERROR/)
 })
 
@@ -712,7 +721,7 @@ test('渠道执行接口按可见会话与真实任务归属读取，归档任�
     if (query.kind === 'task.get') return {taskId: query.taskId, groupId: query.taskId === 'foreign-task' ? 'other-room' : 'room-one', sessionId: null, sessionBound: false}
     if (query.kind === 'router.get') return null
   }}
-  assert.deepEqual((await f.fetchApi('/api/conversations/room-one/tasks')).body, {taskIds: ['archived-task'], taskSummaries: [{taskId: 'archived-task'}], taskHistoryStatus: 'ready'})
+  assert.deepEqual((await f.fetchApi('/api/conversations/room-one/tasks')).body, {taskIds: ['archived-task'], taskSummaries: [{taskId: 'archived-task', state: 'inactive'}], taskHistoryStatus: 'ready'})
   assert.deepEqual(calls[0], {kind: 'task.list', groupId: 'room-one', archived: 'all'})
   assert.equal((await f.fetchApi('/api/conversations/room-one/session')).body.status, 'pending')
   assert.equal((await f.fetchApi('/api/conversations/room-one/tasks/archived-task/session')).body.status, 'unavailable')
@@ -893,7 +902,7 @@ test('会话任务摘要只用列表白名单，隔离会话并脱敏，不读�
     assert.deepEqual(value.taskIds, ['safe-task'])
     assert.equal(value.taskSummaries.length, 1)
     assert.deepEqual(Object.keys(value.taskSummaries[0]).sort(), ['state', 'taskId', 'title', 'updatedAt'])
-    assert.equal(value.taskSummaries[0].state, 'active')
+    assert.equal(value.taskSummaries[0].state, 'inactive')
     assert.doesNotMatch(JSON.stringify(value.taskSummaries), new RegExp(token + '|private|foreign'))
   }
   assert.equal(calls.length, 2)
@@ -1122,7 +1131,7 @@ test('light execution HTTP binds login and endpoint, uses identity-only task rea
 test('drain failure summary and blocker expose only fixed facts, never arbitrary exception details',async()=>{
  const {taskView,taskSummaryView}=await import('../server/views.js')
  const task={taskId:'t',status:'active',control:'active',sessionFailure:{code:'TASK_SESSION_DRAIN_FAILED',message:'SECRET_EXCEPTION',path:'C:\private\fault.txt'},blockers:{executions:[],operations:[],legacy:[]}}
- assert.equal(taskSummaryView(task).state,'waiting')
+ assert.equal(taskSummaryView(task).state,'interrupted')
  assert.equal(taskSummaryView({...task,status:'completed'}).state,'completed')
  assert.equal(taskSummaryView({...task,control:'cancelled'}).state,'cancelled')
  const view=taskView(task);assert.equal(view.blockers.length,1);assert.equal(view.blockers[0].status,'failed');assert.match(view.blockers[0].title,/排空失败/)
@@ -1230,17 +1239,17 @@ test('channel activity scopes every count and page before querying, rejects fore
  assert.equal(identity(message),identity({...message,senderId:'other-member'}),'group members share one stable room scope')
  const f=await fixture(t),calls=[],groups=['room-one','room-two','room-empty']
  f.app.tasks.listObserverGroups=()=>groups.map(groupId=>({groupId,name:'Same display name'}))
- const rows=[...Array.from({length:12},(_,i)=>({taskId:'b-'+i,groupId:'room-two',title:'B synthetic '+i,state:'running'})),{taskId:'a-run',groupId:'room-one',title:'A synthetic running',state:'running'},{taskId:'a-wait',groupId:'room-one',title:'A synthetic waiting',state:'waiting'},{taskId:'global',title:'Standalone synthetic',state:'running'}]
+ const rows=[...Array.from({length:12},(_,i)=>({taskId:'b-'+i,groupId:'room-two',title:'B synthetic '+i,state:'running'})),{taskId:'a-run',groupId:'room-one',title:'A synthetic running',state:'running'},{taskId:'a-interrupted',groupId:'room-one',title:'A synthetic interrupted',state:'interrupted'},{taskId:'global',title:'Standalone synthetic',state:'running'}]
  f.app.tasks.boardTasks=async q=>{calls.push(q);const selected=rows.filter(row=>(!q.groupId||row.groupId===q.groupId)&&(!q.state||row.state===q.state));return {items:selected.slice(q.offset,q.offset+q.limit),total:selected.length,nextOffset:null,limit:q.limit,offset:q.offset}}
  assert.equal((await f.fetchApi('/api/conversations/room-one/activity')).status,401);assert.equal(calls.length,0)
  await f.login();assert.equal((await f.fetchApi('/api/conversations/foreign/activity')).status,404);assert.equal(calls.length,0)
  const a=(await f.fetchApi('/api/conversations/room-one/activity')).body
- assert.deepEqual(a.scope,{conversationId:'room-one'});assert.equal(a.running.total,1);assert.equal(a.waiting.total,1);assert.equal(a.tasks.total,2)
+ assert.deepEqual(a.scope,{conversationId:'room-one'});assert.equal(a.running.total,1);assert.equal(a.interrupted.total,1);assert.equal(a.tasks.total,2)
  assert.ok(calls.every(q=>q.groupId==='room-one'&&q.offset===0&&q.limit===5&&q.archived===false));assert.ok(a.tasks.items.every(row=>row.groupId==='room-one'))
  const b=(await f.fetchApi('/api/conversations/room-two/activity')).body;assert.equal(b.running.total,12);assert.equal(b.running.items.length,5)
- const empty=(await f.fetchApi('/api/conversations/room-empty/activity')).body;assert.equal(empty.tasks.total,0);assert.equal(empty.running.total,0);assert.equal(empty.waiting.total,0)
+ const empty=(await f.fetchApi('/api/conversations/room-empty/activity')).body;assert.equal(empty.tasks.total,0);assert.equal(empty.running.total,0);assert.equal(empty.interrupted.total,0)
  const count=calls.length;assert.equal((await f.fetchApi('/api/conversations/room-one/activity?groupId=room-two')).status,400);assert.equal(calls.length,count)
  const global=(await f.fetchApi('/api/overview')).body;assert.equal(global.running.total,14)
  const board=f.app.tasks.boardTasks;f.app.tasks.boardTasks=async q=>{if(q.state==='running')throw Error('PRIVATE_ERROR');return board(q)}
- const partial=(await f.fetchApi('/api/conversations/room-one/activity')).body;assert.equal(partial.running,null);assert.equal(partial.waiting.total,1);assert.equal(partial.sectionErrors.running,'SECTION_UNAVAILABLE');assert.ok(!JSON.stringify(partial).includes('PRIVATE_ERROR'))
+ const partial=(await f.fetchApi('/api/conversations/room-one/activity')).body;assert.equal(partial.running,null);assert.equal(partial.interrupted.total,1);assert.equal(partial.sectionErrors.running,'SECTION_UNAVAILABLE');assert.ok(!JSON.stringify(partial).includes('PRIVATE_ERROR'))
 })

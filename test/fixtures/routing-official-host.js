@@ -39,7 +39,7 @@ export async function nativeTaskHost(root,decide,options={}){
      ;(auxiliary?auxiliaryRequests:requests).push(structuredClone(request))
      const handoffText=input?.handoffId&&request.tools.length===0?JSON.stringify({currentIntent:'Preserve the original task intent and current ledger references',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:input.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:input.cutoff}):undefined
      let calls=handoffText?[]:contextReadCalls(request)
-     if(!calls&&(auxiliary||request.tools.some(tool=>tool.name==='resident_router_settle')&&input.events.every(event=>!event.source)))calls=topicTaskCalls(request,{replyRecipients:options.routerReplyRecipients,signature:options.agentConfig?.replySignature?String.fromCharCode(10,10)+options.agentConfig.replySignature:''})
+     if(!calls&&(auxiliary||request.tools.some(tool=>tool.name==='resident_router_settle')&&input.events.every(event=>!event.source)))calls=topicTaskCalls(request,{replyRecipients:options.routerReplyRecipients})
      if(!calls){
       // These routing scenarios request no preliminary send. Explicit silence
       // is a valid first-tier disposition; the real tool validates every source.

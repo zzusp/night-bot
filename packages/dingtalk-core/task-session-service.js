@@ -248,6 +248,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if(archives)for(const taskId of archiveTaskIds){
       const current=await query('task.get',{taskId})
       if(!current||!taskWorkspaceReady(current))continue
+      // The execution registers its journal route before opening it. The claim
+      // only needs to request a snapshot; the archive worker validates its own paths.
+      if(kind==='task.claim'){archives.schedule(taskId);continue}
       try{await archives.register(current);archives.schedule(taskId)}catch(error){archives.errors.set(taskId,error.code??'TASK_ARCHIVE_NOT_READY');archives.onFailure(taskId,error);receipt.archiveMaintenance={pending:true,taskId,code:error.code??'TASK_ARCHIVE_NOT_READY'}}
     }
     if(receipt.completionEvent)ctx.get?.('reflection')?.scan()
@@ -388,7 +391,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   const taskSessions = suppliedTaskSessions ?? createSingleTaskSessions({ ctx, isCurrent: currentTask, isOwnerCurrent:binding=>currentTask(binding,{allowLiveSupplements:true}),
     readEffectScope:async(binding,stored)=>readTaskEffectScope(ctx,await query('task.get',{taskId:binding.taskId}),stored),
-    getWorkspaceDir: async ({ binding }) => {const task=await requireTask(binding.taskId);assertTaskWorkspaceReady(task);if(archives)await archives.register(task);return taskWorkspace(root,binding.taskId,task)} })
+    getWorkspaceDir: async ({ binding }) => {
+      const task = await requireTask(binding.taskId)
+      const registered = await archives.register(task)
+      const cwd = dirname(taskFilePath(root, task.taskId, 'work'))
+      return registered.root === cwd ? cwd : taskWorkspace(root, task.taskId, task)
+    } })
   const effectReconciliation=config.webActorId?createTaskEffectReconciliation({persistence:ctx.sessionPersistence,readTask:taskId=>query('task.get',{taskId}),readScope:(task,stored)=>readTaskEffectScope(ctx,task,stored),isSessionLive:async sessionId=>!!ctx.agents.get(sessionId),readOperatorSource:sourceId=>query('source.get',{sourceId}),operatorActorId:config.webActorId}):undefined
   async function projectEffectReconciliation(task,row,writerHeld=false,preserveControl=false){
     if(!writerHeld){
@@ -562,7 +570,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const taskDTO = async task => {
     const { dialogue: _dialogue, ...publicTask } = task
     const executions = await query('execution.list', { taskId: task.taskId })
-    const pendingWake = !task.lastDecision && (await query('wake.list', { taskId: task.taskId })).some(wake => wake.state !== 'acked')
+    const pendingWake = task.status==='active'&&task.drained&&(await query('wake.list', { taskId: task.taskId })).some(wake => wake.state === 'pending')
     const state = taskBoardState(task, executions, pendingWake)
     return {...publicTask,state,topicRefs:taskTopicRefs(task),executionCount:1,controlState:task.control,inputVersion:task.requirementRevision,result:task.completion?.result??task.lastDecision??null,session:{role:'execution',sessionId:task.sessionId,sessionBound:task.sessionBound,status:task.sessionFailure?.code==='TASK_SESSION_DRAIN_FAILED'?'failed':task.drained?'idle':'running',workspaceDir:taskWorkspaceReady(task)?await taskWorkspace(root,task.taskId,task):null,logPath:ctx.sessionPersistence.path(task.sessionId)}}
 
@@ -585,19 +593,20 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   async function materializeSource(taskId, source) {
     const task = await requireTask(taskId)
-    const directories = await taskDirectories(root, taskId, {task})
+    assertTaskWorkspaceReady(task)
+    const materialsDirectory = await checkedTaskDirectory(taskFilePath(root, taskId, 'materials'), true)
     const attachmentOnly = routerHandoffTaskInput(task)
     const snapshotIdentity = attachmentOnly ? ['faithful-handoff-v1', source.sourceId, source.version] : source.sourceId
     const text = attachmentOnly ? undefined : source.text
     const quote = attachmentOnly ? undefined : source.quote
-    const target = join(directories.materials, `source-${hash(snapshotIdentity).slice(0, 32)}.json`)
+    const target = join(materialsDirectory, `source-${hash(snapshotIdentity).slice(0, 32)}.json`)
     const readSnapshot = async () => {
-      await checkedTaskDirectory(directories.materials)
+      await checkedTaskDirectory(materialsDirectory)
       const info = await lstat(target)
       if (!info.isFile() || info.isSymbolicLink()) fail('TASK_MATERIAL_PATH_INVALID')
       let material
       try { material = JSON.parse(await readFile(target, 'utf8')) } catch { fail('TASK_MATERIAL_SNAPSHOT_INVALID') }
-      material = resolveTaskMaterialPaths(material, directories.materials, target)
+      material = resolveTaskMaterialPaths(material, materialsDirectory, target)
       if (!material || material.sourceId !== source.sourceId || material.path !== target || material.taskId !== undefined && material.taskId !== taskId
         || material.version !== undefined && material.version !== source.version || material.actorId !== source.actorId || material.messageId !== source.messageId || material.text !== text
         || hash(material.quote ?? null) !== hash(quote ?? null) || !Array.isArray(material.resources)
@@ -609,7 +618,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           return
         }
         if (resource.status !== 'read' || resource.complete !== true || typeof resource.path !== 'string'
-          || dirname(resource.path) !== directories.materials || !/^[a-f0-9]{64}$/.test(resource.sha256 ?? '')
+          || dirname(resource.path) !== materialsDirectory || !/^[a-f0-9]{64}$/.test(resource.sha256 ?? '')
           || !Number.isSafeInteger(resource.bytes) || resource.bytes < 0 || resource.bytes > 8 * 1024 * 1024) fail('TASK_MATERIAL_PATH_INVALID')
         let bytes
         try {
@@ -623,7 +632,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           || resource.value?.file && (!validMaterialFile(resource.value.file) || resource.value.file.path !== resource.path
             || resource.value.file.bytes !== resource.bytes || resource.value.file.sha256 !== resource.sha256)) fail('TASK_MATERIAL_CONTENT_CHANGED')
       })
-      await checkedTaskDirectory(directories.materials)
+      await checkedTaskDirectory(materialsDirectory)
       if (typeof text === 'string' && Buffer.byteLength(text) >= 512) {
         const textPath = target.replace(/\.json$/, '.txt')
         await publish(textPath, Buffer.from(text, 'utf8'))
@@ -632,12 +641,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       return material
     }
     const publish = async (path, bytes) => {
-      await checkedTaskDirectory(directories.materials)
-      const temporary = join(directories.materials, `.pending-${randomUUID()}`)
+      await checkedTaskDirectory(materialsDirectory)
+      const temporary = join(materialsDirectory, `.pending-${randomUUID()}`)
       const handle = await open(temporary, 'wx', 0o600)
       try { await handle.writeFile(bytes); await handle.sync() } finally { await handle.close() }
       try {
-        await checkedTaskDirectory(directories.materials)
+        await checkedTaskDirectory(materialsDirectory)
         await link(temporary, path).catch(error => { if (error.code !== 'EEXIST') throw error })
       } finally { await unlink(temporary) }
       const info = await lstat(path)
@@ -673,7 +682,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           const sha256 = createHash('sha256').update(bytes).digest('hex')
           const originalExtension = file ? extname(value.file.name).toLowerCase() : ''
           const extension = file ? (/^\.[a-z0-9]{1,16}$/u.test(originalExtension) ? originalExtension : '.bin') : text ? '.txt' : ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' }[value.image.mediaType] ?? '.bin')
-          const path = join(directories.materials, `resource-${hash([source.sourceId, resource]).slice(0, 16)}-${sha256.slice(0, 16)}${extension}`)
+          const path = join(materialsDirectory, `resource-${hash([source.sourceId, resource]).slice(0, 16)}-${sha256.slice(0, 16)}${extension}`)
           await publish(path, bytes)
           resources.push({ resource, status: 'read', complete: true, path, bytes: bytes.length, sha256,
             value: file ? { file: { name: value.file.name, mediaType: value.file.mediaType, path, bytes: bytes.length, sha256 } }
@@ -683,7 +692,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       }
       const material = clean({ taskId, sourceId: source.sourceId, version: source.version, actorId: source.actorId, messageId: source.messageId,
         text, quote, resources, path: target })
-      await publish(target, Buffer.from(JSON.stringify(bindTaskMaterialPaths(material,directories.materials))))
+      await publish(target, Buffer.from(JSON.stringify(bindTaskMaterialPaths(material,materialsDirectory))))
       return readSnapshot()
     }
   }
@@ -875,6 +884,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const previous=await measure('router-reply-lookup',()=>query('notification.get',{notificationId}))
     const channels=ctx.get('channels'),context=channels.groupContext(source.groupId)
     const targetedReply=finalReply||!!boundTaskId&&context?.type==='chat-room'
+    // 新回复优先使用可渲染的正文；重试由原通知决定格式和引用，不随新能力改变。
+    const transport=channels.transports.get(context?.channelId)
+    const standaloneMarkdown=!explicitQuote&&(previous?previous.payload.textFormat==='markdown'
+      :!!exec&&kind!=='platform-reply'&&transport?.capabilities?.standaloneMarkdown===true)
     let boundTask,requestedRecipients=audience.recipientActorIds
     if(boundTaskId&&!explicitAudience&&!explicitQuote&&!args.atAll){
       if(previous)requestedRecipients=notificationAudience(previous.payload).recipientActorIds
@@ -884,13 +897,13 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       }
     }
     // 冻结历史不升级为引用，新回复不隐式通知受众之外的引用作者。
-    const defaultQuote=!explicitQuote&&targetedReply&&kind!=='platform-reply'&&source.channel==='im'&&!args.atAll
+    const defaultQuote=!explicitQuote&&!standaloneMarkdown&&targetedReply&&kind!=='platform-reply'&&source.channel==='im'&&!args.atAll
       &&(requestedRecipients===undefined||requestedRecipients.includes(source.actorId))
       &&(previous?previous.payload.sourceMessageId===source.messageId&&previous.payload.actorId===source.actorId
-        :channels.transports.get(context?.channelId)?.capabilities?.quotedReplies?.includes(context.type))
+        :transport?.capabilities?.quotedReplies?.includes(context.type))
     const quoteSource=explicitQuote||defaultQuote
-    const replyToMessageId=quoteSource?source.messageId:targetedReply?args.replyToMessageId:args.replyToMessageId??source.messageId
-    const replyToActorId=quoteSource?source.actorId:targetedReply?audience.replyToActorId:audience.replyToActorId??source.actorId
+    const replyToMessageId=standaloneMarkdown?undefined:quoteSource?source.messageId:targetedReply?args.replyToMessageId:args.replyToMessageId??source.messageId
+    const replyToActorId=standaloneMarkdown?undefined:quoteSource?source.actorId:targetedReply?audience.replyToActorId:audience.replyToActorId??source.actorId
     const recipients=[...new Set(requestedRecipients??(explicitQuote||targetedReply&&!defaultQuote?[]:[source.actorId]))]
     const bindings=clean({completionBinding:args.completionBinding,blockedBinding:args.blockedBinding})
     const request=clean({kind,sourceId:source.sourceId,sourceVersion:source.version,text:args.text,taskDelivery:selection,...bindings,...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
@@ -933,7 +946,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       exec.signal.throwIfAborted()
     }
     const receipt=await measure('router-reply-register',()=>command('notification.prepare',{notificationId,...exec?{routerGeneration:args.generation}:{},taskId:selection?.taskId??null,requirementRevision:selection?.requirementRevision??1,kind,
-      payload:{text,...bindings,conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceMessageId:replyToMessageId,actorId:replyToActorId,
+      payload:{text,...standaloneMarkdown?{textFormat:'markdown'}:{},...bindings,conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceMessageId:replyToMessageId,actorId:replyToActorId,
         sourceRef:{messageId:source.messageId,messageVersion:source.version,actorId:source.actorId},replyToMessageId,replyToActorId,
         recipientActorIds:recipients,...(args.atAll?{atAll:true}:{}),replyKind:'substantive',taskIds:selection?[selection.taskId]:[],topicRefs:[],replyRequest:request,...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
         ...(selection?{taskDelivery:selection}:{}),...(artifactFiles.length?{artifactFiles,deliveryId:notificationId}:{})}},'prepare-notification:'+notificationId))
@@ -961,7 +974,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   const readPlatformTasks=async groupId=>Promise.all((await query('task.list',{groupId,archived:'all'})).map(async task=>{
     const executions=await query('execution.list',{taskId:task.taskId})
-    const pendingWake=!task.lastDecision&&(await query('wake.list',{taskId:task.taskId})).some(wake=>wake.state!=='acked')
+    const pendingWake=task.status==='active'&&task.drained&&(await query('wake.list',{taskId:task.taskId})).some(wake=>wake.state==='pending')
     return {...task,state:taskBoardState(task,executions,pendingWake),completedAt:task.completion?.at??null}
   }))
   const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,
@@ -1112,7 +1125,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const dialogueMessage = wakes.find(item => item.kind === 'task.dialogue')?.payload.messageId
       const dialogue = dialogueMessage ? { ...task.dialogue.find(item => item.id === dialogueMessage),
         history: task.dialogue.filter(item => item.reply && item.id !== dialogueMessage).slice(-20) } : null
-      let drained = true, submitted = false, executionStarted=false
+      let drained = true, submitted = false, completion, executionStarted=false
+      const ordinaryRound=!dialogue&&!humanReview&&!task.archiveRestore?.reviewRequired
       try {
         const sources = (await Promise.all(task.sourceRefs.map(sourceId => query('source.get', { sourceId })))).filter(Boolean)
         const materials = await Promise.all(sources.map(source => materializeSource(taskId, source)))
@@ -1132,7 +1146,13 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             Object.assign(binding,{contextRevision:nextBinding.contextRevision});task=await requireTask(taskId)
             sources.splice(0,sources.length,...(await Promise.all(task.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean))
           },
-          onSessionBound: async () => { await attachWorkspace(binding.sessionId, await taskWorkspace(root,taskId,task), task.title); const receipt=await command('task.sessionBound', { binding }, `task-bound:${taskId}:${binding.leaseEpoch}`);executionStarted=true;return receipt },
+          onSessionBound: async () => {
+            const cwd = await checkedTaskDirectory(dirname(taskFilePath(root,taskId,'work')))
+            await attachWorkspace(binding.sessionId, cwd, task.title)
+            const receipt = await command('task.sessionBound', { binding }, `task-bound:${taskId}:${binding.leaseEpoch}`)
+            executionStarted = true
+            return receipt
+          },
           resolveHuman: async args => {
             if (!humanReview) fail('DYNAMIC_HUMAN_REVIEW_NOT_PENDING')
             return (await command('task.human.resolve', { binding, ...args },
@@ -1151,14 +1171,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
               submitted = true
               return { accepted: true, replied: true }
             }
-            if (decision.action === 'complete') {
+            if (ordinaryRound || decision.action === 'complete') {
               if (decision.deliveryFiles?.length && (!notifications?.sendFile || !notifications?.readbackFile)) fail('TASK_DELIVERY_FILE_TRANSPORT_UNAVAILABLE')
-              const artifactFiles = await (freezeSingleTaskFiles)({ reported:decision.artifacts,selected: decision.deliveryFiles, task,
-                executions: await query('execution.list', { taskId }), directory: await taskWorkspace(root,taskId,task), files: deliveryFiles })
+              const artifactFiles = decision.artifacts?.length || decision.deliveryFiles?.length ? await freezeSingleTaskFiles({ reported:decision.artifacts,selected: decision.deliveryFiles, task,
+                executions: await query('execution.list', { taskId }), directory: await taskWorkspace(root,taskId,task), files: deliveryFiles }) : []
               const replyBindings=await taskReplyBindings(task)
               const topicFacts=!task.conversationId&&(replyBindings.length>0||!!task.replyBindings?.length||!!task.topicRefs?.length)
-              await command('task.complete', { binding, summary: decision.summary, result: artifactFiles.length ? { ...decision, artifactFiles } : decision, topicFacts,
-                replyBindings }, `complete:${taskId}:${binding.requirementRevision}`)
+              completion={binding:replyBinding,summary:decision.summary,result:artifactFiles.length?{...decision,artifactFiles}:decision,topicFacts,replyBindings}
+              return {accepted:true}
             } else {
               let humanReply, replyBindings = await taskReplyBindings(task)
               if (decision.replySourceId) {
@@ -1176,6 +1196,13 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             submitted = true
             return { accepted: true }
           } })
+        if(runResult.status==='finished')completion={binding,summary:runResult.decision.summary,result:runResult.decision}
+        if(completion&&(runResult.status==='submitted'||runResult.status==='finished')&&await currentTask(completion.binding)){
+          // A result tool accepts the conclusion; only a normally closed producer
+          // can make it the business terminal result of this lease.
+          await command('task.complete',completion,`complete:${taskId}:${binding.requirementRevision}`)
+          submitted=true
+        }
         if (!submitted && runResult.status === 'no_submission') {
           // 补充输入会在安全步骤使旧回合停止；旧绑定不能写技术阻塞，排空后由原唤醒接续最新版本。
           if(['TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(runResult.reason)&&await currentTask(binding,{allowLiveSupplements:true})){const latest=await requireTask(taskId);binding.contextRevision=latest.contextRevision??0}
@@ -1185,7 +1212,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           if (dialogue) fail('TASK_DIALOGUE_NO_REPLY')
           failures.set(taskId, { id: taskId, code: runResult.reason ?? 'TASK_SESSION_NO_SUBMISSION' })
           const uncertainEffect=['TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(runResult.reason)
-          await command('task.wait', { binding, action: 'blocked', summary: uncertainEffect?'任务有尚未核实的外部效果，自动执行已停止，等待人工核验。':'任务会话本轮未能提交有效决定，原任务和执行结果已保留。',
+          await command(humanReview?'task.wait':'task.interrupted', { binding, action: 'blocked', summary: uncertainEffect?'任务有尚未核实的外部效果，原调用不能重放。':'任务会话本轮异常停止，原输入和执行记录已保留。',
             evidence: uncertainEffect?(runResult.unresolvedEffects??[]).map(row=>`Unresolved effect: ${row.toolName}; intentEntryId=${row.intentEntryId}; inspect with bin/night-bot-effects.js (docs/EFFECT-RECONCILIATION.md)`):[],
             limitations: [runResult.reason ?? 'TASK_SESSION_NO_SUBMISSION'], ...(humanReview ? { reviewFailureCode: runResult.reason } : {}) }, `task-technical-block:${taskId}:${binding.leaseEpoch}`)
           submitted = !humanReview
@@ -1204,15 +1231,16 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           if(dialogue)await command('task.dialogue.failed',{binding,messageId:dialogue.id,failure},`dialogue-failed:${taskId}:${dialogue.id}:${binding.leaseEpoch}`)
           else{
             const reason=providerReason?taskProviderFailureLabels[providerReason]:error.code==='TASK_SESSION_NO_SUBMISSION'&&failure.stopReason==='stop'?'模型已返回，但没有提交任务结果。':'模型本轮未能提交有效决定。'
-            await command('task.wait',{binding,action:humanReview?'blocked':'wait',summary:reason+'自动处理已停止，原任务和输入已保留，等待新的明确输入。',evidence:[],limitations:[error.code],technicalFailure:failure,...humanReview?{reviewFailureCode:error.code}:{}},`task-technical-failure:${taskId}:${binding.leaseEpoch}`)
+            await command(humanReview?'task.wait':'task.interrupted',{binding,action:'blocked',summary:reason+'原任务和输入已保留。',evidence:[],limitations:[error.code],technicalFailure:failure,...humanReview?{reviewFailureCode:error.code}:{}},`task-technical-failure:${taskId}:${binding.leaseEpoch}`)
             if(!humanReview)await command('wake.ack',{binding,wakeIds},`wake-ack:${taskId}:${binding.leaseEpoch}`)
           }
           return
         }
 
-        if(drained&&executionStarted&&task.conversationId&&await currentTask(binding)){
-          await command('task.wait',{binding,action:'blocked',summary:'执行会话异常退出；保留当前任务与效果收据，交 Router 核查。',limitations:['TASK_SESSION_NO_SUBMISSION'],evidence:[]},`task-unexpected-exit:${taskId}:${binding.leaseEpoch}`)
-          await command('wake.ack',{binding,wakeIds},`wake-ack:${taskId}:${binding.leaseEpoch}`)
+        if(drained&&ordinaryRound&&await currentTask(binding)){
+          const summary=executionStarted?'执行会话异常退出；保留当前任务与效果收据供核查。':'领取后未能启动执行会话；保留原输入和未确认的唤醒。'
+          await command('task.interrupted',{binding,summary,limitations:[executionStarted?'TASK_SESSION_INTERRUPTED':'TASK_SESSION_START_FAILED'],evidence:[]},`task-unexpected-exit:${taskId}:${binding.leaseEpoch}`)
+          if(executionStarted)await command('wake.ack',{binding,wakeIds},`wake-ack:${taskId}:${binding.leaseEpoch}`)
         }
         throw error
       }
@@ -1223,7 +1251,6 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           const current=await requireTask(taskId)
           if(taskInspectionReason(current)){
             try{await command('task.inspect',{taskId,expected:inspectionVersion(current)})}catch(error){if(error.code!=='TASK_INSPECTION_STALE')throw error}
-            if(current.conversationId)void residentRouter.schedule(current.conversationId).catch(error=>recordRouterFailure(current.conversationId,error))
           }
         }
         if (!closed) void deliverNotifications()
@@ -1404,11 +1431,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if(closed||!force&&Date.now()<nextInspectionAt)return
     nextInspectionAt=Date.now()+(config.inspectionIntervalMs??300000)
     for(const task of await query('task.list')){
-      const live=!!ctx.agents.get(task.sessionId)||!!ctx.piAuthority.describe(task.sessionId)
-      if(!taskInspectionReason(task,{live,inflight:inflightTasks.has(task.taskId)}))continue
+      if(!taskInspectionReason(task,{inflight:inflightTasks.has(task.taskId)}))continue
       try{
-        const binding=await query('task.binding',{taskId:task.taskId})
-        if(binding.leaseEpoch!==task.leaseEpoch)continue
         await command('task.inspect',{taskId:task.taskId,expected:inspectionVersion(task)})
         // Missing registry handles do not prove a writer or external producer
         // drained. Inspection records the incident; existing drain proofs own it.
@@ -1963,7 +1987,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if(!args.requestId)fail('TASK_SESSION_REQUEST_ID_REQUIRED')
       const task=await requireTask(args.taskId)
       if(args.channel&&ctx.get('channels').identity(args.channel).principal!==task.ownerActorId)fail('DYNAMIC_HUMAN_RESPONSE_FORBIDDEN')
-      await command('task.control',{taskId:task.taskId,control:'cancelled',expectedControlRevision:args.expectedControlRevision??task.controlRevision},'single-cancel:'+hash([task.taskId,args.requestId]))
+      await command('task.control',{taskId:task.taskId,control:'cancelled',reason:args.reason??'操作者取消任务，未补充原因。',expectedControlRevision:args.expectedControlRevision??task.controlRevision},'single-cancel:'+hash([task.taskId,args.requestId]))
       await cancelLiveTask(task.taskId,inflightTasks.get(task.taskId),inflightExecutions);return taskDTO(await requireTask(task.taskId))
     },
     hasPendingTopicFacts: groupId => query('topic.fact.unsettled', { groupId }),

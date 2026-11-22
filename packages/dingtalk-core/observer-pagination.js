@@ -7,20 +7,19 @@ function pageTaskElapsed(tasks) {
  return tasks.map(task => ({ ...task, elapsedTiming: projectTaskElapsed(task) }))
 }
 const error = code => Object.assign(new Error(code), { code })
+const executionState = (indexed, filter) => `EXISTS(SELECT 1 FROM ${indexed?'observer_execution_index e':'dynamic_executions e'} WHERE ${indexed?'e.task_id':"json_extract(e.body,'$.taskId')"}=t.id AND (${filter(indexed?'e.state':"json_extract(e.body,'$.status')",indexed?'e.drained':"json_extract(e.body,'$.drained')")}))`
+const currentExecution = field => ['requirementRevision','controlRevision','contextRevision','leaseEpoch'].map(key=>`coalesce(json_extract(t.body,'$.${field}.${key}'),0)=coalesce(json_extract(t.body,'$.${key}'),0)`).join(' AND ')
 const taskState = indexed => `CASE
  WHEN json_extract(t.body,'$.status')='completed' THEN 'completed'
- WHEN json_extract(t.body,'$.control')='cancelled' THEN 'cancelled'
- WHEN json_extract(t.body,'$.control')='paused' OR EXISTS(SELECT 1 FROM json_each(t.body,'$.humanRequests') h WHERE json_extract(h.value,'$.status')='waiting-reply') THEN 'waiting'
- WHEN json_extract(t.body,'$.sessionFailure.code')='TASK_SESSION_DRAIN_FAILED' THEN 'waiting'
- WHEN json_extract(t.body,'$.inspection.pending')=1 AND json_extract(t.body,'$.inspection.reason')<>'wait-overdue'
-  AND json_extract(t.body,'$.inspection.requirementRevision')=json_extract(t.body,'$.requirementRevision')
-  AND json_extract(t.body,'$.inspection.controlRevision')=json_extract(t.body,'$.controlRevision')
-  AND coalesce(json_extract(t.body,'$.inspection.contextRevision'),0)=coalesce(json_extract(t.body,'$.contextRevision'),0) THEN 'waiting'
- WHEN json_extract(t.body,'$.drained')=0 THEN 'running'
- WHEN coalesce(json_type(t.body,'$.lastDecision'),'null')='null' AND EXISTS(SELECT 1 FROM dynamic_wakes w WHERE json_extract(w.body,'$.taskId')=t.id AND json_extract(w.body,'$.state')!='acked') THEN 'running'
- WHEN json_extract(t.body,'$.lastDecision.action')='blocked' OR length(trim(coalesce(json_extract(t.body,'$.lastDecision.question'),'')))>0 THEN 'waiting'
- WHEN EXISTS(SELECT 1 FROM ${indexed?'observer_execution_index e':"dynamic_executions e"} WHERE ${indexed?"e.task_id=t.id AND (e.state IN ('queued','running') OR e.drained=0)":"json_extract(e.body,'$.taskId')=t.id AND (json_extract(e.body,'$.status') IN ('queued','running') OR json_extract(e.body,'$.drained')=0)"}) THEN 'running'
- ELSE 'waiting' END`
+ WHEN json_extract(t.body,'$.status')='cancelled' OR json_extract(t.body,'$.control')='cancelled' THEN 'cancelled'
+ WHEN json_extract(t.body,'$.control')='paused' THEN 'paused'
+ WHEN json_extract(t.body,'$.sessionFailure.code')='TASK_SESSION_DRAIN_FAILED' OR json_extract(t.body,'$.recovering')=1 THEN 'interrupted'
+ WHEN json_type(t.body,'$.interruption')='object' AND ${currentExecution('interruption')} THEN 'interrupted'
+ WHEN json_extract(t.body,'$.inspection.pending')=1 AND json_extract(t.body,'$.inspection.reason')<>'wait-overdue' AND ${currentExecution('inspection')} THEN 'interrupted'
+ WHEN json_extract(t.body,'$.drained')=0 OR ${executionState(indexed,(state,drained)=>`${state}='running' OR ${drained}=0`)} THEN 'running'
+ WHEN EXISTS(SELECT 1 FROM json_each(t.body,'$.humanRequests') h WHERE json_extract(h.value,'$.status')='waiting-reply') THEN 'inactive'
+ WHEN EXISTS(SELECT 1 FROM dynamic_wakes w WHERE json_extract(w.body,'$.taskId')=t.id AND json_extract(w.body,'$.state')='pending') OR ${executionState(indexed,state=>`${state}='queued'`)} THEN 'queued'
+ ELSE 'inactive' END`
 const refreshTask = (where, table = 'dynamic_tasks', indexed = false) => `INSERT INTO observer_task_index(id,group_id,state,archived,sort_key)
  SELECT t.id,json_extract(t.body,'$.groupId'),${taskState(indexed)},coalesce(json_type(t.body,'$.archivedAt'),'null')!='null',coalesce(json_extract(t.body,'$.updatedAt'),'') FROM ${table} t ${where}
  ON CONFLICT(id) DO UPDATE SET group_id=excluded.group_id,state=excluded.state,archived=excluded.archived,sort_key=excluded.sort_key;`
@@ -53,7 +52,7 @@ function migrateExecutionControl(db) {
 export function installObserverArchivePagination(db) {
  if (!tableExists(db,'observer_task_index') || !tableExists(db,'dynamic_archived_tasks') || !tableExists(db,'dynamic_archived_executions')) return false
  const indexed=hasExecutionControl(db), installed=db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='observer_archived_execution_delete'").get(), active=db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='observer_task_delete'").get()
- if(installed&&installed.sql.includes('e.drained')===indexed&&installed.sql.includes('$.sessionFailure.code')&&installed.sql.includes('$.inspection.pending')&&active?.sql.includes('dynamic_archived_tasks'))return true
+ if(installed&&installed.sql.includes('e.drained')===indexed&&installed.sql.includes('$.interruption')&&active?.sql.includes('dynamic_archived_tasks'))return true
  const taskRows = id => [ ['dynamic_tasks',`WHERE t.id=${id}`], ['dynamic_archived_tasks',`WHERE t.id=${id} AND NOT EXISTS(SELECT 1 FROM dynamic_tasks live WHERE live.id=t.id)`] ]
  const reconcileTask = id => `DELETE FROM observer_task_index WHERE id=${id} AND NOT EXISTS(SELECT 1 FROM dynamic_tasks WHERE id=${id}) AND NOT EXISTS(SELECT 1 FROM dynamic_archived_tasks WHERE id=${id});`+taskRows(id).map(([table,where])=>refreshTask(where,table,indexed)).join('')
  const reconcileRefs = id => `DELETE FROM observer_task_topics WHERE task_id=${id}; DELETE FROM observer_human_index WHERE task_id=${id};`+taskRows(id).map(([table,where])=>`
@@ -170,7 +169,7 @@ export function observerPage(db, q, instance) {
   if (q.summary) body = `json_object('taskId',i.id,'title',json_extract(${taskBody},'$.title'),'state',i.state,'archivedAt',json_extract(${taskBody},'$.archivedAt'),'updatedAt',i.sort_key)`
   if(q.archived!=='all'){conditions.push('i.archived=?');args.push(q.archived?1:0)}
   if(q.taskId){conditions.push('i.id=?');args.push(q.taskId)}
-  if (q.state) { conditions.push(q.state === 'completed' ? "i.state IN ('completed','cancelled')" : 'i.state=?'); if(q.state !== 'completed') args.push(q.state) }
+  if (q.state) { conditions.push('i.state=?'); args.push(q.state) }
   if(q.topicId){conditions.push('EXISTS(SELECT 1 FROM observer_task_topics ref WHERE ref.task_id=i.id AND ref.topic_id=?'+(q.groupId?' AND ref.group_id=?':'')+')');args.push(q.topicId);if(q.groupId)args.push(q.groupId)}else if(q.groupId) { conditions.push('i.group_id=?'); args.push(q.groupId) }
  } else if (q.collection === 'executions') {
   if (!q.taskId) throw error('OBSERVER_PAGE_INVALID')

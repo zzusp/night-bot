@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestText} from './fixtures/resident-router-host.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 
-for(const action of ['complete','blocked','wait','runtime-failure','policy-refusal','silent'])test('execution final-only Router delivery: '+action,{timeout:nativeTestTimeout(30000)},async t=>{
+for(const action of ['complete','blocked','wait','natural-stop','policy-refusal','silent'])test('execution final-only Router delivery: '+action,{timeout:nativeTestTimeout(30000)},async t=>{
  let h,planned=false,replied=false,source,executions=0
- const technical=action==='runtime-failure'||action==='policy-refusal',privateError='400 litellm.ContentPolicyViolationError: fixture-private-provider-detail'
- const terminal=new Set(),inspections=new Set(),reports=action==='complete'||action==='blocked'||technical,hasOutcome=reports||action==='silent'
+ const technical=action==='policy-refusal',privateError='400 litellm.ContentPolicyViolationError: fixture-private-provider-detail'
+ const terminal=new Set(),inspections=new Set(),reports=action==='complete'||action==='blocked'||technical
  const multi=action==='blocked'
  const request=multi?'这份清单里的 6 份材料都齐了吗？为什么收件方还没确认？请不要改外部系统或发附件。':'请核对这份材料。不要改外部系统或发附件。'
  const summary=multi?'清单上的 6 份材料都已核对。':'Verified synthetic outcome'
@@ -20,7 +20,7 @@ for(const action of ['complete','blocked','wait','runtime-failure','policy-refus
    executions++
    const schema=body.tools.find(tool=>tool.function.name==='task_result').function.parameters.properties.decision.properties
    assert.equal(schema.question,undefined);assert.equal(schema.audience,undefined)
-   if(action==='runtime-failure')return {text:'No decision submitted'}
+   if(action==='natural-stop')return {text:'Normal stop with no structured result'}
    if(action==='policy-refusal')return {error:privateError}
    return {tool:'task_result',args:{decision:{action:action==='silent'?'blocked':action,summary,evidence,limitations}}}
   }
@@ -36,8 +36,8 @@ for(const action of ['complete','blocked','wait','runtime-failure','policy-refus
    replied=true
    if(technical){
     assert.equal(outcome.taskEvent.reason,'execution-failed')
-    assert.equal(outcome.taskEvent.brief.technicalFailure.code,action==='policy-refusal'?'TASK_PI_PROVIDER_ERROR':'TASK_SESSION_NO_SUBMISSION')
-    assert.equal(outcome.taskEvent.brief.technicalFailure.providerReason,action==='policy-refusal'?'POLICY_REFUSAL':undefined)
+    assert.equal(outcome.taskEvent.brief,undefined)
+    assert.equal(typeof outcome.taskEvent.sessionId,'string')
     assert.ok(!JSON.stringify(body).includes(privateError))
    }else assert.equal(outcome.taskEvent.result.summary,summary)
    const prompt=body.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
@@ -51,7 +51,7 @@ for(const action of ['complete','blocked','wait','runtime-failure','policy-refus
     assert.ok(requestText(body).some(text=>text.includes(request)),'the outcome model receives both original questions')
     assert.match(prompt,/沿原会话推进；没有新依据不重复唤醒/u)
     assert.match(prompt,/尚未核实的后续条件不写成已确认的卡点/u)
-    assert.equal(outcome.taskEvent.resultSource,'pi-task-result')
+    assert.equal(outcome.kind,'task.completed')
     assert.deepEqual(outcome.taskEvent.result.evidence,evidence)
     assert.deepEqual(outcome.taskEvent.result.limitations,limitations)
    }
@@ -65,10 +65,10 @@ for(const action of ['complete','blocked','wait','runtime-failure','policy-refus
   return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
  })
  await h.receive(channelMessage('final-only',{text:request}));await h.service.whenIdle()
- assert.equal(executions,1);assert.equal(terminal.size,hasOutcome&&!technical?1:0);assert.equal(h.sent.length,reports?1:0)
+ assert.equal(executions,1);assert.equal(terminal.size,technical?0:1);assert.equal(h.sent.length,reports?1:0)
  if(reports)assert.equal(h.sent[0].text,replyText)
  const task=await h.query('task.get',{taskId:'final-only-task'})
- if(hasOutcome){
+ {
   const [event]=await h.query('router.batch-events',{conversationId:task.groupId,eventIds:[...technical?inspections:terminal]})
   assert.equal(event.state,'consumed')
   assert.equal(event.outcomeDisposition.kind,reports?'notification-frozen':'not-reported')
@@ -79,17 +79,64 @@ for(const action of ['complete','blocked','wait','runtime-failure','policy-refus
    assert.deepEqual(notice.payload.recipientActorIds,[source.actorId])
   }
  }
- assert.equal(task.drained,true);assert.equal(task.status,action==='complete'?'completed':'active');assert.equal(task.humanRequests?.length??0,0)
+ assert.equal(task.drained,true);assert.equal(task.status,technical?'active':'completed');assert.equal(task.humanRequests?.length??0,0)
  if(technical){
   assert.equal(inspections.size,1)
-  assert.equal(task.lastDecision.action,'wait');assert.equal(task.lastDecision.resultSource,undefined)
+  assert.equal(task.lastDecision.resultSource,undefined)
   assert.equal(task.completion??null,null);assert.equal(task.inspection.pending,true)
-  assert.equal(task.technicalFailure.code,action==='policy-refusal'?'TASK_PI_PROVIDER_ERROR':'TASK_SESSION_NO_SUBMISSION')
- }else if(action!=='complete')assert.equal(task.lastDecision.resultSource,'pi-task-result')
+  assert.equal(task.technicalFailure.code,'TASK_PI_PROVIDER_ERROR')
+  assert.equal(task.technicalFailure.providerReason,'POLICY_REFUSAL')
+ }else{
+  assert.equal(inspections.size,0)
+  assert.equal(task.completion.result.summary,action==='natural-stop'?'Normal stop with no structured result':summary)
+  assert.deepEqual(task.completion.result.limitations,limitations)
+ }
  assert.equal((await h.query('notification.list')).filter(item=>item.kind==='question').length,0)
  const count=h.requests.length,sent=h.sent.length
  await h.restart();await h.service.whenIdle()
  assert.equal(h.requests.length,count);assert.equal(h.sent.length,sent)
+})
+
+test('Router can retry the same interrupted session and then cancel with a durable reason',{timeout:nativeTestTimeout(45000)},async t=>{
+ const taskId='interrupted-fixture',doneId='normal-fixture',reason='两次执行均被模型服务拒绝，停止本轮核对。'
+ let h,planned=false,runs=0
+ const inspected=new Map()
+ h=await residentRouterHost(t,async body=>{
+  const tools=requestTools(body)
+  if(tools.includes('task_result')){
+   if(requestText(body).some(text=>text.includes('Read the normal fixture only.')))return {text:'本轮已结束，尚未核对附件。'}
+   runs++;return {error:'400 litellm.ContentPolicyViolationError: fixture content policy'}
+  }
+  if(!tools.includes('resident_router_settle'))return {text:'No work'}
+  if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1)?.result.isError)return {text:'Settled'}
+  const input=requestEnvelope(body,'Router 请求：')
+  if(!planned){
+   planned=true;const source=input.events.find(event=>event.source).source
+   return {tool:'resident_task_plan',args:{operationId:'plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[
+    {taskId,title:'Interrupted check',objective:'Check the interrupted fixture',requirements:[],handoff:'Check the interrupted fixture only.'},
+    {taskId:doneId,title:'Normal check',objective:'Read the normal fixture',requirements:[],handoff:'Read the normal fixture only.'}],dependencies:[]}}
+  }
+  const event=input.events.find(event=>event.kind==='task.inspection'&&!inspected.has(event.taskEventId))
+  if(event){
+   const pending=await h.query('task.get',{taskId}),proof=event.taskEvent
+   assert.equal(pending.drained,true);assert.equal(pending.status,'active');assert.equal(proof.sessionId,pending.sessionId)
+   assert.equal(proof.brief,undefined);assert.equal(pending.inspection.pending,true)
+   inspected.set(event.taskEventId,pending.sessionId)
+   const second=inspected.size===2
+   return {tool:'resident_task_action',args:{operationId:'resolve-'+event.id,kind:'control',taskId,expectedRequirementRevision:pending.requirementRevision,expectedControlRevision:pending.controlRevision,
+    control:second?'cancelled':'active',reason:second?reason:'Retry once from the original session.'}}
+  }
+  return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
+ })
+ await h.receive(channelMessage('interrupted'));await h.service.whenIdle()
+ const cancelled=await h.query('task.get',{taskId}),completed=await h.query('task.get',{taskId:doneId})
+ assert.equal(runs,2);assert.equal(inspected.size,2);assert.deepEqual([...new Set(inspected.values())],[cancelled.sessionId])
+ assert.equal(cancelled.status,'cancelled');assert.equal(cancelled.cancellationReason,reason);assert.equal(cancelled.drained,true)
+ assert.equal(completed.status,'completed');assert.equal(completed.completion.summary,'本轮已结束，尚未核对附件。')
+ assert.deepEqual((await h.service.boardTasks({state:'completed'})).items.map(row=>row.taskId),[doneId])
+ assert.deepEqual((await h.service.boardTasks({state:'cancelled'})).items.map(row=>row.taskId),[taskId])
+ await h.restart();await h.service.whenIdle()
+ assert.equal((await h.query('task.get',{taskId})).cancellationReason,reason);assert.equal(runs,2);assert.equal(inspected.size,2);assert.equal(h.sent.length,0)
 })
 
 for(const action of ['complete','blocked','runtime-failure'])test('silent Web supplement does not send a channel outcome: '+action,{timeout:nativeTestTimeout(45000)},async t=>{
@@ -98,8 +145,8 @@ for(const action of ['complete','blocked','runtime-failure'])test('silent Web su
  h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
   if(tools.includes('task_result')){
-   if(++runs===2&&action==='runtime-failure')return {text:'No decision submitted'}
-   return {tool:'task_result',args:{decision:{action:runs===1?'wait':action,summary:'Synthetic result',evidence:[],limitations:[]}}}
+   if(++runs===1||action==='runtime-failure')return {error:'400 litellm.ContentPolicyViolationError: fixture content policy'}
+   return {tool:'task_result',args:{decision:{action,summary:'Synthetic result',evidence:[],limitations:[]}}}
   }
   if(!tools.includes('resident_router_settle'))return {text:'No work'}
   if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1)?.result.isError)return {text:'Settled'}
@@ -109,7 +156,7 @@ for(const action of ['complete','blocked','runtime-failure'])test('silent Web su
    return {tool:'resident_task_plan',args:{operationId:'plan',sourceId:original.sourceId,messageVersion:original.version,tasks:[{taskId,title:'Isolated check',objective:'Check the fixture',requirements:[],handoff:'Check the fixture.'}],dependencies:[]}}
   }
   const event=input.events.find(row=>['task.completed','task.blocked'].includes(row.kind)||row.kind==='task.inspection'&&row.taskEvent.reason==='execution-failed')
-  if(event&&attempts<2){
+  if(runs>1&&event?.suppressChannelOutcome&&attempts<2){
    outcome=event
    const i=attempts++
    return {tool:'resident_router_reply',args:{operationId:'attempt-'+i,sourceId:original.sourceId,messageVersion:original.version,text:'Synthetic result',...i===0?{outcomeEventId:event.taskEventId}:{}}}
@@ -122,7 +169,7 @@ for(const action of ['complete','blocked','runtime-failure'])test('silent Web su
  await h.service.whenIdle()
  const task=await h.query('task.get',{taskId})
  assert.equal(task.sessionId,before.sessionId);assert.equal(task.requirementRevision,before.requirementRevision);assert.equal(task.drained,true);assert.equal(runs,2)
- assert.equal(task.status,action==='complete'?'completed':'active');assert.equal(attempts,2)
+ assert.equal(task.status,action==='runtime-failure'?'active':'completed');assert.equal(attempts,2)
  assert.equal(h.sent.length,0,'a silent outcome must not enter the channel sender')
  assert.equal(outcome.suppressChannelOutcome,true)
  for(const row of h.results.filter(row=>row.name==='resident_router_reply'))assert.match(JSON.stringify(row.result),/ROUTER_CHANNEL_OUTCOME_SUPPRESSED/)
@@ -141,7 +188,10 @@ test('a fresh blocked result reaches the original recipient without replaying a 
  }})
  h=await residentRouterHost(t,async body=>{
   const tools=requestTools(body)
-  if(tools.includes('task_result'))return {tool:'task_result',args:{decision:{action:++runs===1?'wait':'blocked',summary,evidence:['Checked isolated fixture'],limitations:[]}}}
+  if(tools.includes('task_result')){
+   if(++runs===1)return {error:'400 litellm.ContentPolicyViolationError: fixture content policy'}
+   return {tool:'task_result',args:{decision:{action:'blocked',summary,evidence:['Checked isolated fixture'],limitations:[]}}}
+  }
   if(!tools.includes('resident_router_settle'))return {text:'No work'}
   if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1)?.result.isError)return {text:'Settled'}
   const input=requestEnvelope(body,'Router 请求：'),source=input.events.find(event=>event.source)?.source
@@ -154,10 +204,10 @@ test('a fresh blocked result reaches the original recipient without replaying a 
    const task=await h.query('task.get',{taskId})
    return {tool:'resident_task_action',args:{operationId:'resume',kind:'resume',taskId,sourceId:source.sourceId,messageVersion:source.version,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,handoff:'Continue the same isolated check.'}}
   }
-  const outcome=input.events.find(event=>event.kind==='task.blocked')
+  const outcome=input.events.find(event=>event.kind==='task.completed')
   if(outcome&&replies<3){
    const attempt=replies++
-   return {tool:'resident_router_reply',args:{operationId:'reply-'+attempt,sourceId:original.sourceId,messageVersion:original.version,...attempt?{outcomeEventId:outcome.taskEventId}:{replyPurpose:'direct-answer'},recipientActorIds:[original.actorId],text:summary}}
+   return {tool:'resident_router_reply',args:{operationId:'reply-'+attempt,sourceId:original.sourceId,messageVersion:original.version,...attempt?{completionEventId:outcome.taskEventId,replyPurpose:'task-update'}:{replyPurpose:'direct-answer'},recipientActorIds:[original.actorId],text:summary}}
   }
   return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
  },{wrapStore})
@@ -172,10 +222,10 @@ test('a fresh blocked result reaches the original recipient without replaying a 
  const notices=(await h.query('notification.list')).filter(item=>item.kind==='router-reply')
  assert.equal(notices.length,1);assert.equal(notices[0].state,'delivered');assert.equal(h.sent.length,1)
  assert.equal(notices[0].payload.sourceId,original.sourceId);assert.equal(notices[0].payload.replyToMessageId,undefined)
- assert.ok(notices[0].payload.blockedBinding.eventId)
+ assert.ok(notices[0].payload.completionBinding.eventId)
  assert.deepEqual(notices[0].payload.recipientActorIds,[original.actorId]);assert.notEqual(fresh.actorId,original.actorId)
  const current=await h.query('task.get',{taskId})
- assert.equal(current.sessionId,initial.sessionId);assert.equal(current.lastDecision.action,'blocked');assert.equal(runs,2)
+ assert.equal(current.sessionId,initial.sessionId);assert.equal(current.completion.result.action,'blocked');assert.equal(runs,2)
  assert.equal(await h.query('router.inbox-count',{conversationId:current.groupId}),0)
  assert.equal(h.sent[0].text,summary)
  await h.restart();await h.service.whenIdle();assert.equal(h.sent.length,1)
@@ -186,7 +236,10 @@ test('a new completion after Web continuation reports to the original channel de
  let h,original,runs=0,attempt=0,outcome
  h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
-  if(tools.includes('task_result'))return {tool:'task_result',args:{decision:{action:++runs===1?'wait':'complete',summary,evidence:[],limitations:[]}}}
+  if(tools.includes('task_result')){
+   if(++runs===1)return {error:'400 litellm.ContentPolicyViolationError: fixture content policy'}
+   return {tool:'task_result',args:{decision:{action:'complete',summary,evidence:[],limitations:[]}}}
+  }
   if(!tools.includes('resident_router_settle'))return {text:'No work'}
   const {events}=requestEnvelope(body,'Router 请求：'),last=h.results.at(-1)
   if(body.messages.at(-1)?.role==='tool'&&last?.name==='resident_router_settle'&&!last.result.isError)return {text:'Settled'}

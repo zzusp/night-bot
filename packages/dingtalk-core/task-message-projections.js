@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { taskNotificationRecovery } from './notification-delivery.js'
 import { notificationAudience } from './group-notification.js'
-import { inspectionHoldsExecution } from '../../src/tasks/inspection.js'
+import { inspectionHoldsExecution, interruptionIsCurrent } from '../../src/tasks/inspection.js'
 
 const canonical = value => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item)
@@ -47,17 +47,14 @@ async function saveStableImages(ctx, images, previousRefs = []) {
   return refs.map((ref, index) => ({ ...ref, taskMediaFingerprint: fingerprints[index] }))
 }
 
-/** 统筹会话排空只代表本轮结束；排队或仍在执行的小目标仍属于任务执行中。 */
 export function taskBoardState(task, executions = [], pendingWake = false) {
   if (task.status === 'completed') return 'completed'
-  if (task.control === 'cancelled') return 'cancelled'
-  if (task.control === 'paused') return 'waiting'
-  if (task.humanRequests?.some(request => request.status === 'waiting-reply')) return 'waiting'
-  if (task.sessionFailure?.code === 'TASK_SESSION_DRAIN_FAILED' || inspectionHoldsExecution(task)) return 'waiting'
-  if (!task.drained) return 'running'
-  if (pendingWake && !task.lastDecision) return 'running'
-  if (task.lastDecision?.action === 'blocked' || task.lastDecision?.question?.trim()) return 'waiting'
-  return executions.some(execution => ['queued', 'running'].includes(execution.status) || execution.drained === false) ? 'running' : 'waiting'
+  if (task.status === 'cancelled' || task.control === 'cancelled') return 'cancelled'
+  if (task.control === 'paused') return 'paused'
+  if (task.sessionFailure?.code === 'TASK_SESSION_DRAIN_FAILED' || task.recovering || interruptionIsCurrent(task) || inspectionHoldsExecution(task)) return 'interrupted'
+  if (task.drained === false || executions.some(execution => execution.status === 'running' || execution.drained === false)) return 'running'
+  if (task.humanRequests?.some(request => request.status === 'waiting-reply')) return 'inactive'
+  return pendingWake || executions.some(execution => execution.status === 'queued') ? 'queued' : 'inactive'
 }
 
 /** Thin adapters into the existing group timeline. No dispatch or retry policy lives here. */

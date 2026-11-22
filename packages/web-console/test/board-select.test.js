@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,readdir} from 'node:fs/promises';
 import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 const root=new URL('../src/',import.meta.url);
 test('all authored selects share BoardSelect rather than platform option popups',async()=>{
  async function scan(dir){for(const entry of await readdir(dir,{withFileTypes:true})){const path=join(dir,entry.name);if(entry.isDirectory())await scan(path);else if(path.endsWith('.tsx'))assert.doesNotMatch(await readFile(path,'utf8'),/<select\b/,path)}}
- await scan(root.pathname);
+ await scan(fileURLToPath(root));
 });
 test('shared select keeps explicit native semantics, modal portal and collision-aware geometry',async()=>{
  const code=await readFile(new URL('components/BoardSelect.tsx',root),'utf8');

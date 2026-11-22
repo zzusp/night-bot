@@ -4,6 +4,19 @@ import { createHash } from 'node:crypto'
 import { createDwsAdapter, dispatchOutbox, dwsIdempotencyKey, matchesOutbound } from '../packages/dingtalk-core/dws-adapter.js'
 import { assertGroupReply, persistedUuidSendRejectionProof, sendWorkflowNotification } from '../packages/dingtalk-core/group-message.js'
 
+test('钉钉单聊 Markdown 保留原文和幂等键，原生引用仍使用原参数', () => {
+  const adapter = createDwsAdapter({enabled: true, writesAuthorized: true, runner: {}})
+  const request = {openDingTalkId:'peer-open', conversationId:'direct-room', text:'## 结果\n\n- **完成**，参见 [说明](https://example.org/detail)。', idempotencyKey:'synthetic-key'}
+  const markdown = adapter.compileDirectSend({...request, textFormat:'markdown'})
+  assert.equal(markdown[markdown.indexOf('--markdown')+1], request.text)
+  assert.equal(markdown[markdown.indexOf('--msg-type')+1], 'markdown')
+  assert.equal(markdown[markdown.indexOf('--open-dingtalk-id')+1], 'peer-open')
+  assert.equal(markdown[markdown.indexOf('--idempotency-key')+1], dwsIdempotencyKey(request.idempotencyKey))
+  assert.equal(adapter.compileDirectSend(request)[adapter.compileDirectSend(request).indexOf('--text')+1], request.text)
+  const quoted=adapter.compileDirectSend({...request, replyToMessageId:'original',replyToSenderId:'peer-open'})
+  assert.ok(quoted.includes('+messages-reply'));assert.equal(quoted[quoted.indexOf('--content')+1],request.text);assert.ok(!quoted.includes('--markdown'))
+})
+
 test('DWS adapter 默认禁用且不会调用 runner', async () => {
   let calls = 0
   const runner = { run: async () => { calls += 1 }, spawn: () => { calls += 1 } }

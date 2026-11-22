@@ -24,18 +24,19 @@ function sampleTasks() {
   const samples = [
     ['task-research', '整理本周产品调研', 'running', '对比三个候选方案，整理功能差异和待确认问题。', 8],
     ['task-documents', '检查接口文档与实现的一致性', 'running', '核对已有接口说明，记录需要修订的段落和依据。', 16],
-    ['task-schedule', '准备下周的会议安排', 'waiting', '整理会议目标与备选时段，等待确认参会人。', 40],
+    ['task-schedule', '准备下周的会议安排', 'interrupted', '整理会议目标与备选时段，等待确认参会人。', 40],
     ['task-summary', '汇总团队讨论的行动项', 'completed', '从讨论记录中提取行动项、负责人和时间约定。', 90],
-    ['task-review', '审阅新版入门说明', 'completed', '检查安装流程是否完整，标记含糊或缺失的步骤。', 140],
+    ['task-review', '审阅新版入门说明', 'cancelled', '检查安装流程是否完整，标记含糊或缺失的步骤。', 140],
     ['task-inventory', '整理资料目录', 'completed', '按主题归纳已有资料，输出便于查找的目录。', 180],
-    ...Array.from({length: 17}, (_, i) => [`task-history-${i + 1}`, `历史资料核对 · 第 ${i + 1} 批`, 'completed', '已完成这一批样例资料的整理与核对。', 240 + i * 30]),
+    ...Array.from({length: 17}, (_, i) => [`task-history-${i + 1}`, `历史资料核对 · 第 ${i + 1} 批`, i === 0 ? 'cancelled' : 'completed', '已完成这一批样例资料的整理与核对。', 240 + i * 30]),
   ]
   return samples.map(([taskId, title, state, objective, age]) => ({
     taskId, title, state, objective, controlState: state === 'completed' ? 'completed' : 'active',
+    ...(taskId === 'task-review' ? {cancellationReason:'已改为审阅合并后的说明。'} : {}),
     groupId: 'room-product', createdAt: at(Number(age) + 45), updatedAt: at(Number(age)),
-    session: {role: 'execution', sessionId: `fixture-pi-${taskId}`, status: state === 'completed' ? 'idle' : state},
+    session: {role: 'execution', sessionId: `fixture-pi-${taskId}`, status: ['completed','cancelled'].includes(state) ? 'idle' : state === 'interrupted' ? 'failed' : state},
     result: state === 'completed' ? {summary: '已整理完成，结果可在执行记录中查看。此数据为本地验收样例。'} : undefined,
-    blockers: {executions: [], operations: state === 'waiting' ? [
+    blockers: {executions: [], operations: state === 'interrupted' ? [
       {operationId: 'fixture-block', state: 'unknown', definition: {toolName: 'pwsh', input: {private: 'SECRET_OPERATION_INPUT_FIXTURE'}}},
     ] : [], legacy: []},
     timeline: {version: 1, task: {status: state, startedAt: at(Number(age) + 45), events: [
@@ -44,7 +45,7 @@ function sampleTasks() {
     ]}, executions: [{id: `exec-${taskId}`, status: state, milestones: [
       {id: `milestone-${taskId}-1`, at: at(Number(age) + 35), summary: '已确认任务范围，开始检查已有材料'},
       {id: `milestone-${taskId}-2`, at: at(Number(age) + 15), summary: '完成第一轮资料比对，正在整理差异与证据'},
-    ], segments: []}], human: {segments: state === 'waiting' ? [{id: `human-${taskId}`, startedAt: at(Number(age)), status: 'waiting-reply', label: '等待确认参会人', description: '请补充参会人名单。'}] : []}},
+    ], segments: []}], human: {segments: state === 'interrupted' ? [{id: `human-${taskId}`, startedAt: at(Number(age)), status: 'waiting-reply', label: '等待确认参会人', description: '请补充参会人名单。'}] : []}},
     notifications: state === 'completed' ? [{id: `delivery-${taskId}`, state: 'delivered', kind: 'completion', createdAt: at(Number(age)), payload: {text: '整理结果已送达。'}}] : [],
   }))
 }

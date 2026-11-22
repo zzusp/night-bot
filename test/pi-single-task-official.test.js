@@ -74,11 +74,12 @@ test('single task uses official SDK directly, cold-resumes one session and never
  let second=false
  const f=await fixture(t,(context,n)=>{
   if(n===1)return {calls:[{name:'write',arguments:{a:1,b:2}}]}
-  if(n===2)return {text:'interruption'}
+  if(n===2)return {text:'The effect was recorded.'}
   assert.ok(context.messages.some(message=>message.role==='toolResult'&&message.toolName==='write'&&!message.isError&&message.content.some(block=>block.type==='text'&&block.text==='{"ok":true}')),'the resumed official context retains the completed effect result')
   return {calls:[{name:'task_result',arguments:{decision}}]}
  })
- await assert.rejects(run(f),{code:'TASK_SESSION_NO_SUBMISSION'})
+ const first=await run(f)
+ assert.equal(first.status,'finished');assert.equal(first.decision.summary,'The effect was recorded.')
  assert.equal(f.effects,1);f.binding={...f.binding,sessionBound:true,leaseEpoch:2}
  const result=await run(f,{submit:async()=>{second=true;return{accepted:true}}})
  assert.equal(result.status,'submitted');assert.equal(second,true);assert.equal(f.effects,1)
@@ -94,8 +95,8 @@ test('ordinary tool error keeps effects and completion held while the model can 
  let submissions=0
  const f=await fixture(t,(_context,n)=>({calls:n===1?[{name:'write'},{name:'task_result',arguments:{decision}}]:[{name:'task_result',arguments:{decision:{action:'wait',summary:'Prior effect remains unknown',evidence:[],limitations:['Reconciliation required before new effects']}}}]}),{effect:async()=>{throw Error('failed after external write')}})
  const held=await run(f,{submit:async()=>{submissions++;return{accepted:true}}})
- assert.equal(held.status,'submitted')
- assert.equal(f.effects,1);assert.equal(submissions,1);const count=f.requests.length;assert.equal(count,2)
+ assert.equal(held.status,'no_submission');assert.equal(held.reason,'TASK_EFFECT_UNCERTAIN_NO_REPLAY')
+ assert.equal(f.effects,1);assert.equal(submissions,0);const count=f.requests.length;assert.equal(count,2)
  f.binding={...f.binding,sessionBound:true,leaseEpoch:2}
  // A cold session is intentionally allowed to inspect receipts and report wait,
  // but not replay the unknown write. An endless invalid complete/write script
@@ -125,7 +126,7 @@ test('task completion cannot infer a background producer exit and disposal joins
  await cancelled.promise
  assert.equal(submissions,0);assert.equal(f.ctx.agents.list().length,1);assert.equal(f.persistence.writers.size,1)
  producer.resolve({status:'killed',detail:'actual producer exit'})
- await assert.rejects(running,{code:'TASK_SESSION_NO_SUBMISSION'})
+ await assert.rejects(running,{code:'TASK_NOT_QUIESCENT'})
  const stored=await f.persistence.readNative('single')
  assert.equal(stored.audit.filter(r=>r.domain==='job'&&r.kind==='registered').length,1)
  assert.equal(stored.audit.find(r=>r.domain==='job'&&r.kind==='settled').payload.producerReported,true)
@@ -136,7 +137,7 @@ test('business request rejection always attempts disposal, while real commit or 
  const refusal=Object.assign(new Error('application refused the request'),{code:'UNRELATED_BUSINESS_REFUSAL'})
  for(const failed of [undefined,'commit','dispose']){
   let disposed=0,commits=0
-  const proofFailure=new Error('durable or resource proof failed'),actor={receipts:{async commit(){if(++commits===2&&failed==='commit')throw proofFailure}},input:{async enqueue(){},async deliver(){throw refusal}},async whenIdle(){throw refusal},async cancel(){}}
+  const proofFailure=new Error('durable or resource proof failed'),actor={piSession:{subscribe:()=>()=>{}},receipts:{async commit(){if(++commits===2&&failed==='commit')throw proofFailure}},input:{async enqueue(){},async deliver(){throw refusal}},async whenIdle(){throw refusal},async cancel(){}}
   const sessions=createSingleTaskSessions({ctx:{sessionPersistence:{async readNative(id){throw Object.assign(new Error('new'),{name:'SessionPersistenceNotFoundError',sessionId:id})}},agents:{async create(){return{agent:actor,async dispose(){disposed++;if(failed==='dispose')throw proofFailure}}}}},isCurrent:async()=>true,getWorkspaceDir:async()=>'/authorized/task'})
   let result
   try{await sessions.run({binding:{taskId:'task',sessionId:'session',sessionBound:false},input:{},onSessionBound:async()=>{},submit:async()=>{}})}catch(cause){result=cause}
@@ -214,7 +215,7 @@ test('cold new task lease retains old pending supplement without trace fields an
  const running=run(f);while(f.requests.length<2)await delay(5)
  const actor=f.actors[0],enqueue=actor.input.enqueue;actor.input.enqueue=packet=>{if(packet.id==='task-supplement:old')delete packet.source.traceSources;return enqueue(packet)}
  const deliver=actor.input.deliver;actor.input.deliver=(id,options)=>id==='task-supplement:old'?Promise.resolve():deliver(id,options)
- await f.sessions.supplement({task,sources:[source],materials:[]});first.resolve({text:'interrupted'});await assert.rejects(running,{code:'TASK_SESSION_NO_SUBMISSION'})
+ await f.sessions.supplement({task,sources:[source],materials:[]});first.resolve({text:'The original turn stopped normally.'});assert.equal((await running).status,'finished')
  const stored=await f.persistence.readNative('single',{requireComplete:true}),old=stored.audit.find(r=>r.domain==='admission'&&r.kind==='enqueued'&&r.payload.id==='task-supplement:old').payload
  assert.equal(old.source.traceSources,undefined);assert.equal(f.effects,1)
  f.binding={...f.binding,sessionBound:true,leaseEpoch:2,contextRevision:1};f.input={...f.input,task,sources:[source],wakes:[{kind:'task.created',payload:{sourceRefs:['s']}}]}
@@ -238,7 +239,7 @@ test('unknown write permits a readback turn and its result retires queued job co
    throw Error('write result lost after possible effect')
   }})
  const result=await run(f)
- assert.equal(result.status,'submitted')
+ assert.equal(result.status,'no_submission');assert.equal(result.reason,'TASK_EFFECT_UNCERTAIN_NO_REPLAY')
  assert.equal(f.requests.length,2);assert.equal(f.effects,1)
  const snapshot=await f.persistence.readNative('single',{requireComplete:true})
  assert.equal(snapshot.audit.filter(row=>row.domain==='admission'&&row.kind==='cancelled'&&row.payload.reason==='task-result-committed').length,96)
@@ -271,7 +272,7 @@ test('live supplement still reaches the same model after an unknown tool outcome
  const owner=f.actors[0],binding=f.sessions.liveBinding('task')
  assert.deepEqual(await f.sessions.supplement({task:{taskId:'task',liveSupplements:[{wakeId:'later',messageId:'user-later',state:'pending',leaseEpoch:1,contextRevision:1,request:'Keep this new user input',sourceRefs:[],sourceSnapshots:[]}]},sources:[],materials:[]}),{delivered:true})
  assert.deepEqual(f.sessions.liveBinding('task'),binding);assert.equal(f.actors[0],owner)
- failWrite.resolve();assert.equal((await running).status,'submitted')
+ failWrite.resolve();const stopped=await running;assert.equal(stopped.status,'no_submission');assert.equal(stopped.reason,'TASK_EFFECT_UNCERTAIN_NO_REPLAY')
  const stored=await f.persistence.readNative('single',{requireComplete:true}),rows=stored.audit.filter(row=>row.domain==='admission'&&row.payload.id==='task-supplement:later')
  assert.deepEqual(rows.map(row=>row.kind),['enqueued','admitted']);assert.equal(f.requests.length,2);assert.equal(f.effects,1);assert.equal(f.actors.length,1);assert.equal(admitted.length,1)
 })

@@ -51,7 +51,13 @@ test('task verification reconciles an existing memory without a repeated memory 
    }
    const completion=input.events.find(event=>event.kind==='task.completed')
    if(completion){
-    const item=cases.find(row=>completion.taskId==='verify-'+row.key),step=completionSteps.get(completion.id)??0
+    const item=cases.find(row=>completion.taskId==='verify-'+row.key)
+    // The first round preserves the report without verifying it; only the follow-up supplies evidence.
+    if(!continued.has(item.key)){
+     if(body.messages.at(-1)?.role==='tool')return {text:'Initial result settled without changing memory.'}
+     return settle(input,completion.id)
+    }
+    const step=completionSteps.get(completion.id)??0
     completionSteps.set(completion.id,step+1)
     if(step===0)return {tool:'resident_memory_review',args:{taskId:completion.taskId,completionEventId:completion.taskEventId??completion.eventId,topic:'projects',key:item.key}}
     if(step===1){
@@ -85,7 +91,8 @@ test('task verification reconciles an existing memory without a repeated memory 
  })
  for(const item of cases){
   await h.receive(channelMessage(item.key+'-initial',{text:'记住这条现场线索，并继续核验。'+item.initial}));await h.service.whenIdle()
-  assert.equal((await h.query('task.get',{taskId:'verify-'+item.key})).lastDecision.action,'wait')
+  const initial=await h.query('task.get',{taskId:'verify-'+item.key})
+  assert.equal(initial.status,'completed');assert.deepEqual(initial.completion.result.limitations,['No validation result yet']);assert.equal(outcomes.has(item.key),false)
   const before=(await h.host.ctx.memory.store.read(scope,{topic:'projects',key:item.key,includeSources:true})).entries[0]
   assert.equal(before.revision,1)
   await h.receive(channelMessage(item.key+'-followup',{text:item.supplement,quotedMessage:{messageId:'saved-'+item.key,senderId:'assistant',text:'已保存这条现场线索。'+item.initial}}));await h.service.whenIdle()

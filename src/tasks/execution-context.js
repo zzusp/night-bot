@@ -29,7 +29,14 @@ export function executionContext(input,audit=[]){
   try{prior.push(JSON.parse(row.payload.content[0].text))}catch{}
  }
  const projectSource=source=>{
-  if(routerHandoffTaskInput(input.task))return conversationSource(project(source,routerHandoffSourceFields))
+  if(routerHandoffTaskInput(input.task)){
+   const modelSource=project(source,routerHandoffSourceFields)
+   // Already accepted historical Web/private answers have no Router handoff.
+   if(!source.authorizationRevoked&&!source.archiveRestoreHold&&['web','private'].includes(source.channel)
+     &&input.task.humanRequests?.some(reply=>reply.status==='answered'&&reply.replyChannel===source.channel&&reply.sourceId===source.sourceId
+       &&reply.actorId===source.actorId&&reply.reply===source.text&&reply.requirementRevision===input.task.requirementRevision&&reply.controlRevision===input.task.controlRevision))modelSource.text=source.text
+   return conversationSource(modelSource)
+  }
   return sourceOnlyTaskInput(input.task)?conversationSource(project(source,verifiedSourceFields)):conversationSource(source)
  }
  const seenSources=new Map(prior.flatMap(body=>(body.sources??[]).map(source=>[source.sourceId,source.version])))

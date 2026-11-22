@@ -14,7 +14,8 @@ async function login(page: Page) {
 }
 
 async function openReadActivity(page: Page) {
-  await page.getByRole('navigation', {name: '任务信息分类'}).getByRole('link', {name: '执行', exact: true}).click()
+  const activity = page.locator('.task-dialogue .message-tool')
+  await expect(activity).toHaveCount(1)
   const response = page.waitForResponse(result => new URL(result.url()).pathname === '/api/tasks/task-research/session')
   await page.evaluate(() => window.dispatchEvent(new Event('online')))
   const session = await (await response).json()
@@ -29,18 +30,15 @@ async function openReadActivity(page: Page) {
   expect(result.callId).toBe(call.callId)
   expect(result.source.entryId).not.toBe(call.source.entryId)
   expect(result.status).toBe('completed')
-  const activity = page.locator('.message-tool')
-  await expect(activity).toHaveCount(1)
-  await expect(activity.locator('.execution-tool-input > summary > strong')).toHaveText('read')
-  await expect(activity.getByText('已完成', {exact: true})).toBeVisible()
-  await expect(activity.locator('.tool-content')).toHaveCount(0)
-  await activity.locator('.execution-tool-input > summary').click()
-  await activity.locator('.execution-tool-output > summary').click()
-  const parts = activity.locator('.execution-tool-input-row, .execution-tool-output-row')
-  await expect(parts).toHaveCount(2)
-  await expect(parts.nth(0).locator('h4')).toHaveText('输入')
-  await expect(parts.nth(1).locator('h4')).toHaveText('输出')
-  expect(JSON.parse(await parts.nth(0).locator('.tool-content').innerText())).toEqual({path: '/fixture/materials/research.md'})
+  expect(JSON.parse(call.text)).toEqual({path: '/fixture/materials/research.md'})
+  const step = activity.locator('.pi-tool-step')
+  await expect(step.locator('.pi-tool-title')).toHaveText('read /fixture/materials/research.md')
+  await expect(step.locator('.pi-tool-status')).toHaveClass(/is-complete/)
+  await expect(step.locator('.tool-part')).toHaveCount(0)
+  await step.locator(':scope > summary').click()
+  const parts = step.locator('.tool-part')
+  await expect(parts.locator('h4')).toHaveText(['输入', '输出'])
+  await expect(parts.nth(0).locator('.pi-read-path code')).toHaveText('/fixture/materials/research.md')
   await expect(parts.nth(1).locator('.tool-content')).toHaveText('已读取 3 份资料，发现 2 处待确认差异。')
   for (const [index, row] of tools.entries()) {
     expect(row.source.callId).toBe(call.callId)
@@ -163,13 +161,11 @@ test('任务列表筛选、分页、详情与执行记录', async ({page}) => {
   await expect(search).toBeFocused()
   await screenshot(page, 'tasks')
   await page.locator('.task-table').getByRole('link', {name: '整理本周产品调研', exact: true}).click()
-  await expect(page.getByRole('heading', {name: '整理本周产品调研', exact: true})).toBeVisible()
-  await page.getByRole('navigation', {name: '任务信息分类'}).getByRole('link', {name: '执行', exact: true}).click()
-  await expect(page.getByRole('heading', {name: /^执行动态/})).toBeVisible()
+  await expect(page.getByRole('complementary', {name: '任务详情'}).getByRole('heading', {name: '整理本周产品调研', exact: true})).toBeVisible()
+  await expect(page.getByRole('region', {name: '任务执行记录'})).toBeVisible()
   await screenshot(page, 'task-detail')
   await openReadActivity(page)
   await expect(page.locator('.message-assistant').filter({hasText: '已开始核对现有资料'})).toBeVisible()
-  await expect(page.locator('.task-record-facts')).toContainText('当前上下文')
   await expect(page.locator('.task-dialogue')).not.toContainText('TASK_DIALOGUE_NOT_EXECUTION')
   await expect(page.locator('.thinking-message')).toHaveCount(1)
   await expect(page.locator('.task-dialogue')).not.toContainText('SECRET_SIGNATURE_FIXTURE')
@@ -178,21 +174,47 @@ test('任务列表筛选、分页、详情与执行记录', async ({page}) => {
   await screenshot(page, 'execution-context')
 })
 
+test('已完成和已取消分别筛选，取消原因按真实记录展示', async ({page}) => {
+  await login(page)
+  await page.goto('/#/tasks?state=waiting')
+  const states = page.getByRole('navigation', {name: '任务状态'})
+  const table = page.locator('.task-table')
+  await expect(states.getByRole('link', {name: '全部', exact: true})).toHaveAttribute('aria-current', 'page')
+  await expect(states.getByRole('link', {name: '等待中', exact: true})).toHaveCount(0)
+  await states.getByRole('link', {name: '已完成', exact: true}).click()
+  await expect(table.getByText('已完成', {exact: true}).first()).toBeVisible()
+  await expect(table.getByText('已取消', {exact: true})).toHaveCount(0)
+  await states.getByRole('link', {name: '已取消', exact: true}).click()
+  await expect(table.getByText('已完成', {exact: true})).toHaveCount(0)
+  await expect(table.getByText('已取消', {exact: true})).toHaveCount(2)
+  await table.getByRole('link', {name: '审阅新版入门说明', exact: true}).click()
+  await expect(page.locator('.task-facts')).toContainText('已改为审阅合并后的说明。')
+  await page.goto('/#/tasks/task-history-1')
+  await expect(page.locator('.task-facts').filter({hasText:'取消原因'})).toContainText('未记录')
+})
+
 test('执行上下文区分提交中和不可用，不展示空白成功状态', async ({page}) => {
   await login(page)
   for (const [id, state] of [['task-schedule', 'pending'], ['task-inventory', 'unavailable']]) {
-    await page.goto('/#/tasks/' + id + '?view=execution')
     const response = page.waitForResponse(result => new URL(result.url()).pathname === `/api/tasks/${id}/session`)
-    await page.evaluate(() => window.dispatchEvent(new Event('online')))
+    await page.goto('/#/tasks/' + id)
     expect((await (await response).json()).status).toBe(state)
     const context = page.locator('.task-dialogue')
-    await expect(context).toContainText(state === 'pending' ? /提交|写入/ : /暂不可读/)
-    expect(await context.locator('.message').count()).toBe(0)
+    const errors = page.getByRole('alert', {name: '读取状态汇总'})
+    if (state === 'pending') {
+      await expect(context.getByRole('heading', {name: '执行记录正在提交'})).toBeVisible()
+      await expect(context.getByRole('heading', {name: '执行尚未开始'})).toHaveCount(0)
+    } else {
+      await expect(errors.getByRole('heading', {name: '执行记录加载失败'})).toBeVisible()
+      await expect(errors.getByRole('button', {name: '重试', exact: true})).toHaveCount(1)
+    }
+    await expect(context.locator('.message')).toHaveCount(0)
+    await expect(context.getByRole('heading', {name: '暂无可展示的执行记录'})).toHaveCount(0)
     await expect(context).not.toContainText('TASK_DIALOGUE_NOT_EXECUTION')
   }
 })
 
-test('真实形状的任务阻断项经白名单投影显示等待处理，不泄露操作输入', async ({page}) => {
+test('中断任务保留白名单阻断项，不泄露操作输入', async ({page}) => {
   await login(page)
   const detailResponse = page.waitForResponse(result => new URL(result.url()).pathname === '/api/tasks/task-schedule')
   await page.goto('/#/tasks/task-schedule')
@@ -201,11 +223,9 @@ test('真实形状的任务阻断项经白名单投影显示等待处理，不�
   const detail = await response.json()
   expect(detail.blockers).toEqual([{kind: 'operation', id: expect.stringMatching(/^[a-f0-9]{64}$/), title: '待核实操作：pwsh', status: 'unknown', toolName: 'pwsh'}])
   expect(JSON.stringify(detail)).not.toContain('SECRET_OPERATION_INPUT_FIXTURE')
-  await expect(page.getByRole('heading', {name: '等待处理', exact: true})).toBeVisible()
-  await expect(page.locator('.blockers')).toContainText('待核实操作：pwsh')
-  await expect(page.locator('.blockers').getByText('待核实', {exact: true})).toBeVisible()
-  await expect(page.locator('.blockers')).not.toContainText('SECRET_OPERATION_INPUT_FIXTURE')
-  await screenshot(page, 'task-blockers')
+  expect(detail.state).toBe('interrupted')
+  await expect(page.getByRole('complementary', {name: '任务详情'}).getByText('执行中断', {exact: true})).toBeVisible()
+  await expect(page.locator('main')).not.toContainText('SECRET_OPERATION_INPUT_FIXTURE')
 })
 
 test('丢失发送回执后先核对，恢复连接只读原收据且不重放', async ({page}) => {
@@ -504,6 +524,24 @@ test('初次读取失败与真实空数据分开显示，恢复路径只有一�
   await expect(page.getByRole('alert',{name:'读取状态汇总'}).getByRole('button', {name: '重试', exact: true})).toHaveCount(1)
 })
 
+test('渠道 Router 回复渲染 Markdown，并保留安全链接', async ({page}) => {
+  await login(page)
+  const text = '## 核对结果\n\n**已核实**：使用 `status`。\n\n- 保留原证据\n\n| 项目 | 状态 |\n| --- | --- |\n| 账本 | 已完成 |\n\n[查看说明](https://example.org/result)\n\n```text\nverified\n```\n\n<iframe src="https://example.org/unsafe"></iframe>'
+  await page.route('**/api/conversations/room-product/messages?**', route => route.fulfill({json: {items: [{id:'router-markdown', role:'assistant', kind:'router-reply', text}], pages: {messages:{nextOffset:null,total:1},outbox:{nextOffset:null,total:1}}}}))
+  await page.goto('/#/channels/room-product')
+  const transcript = page.getByRole('region', {name:'消息记录',exact:true})
+  await expect(transcript.getByRole('heading', {name:'核对结果',level:2})).toBeVisible()
+  await expect(transcript.locator('strong').getByText('已核实')).toBeVisible()
+  await expect(transcript.getByRole('listitem')).toHaveText('保留原证据')
+  await expect(transcript.getByRole('cell', {name:'已完成'})).toBeVisible()
+  await expect(transcript.locator('code').first()).toHaveText('status')
+  await expect(transcript.locator('pre code')).toHaveText('verified')
+  const link = transcript.getByRole('link',{name:'查看说明'})
+  await expect(link).toHaveAttribute('href','https://example.org/result')
+  await expect(link).toHaveAttribute('rel','noopener noreferrer')
+  await expect(transcript.locator('iframe')).toHaveCount(0)
+})
+
 test('窄屏长发送者与工具名不撑宽消息区，未知来源不冒称当前用户', async ({page}) => {
   await page.setViewportSize({width: 390, height: 844})
   await login(page)
@@ -532,33 +570,29 @@ test('窄屏长发送者与工具名不撑宽消息区，未知来源不冒称�
     {id: 'source-user', role: 'user', text: '来自任务原始来源的输入。', kind: 'source'},
     {id: 'long-tool', role: 'tool', toolName: 'tool_' + 'x'.repeat(120), kind: 'tool-result', text: longMarkdown, status: 'completed'},
   ], total: 2, nextOffset: null}}))
-  await page.goto('/#/tasks/task-research?view=execution')
-  await page.evaluate(() => window.dispatchEvent(new Event('online')))
-  await expect(page.locator('.message-user .execution-message-role')).toHaveText('用户')
-  const summary = page.locator('.execution-tool-output > summary')
+  await page.goto('/#/tasks/task-research')
+  const execution = page.getByRole('region', {name: '任务执行记录'})
+  await expect(execution.locator('.message-user .execution-message-role')).toHaveText('用户')
+  const step = execution.locator('.pi-tool-step')
+  const summary = step.locator(':scope > summary')
+  await expect(summary).toContainText('tool_' + 'x'.repeat(120))
   await summary.focus()
   await page.keyboard.press('Enter')
-  await expect(page.locator('.execution-tool-output')).toHaveAttribute('open', '')
-  expect(await transcript.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+  await expect(step).toHaveAttribute('open', '')
+  await expect(step.locator('.tool-content')).toContainText('long_identifier_')
+  const executionTranscript = execution.getByRole('region', {name: '消息记录'})
+  expect(await executionTranscript.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await screenshot(page, 'mobile-long-execution')
 })
 
-test('任务阻断状态中文可读，未开始的执行与提交中的记录分开提示', async ({page}) => {
+test('尚未开始的执行不显示为记录正在提交', async ({page}) => {
   await login(page)
-  const states = [['prepared', '已准备'], ['recovering', '恢复中'], ['stopping', '停止中'], ['succeeded', '已成功'], ['stale', '已失效'], ['not_started', '未开始']]
-  await page.route('**/api/tasks/task-schedule', async route => {
-    const response = await route.fetch()
-    const data = await response.json()
-    await route.fulfill({json: {...data, blockers: states.map(([status], index) => ({kind: 'execution', id: `state-${index}`, title: `执行项 ${index + 1}`, status}))}})
-  })
-  await page.goto('/#/tasks/task-schedule')
-  for (const [, label] of states) await expect(page.locator('.blockers').getByText(label, {exact: true})).toBeVisible()
-  await page.getByRole('navigation', {name: '任务信息分类'}).getByRole('link', {name: '执行', exact: true}).click()
   await page.route('**/api/tasks/task-schedule/session?**', route => route.fulfill({json: {status: 'pending', reason: 'SESSION_NOT_STARTED', scope: 'current-session-context', items: [], total: 0, nextOffset: null}}))
-  await page.evaluate(() => window.dispatchEvent(new Event('online')))
-  await expect(page.getByRole('heading', {name: '执行尚未开始', exact: true})).toBeVisible()
-  await expect(page.locator('.task-dialogue')).not.toContainText('正在保存记录')
+  await page.goto('/#/tasks/task-schedule')
+  const execution = page.getByRole('region', {name: '任务执行记录'})
+  await expect(execution.getByRole('heading', {name: '执行尚未开始', exact: true})).toBeVisible()
+  await expect(execution.getByRole('heading', {name: '执行记录正在提交', exact: true})).toHaveCount(0)
 })
 
 test('上翻历史后后台消息不拉回底部，键盘可回到最新消息', async ({page}) => {

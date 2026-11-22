@@ -32,21 +32,24 @@ test('configured provider retries through SDK events within the same task lease 
  const h=await providerHost(t,{intercept:request=>{if(taskRequest(request)&&!failed){failed=true;return {stopReason:'error',errorMessage:transient}}},decide:()=>[result('complete')]})
  const id=await h.create();await h.service.whenIdle();const stored=await h.stored(id);assert.equal(stored.task.status,'completed');assert.equal(stored.task.leaseEpoch,1);assert.equal(stored.task.providerRecovery??null,null);assert.equal(stored.task.humanRequests.length,0);assert.equal(h.taskRequests().length,2);assert.equal(h.events.filter(e=>e.type==='auto_retry_start').length,1)
 })
-for(const restart of [false,true])test(`normal empty SDK completion stays technical and cannot manufacture a task result: restart=${restart}`,{timeout:nativeTestTimeout(20000)},async t=>{
+for(const restart of [false,true])test(`normal empty SDK completion records no invented conclusion: restart=${restart}`,{timeout:nativeTestTimeout(20000)},async t=>{
  const root=await mkdtemp(join(tmpdir(),'provider-empty-'));let first,second;t.after(async()=>{await second?.close();await first?.close();await rm(root,{recursive:true,force:true})})
- first=await providerHost(t,{root,decide:()=>[]});const id=await first.create();await first.service.whenIdle();const stored=await first.stored(id);assert.equal(stored.task.completion??null,null);assert.equal(stored.task.drained,true);assert.equal(stored.task.humanRequests.length,0);assert.equal(first.events.length,0);assert.equal(first.taskRequests().length,1);await first.service.recover();await first.service.whenIdle();assert.equal(first.taskRequests().length,1)
- if(restart){await first.close();second=await providerHost(t,{root,initialize:false,decide:()=>[result('complete')]});await second.service.recover();await second.service.whenIdle();assert.equal(second.taskRequests().length,0);assert.equal((await second.query('task.get',{taskId:id})).sessionId,stored.task.sessionId)}
+ first=await providerHost(t,{root,decide:()=>[]});const id=await first.create();await first.service.whenIdle();const stored=await first.stored(id);assert.equal(stored.task.status,'completed');assert.equal(stored.task.completion.result.summary,'本轮正常结束，模型未留下文字结论。');assert.deepEqual(stored.task.completion.result.evidence,[]);assert.equal(stored.task.drained,true);assert.equal(stored.task.humanRequests.length,0);assert.equal(first.events.length,0);assert.equal(first.taskRequests().length,1);await first.service.recover();await first.service.whenIdle();assert.equal(first.taskRequests().length,1)
+ if(restart){await first.close();second=await providerHost(t,{root,initialize:false,decide:()=>[result('complete')]});await second.service.recover();await second.service.whenIdle();assert.equal(second.taskRequests().length,0);const current=await second.query('task.get',{taskId:id});assert.equal(current.sessionId,stored.task.sessionId);assert.deepEqual(current.completion,stored.task.completion)}
 })
 for(const transientFailure of [true,false])test(`native error stays raw evidence without legacy terminal inference: retryable=${transientFailure}`,{timeout:nativeTestTimeout(15000)},async t=>{
  const message=transientFailure?transient:'401 account configuration invalid',h=await providerHost(t,{retry:{enabled:false},intercept:request=>taskRequest(request)?{stopReason:'error',errorMessage:message}:undefined})
  const id=await h.create();await h.service.whenIdle();const stored=await h.stored(id);assert.ok(stored.entries.some(e=>e.type==='message'&&e.message.stopReason==='error'&&e.message.errorMessage===message));assert.equal(stored.task.completion??null,null);assert.equal(stored.task.humanRequests.length,0);await h.service.recover();await h.service.whenIdle();assert.equal(h.taskRequests().length,1);assert.equal(h.events.length,0)
 })
-for(const empty of [false,true])test(`SDK retry budget and durable admission hold bound failed runs across restart: empty=${empty}`,{timeout:nativeTestTimeout(20000)},async t=>{
+for(const empty of [false,true])test(`SDK retries only errors and explicit new input retains one session across restart: empty=${empty}`,{timeout:nativeTestTimeout(20000)},async t=>{
  const root=await mkdtemp(join(tmpdir(),'provider-budget-'));let first,second;t.after(async()=>{await second?.close();await first?.close();await rm(root,{recursive:true,force:true})})
  const intercept=request=>taskRequest(request)?{stopReason:empty?'stop':'error',errorMessage:empty?undefined:transient}:undefined
  first=await providerHost(t,{root,retry:{enabled:true,maxRetries:2,baseDelayMs:1,maxAgentDelayMs:5,provider:{maxRetries:0}},intercept});const id=await first.create();await first.service.whenIdle();const before=await first.stored(id);assert.equal(first.taskRequests().length,empty?1:3);assert.equal(first.events.filter(e=>e.type==='auto_retry_start').length,empty?0:2);await first.close()
  second=await providerHost(t,{root,initialize:false,decide:()=>[result('complete')]});for(let i=0;i<3;i++){await second.service.recover();await second.service.whenIdle()}assert.equal(second.taskRequests().length,0)
- await second.service.appendTaskContext({taskId:id,requestId:'real-new-input',progressImpact:'replan',context:'The provider is available; continue using the retained native task.'});await second.service.whenIdle();const after=await second.stored(id);assert.equal(after.task.status,'completed');assert.equal(after.task.sessionId,before.task.sessionId);assert.equal(after.task.humanRequests.length,0);assert.equal(second.taskRequests().length,1)
+ const next={taskId:id,requestId:'real-new-input',context:'The provider is available; continue using the retained native task.'}
+ if(empty)await second.service.reopenTask(next)
+ else await second.service.appendTaskContext({...next,progressImpact:'replan'})
+ await second.service.whenIdle();const after=await second.stored(id);assert.equal(after.task.status,'completed');assert.equal(after.task.sessionId,before.task.sessionId);assert.equal(after.task.humanRequests.length,0);assert.equal(second.taskRequests().length,1)
 })
 for(const newInput of [false,true])test(`unconfigured task provider/model cannot hot-loop or borrow another route: newInput=${newInput}`,{timeout:nativeTestTimeout(20000)},async t=>{
  const root=await mkdtemp(join(tmpdir(),'provider-route-'));let h,restored;t.after(async()=>{await restored?.close();await h?.close();await rm(root,{recursive:true,force:true})});h=await providerHost(t,{root,config:{provider:newInput?'native-task-test':'unconfigured',model:'later-model'},models:['later-model'],decide:()=>[result('complete')]});h.profile.models=h.profile.models.filter(model=>model.id!=='later-model')
@@ -72,7 +75,7 @@ for(const [providerReason,errorMessage] of [
  const expected={code:'TASK_PI_PROVIDER_ERROR',phase:'decision',stopReason:'error',...providerReason?{providerReason}:{}}
  assert.deepEqual(task.technicalFailure,expected)
  assert.deepEqual(task.lastDecision.technicalFailure,expected)
- assert.equal(task.lastDecision.action,'wait');assert.equal(task.drained,true);assert.equal(task.completion??null,null)
+ assert.equal(task.lastDecision.action,'blocked');assert.equal(task.drained,true);assert.equal(task.completion??null,null);assert.equal(task.interruption.leaseEpoch,task.leaseEpoch)
  assert.ok((await h.query('wake.list',{taskId:id})).every(wake=>wake.state==='acked'))
  assert.ok(entries.some(entry=>entry.type==='message'&&entry.message.errorMessage===errorMessage))
  assert.ok(!JSON.stringify(task).includes(errorMessage))
@@ -86,9 +89,15 @@ for(const [providerReason,errorMessage] of [
 for(const mode of ['provider-error','successful-text-without-task-result'])test(`Single ${mode} never creates a Host retry window, including after a one-hour clock advance and cold restore`,{timeout:nativeTestTimeout(20000)},async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()})
  const root=await mkdtemp(join(tmpdir(),'single-no-host-retry-'));let first,cold;t.after(async()=>{await cold?.close();await first?.close();await rm(root,{recursive:true,force:true})})
- const retry={enabled:true,maxRetries:1,baseDelayMs:1,maxAgentDelayMs:5,provider:{maxRetries:0}},failure=request=>taskRequest(request)?mode==='provider-error'?{stopReason:'error',errorMessage:transient}:{stopReason:'stop',content:[{type:'text',text:'Successful final answer without the required task_result'}]}:undefined,expectedCode=mode==='provider-error'?'TASK_PI_PROVIDER_ERROR':'TASK_SESSION_NO_SUBMISSION'
+ const retry={enabled:true,maxRetries:1,baseDelayMs:1,maxAgentDelayMs:5,provider:{maxRetries:0}},failure=request=>taskRequest(request)?mode==='provider-error'?{stopReason:'error',errorMessage:transient}:{stopReason:'stop',content:[{type:'text',text:'The final answer is returned as text.'}]}:undefined
  first=await providerHost(t,{root,retry,intercept:failure});const id=await first.create('no-host-retry');await first.service.whenIdle();const before=await first.stored(id),count=first.taskRequests().length
- assert.equal(count,mode==='provider-error'?2:1);assert.equal(before.task.providerRecovery??null,null);assert.equal(before.task.technicalFailure.code,expectedCode);assert.equal(before.task.technicalFailure.stopReason,mode==='provider-error'?'error':'stop');assert.equal(before.task.lastDecision.action,'wait');assert.equal(before.task.completion??null,null);assert.equal(before.task.humanRequests.length,0);assert.ok((await first.query('wake.list',{taskId:id})).every(wake=>wake.state==='acked'))
+ assert.equal(count,mode==='provider-error'?2:1);assert.equal(before.task.providerRecovery??null,null)
+ if(mode==='provider-error'){
+  assert.equal(before.task.technicalFailure.code,'TASK_PI_PROVIDER_ERROR');assert.equal(before.task.technicalFailure.stopReason,'error');assert.equal(before.task.lastDecision.action,'blocked');assert.equal(before.task.completion??null,null)
+ }else{
+  assert.equal(before.task.technicalFailure??null,null);assert.equal(before.task.status,'completed');assert.equal(before.task.completion.result.summary,'The final answer is returned as text.')
+ }
+ assert.equal(before.task.humanRequests.length,0);assert.ok((await first.query('wake.list',{taskId:id})).every(wake=>wake.state==='acked'))
  for(let n=0;n<3;n++){t.mock.timers.setTime(Date.now()+3600000);await first.service.recover();await first.service.whenIdle();assert.equal(first.taskRequests().length,count)}
  await first.close();cold=await providerHost(t,{root,initialize:false,retry,intercept:failure});for(let n=0;n<3;n++){t.mock.timers.setTime(Date.now()+3600000);await cold.service.recover();await cold.service.whenIdle();assert.equal(cold.taskRequests().length,0)}
  assert.equal(cold.events.length,0);assert.equal((await cold.query('task.get',{taskId:id})).sessionId,before.task.sessionId)
@@ -97,7 +106,8 @@ for(const mode of ['provider-error','successful-text-without-task-result'])test(
 test('cold Single holds Night own persisted Host providerRecovery without deleting original Pi effects or sources',{timeout:nativeTestTimeout(20000)},async t=>{
  t.mock.timers.enable({apis:['Date'],now:Date.now()})
  const root=await mkdtemp(join(tmpdir(),'night-own-recovery-upgrade-'));let first,cold;t.after(async()=>{await cold?.close();await first?.close();await rm(root,{recursive:true,force:true})})
- first=await providerHost(t,{root,decide:request=>sawEffect(request)?[result()]:[effect]});const id=await first.create('prior-night-business-state');await first.service.whenIdle();const original=await first.stored(id),source=await first.query('source.get',{sourceId:original.task.sourceRefs[0]})
+ first=await providerHost(t,{root,intercept:request=>taskRequest(request)&&sawEffect(request)?{stopReason:'error',errorMessage:'401 fixture stopped after the original effect'}:undefined,decide:()=>[effect]});const {taskId:id}=await first.service.createTask({requestId:'prior-night-business-state',objective:'Retain the original effect before a historical provider recovery'});await first.service.whenIdle();const original=await first.stored(id),source=await first.query('source.get',{sourceId:original.task.sourceRefs[0]})
+ assert.equal(original.task.status,'active');assert.equal(original.task.completion??null,null);assert.equal(original.task.drained,true)
  await first.service.store.command({id:'prior-night-pending-wake',kind:'task.wake',args:{taskId:id,kind:'task.provider-recovery',payload:{reason:'previous Night Host retry'}}})
  const claimed=await first.service.store.command({id:'prior-night-claim',kind:'task.claim',args:{taskId:id}}),binding=claimed.result.binding
  await first.service.store.command({id:'prior-night-provider-failure',kind:'task.provider-failure',args:{binding,failure:{code:'TASK_SESSION_NO_SUBMISSION',phase:'decision'}}})

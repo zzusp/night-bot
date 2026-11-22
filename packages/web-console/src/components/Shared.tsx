@@ -18,7 +18,7 @@ const states: Record<string, [string, 'neutral' | 'success' | 'warning' | 'dange
   running: ['执行中', 'info'], active: ['进行中', 'info'], queued: ['排队中', 'neutral'], pending: ['处理中', 'info'],
   'result-unrecorded': ['结果未记录', 'neutral'],
   accepted: ['已接纳', 'neutral'], completed: ['已完成', 'success'], complete: ['已完成', 'success'], done: ['已完成', 'success'],
-  waiting: ['等待中', 'warning'], blocked: ['受阻', 'warning'], failed: ['失败', 'danger'], error: ['失败', 'danger'],
+  waiting: ['等待中', 'warning'], interrupted: ['执行中断', 'warning'], inactive: ['未运行', 'neutral'], blocked: ['受阻', 'warning'], failed: ['失败', 'danger'], error: ['失败', 'danger'],
   cancelled: ['已取消', 'neutral'], canceled: ['已取消', 'neutral'], archived: ['已归档', 'neutral'],
   idle: ['空闲', 'neutral'], sent: ['已发送', 'success'], delivered: ['已送达', 'success'], unknown: ['待核实', 'warning'],
   stopped: ['已停止', 'neutral'], ready: ['就绪', 'success'], settled: ['已处理', 'success'],

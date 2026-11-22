@@ -58,7 +58,7 @@ test('task page joins only selected topic names once per group/id without readin
  const board=runInNewContext(`(()=>{${projection};return ({${method}}).boardTasks})()`,{Map,dirname,taskWorkspaceReady,ctx:{sessionPersistence:{path:id=>'/log/'+id}},root:'/fixture',taskFilePath:(...args)=>join(...args),taskSessionLogRoot:()=>'/log',
   residentStore:{getTopic(groupId,topicId){lookups.push([groupId,topicId]);return topicId==='missing'?undefined:{title:groupId==='g'?'事项甲':'事项乙',get messages(){throw new Error('topic history must not be projected')}}}},
   query:async(kind,args)=>{queries.push(kind);assert.equal(kind,'observer.page');return page(args)}})
- const result=await board({offset:0,limit:2,state:'waiting'})
+ const result=await board({offset:0,limit:2,state:'inactive'})
  assert.equal(result.total,3);assert.equal(result.items.length,2)
  assert.deepEqual(lookups,[['g','shared'],['other','shared'],['g','missing']])
  assert.deepEqual(queries,['observer.page'])
@@ -100,7 +100,7 @@ test('page materialization is bounded, ordered and count uses metadata, not hist
  db.exec('COMMIT')
  let materialized=0;const sql=[]
  const observed={prepare(query){sql.push(query);const statement=db.prepare(query);return {get:(...a)=>statement.get(...a),all:(...a)=>{const rows=statement.all(...a);if(query.includes(' AS body'))materialized+=rows.length;return rows}}}}
- const result=observerPage(observed,{collection:'tasks',state:'waiting',offset:510,limit:10},'test')
+ const result=observerPage(observed,{collection:'tasks',state:'inactive',offset:510,limit:10},'test')
  assert.equal(result.total,1000);assert.equal(result.items.length,10);assert.equal(materialized,10)
  assert.equal(result.items[0].id,'t0510');assert.equal(result.items[0].dialogue,undefined)
  assert(sql.some(q=>q.includes('count(*) AS n FROM observer_task_index i')))
@@ -109,7 +109,7 @@ test('page materialization is bounded, ordered and count uses metadata, not hist
  put('tasks','done',{taskId:'done',status:'completed',updatedAt:'same'})
  put('tasks','cancelled',{taskId:'cancelled',control:'cancelled',updatedAt:'same'})
  assert.equal(observerPage(observed,{collection:'tasks',state:'completed',limit:1},'test').items.length,1)
- const plan=db.prepare('EXPLAIN QUERY PLAN SELECT count(*) FROM observer_task_index WHERE archived=0 AND state=?').all('waiting')
+ const plan=db.prepare('EXPLAIN QUERY PLAN SELECT count(*) FROM observer_task_index WHERE archived=0 AND state=?').all('inactive')
  assert(plan.some(row=>row.detail.includes('COVERING INDEX')))
 })
 test('updates between pages are rejected rather than silently duplicating or skipping rows',t=>{
@@ -125,13 +125,14 @@ test('board membership follows execution, wake, human, cancel and archive change
  const {put,page}=fixture(t)
  const task={taskId:'t',groupId:'g',status:'active',control:'active',drained:true}
  put('tasks','t',task)
- assert.equal(page({collection:'tasks',state:'waiting'}).total,1)
+ assert.equal(page({collection:'tasks',state:'inactive'}).total,1)
  put('executions','e',{taskId:'t',status:'queued',drained:true})
- assert.equal(page({collection:'tasks',state:'running'}).total,1)
+ assert.equal(page({collection:'tasks',state:'queued'}).total,1)
  put('tasks','t',{...task,humanRequests:[{status:'waiting-reply'}]})
- assert.equal(page({collection:'tasks',state:'waiting'}).total,1)
+ assert.equal(page({collection:'tasks',state:'inactive'}).total,1)
  put('tasks','t',{...task,control:'cancelled'})
- assert.equal(page({collection:'tasks',state:'completed'}).total,1)
+ assert.equal(page({collection:'tasks',state:'completed'}).total,0)
+ assert.equal(page({collection:'tasks',state:'cancelled'}).total,1)
  put('tasks','t',{...task,archivedAt:'2026-10-28'})
  assert.equal(page({collection:'tasks'}).total,0)
  assert.equal(page({collection:'tasks',archived:true}).total,1)
@@ -185,7 +186,7 @@ test('topic task summaries select only the visible SQL fields without execution 
  assert.equal(result.total,35);assert.equal(result.items.length,10);assert.equal(materialized.length,10)
  assert.deepEqual(result.items.map(item=>item.taskId),Array.from({length:10},(_,i)=>'topic-task-'+(i+10)))
  assert(result.items.every(item=>Object.keys(item).sort().join(',')==='archivedAt,state,taskId,title,updatedAt'))
- assert(result.items.every(item=>item.state==='waiting'))
+ assert(result.items.every(item=>item.state==='inactive'))
  assert(!JSON.stringify(materialized).includes(hidden));assert(JSON.stringify(materialized).length<2200)
  const bodySql=sql.find(query=>query.includes(' AS body'))
  assert(bodySql.includes('WITH page_ids AS MATERIALIZED'))
@@ -314,7 +315,7 @@ test('task state refresh and counts never read historical execution bodies after
  put('executions','pending',{executionId:'pending',taskId:'task',status:'succeeded',drained:false})
  assert.equal(db.prepare("SELECT state FROM observer_task_index WHERE id='task'").get().state,'running')
  put('executions','pending',{executionId:'pending',taskId:'task',status:'succeeded',drained:true})
- assert.equal(db.prepare("SELECT state FROM observer_task_index WHERE id='task'").get().state,'waiting')
+ assert.equal(db.prepare("SELECT state FROM observer_task_index WHERE id='task'").get().state,'inactive')
  const plan=db.prepare("EXPLAIN QUERY PLAN SELECT 1 FROM observer_execution_index e WHERE e.task_id=? AND (e.state IN ('queued','running') OR e.drained=0)").all('task')
  assert(plan.some(row=>/COVERING INDEX observer_execution_state/.test(row.detail)))
  let forbiddenReads=0
@@ -328,7 +329,7 @@ test('task state refresh and counts never read historical execution bodies after
  } finally {db.setAuthorizer(null)}
  db.exec("INSERT INTO dynamic_archived_executions SELECT id,rowid,body FROM dynamic_executions; DELETE FROM dynamic_executions;")
  assert.equal(db.prepare('SELECT count(*) n FROM observer_execution_index WHERE drained=1').get().n,101)
- assert.equal(db.prepare("SELECT state FROM observer_task_index WHERE id='task'").get().state,'waiting')
+ assert.equal(db.prepare("SELECT state FROM observer_task_index WHERE id='task'").get().state,'inactive')
  // Repeating an explicit migration must retain archive-aware delete hooks.
  installObserverPagination(db,{migrate:true})
  put('tasks','task',{taskId:'task',status:'completed',drained:true,archivedAt:'archive'})
@@ -461,8 +462,8 @@ test('drain failure agrees with board state and upgrades existing active/archive
  const failed={taskId:'failed',groupId:'g',status:'active',control:'active',drained:false,updatedAt:'now',sessionFailure:{code:'TASK_SESSION_DRAIN_FAILED'}}
  put('tasks','failed',failed);put('tasks','live',{...failed,taskId:'live',sessionFailure:null})
  put('wakes','failed-wake',{taskId:'failed',state:'claimed'})
- assert.equal(taskBoardState(failed), 'waiting');assert.equal(taskBoardState({...failed,sessionFailure:null}),'running')
- assert.deepEqual(page({collection:'tasks',state:'waiting',summary:true}).items.map(t=>t.taskId),['failed'])
+ assert.equal(taskBoardState(failed), 'interrupted');assert.equal(taskBoardState({...failed,sessionFailure:null}),'running')
+ assert.deepEqual(page({collection:'tasks',state:'interrupted',summary:true}).items.map(t=>t.taskId),['failed'])
  assert.deepEqual(page({collection:'tasks',state:'running',summary:true}).items.map(t=>t.taskId),['live'])
  for(const [overrides,expected] of [[{status:'completed'},'completed'],[{control:'cancelled'},'cancelled']]){
   const value={...failed,...overrides};put('tasks','failed',value);assert.equal(taskBoardState(value),expected);assert.equal(page({collection:'tasks'}).items.find(t=>t.taskId==='failed').state,expected)
@@ -470,40 +471,35 @@ test('drain failure agrees with board state and upgrades existing active/archive
  put('tasks','failed',failed)
  db.prepare('INSERT INTO dynamic_archived_tasks VALUES(?,?,?)').run('archived',1,JSON.stringify({...failed,taskId:'archived',archivedAt:'now'}))
  // Recreate the actual pre-fix trigger definitions, leaving the derived index stale.
- const clause=" WHEN json_extract(t.body,'$.sessionFailure.code')='TASK_SESSION_DRAIN_FAILED' THEN 'waiting'\n"
- for(const {name,sql} of db.prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger'").all())if(sql.includes(clause)){db.exec('DROP TRIGGER '+name);db.exec(sql.replaceAll(clause,''))}
+ for(const {name,sql} of db.prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger'").all()){
+  const old=sql.replace(/^ WHEN .*'\$\.interruption'.*\n/gm,'').replaceAll("THEN 'interrupted'", "THEN 'waiting'")
+  if(old!==sql){db.exec('DROP TRIGGER '+name);db.exec(old)}
+ }
  db.exec("UPDATE observer_task_index SET state='running'")
  assert.equal(installObserverArchivePagination(db),true)
- assert.equal(page({collection:'tasks',state:'waiting'}).total,1)
- assert.equal(page({collection:'tasks',state:'waiting',archived:true}).total,1)
+ assert.equal(page({collection:'tasks',state:'interrupted'}).total,1)
+ assert.equal(page({collection:'tasks',state:'interrupted',archived:true}).total,1)
  put('wakes','failed-wake',{taskId:'failed',state:'pending'})
- assert.equal(page({collection:'tasks',state:'waiting'}).total,1)
+ assert.equal(page({collection:'tasks',state:'interrupted'}).total,1)
  db.exec("DELETE FROM dynamic_wakes WHERE id='failed-wake'")
- assert.equal(page({collection:'tasks',state:'waiting'}).total,1)
+ assert.equal(page({collection:'tasks',state:'interrupted'}).total,1)
  const queries=[],readOnly=new Proxy(db,{get(target,key){if(key==='exec')return()=>{throw Error('GET must not execute DDL')};if(key==='prepare')return sql=>{queries.push(sql);return target.prepare(sql)};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value}})
- assert.equal(observerPage(readOnly,{collection:'tasks',state:'waiting'},'test').total,1)
+ assert.equal(observerPage(readOnly,{collection:'tasks',state:'interrupted'},'test').total,1)
  assert.equal(queries.some(sql=>/CREATE|ALTER|DROP/.test(sql)),false)
 })
 
-test('current blocking inspection overrides a claimed wake in existing task indexes', async t => {
+test('current interruption or inspection overrides a claimed wake, but stale and historical records do not', async t => {
  const {taskBoardState}=await import('../packages/dingtalk-core/task-message-projections.js')
  const {db,put,page}=fixture(t,{archives:true})
  installObserverArchivePagination(db)
- // Emulate an installed index whose triggers did not consider inspection state.
- for(const {name,sql} of db.prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger'").all()){
-  const old=sql.replace(/ WHEN json_extract\(t\.body,'\$\.inspection\.pending'\)=1[\s\S]*?THEN 'waiting'\n/g,'')
-  if(old!==sql){db.exec('DROP TRIGGER '+name);db.exec(old)}
- }
- const revision={requirementRevision:1,controlRevision:2,contextRevision:3}
+ const revision={requirementRevision:1,controlRevision:2,contextRevision:3,leaseEpoch:4}
  const base={taskId:'held',status:'active',control:'active',drained:true,...revision}
  const inspection={...revision,pending:true,reason:'host-restart'}
- put('tasks','held',{...base,inspection});put('wakes','wake',{taskId:'held',state:'claimed'})
- assert.equal(page({collection:'tasks',state:'running'}).total,1)
- assert.equal(installObserverArchivePagination(db),true)
- for(const [value,expected] of [[inspection,'waiting'],[{...inspection,controlRevision:1},'running'],[{...inspection,reason:'wait-overdue'},'running'],[{...inspection,pending:false},'running']]){
-  const task={...base,inspection:value}
+ put('wakes','wake',{taskId:'held',state:'claimed'})
+ for(const [change,expected] of [[{inspection},'interrupted'],[{interruption:revision},'interrupted'],[{interruption:{...revision,leaseEpoch:3}},'inactive'],[{inspection:{...inspection,controlRevision:1}},'inactive'],[{inspection:{...inspection,reason:'wait-overdue'}},'inactive'],[{inspection:{...inspection,pending:false}},'inactive']]){
+  const task={...base,...change}
   put('tasks','held',task)
-  assert.equal(taskBoardState(task,[],true),expected)
+  assert.equal(taskBoardState(task,[],false),expected)
   assert.equal(page({collection:'tasks',state:expected}).items[0].taskId,'held')
  }
 })
@@ -521,11 +517,11 @@ test('channel activity task scope precedes SQL totals, status filters and pagina
  const f=fixture(t),base={status:'active',control:'active',drained:false,requirementRevision:1,createdAt:'2026-01-01',updatedAt:'2026-01-01'}
  for(let i=0;i<20;i++)f.put('tasks','new-b-'+i,{...base,groupId:'plugin:room-b',updatedAt:'2026-02-01'})
  for(let i=0;i<7;i++)f.put('tasks','old-a-'+i,{...base,groupId:'plugin:room-a'})
- f.put('tasks','a-wait',{...base,groupId:'plugin:room-a',control:'paused'})
+ f.put('tasks','a-interrupted',{...base,groupId:'plugin:room-a',sessionFailure:{code:'TASK_SESSION_DRAIN_FAILED'}})
  f.put('tasks','standalone',base)
  const a=f.page({collection:'tasks',groupId:'plugin:room-a',state:'running',archived:false,offset:0,limit:5})
  assert.equal(a.total,7);assert.equal(a.items.length,5);assert.ok(a.items.every(row=>row.groupId==='plugin:room-a'))
- assert.equal(f.page({collection:'tasks',groupId:'plugin:room-a',state:'waiting',archived:false,offset:0,limit:5}).total,1)
+ assert.equal(f.page({collection:'tasks',groupId:'plugin:room-a',state:'interrupted',archived:false,offset:0,limit:5}).total,1)
  assert.equal(f.page({collection:'tasks',groupId:'plugin:room-empty',archived:false,offset:0,limit:5}).total,0)
  assert.equal(f.page({collection:'tasks',state:'running',archived:false,offset:0,limit:5}).total,28)
 })
