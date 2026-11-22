@@ -10,6 +10,7 @@ export const taskContextInputContract = Object.freeze({ required: ['progressImpa
   missingClassification: 'reject-without-cancelling', cancellation: 'task-cancel / cancelTask' })
 export function taskContextSemanticsProblem(value) {
   if (!['preserve', 'replan'].includes(value.progressImpact)) return 'TASK_CONTEXT_CLASSIFICATION_REQUIRED'
+  if (value.suppressChannelOutcome !== undefined && (value.suppressChannelOutcome !== true || value.progressImpact !== 'preserve')) return 'TASK_CONTEXT_CLASSIFICATION_CONFLICT'
   if (value.progressImpact === 'preserve' && (value.authorizationChange === 'changed' || value.objective !== undefined
     || value.acceptanceCriteria !== undefined || value.stageTasks !== undefined || value.impactEvidence !== undefined)) return 'TASK_CONTEXT_CLASSIFICATION_CONFLICT'
   return null

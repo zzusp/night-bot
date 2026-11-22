@@ -1,4 +1,4 @@
-import {blockedReplyId,completionReplyId,currentOutcomeBinding} from '../../src/channels/router-task-context.js'
+import {blockedReplyId,completionReplyId,currentOutcomeBinding,suppressChannelOutcome} from '../../src/channels/router-task-context.js'
 import {inspectionVersion,taskInspectionReason,taskWaitIdentity,inspectionIsCurrent,inspectionHoldsExecution,taskProviderFailureLabels} from '../../src/tasks/inspection.js'
 import {sourceHistorySchema} from '../../src/channels/source-history.js'
 import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
@@ -682,7 +682,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       const messageId = text(a.messageId, 'messageId'), message = text(a.text, 'text')
       const prior = task.supplements?.find(item => item.id === messageId)
       if (prior) {
-        if (prior.text !== message) fail('DYNAMIC_FEEDBACK_ID_CONFLICT')
+        if (prior.text !== message || (prior.suppressChannelOutcome===true)!==(a.suppressChannelOutcome===true)) fail('DYNAMIC_FEEDBACK_ID_CONFLICT')
         return changed({ task })
       }
       // A new authenticated Router handoff can retry the current objective.
@@ -707,7 +707,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       for (const field of ['request', 'sourceRefs', 'topicRefs','currentInput']) if (a[field] !== undefined) task[field] = clone(a[field])
       if (a.replyBindings !== undefined) task.replyBindings = topicFacts.bindings(task, a.replyBindings)
       if (a.operationId) task.appliedOperations = [...new Set([...(task.appliedOperations ?? []), a.operationId])]
-      ;(task.supplements ??= []).push({ id: messageId, text: message, receivedAt: stamp, contextRevision: task.contextRevision,requirementRevision:task.requirementRevision })
+      ;(task.supplements ??= []).push({ id: messageId, text: message, receivedAt: stamp, contextRevision: task.contextRevision,requirementRevision:task.requirementRevision,
+        ...(a.suppressChannelOutcome===true?{suppressChannelOutcome:true}:{}) })
       // 待答来源先由统筹核对；不能把未经确认的摘要提前反馈给仍在运行的执行。
       for (const execution of execs(task.taskId)) if (!task.humanRequests?.some(item => item.status === 'waiting-reply') && !terminalExecutions.has(execution.status) && executionCurrent(execution)) {
         execution.feedback ??= []
@@ -1753,10 +1754,12 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if(a.payload?.completionBinding&&a.payload.taskDelivery&&!get('dynamic_notifications',id,true)&&a.payload.completionBinding.taskId!==a.payload.taskDelivery.taskId)fail('TASK_DELIVERY_COMPLETION_MISMATCH')
       if(a.payload?.completionBinding){
         const p=a.payload,b=record(p.completionBinding),completed=get('dynamic_tasks',b.taskId),event=get('dynamic_task_events',b.eventId)
+        if(event.suppressChannelOutcome===true)fail('ROUTER_CHANNEL_OUTCOME_SUPPRESSED')
         if(a.routerGeneration===undefined||event.kind!=='task.completed'||event.taskId!==completed.taskId||event.commandId!==b.commandId||completed.completion?.commandId!==b.commandId||completed.groupId!==p.conversationId||completed.status!=='completed'||completed.archivedAt||completed.archiveRestoreHold||completed.archiveRestore?.reviewRequired||!completed.sourceRefs?.includes(p.sourceId)||event.requirementRevision!==b.requirementRevision||completed.requirementRevision!==b.requirementRevision||event.controlRevision!==b.controlRevision||completed.controlRevision!==b.controlRevision||id!==completionReplyId(p.conversationId,b.eventId,p.sourceId,p.sourceVersion))fail('ROUTER_COMPLETION_REPLY_STALE')
       }
       if(a.payload?.blockedBinding){
         const p=a.payload,b=record(p.blockedBinding),task=get('dynamic_tasks',b.taskId),event=get('dynamic_task_events',b.eventId)
+        if(event.suppressChannelOutcome===true)fail('ROUTER_CHANNEL_OUTCOME_SUPPRESSED')
         if(a.routerGeneration===undefined||a.kind!=='router-reply'||p.completionBinding||p.taskDelivery||p.artifactFiles?.length||event.kind==='task.completed'||!task.sourceRefs?.includes(p.sourceId)
           ||digest(b)!==digest(currentOutcomeBinding(task,event,p.conversationId)??null)||id!==blockedReplyId(p.conversationId,b.eventId))fail('ROUTER_TASK_OUTCOME_REPLY_STALE')
       }
@@ -2174,7 +2177,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
             value.taskDecision.instructionCoverage = instructionCoverage
             const event = { id: `task-completed:${id}`, eventVersion: 1, kind: 'task.completed', taskId: task.taskId,
               commandId: id, taskDecisionReceiptId: id, ...taskVersion(task),
-              instructionCoverage, result: clone(task.completion.result), recordedAt: now() }
+              instructionCoverage, result: clone(task.completion.result), recordedAt: now(),
+              ...(suppressChannelOutcome(task)?{suppressChannelOutcome:true}:{}) }
             const inserted = db.prepare('INSERT INTO dynamic_task_events(id,body) VALUES (?,?)').run(event.id, canonical(event))
             value.completionEvent = { ...event, sequence: Number(inserted.lastInsertRowid) }
             routerLedger.taskEvent(event)

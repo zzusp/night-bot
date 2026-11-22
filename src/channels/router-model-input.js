@@ -9,7 +9,7 @@ const pick=(value,keys)=>Object.fromEntries(keys.filter(key=>value[key]!==undefi
  * duplicate identifiers and source-processing bookkeeping stay with the Host.
  */
 export function routerModelEvent(event,{compactCompletion=false}={}){
-  const view=pick(event,['id','kind','sourceId','messageVersion','taskId','taskEventId','directRouter'])
+  const view=pick(event,['id','kind','sourceId','messageVersion','taskId','taskEventId','directRouter','suppressChannelOutcome'])
   if(event.kind==='router.lookup.completed')view.lookupResult=event.lookupResult
   if(event.kind==='operator.message')view.operator=pick(event.operator,['requestId','actorId','text','destination'])
   if(event.source){
@@ -41,6 +41,7 @@ export function routerModelBatch(row,inbox){
   let users=0
   for(const event of inbox){
     if(batch.length&&(event.kind==='operator.message')!==(batch[0].kind==='operator.message'))break
+    if(batch.length&&(event.suppressChannelOutcome===true)!==(batch[0].suppressChannelOutcome===true))break
     if(['source.message','operator.message'].includes(event.kind)&&users>=15)break
     const candidate=[...batch,event]
     if(batch.length&&Buffer.byteLength(JSON.stringify(routerModelBody(row,candidate)))>131072)break

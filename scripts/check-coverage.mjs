@@ -11,6 +11,7 @@ for(const name of ['task-topic-coordinator.js','topic-runtime.js'])retiredDriver
 adapted.add('observer-pagination.js')
 adapted.add('observer-alert-pages.js')
 adapted.add('notification-delivery.js')
+adapted.add('task-input-contract.js')
 const retiredCount = retiredDrivers.size
 const adaptedCount = adapted.size - [...retiredDrivers.keys()].filter(source=>adapted.has(source)).length
 let retained = 0

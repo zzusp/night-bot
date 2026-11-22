@@ -581,13 +581,18 @@ test('Web Task 入口强制稳定请求与执行版本且拒绝伪造来源和Se
     assert.equal((await post('/tasks/task-1/context', update)).status, 200)
     assert.equal(calls[1].taskId, 'task-1')
     assert.equal(calls[1].expectedRequirementRevision, 1)
+    const silent = { ...update, requestId: 'silent-context', progressImpact: 'preserve', suppressChannelOutcome: true }
+    assert.equal((await post('/tasks/task-1/context', silent)).status, 200)
+    assert.equal(calls[2].suppressChannelOutcome, true)
+    assert.equal((await post('/tasks/task-1/context', { ...silent, progressImpact: 'replan' })).status, 400)
+    assert.equal((await post('/tasks/task-1/context', { ...silent, suppressChannelOutcome: 'true' })).status, 400)
     assert.equal((await post('/tasks/task-1/reopen', update)).status, 410)
     for (const extra of [{ childSessionId: 'other-session' }, { taskId: 'other-task' }, { sourceKind: 'dingtalk' }, { sourceMessageId: 'fake-message' }]) assert.equal((await post('/tasks/task-1/context', { ...update, ...extra })).status, 400)
     for (const field of ['requestId', 'context', 'progressImpact', 'expectedRequirementRevision', 'expectedControlRevision']) {
       const invalid = { ...update }; delete invalid[field]
       assert.equal((await post('/tasks/task-1/context', invalid)).status, 400)
     }
-    assert.equal(calls.length, 2)
+    assert.equal(calls.length, 3)
   }, { overrides: {
     createTask: async (value) => { calls.push(value); return { taskId: 'created' } },
     appendTaskContext: async (value) => { calls.push(value); return value },

@@ -40,6 +40,14 @@ test('packing counts model bytes and admits no more than fifteen user sources',(
  assert.deepEqual(batch,[huge]);assert.ok(routerModelBody(row,batch).events[0].source.text.endsWith('最后不可丢弃的指令'))
 })
 
+test('silent outcomes and independent user messages enter separate ordered batches',()=>{
+ const quiet={id:'quiet',kind:'task.completed',taskId:'task',taskEventId:'result',suppressChannelOutcome:true}
+ const user=event()
+ assert.deepEqual(routerModelBatch(row,[quiet,user]),[quiet])
+ assert.deepEqual(routerModelBatch(row,[user,quiet]),[user])
+ assert.equal(routerModelEvent(quiet).suppressChannelOutcome,true)
+})
+
 test('compact packet comparison tolerates only delivery progress, not business identity edits',()=>{
  const packet={id:'input',source:{kind:'conversation-router',modelViewVersion:1,ledgerIdentity:'bound-ledger',eventIds:['event-1']},content:[{type:'text',text:'Router 请求：'+JSON.stringify(routerModelBody(row,[event()]))}]}
  const changed=structuredClone(packet),body=JSON.parse(changed.content[0].text.slice('Router 请求：'.length))

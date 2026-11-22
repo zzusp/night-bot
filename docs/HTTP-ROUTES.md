@@ -4,7 +4,7 @@
 
 ## 当前任务入口
 
-- 任务创建：`POST /tasks` 创建任务；`POST /tasks/:taskId/context`、`/cancel`、`/reopen` 通过已认证控制入口补充或调整原任务。
+- 任务创建：`POST /tasks` 创建任务；`POST /tasks/:taskId/context`、`/cancel`、`/reopen` 通过已认证控制入口补充或调整原任务。`/context` 的 `progressImpact: "preserve"` 请求可显式填 `suppressChannelOutcome: true`：当前补充版本的完成、阻断或技术停止不发渠道回报，结果及依赖评估仍保留。省略字段维持默认回报行为；文字里写「不发群」不能替代这个参数。
 - 任务查询：`GET /state/tasks` 及任务 detail/执行历史查询保留。活动任务直接关联来源，不用 `topicId` 取得执行或查询授权。
 - 历史审计：`GET /state/topics`、`/state/topics/:topicId` 与其历史子查询，以及 `GET /state/fixed-topics` 仅保留旧审计读取；响应带 `x-night-bot-legacy-readonly: true`，不证明旧 Topic 仍在处理消息。
 - 活动 `topics` / `fixed-topics` 写入口、`routing-hold` 与 `/runtime/task-topics/` 写操作返回 HTTP **410**、`TOPIC_ROUTING_RETIRED`。任务路径使用 `topicId` 查询参数也明确拒绝，不偷偷按 Topic 查任务或转成新业务。

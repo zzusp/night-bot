@@ -8,6 +8,8 @@ export const completionReplyId=(conversationId,eventId,sourceId,messageVersion)=
 export const blockedReplyId=(conversationId,eventId)=>replyId([conversationId,'continued-blocked-reply',eventId])
 const stoppedExecution=event=>event?.kind==='task.inspection'&&event.reason==='execution-failed'&&event.expected?.drained===true&&!!event.brief?.technicalFailure
 export const isTaskOutcome=event=>event?.kind==='task.completed'||event?.kind==='task.blocked'&&event.resultSource==='pi-task-result'||stoppedExecution(event)
+export const suppressChannelOutcome=task=>task.supplements?.some(row=>row.suppressChannelOutcome===true
+ &&row.contextRevision===task.contextRevision&&row.requirementRevision===task.requirementRevision)===true
 export const outcomeOriginId=task=>task?.metadata?.authorizationSourceId??task?.sourceRefs?.[0]
 export const isOutcomeChannelSource=(source,conversationId)=>source?.groupId===conversationId&&['im','chat','chat-room'].includes(source.channel)&&source.routed===true
 export function currentOutcomeBinding(task,event,conversationId){
