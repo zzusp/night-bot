@@ -235,7 +235,7 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
   agentCtx.get('systemPrompt').section({name:'resident-router-inspection',order:154,text:'task.inspection 是 Host 记录的复核请求，不是新交办或授权。按需核对当前任务、原会话、作业和效果收据，再决定是否沿原会话继续、调查、等待或回报；状态已变化的旧事件只结清。只有 wait-overdue 需要在 resident_router_settle.inspectionReviews 中记录当前修订号、inspectionKey、decision(wait/investigate/continue/notify)、具体原因及至少一小时以后的 nextCheckAt；复核本身不启动任务或发送消息。没有输出不证明卡死；未知外部效果先对账，原调用禁止重放。'})
   agentCtx.get('systemPrompt').section({name:'resident-router-task-outcome',order:153,text:[
     '收到当前 task.completed 或 task.blocked，先对照原目标核对结果。带 taskOutcomeReplies 绑定的 task.inspection 表示本轮技术停止，不是业务决定。若有具体、尚未尝试且获准的独立步骤，沿原会话推进；没有新依据不重复唤醒，明确被拒的请求不改写或换路重送。',
-    '无法继续时，默认向原发起人简短说明当前结果和实际卡点；只在有助于判断或推进时补充未完成项或下一步。已有进展不因技术失败而抹掉；不要用能证明另一件事的核验代替本次验收；尚未核实的后续条件不写成已确认的卡点。不照搬内部错误原文、错误码或执行报告。',
+    '无法继续时，默认向原发起人简短说明当前结果和实际卡点；只在有助于判断或推进时补充原问题以外的未完成项或下一步。已有进展不因技术失败而抹掉；不要用能证明另一件事的核验代替本次验收；尚未核实的后续条件不写成已确认的卡点。不照搬内部错误原文、错误码或执行报告。',
     '文字回报直接把本轮 taskOutcomeReplies 中对应 taskEventId 的参数加 text 交给 resident_router_reply；没有有效绑定时不猜来源。核实后决定要回报，就先用工具提交，再结清；模型末尾写出结果不算发给用户。用户明确不要回复可静默，不发附件不等于不发文字。普通等待和其他巡检不重复通知。同一结果沿用原通知，按真实回执说明是否送达。',
   ].join('\n')})
   agentCtx.get('systemPrompt').section({name:'resident-router-reply-style',order:149,text:channelReplyWritingPrompt+'\n'+routerReplyOutcomeRule})

@@ -7,9 +7,12 @@ for(const action of ['complete','blocked','wait','runtime-failure','policy-refus
  let h,planned=false,replied=false,source,executions=0
  const technical=action==='runtime-failure'||action==='policy-refusal',privateError='400 litellm.ContentPolicyViolationError: fixture-private-provider-detail'
  const terminal=new Set(),inspections=new Set(),reports=action==='complete'||action==='blocked'||technical,hasOutcome=reports||action==='silent'
- const summary=action==='blocked'?'Stopped: no trusted target was supplied':'Verified synthetic outcome'
- const evidence=['Synthetic material checked'],limitations=action==='blocked'?['Target unavailable; no side effects performed','TASK_EFFECT_UNCERTAIN_NO_REPLAY']:[]
- const replyText=action==='policy-refusal'?'模型服务拒绝了这轮请求，核验尚未完成。':action==='runtime-failure'?'这轮没有拿到核验结果，任务还未完成。':action==='blocked'?'材料已核对，但还没在测试环境验证：目前没有已获准的测试入口。没有改动外部系统。':'这份测试材料已核对，没有改动外部系统。'
+ const multi=action==='blocked'
+ const request=multi?'这份清单里的 6 份材料都齐了吗？为什么收件方还没确认？请不要改外部系统或发附件。':'请核对这份材料。不要改外部系统或发附件。'
+ const summary=multi?'清单上的 6 份材料都已核对。':'Verified synthetic outcome'
+ const evidence=multi?['逐项回读清单，6 份材料均存在。']:['Synthetic material checked']
+ const limitations=multi?['没有收件方的确认记录，尚不能确定未确认的原因。','TASK_EFFECT_UNCERTAIN_NO_REPLAY']:[]
+ const replyText=action==='policy-refusal'?'模型服务拒绝了这轮请求，核验尚未完成。':action==='runtime-failure'?'这轮没有拿到核验结果，任务还未完成。':multi?'1. 材料齐了。按清单逐项核对，6 份都在。\n\n2. 还不能确定收件方为什么没确认。目前没有读到收件方的确认记录。':'这份测试材料已核对，没有改动外部系统。'
  h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
   if(requestText(body).some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION')))return {text:'{"lessons":[]}'}
@@ -41,8 +44,11 @@ for(const action of ['complete','blocked','wait','runtime-failure','policy-refus
    assert.match(prompt,/默认 ELI5：先直接回答对方问的事/u)
    assert.match(prompt,/模型末尾写出结果不算发给用户/u)
    assert.doesNotMatch(prompt,/Host 已确认：本会话的 source\.message/)
-   if(technical||action==='blocked')assert.match(prompt,/只在有助于判断或推进时补充未完成项或下一步/u)
-   if(action==='blocked'){
+   if(multi){
+    assert.match(prompt,/按原顺序逐项回答，每项先给结论/u)
+    assert.match(prompt,/把依据和不确定性放在对应项里/u)
+    assert.match(prompt,/只在有助于判断或推进时补充原问题以外的未完成项或下一步/u)
+    assert.ok(requestText(body).some(text=>text.includes(request)),'the outcome model receives both original questions')
     assert.match(prompt,/沿原会话推进；没有新依据不重复唤醒/u)
     assert.match(prompt,/尚未核实的后续条件不写成已确认的卡点/u)
     assert.equal(outcome.taskEvent.resultSource,'pi-task-result')
@@ -58,7 +64,7 @@ for(const action of ['complete','blocked','wait','runtime-failure','policy-refus
   }
   return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
  })
- await h.receive(channelMessage('final-only',{text:'Assistant, check this synthetic material. Do not modify external systems or send an attachment.'}));await h.service.whenIdle()
+ await h.receive(channelMessage('final-only',{text:request}));await h.service.whenIdle()
  assert.equal(executions,1);assert.equal(terminal.size,hasOutcome&&!technical?1:0);assert.equal(h.sent.length,reports?1:0)
  if(reports)assert.equal(h.sent[0].text,replyText)
  const task=await h.query('task.get',{taskId:'final-only-task'})
