@@ -25,6 +25,7 @@ export default class Channels extends Service {
   async loadContexts(){for(const [key,value]of Object.entries(JSON.parse(await readRegular(join(this.host.runtimePaths.state,'channels','contexts.json'))??'{}')))this.contexts.set(key,value)}
   groupContext(id){const context=this.contexts.get(id);if(!context)return;const plugin=this.plugins.get(context.channelId),responsibility=plugin?.responsibility?.(context),conversationName=plugin?.conversationDisplayName?.(context);return {...context,...conversationName?{conversationName}:{},...responsibility!==undefined?{responsibility}:{}}}
   responsibility(id){return this.groupContext(id)?.responsibility}
+  replySurface(id){return this.transports.get(this.contexts.get(id)?.channelId)?.capabilities?.replySurface}
   targetMatches(context,target){return context.type===target.type&&context.conversationId===target.conversationId&&(target.type!=='chat'||Object.values(context.participants??{}).includes(target.peerId)||context.senderId===target.peerId)}
   assertInputTarget(input){
     this.assertLifecycle(input.channelId)

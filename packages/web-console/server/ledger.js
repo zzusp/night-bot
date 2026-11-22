@@ -105,7 +105,7 @@ export async function openWebLedger(directory, scope) {
         return {messageId: row.message_id, conversationId: row.conversation, status: 'delivered', visible: true, observedAt: row.created_at}
       }
       return {
-        capabilities: {conversationTypes: ['chat'], quotedReplies: ['chat'], files: []},
+        capabilities: {conversationTypes: ['chat'], quotedReplies: ['chat'], files: [], replySurface: 'web'},
         async send(envelope) {
           validate(envelope)
           const prior = readback(envelope)

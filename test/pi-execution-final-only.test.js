@@ -38,7 +38,9 @@ for(const action of ['complete','blocked','wait','runtime-failure','policy-refus
     assert.ok(!JSON.stringify(body).includes(privateError))
    }else assert.equal(outcome.taskEvent.result.summary,summary)
    const prompt=body.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
-   assert.match(prompt,/默认只讲重点/u)
+   assert.match(prompt,/默认 ELI5：先直接回答对方问的事/u)
+   assert.match(prompt,/模型末尾写出结果不算发给用户/u)
+   assert.doesNotMatch(prompt,/Host 已确认：本会话的 source\.message/)
    if(technical||action==='blocked')assert.match(prompt,/只在有助于判断或推进时补充未完成项或下一步/u)
    if(action==='blocked'){
     assert.match(prompt,/沿原会话推进；没有新依据不重复唤醒/u)

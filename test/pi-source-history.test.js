@@ -56,6 +56,20 @@ test('full source read reports superseded and denies hidden latest or foreign re
  assert.deepEqual(queryCurrentSource(db,{conversationId:'other-room',sourceId:'v2'}),{status:'unavailable'})
 })
 
+test('full source read exposes only task links for the exact current source version and conversation',async t=>{
+ const {queryCurrentSource}=await import('../src/channels/source-history.js'),{db,put}=fixture(t)
+ db.exec('CREATE TABLE dynamic_source_links(id TEXT PRIMARY KEY, body TEXT NOT NULL)')
+ put('old',{messageId:'request'});put('current',{messageId:'request',version:2});put('retracted',{retracted:true})
+ const rows=[['current','room',2,'completed-task'],['current','room',2,'completed-task'],['current','room',1,'old-version'],['current','foreign',2,'foreign-task'],['old','room',1,'superseded-task'],['retracted','room',1,'withdrawn-task']]
+ const insert=db.prepare('INSERT INTO dynamic_source_links VALUES (?,?)')
+ for(const [i,[sourceId,conversationId,messageVersion,taskId]] of rows.entries())insert.run(String(i),JSON.stringify({sourceId,conversationId,messageVersion,taskId}))
+ const read=sourceId=>queryCurrentSource(db,{conversationId:'room',sourceId,includeTaskIds:true})
+ assert.deepEqual(read('current').taskIds,['completed-task'])
+ assert.equal(read('old').status,'superseded');assert.equal(read('old').taskIds,undefined)
+ assert.equal(read('retracted').taskIds,undefined)
+ assert.equal(queryCurrentSource(db,{conversationId:'room',sourceId:'current'}).taskIds,undefined)
+})
+
 test('recent page uses receipt-order index without full conversation sorting',t=>{
  const {db,put,query}=fixture(t)
  db.exec('BEGIN');for(let i=0;i<10000;i++)put('record-'+i);db.exec('COMMIT')

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
-import {residentRouterHost,channelMessage,requestEnvelope,requestTools} from '../../../test/fixtures/resident-router-host.js'
+import {residentRouterHost,channelMessage,requestEnvelope,requestText,requestTools} from '../../../test/fixtures/resident-router-host.js'
 import {createWebConsole} from '../server/plugin.js'
 test('真实 Host 直入 Router 的实际回复、未知投递与静默，经HTTP逐消息核验',{timeout:45000},async t=>{
  const replied=new Set(),settled=new Set()
@@ -72,6 +72,75 @@ test('真实 Host 直入 Router 的实际回复、未知投递与静默，经HTT
   assert.equal((await api(endpoint+'?selectedMessageId='+encodeURIComponent(webReply.id))).body.status,'unavailable')
   t.diagnostic(JSON.stringify(result.body.items.map(({messageId,status,durationMs})=>({messageId,status,durationMs}))))
  }finally{await web?.close()}
+})
+
+test('网页任务结果与随后无引用的进度追问分别送达原消息',{timeout:45000},async t=>{
+ const title='合成包裹核对',taskId='web-parcel-check',summary='两批合计 12 个包裹。',steps=new Map()
+ let runs=0,h
+ h=await residentRouterHost(t,body=>{
+  const tools=requestTools(body),texts=requestText(body)
+  if(texts.some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION')))return {text:'{"lessons":[]}'}
+  if(tools.includes('task_result')){
+   runs++
+   return {tool:'task_result',args:{decision:{action:'complete',summary,evidence:['3 + 9 = 12'],limitations:[]}}}
+  }
+  if(!tools.includes('resident_router_settle'))return {text:'等待输入'}
+  const input=requestEnvelope(body,'Router 请求：')
+  if(!input)return {text:'等待输入'}
+  const key=input.events.map(row=>row.id).join(','),step=steps.get(key)??0
+  steps.set(key,step+1)
+  const result=()=>JSON.parse(body.messages.at(-1).content)
+  const sourceEvent=input.events.find(row=>row.source),source=sourceEvent?.source,outcome=input.events.find(row=>row.kind==='task.completed')
+  const settle=noTaskDispositions=>({tool:'resident_router_settle',args:{operationId:'settle-'+key,eventIds:input.events.map(row=>row.id),...noTaskDispositions?{noTaskDispositions}:{}}})
+  const handled=()=>settle([{eventId:sourceEvent.id,outcome:'handled-inline',sourceQuote:source.text,reason:'已答复现有任务的完成结果'}])
+  const prompt=body.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
+  if(!step&&source)assert.match(prompt,/本会话的 source\.message 和任务结果通过 resident_router_reply 回到本网页对话/)
+  if(source?.messageId==='web-parcel-start'&&!step)return {tool:'resident_task_plan',args:{operationId:'parcel-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId,title,objective:'合计两批包裹数',requirements:['只回这个网页'],handoff:'合计题里的 3 个和 9 个包裹，只回这个网页。'}],dependencies:[]}}
+  if(outcome&&!step){
+   assert.match(prompt,/模型末尾写出结果不算发给用户/)
+   assert.equal(outcome.taskEvent.result.summary,summary)
+   const context=prompt.split('\n').find(line=>line.startsWith('{"asOf":')&&line.includes('"taskOutcomeReplies"'))
+   const binding=JSON.parse(context).taskOutcomeReplies.find(row=>row.outcomeEventId===outcome.taskEventId)
+   assert.ok(binding)
+   return {tool:'resident_router_reply',args:{...binding,text:summary}}
+  }
+  if(source?.messageId==='web-parcel-progress'){
+   if(step===0)return {tool:'resident_task_query',args:{detail:'index'}}
+   if(step===1){assert.deepEqual(result().tasks,[]);return {tool:'resident_source_query',args:{keyword:title}}}
+   if(step===2){const original=result().sources.find(row=>row.messageId==='web-parcel-start');assert.ok(original);return {tool:'resident_source_get',args:{sourceId:original.sourceId}}}
+   if(step===3){assert.deepEqual(result().taskIds,[taskId]);return {tool:'resident_task_query',args:{taskId:result().taskIds[0],detail:'full'}}}
+   if(step===4){const {task}=result();assert.equal(task.status,'completed');assert.equal(task.completion.result.summary,summary);return {tool:'resident_router_reply',args:{operationId:'parcel-progress',sourceId:source.sourceId,messageVersion:source.version,replyPurpose:'task-update',text:'已经核对完了。'+summary}}}
+   if(step===5)return handled()
+   return {text:'问答已结清'}
+  }
+  if(step<=1)return settle()
+  return {text:'本轮已结清'}
+ },{strictModelDecisions:true})
+ const web=await createWebConsole({channels:h.host.ctx.channels,paths:h.host.ctx.runtimePaths,config:{channelId:'web-parcel-test',senderId:'operator',port:0},getApplication:()=>({config:{},tasks:h.service}),getSessionPersistence:()=>h.host.ctx.sessionPersistence})
+ try{
+  const login=await fetch(web.origin+'/api/login',{method:'POST',headers:{origin:web.origin,'content-type':'application/json'},body:JSON.stringify({token:(await readFile(web.credentialPath,'utf8')).trim()})})
+  assert.equal(login.status,200)
+  const headers={origin:web.origin,cookie:login.headers.get('set-cookie').split(';')[0],'x-csrf-token':(await login.json()).csrfToken,'content-type':'application/json'}
+  const api=async(path,body)=>{const response=await fetch(web.origin+path,{headers,...body?{method:'POST',body:JSON.stringify(body)}:{}});assert.equal(response.status,body?202:200,await response.clone().text());return response.json()}
+  const {conversationId}=await api('/api/chat-current'),chatPath='/api/chat/'+conversationId
+  async function verifyReply(requestId,text,expectedReplyCount){
+   const timing=(await api(chatPath+'/response-times?selectedMessageId='+requestId+'&selectedMessageVersion=1')).items[0]
+   assert.equal(timing.status,'confirmed',JSON.stringify(timing))
+   const replies=(await api(chatPath)).messages.filter(row=>row.role==='assistant')
+   assert.equal(replies.length,expectedReplyCount)
+   assert.equal(replies.find(row=>row.id===timing.replyMessageId&&row.status==='delivered')?.text,text)
+  }
+  await api('/api/chat',{conversationId,requestId:'web-parcel-start',text:`请建立并执行「${title}」：3 个加 9 个，共几个？只回这个网页。`})
+  await h.service.whenIdle()
+  const task=await h.query('task.get',{taskId});assert.equal(task.status,'completed');assert.equal(task.drained,true)
+  await verifyReply('web-parcel-start',summary,1)
+  await api('/api/chat',{conversationId,requestId:'web-parcel-progress',text:`「${title}」现在做到哪了？只回这个网页。`})
+  await h.service.whenIdle()
+  await verifyReply('web-parcel-progress','已经核对完了。'+summary,2)
+  assert.equal((await h.query('task.list',{groupId:task.groupId})).length,1)
+  assert.equal((await h.query('task.get',{taskId})).leaseEpoch,task.leaseEpoch)
+  assert.equal(runs,1);assert.deepEqual(h.sent,[])
+ }finally{await web.close()}
 })
 
 test('Router Skill增改删的无提及最终回复经真实Web送达，清单与正文同步当前支持状态',async t=>{
