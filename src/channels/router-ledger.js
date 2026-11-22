@@ -2,7 +2,7 @@ import {triageHandoff,routerTriageConclusion} from './triage-conclusion.js'
 import {inspectionIsCurrent,taskWaitIdentity,MIN_WAIT_RECHECK_MS} from '../tasks/inspection.js'
 import {queryTaskIndex,queryReplyHistory} from './conversation-context.js'
 import {createHash} from 'node:crypto'
-import {blockedReplyId,completionReplyId,currentOutcomeBinding,isOutcomeChannelSource,isTaskOutcome,outcomeOriginId} from './router-task-context.js'
+import {blockedReplyId,completionReplyId,currentOutcomeBinding,isOutcomeChannelSource,isTaskOutcome,outcomeOriginId,suppressChannelOutcome} from './router-task-context.js'
 import {querySourceHistory,queryCurrentSource,sourceHistorySchema} from './source-history.js'
 import {normalizeRouterHandoff,recordRouterHandoff,ROUTER_HANDOFF_POLICY} from './router-handoff.js'
 
@@ -133,15 +133,19 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
   function taskEvent(event) {
     const task = read('tasks',event.taskId,true)
     if (task?.conversationId) {
-      if(!readEvent(event.id))db.prepare('INSERT INTO dynamic_task_events(id,body) VALUES (?,?)').run(event.id,JSON.stringify({...event,eventVersion:1,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,recordedAt:new Date().toISOString()}))
+      const outcome=isTaskOutcome(event)
+      const muted=outcome&&(event.suppressChannelOutcome===true||suppressChannelOutcome(task))
+      const outcomePolicy=muted?{suppressChannelOutcome:true}:{}
+      if(!readEvent(event.id))db.prepare('INSERT INTO dynamic_task_events(id,body) VALUES (?,?)').run(event.id,JSON.stringify({...event,...outcomePolicy,eventVersion:1,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,recordedAt:new Date().toISOString()}))
       // 普通等待只保留审计；已排空的技术失败复用自己的巡检事件回报。
       const inspectionReport=event.kind==='task.blocked'&&event.resultSource!=='pi-task-result'&&(task.technicalFailure||task.sessionFailure
         ||task.lastDecision?.limitations?.some(code=>['TASK_SESSION_NO_SUBMISSION','TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(code)))
       if(event.kind==='task.waiting'||inspectionReport)return
-      return enqueue(task.conversationId,event.id,{kind:event.kind,taskId:task.taskId,taskEventId:event.id,...isTaskOutcome(event)?{trackOutcome:true}:{}})
+      return enqueue(task.conversationId,event.id,{kind:event.kind,taskId:task.taskId,taskEventId:event.id,...outcome?{trackOutcome:true}:{},...outcomePolicy})
     }
   }
   function settleOutcome(row,event){
+    if(row.suppressChannelOutcome===true)return {kind:'channel-delivery-suppressed'}
     const task=read('tasks',row.taskId,true),binding=currentOutcomeBinding(task,event,row.conversationId)
     if(!binding)return {kind:'superseded'}
     const sources=(task.sourceRefs??[]).map(id=>read('sources',id,true)).filter(Boolean)

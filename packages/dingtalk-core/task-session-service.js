@@ -1512,6 +1512,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const action=previous?.requestIdentity?.action??{kind:'task.'+directKind,taskId:task.taskId,
         expectedRequirementRevision:args.expectedRequirementRevision??current.requirementRevision,expectedControlRevision:args.expectedControlRevision??current.controlRevision,
         text,...(directKind==='control'?{control:'cancelled',reason:text}:{}),
+        ...(directKind==='supplement'&&args.suppressChannelOutcome===true?{suppressChannelOutcome:true}:{}),
         ...(args.objective?{objective:args.objective}:{}),...(args.title?{title:args.title}:{}),...(args.acceptanceCriteria?{requirements:args.acceptanceCriteria}:{})}
       const source=previous??(await command('source.record',{sourceId,groupId,messageId:'web:'+args.requestId,actorId:config.webActorId,text,timestamp:'',channel:'web',requestIdentity:{request,kind,action}},'source:'+sourceId)).result.source
       // 原请求及版本已冻结；已提交动作直接复用收据，不重算旧 request 或 liveBinding。

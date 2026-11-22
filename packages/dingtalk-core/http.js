@@ -142,6 +142,7 @@ const createTaskInputSchema = z.strictObject({
 })
 const contextTaskInputSchema = z.strictObject({ requestId: requiredText.max(200), context: requiredText.max(32000),
   progressImpact: taskContextProgressImpactSchema, authorizationChange: z.enum(['none', 'changed']).optional(),
+  suppressChannelOutcome: z.literal(true).optional(),
   expectedRequirementRevision: z.number().int().positive(), expectedControlRevision: z.number().int().positive() })
   .superRefine((value, ctx) => { const message = taskContextSemanticsProblem(value); if (message) ctx.addIssue({ code: 'custom', path: ['progressImpact'], message }) })
 const cancelTaskInputSchema = z.strictObject({ requestId: requiredText.max(200), reason: requiredText.max(2000), expectedControlRevision: z.number().int().positive() })

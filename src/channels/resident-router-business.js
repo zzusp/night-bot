@@ -50,7 +50,7 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
     const ids=new Set((admitted?.messages??[]).filter(packet=>packet.source?.kind==='conversation-router'&&packet.source.conversationId===conversationId&&packet.source.generation===generation).flatMap(packet=>packet.source.eventIds))
     return (await query('router.inbox',{conversationId})).filter(event=>ids.has(event.id))
   }
-  const pendingOutcome=event=>event.state==='pending'&&!event.deliveryHold&&event.trackOutcome===true
+  const pendingOutcome=event=>event.state==='pending'&&!event.deliveryHold&&event.trackOutcome===true&&event.suppressChannelOutcome!==true
   const textOutcomeTarget=async event=>{
     const task=await query('task.get',{taskId:event.taskId}),outcome=currentOutcomeBinding(task,event.taskEvent,conversationId)
     const sourceId=outcomeOriginId(task)
@@ -184,6 +184,7 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
       }
       if(!['communication_guidance_read','resident_task_query','resident_source_query','resident_source_get','resident_reply_query','resident_skill_query','platform_task_query','platform_schedule_list','platform_config_query'].includes(tool.name))fail('ROUTER_OPERATOR_READ_ONLY')
     }else if(tool.name==='resident_operator_reply')fail('ROUTER_OPERATOR_EVENT_FORBIDDEN')
+    if(tool.name==='resident_router_reply'&&(await currentEvents(exec.agent)).some(event=>event.suppressChannelOutcome===true))fail('ROUTER_CHANNEL_OUTCOME_SUPPRESSED')
     if(!tool.isConcurrencySafe?.()&&tool.name!=='resident_router_settle'&&tool.name!=='resident_task_lookup_async'){
       const rotations=await query('router.rotations',{conversationId})
       const held=new Set(rotations.filter(rotation=>rotation.recovery).flatMap(rotation=>rotation.recovery.unknownSourceIds))
@@ -236,6 +237,7 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
   agentCtx.get('systemPrompt').section({name:'resident-router-task-outcome',order:153,text:[
     '收到当前 task.completed 或 task.blocked，先对照原目标核对结果。带 taskOutcomeReplies 绑定的 task.inspection 表示本轮技术停止，不是业务决定。若有具体、尚未尝试且获准的独立步骤，沿原会话推进；没有新依据不重复唤醒，明确被拒的请求不改写或换路重送。',
     '无法继续时，默认向原发起人简短说明当前结果和实际卡点；只在有助于判断或推进时补充原问题以外的未完成项或下一步。已有进展不因技术失败而抹掉；不要用能证明另一件事的核验代替本次验收；尚未核实的后续条件不写成已确认的卡点。不照搬内部错误原文、错误码或执行报告。',
+    '事件标记 suppressChannelOutcome 时只做内部结清或依赖评估；不要调用渠道回复或交付附件。这轮仍保留真实结果，不影响后续独立消息。',
     '文字回报直接把本轮 taskOutcomeReplies 中对应 taskEventId 的参数加 text 交给 resident_router_reply；没有有效绑定时不猜来源。核实后决定要回报，就先用工具提交，再结清；模型末尾写出结果不算发给用户。用户明确不要回复可静默，不发附件不等于不发文字。普通等待和其他巡检不重复通知。同一结果沿用原通知，按真实回执说明是否送达。',
   ].join('\n')})
   agentCtx.get('systemPrompt').section({name:'resident-router-reply-style',order:149,text:channelReplyWritingPrompt+'\n'+routerReplyOutcomeRule})

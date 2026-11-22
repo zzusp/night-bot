@@ -92,6 +92,46 @@ for(const action of ['complete','blocked','wait','runtime-failure','policy-refus
  assert.equal(h.requests.length,count);assert.equal(h.sent.length,sent)
 })
 
+for(const action of ['complete','blocked','runtime-failure'])test('silent Web supplement does not send a channel outcome: '+action,{timeout:nativeTestTimeout(45000)},async t=>{
+ let h,original,runs=0,outcome,attempts=0
+ const taskId='silent-web-result'
+ h=await residentRouterHost(t,body=>{
+  const tools=requestTools(body)
+  if(tools.includes('task_result')){
+   if(++runs===2&&action==='runtime-failure')return {text:'No decision submitted'}
+   return {tool:'task_result',args:{decision:{action:runs===1?'wait':action,summary:'Synthetic result',evidence:[],limitations:[]}}}
+  }
+  if(!tools.includes('resident_router_settle'))return {text:'No work'}
+  if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1)?.result.isError)return {text:'Settled'}
+  const input=requestEnvelope(body,'Router 请求：')
+  if(!original){
+   original=input.events.find(event=>event.source).source
+   return {tool:'resident_task_plan',args:{operationId:'plan',sourceId:original.sourceId,messageVersion:original.version,tasks:[{taskId,title:'Isolated check',objective:'Check the fixture',requirements:[],handoff:'Check the fixture.'}],dependencies:[]}}
+  }
+  const event=input.events.find(row=>['task.completed','task.blocked'].includes(row.kind)||row.kind==='task.inspection'&&row.taskEvent.reason==='execution-failed')
+  if(event&&attempts<2){
+   outcome=event
+   const i=attempts++
+   return {tool:'resident_router_reply',args:{operationId:'attempt-'+i,sourceId:original.sourceId,messageVersion:original.version,text:'Synthetic result',...i===0?{outcomeEventId:event.taskEventId}:{}}}
+  }
+  return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
+ })
+ await h.receive(channelMessage('silent-original'));await h.service.whenIdle()
+ const before=await h.query('task.get',{taskId})
+ await h.service.appendTaskContext({taskId,requestId:'silent-context',context:'Continue a synthetic check.',progressImpact:'preserve',suppressChannelOutcome:true,expectedRequirementRevision:before.requirementRevision,expectedControlRevision:before.controlRevision})
+ await h.service.whenIdle()
+ const task=await h.query('task.get',{taskId})
+ assert.equal(task.sessionId,before.sessionId);assert.equal(task.requirementRevision,before.requirementRevision);assert.equal(task.drained,true);assert.equal(runs,2)
+ assert.equal(task.status,action==='complete'?'completed':'active');assert.equal(attempts,2)
+ assert.equal(h.sent.length,0,'a silent outcome must not enter the channel sender')
+ assert.equal(outcome.suppressChannelOutcome,true)
+ for(const row of h.results.filter(row=>row.name==='resident_router_reply'))assert.match(JSON.stringify(row.result),/ROUTER_CHANNEL_OUTCOME_SUPPRESSED/)
+ const [event]=await h.query('router.batch-events',{conversationId:task.groupId,eventIds:[outcome.id]})
+ assert.equal(event.state,'consumed');assert.equal(event.outcomeDisposition.kind,'channel-delivery-suppressed')
+ assert.equal((await h.query('notification.list')).length,0)
+ await h.restart();await h.service.whenIdle();assert.equal(h.sent.length,0)
+})
+
 test('a fresh blocked result reaches the original recipient without replaying a held source', {timeout:nativeTestTimeout(45000)},async t=>{
  const taskId='continued-blocked-task',summary='Independent checks ran; one required verification is still blocked.'
  let h,original,fresh,held=false,runs=0,replies=0
