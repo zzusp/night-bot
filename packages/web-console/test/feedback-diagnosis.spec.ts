@@ -47,3 +47,33 @@ test('diagnostic status is compact and aligned, with honest state and cancellati
   await page.screenshot({path:test.info().outputPath('diagnosis-ready-1440.png')})
   expect(writes).toEqual(['POST /api/feedback/collect','DELETE /api/feedback/diagnosis','POST /api/feedback/collect'])
 })
+
+test('an expired diagnosis unlocks the original form without replay; a new failure explains the timeout', async ({page}) => {
+  const writes: string[] = []
+  await page.route('**/api/feedback**', route => {
+    const req = route.request(), path = new URL(req.url()).pathname
+    if (path === '/api/feedback') return route.fulfill({json:{target:'zzusp/night-bot',model:'fixture/model',revision:'fixture-1'}})
+    if (req.method() !== 'GET') writes.push(req.method() + ' ' + path)
+    const record = {id:`diagnosis-${writes.length}`,state:'collecting',target:'zzusp/night-bot',title:'合成问题',body:''}
+    if (req.method() === 'POST') return route.fulfill({status:202,json:record})
+    if (writes.length === 1) return route.fulfill({status:404,json:{error:'FEEDBACK_NOT_FOUND'}})
+    return route.fulfill({json:{...record,state:'failed',error:'FEEDBACK_MODEL_TIMEOUT'}})
+  })
+  await page.goto('/#/feedback')
+  await page.getByLabel('访问令牌', {exact:true}).fill(FIXTURE_TOKEN)
+  await page.getByRole('button', {name:'连接工作空间',exact:true}).click()
+  await page.getByLabel('标题',{exact:true}).fill('合成问题')
+  await page.getByLabel('问题详情',{exact:true}).fill('操作后报错')
+  await page.getByRole('radio',{name:'由 AI 收集诊断',exact:true}).check()
+  const start = page.getByRole('button',{name:'开始诊断',exact:true})
+  await start.click()
+  await expect(page.getByText(/本次诊断已不再可用/)).toBeVisible()
+  await expect(start).toBeEnabled()
+  await expect(page.getByLabel('问题详情',{exact:true})).toHaveValue('操作后报错')
+  expect(writes).toEqual(['POST /api/feedback/collect'])
+  await start.click()
+  await expect(page.getByText(/模型请求超时/)).toBeVisible()
+  await expect(page.getByText(/诊断编号：diagnosis-2/)).toBeVisible()
+  await expect(page.getByRole('button',{name:'确认提交 Issue'})).toHaveCount(0)
+  expect(writes).toEqual(['POST /api/feedback/collect','POST /api/feedback/collect'])
+})

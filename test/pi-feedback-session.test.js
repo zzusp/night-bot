@@ -171,12 +171,23 @@ test('real Pi recovers consecutive timeouts in one diagnosis without replaying i
 })
 test('three consecutive model timeouts fail collection and leave one safe Host warning',async t=>{
  const {view,warnings,attempts,service,tokenReads}=await hostDiagnosis(t,()=>timedOut)
- assert.equal(attempts,3);assert.equal(view.state,'failed');assert.equal(view.error,'FEEDBACK_COLLECTION_FAILED')
+ assert.equal(attempts,3);assert.equal(view.state,'failed');assert.equal(view.error,'FEEDBACK_MODEL_TIMEOUT')
  assert.equal(warnings.length,1);assert.match(warnings[0],/^feedback collection failed /)
  const {elapsedMs,...context}=JSON.parse(warnings[0].slice('feedback collection failed '.length))
  assert.ok(Number.isSafeInteger(elapsedMs)&&elapsedMs>=0)
  assert.deepEqual(context,{reportId:view.id,stage:'diagnose',code:'FEEDBACK_MODEL_TIMEOUT'})
  await assert.rejects(service.submit('browser',view.id,{confirm:true,title:view.title,body:view.body}),{code:'FEEDBACK_NOT_READY'});assert.equal(tokenReads(),0)
+})
+test('model timeout after collection retains the actual evidence in an editable partial preview',async t=>{
+ const {view,attempts,tokenReads}=await hostDiagnosis(t,step=>step===0?runtimeCall(step):timedOut)
+ assert.equal(attempts,4);assert.equal(view.state,'ready');assert.match(view.body,/调查未完成.*FEEDBACK_MODEL_TIMEOUT/)
+ assert.match(view.body,/尚不能判断根因/);assert.match(view.body,/### E1 · runtime/);assert.match(view.body,/"node":"v24/)
+ assert.doesNotMatch(view.body,/PRIVATE_INPUT|Request timed out/);assert.equal(tokenReads(),0)
+})
+test('a diagnosis without verifiable citations is marked and keeps the already collected pages',async t=>{
+ const {result}=await scriptedDiagnosis(t,step=>step===0?runtimeCall(step):{stopReason:'stop',content:[{type:'text',text:'我认为这是服务故障，参考 E999。'}]})
+ assert.match(result,/分析未附可核对的证据引用/);assert.match(result,/E999/)
+ assert.match(result,/### E1 · runtime/);assert.match(result,/RETAINED_EVIDENCE/)
 })
 test('permanent model error is not retried and its raw response is not logged',async t=>{
  const {view,warnings,attempts}=await hostDiagnosis(t,()=>({stopReason:'error',errorMessage:'Unauthorized: PRIVATE_VENDOR_RESPONSE',content:[]}))

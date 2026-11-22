@@ -41,21 +41,23 @@ export async function diagnoseWithPi({resolved,paths,title,description,evidence,
  }
  try{
   signal.throwIfAborted();try{await session.prompt(`问题标题：${redactFeedback(title,secrets)}\n问题描述：${redactFeedback(description,secrets)}`)}catch(error){if(!budgetExceeded)throw error}signal.throwIfAborted()
-  let summaryFailed=false
-  if(budgetExceeded){summarizing=true;lastAssistant=undefined;session.setActiveToolsByName([]);try{await session.prompt('调查预算已用尽。停止调查，仅根据已有证据给出部分诊断：已确认事实、已缩小的原因范围、仍缺证据。引用有效 E 编号，不声称完整排查。')}catch{signal.throwIfAborted();summaryFailed=true}}
+  if(budgetExceeded){summarizing=true;lastAssistant=undefined;session.setActiveToolsByName([]);try{await session.prompt('调查预算已用尽。停止调查，仅根据已有证据给出部分诊断：已确认事实、已缩小的原因范围、仍缺证据。引用有效 E 编号，不声称完整排查。')}catch{signal.throwIfAborted();lastAssistant=undefined}}
+  signal.throwIfAborted()
   const message=lastAssistant??(!summarizing?session.messages.filter(message=>message.role==='assistant').at(-1):undefined)
-  const valid=message&&!['error','aborted','toolUse'].includes(message.stopReason)
-  if(!budgetExceeded&&!valid){
-   if(message?.stopReason==='aborted')throw new Error('FEEDBACK_MODEL_ABORTED')
-   if(message?.stopReason==='error'&&message.errorMessage==='Request timed out.')throw new Error('FEEDBACK_MODEL_TIMEOUT')
-   throw new Error('FEEDBACK_MODEL_FAILED')
-  }
-  const analysis=valid?message.content?.filter(part=>part.type==='text').map(part=>part.text).join('\n')??'':''
-  let text=analysis
-  if(budgetExceeded){text='调查未完成：达到证据调查预算。\n\n'+(analysis||'未能生成部分诊断；已采集证据保留如下，尚不能判断根因。');if(summaryFailed||!analysis)text+='\n已采集证据：'+observations.map(row=>row.ref).join('、')+'。'}
-  if(message?.stopReason==='length')text='[诊断报告不完整：模型输出达到 token 上限，内容已中断，不能视为完整分析。]\n\n'+text
-  if(!text.trim()||!observations.length)throw new Error('FEEDBACK_MODEL_EMPTY')
-  return formatDiagnosticReport(text,observations,secrets,{maxCharacters:reportCharacters})
+  let analysis='',failure
+  if(message?.stopReason==='stop'||message?.stopReason==='length'){
+   analysis=message.content?.filter(part=>part.type==='text').map(part=>part.text).join('\n').trim()??''
+   if(!analysis||!observations.length)failure='FEEDBACK_MODEL_EMPTY'
+  }else if(message?.stopReason==='aborted')failure='FEEDBACK_MODEL_ABORTED'
+  else if(message?.stopReason==='error'&&message.errorMessage==='Request timed out.')failure='FEEDBACK_MODEL_TIMEOUT'
+  else failure='FEEDBACK_MODEL_FAILED'
+  if(!observations.length)throw new Error(failure)
+  const status=[
+   budgetExceeded?'调查未完成：达到证据调查预算。':'',
+   failure&&!budgetExceeded?`调查未完成：模型未给出有效分析（${failure}）。`:'',
+   message?.stopReason==='length'?'诊断报告不完整：模型输出达到 token 上限，内容已中断，不能视为完整分析。':'',
+  ].filter(Boolean).join('\n')
+  return formatDiagnosticReport(analysis,observations,secrets,{maxCharacters:reportCharacters,status})
  }finally{unsubscribe();signal.removeEventListener('abort',abort);await session.dispose()}
 }
 
@@ -70,22 +72,25 @@ export function limitDiagnosticText(text,maxCharacters,label='分析正文'){
 }
 
 /** Cited evidence is attached whole, or explicitly listed as unavailable. */
-export function formatDiagnosticReport(text,observations,secrets=[],{maxCharacters=investigationBudget.reportCharacters}={}){
+export function formatDiagnosticReport(text,observations,secrets=[],{maxCharacters=investigationBudget.reportCharacters,status=''}={}){
  maxCharacters=Math.min(maxCharacters,investigationBudget.reportCharacters)
  const clean=value=>redactFeedback(value,secrets,{maxLength:Infinity})
- const body=limitDiagnosticText(clean(text),Math.min(22000,Math.floor(maxCharacters/2))),cited=new Set(body.match(/\bE\d+\b/g)??[]),ordered=observations.filter(row=>cited.has(row.ref)),parts=[],omitted=[]
- for(const ref of cited)if(!observations.some(row=>row.ref===ref))omitted.push(ref)
- const coverage='\n\n[共采集 '+observations.length+' 项证据，仅附正文引用项；未引用项不代表未调查。]'
+ const body=limitDiagnosticText(clean(text),Math.min(22000,Math.floor(maxCharacters/2)))
+ const cited=new Set(body.match(/\bE\d+\b/g)??[]),refs=new Set(observations.map(row=>row.ref)),selected=observations.filter(row=>cited.has(row.ref))
+ const missing=[...cited].filter(ref=>!refs.has(ref)),parts=[]
  const missingNote='\n\n## 未附证据\n[以下引用未采集或完整内容超过附录预算，本草稿无法核对；请缩小证据页后重新调查，勿当作完整证据链。]\n'
- const missingReserve=missingNote.length+[...cited].join('、').length
- const appendixBudget=Math.max(0,Math.min(investigationBudget.appendixCharacters,maxCharacters-body.length-coverage.length-missingReserve-100))
+ const unverified='分析未附可核对的证据引用，不能据此判断根因。'
+ const noAnalysis='未能生成部分诊断；已采集证据保留如下，尚不能判断根因。'
+ const footer=count=>`\n\n[共采集 ${observations.length} 项证据，附上 ${count} 项。${selected.length?'优先保留正文引用项。':'附录仅供人工核对，与分析结论未建立引用关系。'}]`
+ const heading='\n\n## 已采集证据\n',empty='（未能附上完整证据页。）'
+ const overhead=status.length+unverified.length+noAnalysis.length+heading.length+empty.length+footer(observations.length).length+missingNote.length+[...cited].join('、').length+6
+ const appendixBudget=Math.max(0,Math.min(investigationBudget.appendixCharacters,maxCharacters-body.length-overhead))
  let size=0
- for(const item of ordered){
+ for(const item of selected.length?selected:observations){
   const value=clean(item.text),fence='~'.repeat(Math.max(3,...[...value.matchAll(/~+/g)].map(match=>match[0].length+1)))
   const part='### '+item.ref+' · '+item.section+'\n'+fence+'text\n'+value+'\n'+fence
-  if(size+part.length>appendixBudget){omitted.push(item.ref);continue}
-  parts.push(part);size+=part.length
+  if(size+part.length+1>appendixBudget){if(cited.has(item.ref))missing.push(item.ref);continue}
+  parts.push(part);size+=part.length+1
  }
- const missing=omitted.length?missingNote+omitted.join('、'):''
- return body+'\n\n## 已采集证据\n'+parts.join('\n')+missing+coverage
+ return [status,body&&(!selected.length||!parts.length)?unverified:'',body||noAnalysis].filter(Boolean).join('\n\n')+heading+(parts.join('\n')||empty)+(missing.length?missingNote+missing.join('、'):'')+footer(parts.length)
 }
