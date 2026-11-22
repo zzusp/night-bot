@@ -160,7 +160,7 @@ No automatic external notification is sent on a background error.
 
 Router 用 `resident_memory_remember` 新增或更新，使用 `resident_memory_forget` 删除。两者都必须提供当前 sourceId/messageVersion、topic/key 及完整准确的 sourceQuote；删除原话不必包含内部 key。更新、删除前按需读回并传 expectedRevision，版本不匹配失败。新增/更新提供结构化 `memory`，不再传入逐字原话作为 text。Router 结合当前消息、引用及必要的同会话背景消解指代，保留对象、条件、链接、限制及时间范围，围绕一个可复用主题直接写清结论、决定或偏好，以及有证据的原因、适用办法与边界；不把“让我记住”的会话过程、承诺或任务流水当记忆，也不补造原因。提炼后的内容应当脱离原会话也能理解。Host 将正文渲染为三段，三项都必须提供：
 
-- **Summary**（summary）：直接说明具体结论、决定或偏好，消解指代，保留必要对象与链接。
+- **Summary**（summary）：写同类任务认得出的场景和具体结论、动作或偏好，消解指代，保留必要对象与链接。
 - **Why**（why）：仅写来源支持的原因；没有说明原因就如实写未说明，不编造解释或推测。
 - **How to apply**（howToApply）：写未来何时、如何使用，以及必要条件与范围，不堆通用免责声明。
 

@@ -155,8 +155,19 @@ export function buildRouterMemory(value,{actor,message,sources}={}){
   const context=checkedRouterContext({version:3,subject:{kind:input.appliesTo.kind,...input.appliesTo.kind==='actor'?{actor}:{},description:input.appliesTo.description},summary:input.summary,why:input.why,howToApply:input.howToApply,evidence})
   return {context,text:renderRouterMemory(context)}
 }
-export function renderMemoryContent({summary,why,howToApply}){
-  return ['Summary: '+checkedText(summary),'**Why:** '+checkedText(why),'**How to apply:** '+checkedText(howToApply)].join('\n\n')
+// Keep both the trigger and the distinguishing action in a bounded index line.
+export function reuseIndexCue({when,changes}){
+  const short=value=>{const line=value.replace(/\s+/g,' ').trim();return line.length<=118?line:line.slice(0,117).replace(/[\uD800-\uDBFF]$/,'').trimEnd()+'…'}
+  return checkedTextWithLimit(`${short(when)} — ${short(changes)}`,240)
+}
+export function preserveReuseGuidance(text,decision){
+  return typeof text!=='string'?text:text+Object.entries({category:'适用类别',when:'触发条件',changes:'改变的判断/动作',boundaries:'必要边界'}).filter(([key])=>!text.includes(decision[key])).map(([key,label])=>'\n'+label+'：'+decision[key]).join('')
+}
+export function renderMemoryContent({summary,why,howToApply,reuseCue}){
+  const conclusion=checkedText(summary)
+  // The ordinary index derives from the first paragraph; corrections replace it with the body.
+  const lead=reuseCue===undefined?conclusion:checkedTextWithLimit(reuseCue,240)+'\n\n'+conclusion
+  return ['Summary: '+lead,'**Why:** '+checkedText(why),'**How to apply:** '+checkedText(howToApply)].join('\n\n')
 }
 export function renderRouterMemory(context){
   if(context.version===3)return renderMemoryContent(context)

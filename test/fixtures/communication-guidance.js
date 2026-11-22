@@ -12,6 +12,8 @@ export function assertSharedCommunicationGuidance(initial,loaded) {
   assert.match(prompt,/用日常话把对象、动作和结果说具体/u)
   assert.match(prompt,/有帮助的依据不要省/u)
   assert.match(prompt,/已说清的不再重复/u)
+  assert.match(prompt,/简单问题一句能答清就一句；复杂问题把关键依据说透/u)
+  assert.match(prompt,/省掉公文式开场、重复背景、对方没问的预防性解释和套话收尾/u)
   assert.doesNotMatch(prompt,/NIGHT_TASK_PUBLIC_COMMUNICATION|在测试环境验证后确认/, 'no detailed template or test-specific phrasing in the default prompt')
   const values=loaded.messages.filter(message=>message.role==='tool').flatMap(message=>typeof message.content==='string'?[message.content]:(message.content??[]).filter(part=>part.type==='text').map(part=>part.text))
   const guidance=values.map(text=>{try{return JSON.parse(text)}catch{return null}}).find(value=>value?.id==='communication/v1')

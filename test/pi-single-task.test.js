@@ -73,6 +73,63 @@ test('one task preserves its effect through a held missing result and explicit c
   const nextHost=await createHost(nextConfig,{environmentOptions:{inherited:{MEMORY_FIXTURE_KEY:'local-fixture'}}});const next=await serviceFor({host:nextHost,config:nextConfig},false);try{await next.service.recover();await nextHost.ctx.reflection.whenIdle();assert.equal((await next.store.query({kind:'task.get',taskId:task.taskId})).status,'completed');const header=(await nextHost.ctx.sessionPersistence.stat(sessionId)).header;assert.ok(header.cwd.startsWith(relocated));assert.equal(await readFile(join(header.cwd,'work/proof.txt'),'utf8'),'single-session-proof');assert.equal(reviews,1)}finally{await next.close();await nextHost.close()}
 })
 
+test('a fresh task discovers and uses the original verified action from memory and a generated Skill',{timeout:nativeTestTimeout(60000)},async t=>{
+  t=cleanupContext(t)
+  const key='verify-copy-receipt',when='When a local file copy has a delayed receipt',changes='Read the saved checksum before repeating the copy',boundaries='Use only the current task workspace and do not repeat an unconfirmed copy'
+  const readback='saved-checksum-fixture',path='work/checksum.txt',selected=[],seeded=Promise.withResolvers()
+  let h,phase='producer',step=0;t.after(()=>{seeded.resolve();return h?.close()})
+  const f=await memoryHost(t,body=>{
+    const system=taskSystemPrompt(body),last=body.messages.at(-1),tool=last?.role==='tool'?JSON.stringify(last.content):''
+    if(system.includes('NIGHT_BOT_SKILL_GENERATION'))return { ...(tool?{text:JSON.stringify({description:'Check prior results',body:'# Confirm a local result\n\nCheck the prior result on the current target.'})}:{tool:'skill',args:{name:'skill-creator'}}) }
+    if(system.includes('NIGHT_BOT_TASK_REFLECTION')){
+      if(phase!=='producer')return {text:'{"lessons":[]}'}
+      const {eventId}=JSON.parse(body.messages.findLast(m=>m.role==='user').content)
+      const use={action:'new',key,expectedRevision:0,category:'Local file copies',when,changes,boundaries,reason:'The completion records the checksum readback'}
+      return {text:JSON.stringify({lessons:[{key,summary:'Verify a previous result before taking further action',why:use.reason,howToApply:'Use current evidence',evidenceIds:[eventId],memory:use,skillDecision:use,skill:{guidance:'Check the receipt and compare it with the available local result',reason:use.reason,applicability:'Check previous results',evidenceBacked:true}}]})}
+    }
+    const tools=requestTools(body)
+    if(tools.includes('resident_router_settle')){
+      const {events}=requestEnvelope(body,'Router 请求：'),eventIds=events.map(event=>event.id)
+      return last?.role==='tool'?{text:'Task event settled'}:{tool:'resident_router_settle',args:{eventIds,operationId:`reuse-settle:${eventIds.join(',')}`}}
+    }
+    const handoff=requestEnvelope(body,'Router 交接请求：')
+    if(handoff&&!tools.length)return {text:JSON.stringify({currentIntent:'Retain the current task and its evidence',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
+    if(!tools.includes('task_result'))return
+    if(phase==='producer'){
+      if(step++===0)return {tool:'write',args:{path,content:readback}}
+      if(!tool.includes(readback))return {tool:'read',args:{path}}
+      return {...result,args:{decision:{...result.args.decision,evidence:[`${when}: ${changes}. ${boundaries}. The saved checksum was read back.`]}}}
+    }
+    if(step++===0){
+      const note=system.split('\n').find(line=>line.includes(`[${key}]`)&&line.includes(when)&&line.includes(changes))
+      const skill=system.match(new RegExp(`<name>learned-${key}</name>\\s*<description>([^<]*)</description>`))?.[1]
+      if(!note||!skill?.includes(when)||!skill.includes(changes)){
+        selected.push({memoryCue:!!note,skillCue:skill??null})
+        return {text:'No independently discoverable memory and Skill'}
+      }
+      selected.push('catalog');return {tool:'memory_read',args:{path:note.match(/\]\(([^)]+)\)/)[1]}}
+    }
+    if(step===2&&tool.includes(changes)&&tool.includes(boundaries)){selected.push('memory');return {tool:'skill',args:{name:`learned-${key}`},beforeFinish:()=>seeded.promise}}
+    if(step===3&&tool.includes(changes)&&tool.includes(boundaries)){selected.push('skill');return {tool:'read',args:{path}}}
+    if(step===4&&tool.includes(readback)){selected.push('verified');return result}
+    return {text:'Learned operation or required boundary was lost'}
+  })
+  h=await serviceFor(f)
+  const done=async task=>{
+    await h.service.whenIdle()
+    return until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.drained&&(row.status==='completed'||row.lastDecision||row.technicalFailure)&&row})
+  }
+  const first=await h.service.createTask({requestId:'learn-copy-check',objective:'Verify the local checksum file after a delayed receipt'})
+  assert.equal((await done(first)).status,'completed');await f.host.ctx.reflection.whenIdle()
+  await h.close();await f.close();await f.boot();h=await serviceFor(f,false)
+  phase='consumer';step=0
+  const second=await h.service.createTask({requestId:'reuse-copy-check',objective:'Resolve a delayed local copy receipt using the current workspace evidence',channel:{type:'chat',channelId:'local-adapter',conversationId:'another-conversation',senderId:'another-user',messageId:'continue-copy-check',text:'Check the delayed local copy receipt'}})
+  await writeFile(join(second.session.workspaceDir,path),readback);seeded.resolve()
+  assert.notEqual(second.session.sessionId,first.session.sessionId)
+  assert.equal((await done(second)).status,'completed',JSON.stringify(selected))
+  assert.deepEqual(selected,['catalog','memory','skill','verified'])
+})
+
 test('native task overflow preserves the next verification and resumes without replaying completed writes',{timeout:nativeTestTimeout(30000)},async t=>{
   t=cleanupContext(t)
   let h,step=0;t.after(()=>h?.close())
