@@ -29,7 +29,7 @@ releases dependencies nor creates authority for a follow-up task.
 
 每次复盘仅接收有稳定 ID 的完成、执行和操作证据，不传整段聊天或原始命令正文。模型最多提出三条有复用价值的经验，每条必须包含 summary、why、howToApply 和本任务有效 evidenceIds；没有合适经验时返回空列表。三段正文直接写结论、有依据的原因与具体用法，不保存假设或推测，不写任务流水。原因未说明时如实标明，不将用户陈述当作独立验证。证据 ID 留在既有 review 和来源元数据中，不重复铺入经验正文；合法 ID 不证明模型解释在语义上成立，当前事实和明确要求仍须重新核对。
 
-复盘新增记忆和 Skill 时，机器标识 key 只用小写英文字母、数字及分隔用连字符，限 1–60 字符；更新使用读到的原 key 和版本。正文仍可用中文。无效名称与缺失或越界的证据引用分别记录，均在生成或写入之前拒绝。
+复盘新增记忆和 Skill 时，机器标识 key 只用小写英文字母、数字及分隔用连字符，限 1–60 字符；更新使用读到的原 key 和版本。正文仍可用中文。无效名称与缺失或越界的证据引用分别记录，均在生成或写入之前拒绝。无工具推理使用 Pi 模型路由的传输限制和流空闲超时，不额外按总耗时 30 秒中断；Host 关闭仍取消并等待流排空。复盘收到原生 `TimeoutError` 时记录 `REFLECTION_MODEL_TIMEOUT`，不写 Node 的数字异常码。
 
 ## 内置 creator 生成阶段
 
@@ -103,7 +103,7 @@ Skill 说明何时适用、要达到什么目标、主要环节、遇到不同�
 
 撤销推进 Skill 墓碑版本；保留原来源、previous 与生成收据，旧幂等操作不能复活被替换版本。维护撤销经验时，如果派生 Skill 因此失去最后的有效支持，同一份维护回执分别记录撤销的经验和 Skill，并用经验条目 ID 串联；仍有有效支持的 Skill 保留。经验撤销使用实际 reflection memoryKey 并推进遗忘代次，档案回调失败进入现有 archivePending。旧技能文件不物理删除，以免影响运行中工作；有效状态和历史加载授权以当前 state 为准。秘密来源的原始审计、Pi 历史、已有离线备份不承诺安全擦除。
 
-`memory_status.review` 显示 enabled、running、nextDueAt、lastRunId、status、code、deferredCount。持久水位位于 evolution/maintenance.json，每次收据位于 evolution/maintenance/<runId>.json，保留动作、来源版本和前后 hash，不重复保存正文。失败、取消和提交不确定分别报告；Host 关闭取消并排空维护。开启定时器或读取索引不等于完成一次现有数据的完整实质复盘；本变更不增加渠道手动维护 API，也未执行真实 Bot 历史清理。
+`memory_status.review` 显示 enabled、running、nextDueAt、lastRunId、status、code、deferredCount。持久水位位于 evolution/maintenance.json，每次收据位于 evolution/maintenance/<runId>.json，保留动作、来源版本和前后 hash，不重复保存正文。维护推理沿用 Pi 路由的传输限制和流空闲超时。索引和计划的 `deferred` 均为简短原因字符串数组；不合规的 JSON 或结构分别记为 `MEMORY_MAINTENANCE_INDEX_INVALID`、`MEMORY_MAINTENANCE_PLAN_INVALID`，整批不应用，不在回执中保存模型原文。失败、取消和提交不确定分别报告；Host 关闭取消并排空维护。开启定时器或读取索引不等于完成一次现有数据的完整实质复盘；本变更不增加渠道手动维护 API，也未执行真实 Bot 历史清理。
 
 ## Durability, failures and forgetting
 

@@ -73,7 +73,7 @@ export default class Reflection extends Service {
       if(previous?.retryAt>Date.now())return false
       const attempts=(previous?.attempts??0)+1
       let inputRecord=previous?.input,input,snapshot,lessons=previous?.lessons,preparationError
-      const signal=this.abort.signal,inferenceSignal=AbortSignal.any([signal,AbortSignal.timeout(30000)])
+      const signal=this.abort.signal
       try{
         const executions=await source.store.query({kind:'execution.list',taskId:task.taskId}),operations=await source.store.query({kind:'operation.list',taskId:task.taskId})
         input=reflectionInput(task,event,executions,operations);const known=new Set(input.facts.map(f=>f.id))
@@ -82,8 +82,10 @@ export default class Reflection extends Service {
         if(!lessons){
           const official=this.host.get('nativePiProvider')?.official
           if(typeof official?.resolve!=='function')throw failure('REFLECTION_OFFICIAL_MODEL_REQUIRED')
-          const resolved=await official.resolve({...source.model,signal:inferenceSignal},source.credentials===undefined?undefined:{credentials:source.credentials})
-          const admission=await reflectionAdmission(this,scope,initial,input,(value,instructions)=>officialReflectionText(resolved,value,{signal:AbortSignal.any([signal,AbortSignal.timeout(30000)]),groupResponsibility:source.responsibilityFor?.(task.groupId)??'',instructions:instructions??ADMISSION_PROMPT}),{fits:reflectionInputFits(resolved,source.responsibilityFor?.(task.groupId)??'')})
+          const resolved=await official.resolve({...source.model,signal:AbortSignal.any([signal,AbortSignal.timeout(30000)])},source.credentials===undefined?undefined:{credentials:source.credentials})
+          // The configured Pi provider already bounds idle streams. A fixed
+          // total deadline here also aborts healthy, progressing inference.
+          const admission=await reflectionAdmission(this,scope,initial,input,(value,instructions)=>officialReflectionText(resolved,value,{signal,groupResponsibility:source.responsibilityFor?.(task.groupId)??'',instructions:instructions??ADMISSION_PROMPT}),{fits:reflectionInputFits(resolved,source.responsibilityFor?.(task.groupId)??'')})
           snapshot=admission.index
           const output=JSON.parse(admission.raw)
           output.lessons=admitReflectionLessons(output,admission)
@@ -175,7 +177,7 @@ export default class Reflection extends Service {
         }
         state.reviews[id]={memoryKeyVersion:1,input:inputRecord,status:lessons.length?'done':'skipped',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons}
         this.host.skills.invalidateCache()
-      }catch(error){state.reviews[id]={...state.reviews[id],...lessons?{lessons}:{},memoryKeyVersion:1,input:inputRecord,status:'failed',attempts,eventId:event.id,taskId:task.taskId,code:error.code??'REFLECTION_MODEL_FAILED',retryAt:Date.now()+30000};this.lastError=state.reviews[id].code;this.host.logger.warn('reflection: '+this.lastError)}
+      }catch(error){const code=typeof error.code==='string'?error.code:error.name==='TimeoutError'?'REFLECTION_MODEL_TIMEOUT':'REFLECTION_MODEL_FAILED';state.reviews[id]={...state.reviews[id],...lessons?{lessons}:{},memoryKeyVersion:1,input:inputRecord,status:'failed',attempts,eventId:event.id,taskId:task.taskId,code,retryAt:Date.now()+30000};this.lastError=code;this.host.logger.warn('reflection: '+code)}
       const report={...state.reviews[id],destinations:(state.reviews[id].lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:reflectionMemoryKey(lesson)},...lesson.skill&&state.skills[lesson.key]?.active?{skill:{scope,key:lesson.key,revision:state.skills[lesson.key].revision}}:{}}))};state.reviews[id]=report;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(report,null,2)+'\n');await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');return report
       })
       if(!report)return false

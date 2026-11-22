@@ -112,6 +112,33 @@ test('reflection reports invalid memory keys, skill keys and evidence separately
   assert.match(prompt,/\^\[a-z0-9\]\+\(\?:-\[a-z0-9\]\+\)\*\$/)
   assert.match(prompt,/1–60/)
 })
+test('实际复盘的最终准入超过旧期限仍能更新原 Skill，并留存真实 creator 回执',{timeout:90000},async t=>{
+  let store,f,detach
+  t.after(async()=>{detach?.();await f?.close();await store?.close()})
+  f=await memoryHost(t,async body=>{
+    if(!JSON.stringify(body.messages).includes('NIGHT_BOT_TASK_REFLECTION'))return
+    const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content)
+    if(input.taskId==='update')await new Promise(resolve=>setTimeout(resolve,31000))
+    const output=JSON.parse(lesson(input).text)
+    if(input.taskId==='update')output.lessons[0].skill.steps.push('Verify the matching receipt before reporting completion')
+    return {text:JSON.stringify(output)}
+  })
+  const ctx=f.host.ctx,scope=memoryScope({actorId:'owner'})
+  store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'slow-reflection.sqlite'),instanceId:'slow-reflection',initialize:true})
+  await completed(store,ctx.runtimePaths.workspaces,'first')
+  detach=ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await ctx.reflection.whenIdle()
+  const prior=(await ctx.reflection.state(scope)).skills['inspect-first']
+  assert.equal(prior?.revision,1);assert.ok(prior.generation.creator.callId)
+  await completed(store,ctx.runtimePaths.workspaces,'update');ctx.reflection.scan();await ctx.reflection.whenIdle()
+  const state=await ctx.reflection.state(scope),report=Object.values(state.reviews).find(row=>row.taskId==='update')
+  assert.equal((await store.query({kind:'task.get',taskId:'update'})).status,'completed')
+  assert.equal(report?.status,'done',String(report?.code));assert.equal(report.attempts,1)
+  assert.deepEqual(Object.keys(state.skills),['inspect-first'])
+  const skill=state.skills['inspect-first'];assert.equal(skill.revision,2)
+  assert.ok(skill.generation.creator.callId);assert.notEqual(skill.generation.creator.callId,prior.generation.creator.callId)
+  assert.match(skill.body,/Verify the matching receipt/)
+})
+
 test('actual task service attaches the default Host reflection consumer and recovers preexisting durable completion events',async t=>{
   let store,service,fixtureHost
   t.after(async()=>{await service?.close();await fixtureHost?.close();await store?.close()})
