@@ -12,6 +12,8 @@ export const communicationReplyPrinciple = [
 // Router 回复时机与通用 ELI5 文风独立；不添加上线专用模板。
 export const routerReplyOutcomeRule = 'Router 先处理再回复：接住任务指开始处理，不先发送收悉、承诺或查询计划。取得可核实的阶段结论后再说新增结果；必要澄清、实际阻塞和最终结果也可回复，不必等长任务最终完成。只承接而没有新增结果或必要信息的正文不发送。'
 
+export const routerReplyFormatRule = '面向人的正文使用 Markdown，直接输出正文，不把整条回复包进代码围栏。先给结论，简短答案可保留一段；较长回复用标题分组、用加粗标重点、用列表列并列事项、用表格对比同类信息。命令、字段和路径使用行内代码，完整片段使用带语言标记的代码块。链接使用 [可读名称](已核实且接收者可访问的地址)，不猜地址、不使用原始 HTML。按内容选择语法，不为凑格式增加内容。'
+
 // Facts, audience and authority boundaries are separate from expression style.
 export const channelReplyWritingRules = [
  'NIGHT_NATURAL_CHANNEL_REPLY：事实与推断分开；只报告已实际发生且有证据的进展，不编造已执行或已完成动作；不把接纳、安排、执行、完成、验收和送达混为一谈。',

@@ -1,5 +1,14 @@
 # Task inspection and Router recovery
 
+## 2026-11-22 决策快照：轮次终态和巡检分离
+
+- 沿用 SQLite 生命周期和同一执行会话。业务轮在 Pi 正常收尾后写 `task.complete`，允许结论保留未完成项；纯文字正常结束也可落账。保留已提交的文件证据、待处理输入、排空和效果校验；人工复核、恢复待审及只读任务问答不终结业务任务。完成事件仍由 Router 对照原目标，不能自动交付或释放后置任务。
+- 已知异常与缺失执行 owner 通过现有 `task.inspection` 耐久通知；扫描只比较当前租约的运行事实，不读取决定、模型或工具详情，不发新的逾期等待事件。异常原因由 Router 查原会话和收据；路由事件只带执行身份、版本及状态，按租约去重。Router 显式续原会话或取消；巡检不重试、取消、证明排空或重放效果。
+- 有所属 Router 的任务在领取后、绑定前启动失败，也记录中断并保留尚未确认的唤醒；后台恢复或客户端重投原请求不会代替显式续跑。无所属会话的本机任务不产生 Router 事件，仍走原本机恢复入口。
+- 取消原因随真实控制事务留账，重开清理当前取消字段，历史收据保留。任务视图分开显示已完成与已取消；停止但非终态的异常/暂停另行如实呈现，不将旧等待记录改写为成功。索引只重建派生任务状态，保留历史等待事件的结清能力。
+
+下文为此前实现及其验证快照，等待逾期等旧规则以本节为准。
+
 The existing application recovery tick (default 5 seconds) continues to recover
 notifications, schedules and durable queues. `resident.taskSessions.inspectionIntervalMs`
 (default 300000, integer 1000–2147483647) bounds the task inspection scan. Startup

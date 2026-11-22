@@ -41,7 +41,7 @@ function fixedReplyModel(category) {
     const source=input.events.find(event=>event.source)?.source
     if(!queried){queried=true;return [{name:'platform_task_query',args:{state:category==='agent-platform'?'completed':'all'}}]}
     if(!replied){replied=true;return [{name:'resident_router_reply',args:{operationId:'immediate-platform-reply',sourceId:source.sourceId,messageVersion:source.version,text:'当前范围没有已完成任务；可继续提供需要核查的事项。'}}]}
-    if(!settled){settled=true;return [{name:'resident_router_settle',args:{operationId:'settle-platform-request',eventIds:input.events.map(event=>event.id)}}]}
+    if(!settled){settled=true;return [{name:'resident_router_settle',args:{operationId:'settle-platform-request',eventIds:input.events.map(event=>event.id),noTaskDispositions:input.events.filter(event=>event.source).map(event=>({eventId:event.id,outcome:'handled-inline',sourceQuote:event.source.text,reason:'平台问询已通过本轮真实答复处理'}))}}]}
     return []
   }
 }
@@ -287,7 +287,7 @@ for (const audience of ['all', 'members']) test(`native due ${audience} report s
         const identity={sourceId:source.sourceId,messageVersion:source.version}
         if(originalTurns++===0){scheduleInput.at=new Date(Date.now()+10000).toISOString();return [{name:'platform_schedule_submit',args:{...scheduleInput,...identity,operationId:'future-platform-report'}}]}
         if(originalTurns===2){assert.ok(modelToolValues(request).some(value=>value.status==='scheduled'),'真实排期收据成功后才能确认安排');return [{name:'resident_router_reply',args:{...identity,operationId:'scheduled-confirmation',text:'已安排本次工作汇报。'}}]}
-        if(originalTurns===3)return [{name:'resident_router_settle',args:{operationId:'settle-future-report',eventIds:input.events.map(event=>event.id)}}]
+        if(originalTurns===3)return [{name:'resident_router_settle',args:{operationId:'settle-future-report',eventIds:input.events.map(event=>event.id),noTaskDispositions:input.events.filter(event=>event.source).map(event=>({eventId:event.id,outcome:'handled-inline',sourceQuote:event.source.text,reason:'已记录真实排期并答复'}))}}]
         return []
       }
       if (!request.tools.some(tool => tool.name === 'platform_task_query')) return []

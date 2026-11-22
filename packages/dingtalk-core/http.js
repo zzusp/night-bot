@@ -380,7 +380,7 @@ export async function handleRequest(request, response, store, { testApiEnabled =
         state: url.searchParams.get('state') || undefined, archived: url.searchParams.get('archived')==='all'?'all':url.searchParams.get('archived') === 'true',
         groupId: url.searchParams.get('groupId') || undefined,topicId:url.searchParams.get('topicId')||undefined, revision: url.searchParams.get('revision') || undefined,
         ...(url.searchParams.get('view') === 'summary' ? { summary: true } : {}) } : undefined
-      if (options?.state && !['queued','running','waiting','completed'].includes(options.state)) throw new Error('OBSERVER_PAGE_INVALID')
+      if (options?.state && !['queued','running','interrupted','completed','cancelled'].includes(options.state)) throw new Error('OBSERVER_PAGE_INVALID')
       return send(response, 200, await (store.listTaskView?.(options) ?? store.listTasks()))
     } catch(error) { return send(response, error.code === 'OBSERVER_PAGE_STALE' ? 409 : error.code === 'OBSERVER_PAGINATION_MIGRATION_REQUIRED' ? 503 : 400, {error:error.message}) }
   }

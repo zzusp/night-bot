@@ -12,7 +12,8 @@ import { taskConclusion, taskConclusionDuration } from './task-conclusion';
 import { TaskOverview } from './components/TaskOverview';
 
 export function TaskList({ route }: { route: URL }) {
-  const state = route.searchParams.get('state') || '';
+  const requestedState = route.searchParams.get('state') || '';
+  const state = requestedState === 'waiting' ? '' : requestedState;
   const offset = Math.max(0, Number(route.searchParams.get('offset')) || 0);
   const [search, setSearch] = useState(route.searchParams.get('q') || '');
   const query = useResource<Page<Task>>(`/tasks?offset=${offset}&limit=10${state ? `&state=${encodeURIComponent(state)}` : ''}`, 5000);
@@ -29,7 +30,7 @@ export function TaskList({ route }: { route: URL }) {
   const changePage = (next: number) => navigate(`/tasks?state=${encodeURIComponent(state)}&offset=${next}${search ? `&q=${encodeURIComponent(search)}` : ''}`);
   const items = (query.data?.items || []).filter(task => `${task.title || ''} ${task.objective || ''}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   return <div className="page-content tasks-page">
-    <div className="list-toolbar"><nav className="filter-tabs" aria-label="任务状态">{[['', '全部'], ['running', '执行中'], ['queued', '排队中'], ['waiting', '等待中'], ['completed', '已结束']].map(([value, label]) =>
+    <div className="list-toolbar"><nav className="filter-tabs" aria-label="任务状态">{[['', '全部'], ['running', '执行中'], ['queued', '排队中'], ['interrupted', '执行中断'], ['completed', '已完成'], ['cancelled', '已取消']].map(([value, label]) =>
       <a key={value} href={`#/tasks${value ? `?state=${value}` : ''}`} aria-current={state === value ? 'page' : undefined}>{label}</a>)}</nav>
       <Search value={search} onChange={value => { setSearch(value); const url = new URL(route); value ? url.searchParams.set('q', value) : url.searchParams.delete('q'); history.replaceState(null, '', '#' + url.pathname + url.search); }} />
     </div>

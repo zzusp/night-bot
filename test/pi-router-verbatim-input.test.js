@@ -101,6 +101,16 @@ test('cold and live packet views honor revision and admitted handoff identity',(
  assert.deepEqual(executionContext({task},[enqueued,admitted]).handoffs,[second])
 })
 
+test('only the current admitted historical answer keeps its text in a faithful handoff task',()=>{
+ const answer={sourceId:'actual-answer',version:1,actorId:'operator',channel:'web',text:'Only read the original evidence'}
+ const request={status:'answered',sourceId:answer.sourceId,actorId:answer.actorId,replyChannel:'web',reply:answer.text,requirementRevision:2,controlRevision:3}
+ const task={taskId:'faithful',requirementRevision:2,controlRevision:3,metadata:{routerInputPolicy:'faithful-handoff-v1'},humanRequests:[request]}
+ const body=(source,value=task)=>executionContext({task:value,sources:[source]}).sources[0].text
+ assert.equal(body(answer),answer.text)
+ for(const changed of [{sourceId:'other'},{actorId:'other'},{text:'Replace the reply'},{authorizationRevoked:true}])assert.equal(body({...answer,...changed}),undefined)
+ assert.equal(body(answer,{...task,requirementRevision:3}),undefined)
+})
+
 test('an unresolved old Router resume does not block new same-task action from another source', {timeout:nativeTestTimeout(60000)}, async t=>{
  let h,oldSource,firstSession,oldCallId,executionRuns=0
  const steps=new Map()
@@ -142,7 +152,7 @@ test('an unresolved old Router resume does not block new same-task action from a
   return {tool:'resident_task_action',args:{...args,operationId:step===0?oldOperation:freshOperation,sourceId:source.sourceId,messageVersion:source.version,handoff:freshHandoff}}
  },{strictModelDecisions:true})
  await h.receive(channelMessage('create-before-unknown'))
- await eventually(async()=>{const task=await h.query('task.get',{taskId});return task?.sessionBound&&task.drained&&task.lastDecision?.action==='wait'&&task},'first execution completed')
+ await eventually(async()=>{const task=await h.query('task.get',{taskId});return task?.sessionBound&&task.drained&&task.status==='completed'&&task.completion?.result?.action==='wait'&&task},'first execution completed')
  firstSession=(await h.query('task.get',{taskId})).sessionId
  await h.receive(channelMessage('new-after-unknown',{senderId:'bob',text:'Read logs for the newer time range.'}))
  await eventually(()=>executionRuns===2,'genuinely new continuation starts')

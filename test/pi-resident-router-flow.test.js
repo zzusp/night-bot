@@ -1063,7 +1063,7 @@ for(const answerFrom of ['requester','same-conversation-member'])test(`Router re
   const action=h.results.findLast(row=>row.name==='resident_task_action')
   assert.ok(action&&!action.result.isError,JSON.stringify(action?.result??h.service.listAlerts()))
   const completed=await h.query('task.get',{taskId})
-  assert.equal(completed.status,'completed');assert.equal(completed.drained,true)
+  assert.equal(completed.status,'completed',JSON.stringify({decision:completed.lastDecision,failure:completed.technicalFailure,inspection:completed.inspection,alerts:h.service.listAlerts()}));assert.equal(completed.drained,true)
   assert.equal(completed.sessionId,originalSession);assert.equal(completed.humanRequests.at(-1).status,'answered')
   assert.equal(completed.humanRequests.at(-1).resolution.reason,'The original answer supplies the missing variable; continue verification')
   assert.equal(completed.claimContextRevision,completed.contextRevision)
@@ -1263,7 +1263,7 @@ test('Router schedules the same execution session across wait, stop, cancellatio
         const task=await h.query('task.get',{taskId:'schedule-authority'})
         const action={operationId:source.messageId,taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}
         // 唤醒不要求新的人类授权来源；停止则以另一作者来源验证无作者白名单。
-        if(['schedule-pause','schedule-cancel'].includes(source.messageId))Object.assign(action,{sourceId:source.sourceId,messageVersion:source.version,kind:'control',control:source.messageId==='schedule-pause'?'paused':'cancelled'})
+        if(['schedule-pause','schedule-cancel'].includes(source.messageId))Object.assign(action,{sourceId:source.sourceId,messageVersion:source.version,kind:'control',control:source.messageId==='schedule-pause'?'paused':'cancelled',reason:'Router stops the current scheduling fixture'})
         else if(source.messageId==='schedule-reopen')Object.assign(action,{kind:'reopen',sameGoal:true})
         else Object.assign(action,{kind:'resume',reason:'Router independently schedules the original session'})
         return {tool:'resident_task_action',args:action}
@@ -1289,7 +1289,7 @@ test('Router schedules the same execution session across wait, stop, cancellatio
   })
   await h.receive(channelMessage('schedule-create'));await h.service.whenIdle()
   const scaffold=await h.query('task.get',{taskId:'schedule-authority'}),dbPath=join(h.host.ctx.runtimePaths.state,'tasks.sqlite')
-  assert.equal(scaffold.lastDecision.action,'wait')
+  assert.equal(scaffold.status,'completed');assert.equal(scaffold.completion.result.action,'wait')
   await h.close();restoreLegacyHumanWait(dbPath,scaffold.taskId,historicalWait,{prepareNotice:true});await h.restart();await h.service.whenIdle()
   const initial=await h.query('task.get',{taskId:scaffold.taskId}),sessionId=initial.sessionId
   assert.equal(initial.humanRequests.at(-1).status,'waiting-reply')

@@ -205,12 +205,14 @@ function routerRoute({rollback=false}={}) {
     if (source && attempts < 2) {
       attempts++
       plan ??= {operationId:'workspace-router-operation', sourceId:source.sourceId, messageVersion:source.version,
-        tasks:[{taskId:'router-work-a', title:'First task', objective:'Retain the initialized first task', requirements:[]}, {taskId:'router-work-b', title:'Second task', objective:'Do not replay failed initialization', requirements:[]}],
+        tasks:[{taskId:'router-work-a', handoff:'处理第一个事项，记录其独立初始化状态。', title:'First task', objective:'Retain the initialized first task', requirements:[]}, {taskId:'router-work-b', handoff:'处理第二个事项，记录其独立初始化状态。', title:'Second task', objective:'Do not replay failed initialization', requirements:[]}],
         dependencies:rollback ? [{taskId:'router-work-a', prerequisiteTaskId:'router-work-a', condition:'invalid self dependency'}] : []}
       return [{name:'resident_task_plan', args:plan}]
     }
-    const settled=request.messages.some(message => message.role === 'toolResult' && message.toolName === 'resident_router_settle' && !message.isError)
-    return settled ? [] : [{name:'resident_router_settle', args:{operationId:'workspace-router-settle', eventIds:input.events.map(event => event.id)}}]
+    const last=request.messages.at(-1)
+    const settled=last?.role==='toolResult'&&last.toolName==='resident_router_settle'&&!last.isError
+    return settled ? [] : [{name:'resident_router_settle', args:{operationId:'workspace-router-settle:'+input.events.map(event=>event.id).join(','), eventIds:input.events.map(event => event.id),
+      ...(rollback?{noTaskDispositions:input.events.filter(event=>event.source).map(event=>({eventId:event.id,outcome:'context-only',reason:'This dry-run fixture requests no durable task after rollback.',sourceQuote:event.source.text}))}:{})}}]
   }
 }
 const message = {groupId:'native-group', messageId:'workspace-original-request', senderOpenDingTalkId:'native-user', senderName:'Requester', occurredAt:new Date().toISOString(), text:'测试助手，请安排两个事项并保留独立初始化状态。'}
@@ -234,7 +236,7 @@ test('Windows workspace initialization: real Router batch and inner operation re
 
 test('Windows workspace initialization: invalid real Router plans roll back before native directory creation', windows, async t => {
   const h = await fixture(t, {route:routerRoute({rollback:true})})
-  await h.service.ingest(message); await h.service.whenIdle()
+  await h.service.ingest({...message,text:'这是一条合成回滚检查输入，验证结束后不保留任何业务任务。'}); await h.service.whenIdle()
   const attempts = h.commands.filter(row => row.command.kind === 'router.plan')
   assert.equal(attempts.length, 2); assert.ok(attempts.every(row => row.error))
   assert.deepEqual(await h.query('task.list'), []); assert.equal(h.calls.length, 0)

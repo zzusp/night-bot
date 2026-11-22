@@ -6,7 +6,7 @@ import {routerTaskSummary} from './router-task-view.js'
 const replyId=parts=>'router-operation:'+createHash('sha256').update(JSON.stringify(parts)).digest('hex')
 export const completionReplyId=(conversationId,eventId,sourceId,messageVersion)=>replyId([conversationId,'completion-reply',eventId,sourceId,messageVersion])
 export const blockedReplyId=(conversationId,eventId)=>replyId([conversationId,'continued-blocked-reply',eventId])
-const stoppedExecution=event=>event?.kind==='task.inspection'&&event.reason==='execution-failed'&&event.expected?.drained===true&&!!event.brief?.technicalFailure
+const stoppedExecution=event=>event?.kind==='task.inspection'&&event.reason==='execution-failed'&&event.expected?.drained===true&&(!!event.sessionId||!!event.brief?.technicalFailure)
 export const isTaskOutcome=event=>event?.kind==='task.completed'||event?.kind==='task.blocked'&&event.resultSource==='pi-task-result'||stoppedExecution(event)
 export const suppressChannelOutcome=task=>task.supplements?.some(row=>row.suppressChannelOutcome===true
  &&row.contextRevision===task.contextRevision&&row.requirementRevision===task.requirementRevision)===true
@@ -20,7 +20,8 @@ export function currentOutcomeBinding(task,event,conversationId){
   if(task.status!=='completed'||completion?.commandId!==event.commandId||completion?.requirementRevision!==event.requirementRevision||completion?.controlRevision!==event.controlRevision)return
  }else if(stoppedExecution(event)){
   if(task.status!=='active'||task.control!=='active'||!task.inspection?.pending||task.inspection.key!==event.inspectionKey
-    ||!isDeepStrictEqual(event.expected,inspectionVersion(task))||!isDeepStrictEqual(event.brief.technicalFailure,task.technicalFailure))return
+    ||!isDeepStrictEqual(event.expected,inspectionVersion(task))
+    ||(event.sessionId!==undefined?event.sessionId!==task.sessionId:!isDeepStrictEqual(event.brief.technicalFailure,task.technicalFailure)))return
  }else{
   const decision=task.lastDecision
   if(task.status!=='active'||task.control!=='active'||decision?.action!=='blocked'||!isDeepStrictEqual(decision,event.result)

@@ -6,13 +6,13 @@ import {eventually} from '../../../test/fixtures/resident-router-host.js'
 import {apply as applyApplication,inject} from '../../../src/application.js'
 import {createWebConsole} from '../server/plugin.js'
 
-test('real task HTTP exposes running, actual tool receipt, completion and blocked question', {timeout:45000},async t=>{
+test('real task HTTP exposes running, actual tool receipts and completion with missing input', {timeout:45000},async t=>{
  let release,entered=false,toolReturned=false,releaseResult
  const gate=new Promise(resolve=>release=resolve),resultGate=new Promise(resolve=>releaseResult=resolve)
  const f=await memoryHost(t,async body=>{
   if(JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return {text:'{"lessons":[]}'}
   if(!body.tools?.some(tool=>tool.function.name==='task_result'))return {text:'No extra work'}
-  if(JSON.stringify(body.messages).includes('BLOCKED_RUNTIME'))return {tool:'task_result',args:{decision:{action:'blocked',summary:'缺少指定的核对输入',question:'请选择待核对的文件',evidence:['原始任务未指定文件'],limitations:[]}}}
+  if(JSON.stringify(body.messages).includes('BLOCKED_RUNTIME'))return {tool:'task_result',args:{decision:{action:'blocked',summary:'缺少指定的核对输入',evidence:['原始任务未指定文件'],limitations:['未收到待核对的文件']}}}
   if(!entered){entered=true;await gate;return {tool:'memory_status',args:{}}}
   if(!toolReturned){toolReturned=true;await resultGate;return {tool:'task_result',args:{decision:{action:'complete',summary:'已读取当前授权记忆状态',evidence:['实际 memory_status 返回'],limitations:['仅本地隔离验证']}}}}
   return {text:'已完成'}
@@ -39,7 +39,7 @@ test('real task HTTP exposes running, actual tool receipt, completion and blocke
   const done=await api(endpoint+'/session');assert.equal(done.body.status,'ready');assert.ok(done.body.items.some(row=>row.kind==='tool-result'&&row.toolName==='memory_status'&&row.status==='completed'));assert.ok(done.body.items.some(row=>row.toolName==='task_result'&&row.text.includes('已读取当前授权记忆状态')))
   const count=f.requests.length;await api(endpoint);await api(endpoint+'/session');assert.equal(f.requests.length,count,'HTTP projections never run inference')
   const blocked=await app.tasks.createTask({requestId:'blocked-progress',title:'需要明确输入',objective:'BLOCKED_RUNTIME：未指定文件前不可继续'})
-  await app.tasks.whenIdle();const blockedView=await api('/api/tasks/'+blocked.taskId);assert.ok(['blocked','waiting'].includes(blockedView.body.state),JSON.stringify(blockedView.body));assert.equal(blockedView.body.result.question,'请选择待核对的文件');assert.equal(blockedView.body.result.action,'blocked')
+  await app.tasks.whenIdle();const blockedView=await api('/api/tasks/'+blocked.taskId);assert.equal(blockedView.body.state,'completed');assert.equal(blockedView.body.result.summary,'缺少指定的核对输入');assert.equal(blockedView.body.result.action,'blocked');assert.deepEqual(blockedView.body.result.limitations,['未收到待核对的文件'])
   t.diagnostic(JSON.stringify({running:running.body.state,liveSession:live.body.status,afterTool:afterTool.body.status,completed:completed.body.state,blocked:blockedView.body.state,publicRecords:done.body.total}))
  }finally{release();releaseResult();await web?.close()}
 })

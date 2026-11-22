@@ -61,6 +61,9 @@ async function legacyOperatorService(options, prepareNotice = true) {
 async function pending(h) { return (await h.service.listAuthorizationRequests()).find(item => item.status === 'waiting-reply') }
 
 function routeTask(request,task){return topicTaskCalls(request,{task})}
+function handoffSource(input,text){
+ return input.sources.find(source=>input.handoffs?.some(handoff=>handoff.sourceId===source.sourceId&&handoff.messageVersion===source.version&&handoff.text===text))
+}
 async function createGroupTask(h,id,objective){await h.service.ingest({groupId:'native-group',messageId:id,senderOpenDingTalkId:'native-user',text:'测试助手，'+objective,occurredAt:new Date().toISOString()});await h.service.whenIdle();return h.query('task.get',{taskId:(await h.query('task.list')).at(-1).taskId})}
 
 for (const operatorUserId of [undefined,'legacy-operator']) test(`历史冻结问题保留原消息，不依赖操作者配置：${Boolean(operatorUserId)}`,{timeout:nativeTestTimeout(30000)},async t=>{
@@ -108,10 +111,10 @@ for(const failure of ['none','empty','invalid-source'])test(`Router 判断业务
     }
     const input=latestInput(request);turns++
     assert.equal(input.humanReview,undefined)
-    if(!input.sources.some(source=>source.text===answer))return [requestHuman('requester')]
+    if(!handoffSource(input,answer))return [requestHuman('requester')]
     resumed=input
     return [call('task_result',{decision:{action:'wait',summary:'原会话已接纳 Router 核实的限制，保持只读',evidence:[answer],limitations:[]}})]
-  })
+  },{compactionSummary:'原任务只允许 UAT2 只读核对，未获实施授权。历史待答与真实原文保留在任务账本；根据当前批真实来源和已提交回执判断是否续办。'})
   original=await createGroupTask(h,'origin-business-'+failure,'由业务负责人确认 UAT2 只读条件，不允许实施')
   assert.equal(original.humanRequests[0].status,'waiting-reply')
   const initialTurns=turns
@@ -127,7 +130,7 @@ for(const failure of ['none','empty','invalid-source'])test(`Router 判断业务
   const after=await h.query('task.get',{taskId:original.taskId})
   assert.equal(after.sessionId,original.sessionId);assert.equal(after.requirementRevision,original.requirementRevision);assert.equal(after.controlRevision,original.controlRevision)
   assert.equal(after.humanRequests[0].status,'answered');assert.equal(after.humanRequests[0].reply,answer);assert.equal(after.humanRequests[0].resolution.kind,'router')
-  assert.ok(resumed.sources.some(source=>source.actorId==='business-responsible'&&source.text===answer));assert.equal(turns,initialTurns+1)
+  assert.equal(handoffSource(resumed,answer)?.actorId,'business-responsible');assert.equal(turns,initialTurns+1)
   assert.deepEqual(await h.query('execution.list'),[]);assert.deepEqual(await h.query('operation.list'),[])
   assert.ok(!h.toolResults.some(row=>row.name==='task_human_resolve'))
 })
@@ -204,8 +207,8 @@ for(const permission of [false,true])test(`operator technical reply retains orig
   assert.deepEqual(await h.query('task.get',{taskId:original.taskId}),original)
  }
  await h.service.respondHumanRequest(args);await h.service.whenIdle();const after=await h.query('task.get',{taskId:original.taskId})
- assert.equal(after.sessionId,original.sessionId);assert.equal(after.requirementRevision,original.requirementRevision);assert.equal(after.controlRevision,original.controlRevision);assert.equal(after.humanRequests[0].status,'answered');assert.equal(after.lastDecision.action,'wait');assert.equal(turns,2)
- assert.equal(seen[0].sources.find(source=>source.messageId==='business-authorization').text,'测试助手，'+objective);assert.ok(!seen.at(-1).sources.some(source=>source.messageId==='business-authorization'),'already admitted source stays in Pi history rather than being resent');assert.equal(seen.at(-1).sources.find(source=>source.text===reply).actorId,'operator-user')
+ assert.equal(after.sessionId,original.sessionId);assert.equal(after.requirementRevision,original.requirementRevision);assert.equal(after.controlRevision,original.controlRevision);assert.equal(after.humanRequests[0].status,'answered');assert.equal(after.status,'completed');assert.equal(after.completion.result.action,'wait');assert.equal(turns,2)
+ assert.equal(handoffSource(seen[0],'测试助手，'+objective)?.messageId,'business-authorization');assert.ok(!seen.at(-1).sources.some(source=>source.messageId==='business-authorization'),'already admitted source stays in Pi history rather than being resent');assert.equal(seen.at(-1).sources.find(source=>source.text===reply).actorId,'operator-user')
  const saved=await h.ctx.sessionPersistence.readNative(after.sessionId);assert.equal(saved.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='identity').length,1);assert.deepEqual(saved.audit.filter(receipt=>['permission','sandbox','approval'].includes(receipt.domain)),originalPolicy)
  assert.deepEqual(await h.query('execution.list'),[]);assert.deepEqual(await h.query('operation.list'),[])
 })
@@ -248,7 +251,8 @@ test('历史操作者私信保留精确引用，只接纳真实接收者答复�
   assert.equal(completed.status, 'completed')
   assert.equal(completed.humanRequests[0].replyChannel, 'private')
   assert.equal(completed.humanRequests[0].actorId, 'actual-operator')
-  assert.equal(resumed.sources.find(item => item.messageId === reply.messageId).actorId, 'actual-operator')
+  const privateSource=resumed.sources.find(item => item.messageId === reply.messageId)
+  assert.equal(privateSource.actorId, 'actual-operator');assert.equal(privateSource.text,reply.text)
   await t.step(async () => h.service.respondPrivateHumanReply(reply)); await t.step(async () => h.service.whenIdle())
   assert.equal(ownerTurns, 2)
   assert.equal(sent.filter(item => item.payload.audience === 'operator').length, 1)
@@ -258,7 +262,7 @@ test('new executions reject public and private questions and record a truthful b
  let step=0
  const h=await fixture(t,request=>routeTask(request)??(++step<=2?[humanRequest({reason:'Missing target',question:'Which target?',...step===1?{audience:'operator'}:{}})]:[call('task_result',{decision:{action:'blocked',summary:'Stopped: trusted target missing',evidence:['Checked supplied scope'],limitations:['No safe path remains']}})]),{currentContract:true})
  const task=await createGroupTask(h,'disabled-question','Read supplied material only')
- assert.equal(step,3);assert.equal(task.lastDecision.action,'blocked');assert.equal(task.humanRequests?.length??0,0)
+ assert.equal(step,3);assert.equal(task.status,'completed');assert.equal(task.completion.result.action,'blocked');assert.deepEqual(task.completion.result.limitations,['No safe path remains']);assert.equal(task.humanRequests?.length??0,0)
  const stored=await h.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
  const rejected=stored.entries.filter(entry=>entry.message?.role==='toolResult'&&entry.message.toolName==='task_result'&&entry.message.isError)
  assert.equal(rejected.length,2,'Pi rejects invalid question fields before Host execution')
@@ -298,7 +302,7 @@ test('historical human request waits without repeat wakes; authenticated HTTP re
   const completed = await t.step(async () => h.query('task.get', { taskId: created.taskId }))
   assert.equal(completed.status, 'completed')
   assert.equal(completed.sessionId, waiting.sessionId)
-  assert.equal(completed.requirementRevision, 1)
+  assert.equal(completed.requirementRevision, waiting.requirementRevision)
   assert.equal(completed.humanRequests[0].status, 'answered')
   assert.equal(replyInput.sources.find(source => source.text === body.reply)?.actorId, 'native-user')
   assert.ok(!JSON.stringify(replyInput).includes('unlimitedApproval'))
@@ -326,20 +330,20 @@ test('a native blocked decision concludes without a question or another model tu
  const h=await fixture(t,()=>{steps++;return [call('task_result',{decision:{action:'blocked',summary:'Stopped: missing trusted target',evidence:['Existing material checked'],limitations:['Target not established']}})]},{currentContract:true})
  const created=await h.service.createTask({requestId:'blocked-final',objective:'Check only trusted target'});await h.service.whenIdle()
  const task=await h.query('task.get',{taskId:created.taskId})
- assert.equal(steps,1);assert.equal(task.lastDecision.action,'blocked');assert.equal(task.humanRequests?.length??0,0);assert.equal(task.drained,true)
+ assert.equal(steps,1);assert.equal(task.status,'completed');assert.deepEqual(task.completion.result.limitations,['Target not established']);assert.equal(task.completion.result.action,'blocked');assert.equal(task.humanRequests?.length??0,0);assert.equal(task.drained,true)
  assert.equal(h.toolResults.filter(row=>row.name==='task_result'&&row.result.isError).length,0)
 })
 
 for(const changed of [false,true])test(`original-group human input preserves clarification and fences explicit authorization changes: changed=${changed}`,{timeout:nativeTestTimeout(30000)},async t=>{
  let original,answeredInput;const reply='测试助手，本次只允许 UAT3 只读核对，不得发布生产。'
- const h=await fixture(t,async request=>{let routed=routeTask(request,original);if(routed){if(original&&routed[0].name==='resident_task_action'){const current=await h.query('task.get',{taskId:original.taskId});routed[0].args={...routed[0].args,...(changed?{kind:'revise',text:reply,objective:reply}:{kind:'resume',humanRequestId:current.humanRequests[0].requestId,expectedContextRevision:current.contextRevision??0,reason:'原需求人补齐 UAT3 只读范围，不新增实施权限'})}}return routed}
-  const input=latestInput(request);if(!input.sources.some(source=>source.text===reply))return [requestHuman('requester')]
+ const h=await fixture(t,async request=>{let routed=routeTask(request,original);if(routed){if(original&&routed[0]?.name==='resident_task_action'){const current=await h.query('task.get',{taskId:original.taskId});routed[0].args={...routed[0].args,...(changed?{kind:'revise',text:reply,objective:reply}:{kind:'resume',humanRequestId:current.humanRequests[0].requestId,expectedContextRevision:current.contextRevision??0,reason:'原需求人补齐 UAT3 只读范围，不新增实施权限'})}}return routed}
+  const input=latestInput(request);if(!handoffSource(input,reply))return [requestHuman('requester')]
   assert.equal(input.humanReview,undefined)
   answeredInput=input;return [call('task_result',{decision:{action:'wait',summary:'保持原任务来源和当前范围',evidence:[reply],limitations:[]}})]
  })
  original=await createGroupTask(h,'original-group-answer','原群原任务核对，边界未明确前只读');await h.service.ingest({groupId:'native-group',messageId:'real-group-human-answer',senderOpenDingTalkId:'native-user',text:reply,occurredAt:new Date().toISOString()});await h.service.whenIdle()
  const after=await h.query('task.get',{taskId:original.taskId});assert.equal(after.sessionId,original.sessionId);assert.deepEqual(await h.query('execution.list'),[])
- if(changed){assert.equal(after.requirementRevision,original.requirementRevision+1,JSON.stringify(h.toolResults.filter(row=>row.name==='resident_task_action').map(row=>row.result)));assert.equal(after.humanRequests[0].status,'superseded');assert.equal(after.controlRevision,original.controlRevision)}else{assert.equal(after.requirementRevision,original.requirementRevision);assert.equal(after.humanRequests[0].status,'answered');assert.equal(after.humanRequests[0].reply,reply);assert.ok(answeredInput.sources.some(source=>source.messageId==='real-group-human-answer'&&source.actorId==='native-user'&&source.text===reply))}
+ if(changed){assert.equal(after.requirementRevision,original.requirementRevision+1,JSON.stringify(h.toolResults.filter(row=>row.name==='resident_task_action').map(row=>row.result)));assert.equal(after.humanRequests[0].status,'superseded');assert.equal(after.controlRevision,original.controlRevision)}else{assert.equal(after.requirementRevision,original.requirementRevision);assert.equal(after.humanRequests[0].status,'answered');assert.equal(after.humanRequests[0].reply,reply);const source=handoffSource(answeredInput,reply);assert.equal(source?.messageId,'real-group-human-answer');assert.equal(source.actorId,'native-user')}
 })
 
 test('Web answer recalls its delivered operator notification once without recalling group replies', { ...({ skip: !available ? reason : false, timeout: 30000 }), timeout: nativeLifecycleTimeout(30000) }, nativeLifecycle(30000, async (t) => {
@@ -377,15 +381,15 @@ test('Web answer recalls its delivered operator notification once without recall
 
 test('anonymous missing-original-file wait preserves completed authorized progress, inspection and same-session recovery',{timeout:nativeTestTimeout(30000)},async t=>{
  let original,resumed,phase=0;const answer='原件已通过原受管入口提供；仅只读复现，不修改权限、共享数据或部署。'
- const h=await fixture(t,async request=>{const routed=routeTask(request,original);if(routed){if(original&&routed[0].name==='resident_task_action'){const current=await h.query('task.get',{taskId:original.taskId});routed[0].args={...routed[0].args,kind:'resume',humanRequestId:current.humanRequests[0].requestId,expectedContextRevision:current.contextRevision??0,reason:'原需求人通过受管入口补齐原件，保持只读限制'}}return routed}const input=latestInput(request)
-  if(!input.sources.some(source=>source.text===answer)){if(phase++===0)return [call('write',{path:'work/independent-progress.txt',content:'已授权范围内的独立修复已完成；原件精确复现待补证'})];return [humanRequest({audience:'requester',reason:'已知契约修复已保存；匿名原件仅阻塞精确复现',question:'请原需求负责人补充原件；不索取账号、不猜测匿名上传人',evidence:['独立修复已保存'],attemptedActions:['保留既有成果，不修改共享数据或部署']})]}
+ const h=await fixture(t,async request=>{const routed=routeTask(request,original);if(routed){if(original&&routed[0]?.name==='resident_task_action'){const current=await h.query('task.get',{taskId:original.taskId});routed[0].args={...routed[0].args,kind:'resume',humanRequestId:current.humanRequests[0].requestId,expectedContextRevision:current.contextRevision??0,reason:'原需求人通过受管入口补齐原件，保持只读限制'}}return routed}const input=latestInput(request)
+  if(!handoffSource(input,answer)){if(phase++===0)return [call('write',{path:'work/independent-progress.txt',content:'已授权范围内的独立修复已完成；原件精确复现待补证'})];return [humanRequest({audience:'requester',reason:'已知契约修复已保存；匿名原件仅阻塞精确复现',question:'请原需求负责人补充原件；不索取账号、不猜测匿名上传人',evidence:['独立修复已保存'],attemptedActions:['保留既有成果，不修改共享数据或部署']})]}
   assert.equal(input.humanReview,undefined)
   resumed=input;return [finish('沿原任务及已保存成果完成只读核验')]
  })
  original=await createGroupTask(h,'anonymous-original','修复已确认导出契约；上传人未知的原件只用于精确只读复现，不改变共享写权限或部署范围')
  const question=original.humanRequests[0];assert.equal(question.audience,'requester');assert.equal(question.status,'waiting-reply');const before=await h.ctx.sessionPersistence.readNative(original.sessionId);const progressPath=join(before.header.cwd,'work','independent-progress.txt');assert.equal(await readFile(progressPath,'utf8'),'已授权范围内的独立修复已完成；原件精确复现待补证');assert.equal(before.context.projection.messages.findLast(message=>message.role==='toolResult'&&message.toolName==='write').isError,false);assert.equal(before.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent'&&receipt.payload.name==='write').length,1)
  const count=h.requests.length;await h.service.recover();await h.service.whenIdle();assert.equal(h.requests.length,count)
- await h.service.ingest({groupId:'native-group',messageId:'route-answer',senderOpenDingTalkId:'native-user',text:answer,occurredAt:new Date().toISOString()});await h.service.whenIdle();const after=await h.query('task.get',{taskId:original.taskId});assert.equal(after.status,'completed');assert.equal(after.sessionId,original.sessionId);assert.equal(after.humanRequests[0].status,'answered');assert.ok(resumed.sources.some(source=>source.text===answer))
+ await h.service.ingest({groupId:'native-group',messageId:'route-answer',senderOpenDingTalkId:'native-user',text:answer,occurredAt:new Date().toISOString()});await h.service.whenIdle();const after=await h.query('task.get',{taskId:original.taskId});assert.equal(after.status,'completed');assert.equal(after.sessionId,original.sessionId);assert.equal(after.humanRequests[0].status,'answered');assert.equal(handoffSource(resumed,answer)?.messageId,'route-answer')
  const saved=await h.ctx.sessionPersistence.readNative(after.sessionId);assert.equal(saved.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent'&&receipt.payload.name==='write').length,1,'already completed authorized progress is not rerun');assert.equal(await readFile(progressPath,'utf8'),'已授权范围内的独立修复已完成；原件精确复现待补证');assert.deepEqual(await h.query('execution.list'),[]);assert.ok(!h.sent.some(item=>/账号|上传人身份/.test(item.payload.text)&&item.payload.audience==='operator'))
 })
 
@@ -437,6 +441,6 @@ for (const withGroup of [false, true]) test(`历史 Web 待答只留本地，不
   assert.ok(sources.every(source=>source.channel==='web'));assert.ok(sources.some(source=>source.groupId===scope&&source.actorId==='native-user'&&source.text===reply.reply))
   assert.ok(resumedInput,'真实Web答复必须启动原执行会话的续办轮');assert.equal(resumedInput.task.taskId,task.taskId)
   assert.ok(resumedInput.sources.some(source=>source.actorId==='native-user'&&source.text===reply.reply))
-  assert.equal(after.lastDecision.action,'wait');assert.equal(after.lastDecision.summary,'已核对真实Web答复，保持原任务范围，不猜测群收件人')
+  assert.equal(after.status,'completed');assert.equal(after.completion.result.action,'wait');assert.equal(after.completion.result.summary,'已核对真实Web答复，保持原任务范围，不猜测群收件人')
   assert.equal((await h.query('notification.list')).length,0);assert.equal(h.sent.length,0);assert.deepEqual(await h.query('execution.list'),[])
 }))

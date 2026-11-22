@@ -1,5 +1,5 @@
 import {blockedReplyId,completionReplyId,currentOutcomeBinding,suppressChannelOutcome} from '../../src/channels/router-task-context.js'
-import {inspectionVersion,taskInspectionReason,taskWaitIdentity,inspectionIsCurrent,inspectionHoldsExecution,taskProviderFailureLabels} from '../../src/tasks/inspection.js'
+import {inspectionVersion,taskInspectionReason,inspectionIsCurrent,inspectionHoldsExecution,taskProviderFailureLabels} from '../../src/tasks/inspection.js'
 import {sourceHistorySchema} from '../../src/channels/source-history.js'
 import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
 import {missingInterruptedTimings,readTaskTimingRows} from '../../src/tasks/observer-durations.js'
@@ -834,8 +834,15 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         if (!routerScheduling && (task.status === 'completed' || task.control === 'cancelled' && a.control !== 'cancelled')) fail('DYNAMIC_TASK_TERMINAL')
         if(routerScheduling&&a.control==='active'&&(task.status!=='active'||task.control==='cancelled')){reactivated=true;task.status='active';task.requirementRevision++;task.runSequence=(task.runSequence??1)+1;task.completion=null}
         task.controlRevision++; task.control = a.control
-        if (a.control === 'cancelled') { task.status = 'cancelled'; task.cancelledAt ??= stamp }
+        if (a.control === 'cancelled') {
+          if(task.status!=='cancelled'){
+            task.cancelledAt=stamp
+            if(a.reason!==undefined)task.cancellationReason=text(a.reason,'reason').trim()
+          }
+          task.status = 'cancelled'
+        }
       }
+      if(task.status!=='cancelled'&&task.control!=='cancelled'){delete task.cancelledAt;delete task.cancellationReason}
       if(a.currentInput!==undefined)task.currentInput=clone(a.currentInput)
       else if(['task.revise','task.reopen'].includes(kind))delete task.currentInput
       if (a.sourceRefs !== undefined) task.sourceRefs = clone(array(a.sourceRefs))
@@ -884,19 +891,13 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if(digest(inspectionVersion(task))!==digest(a.expected))fail('TASK_INSPECTION_STALE')
       const reason=taskInspectionReason(task)
       if(!reason)return changed({task,inspected:false})
-      const key=digest([inspectionVersion(task),reason,task.technicalFailure??null,task.lastDecision??null,...reason==='wait-overdue'?[task.inspection?.nextCheckAt??null]:[]])
-      if(task.inspection?.key===key)return changed({task,inspected:false})
-      // One unresolved incident per execution lease; drain changes are lifecycle
-      // bookkeeping, not a second incident. A Router action changes the revision.
-      if(task.inspection?.pending&&task.inspection.leaseEpoch===task.leaseEpoch
-        &&inspectionIsCurrent(task))return changed({task,inspected:false})
-      const previousReview=task.inspection?.review
-      task.inspection={key,pending:true,reason,leaseEpoch:task.leaseEpoch,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,contextRevision:task.contextRevision??0,at:stamp,...reason==='wait-overdue'?{waitIdentity:taskWaitIdentity(task),waitingSince:task.lastDecision.at}:{}}
+      const expected=inspectionVersion(task)
+      const key=digest([task.sessionId,task.requirementRevision,task.controlRevision,task.contextRevision??0,task.leaseEpoch])
+      if(task.inspection?.key===key||inspectionHoldsExecution(task))return changed({task,inspected:false})
+      task.inspection={key,pending:true,reason,leaseEpoch:task.leaseEpoch,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,contextRevision:task.contextRevision??0,at:stamp}
       saveTask(task)
       routerLedger.taskEvent({id:'task-inspection:'+digest([task.taskId,key]),kind:'task.inspection',taskId:task.taskId,
-        reason,inspectionKey:key,expected:inspectionVersion(task),brief:{objective:task.objective?.slice(0,1024),requirements:task.requirements?.slice(0,8).map(item=>String(item).slice(0,256)),progress:task.lastDecision?.summary?.slice(0,1024),
-          limitations:task.lastDecision?.limitations?.slice(0,8),technicalFailure:task.technicalFailure,...reason==='wait-overdue'?{waitingSince:task.lastDecision.at,question:task.lastDecision.question?.slice(0,512),previousReview}:{},
-          remaining:'Inspect current task and native execution/effect receipts before deciding continuation, investigation, waiting or user notification. Unknown effects must be reconciled; never replay an old invocation.'}})
+        sessionId:task.sessionId,reason,inspectionKey:key,expected})
       return changed({task,inspected:true})
     }
     if (kind === 'task.claim') {
@@ -974,10 +975,13 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       }
       return changed({ wakeIds: acknowledged, ...(remaining.length ? { remainingWakeIds: remaining } : {}) })
     }
-    if (kind === 'task.wait') {
+    if (kind === 'task.wait' || kind === 'task.interrupted') {
+      const interrupted=kind==='task.interrupted'
+      if(interrupted&&(a.humanReply!==undefined||a.reviewFailureCode!==undefined||a.resultSource!==undefined))fail('DYNAMIC_ARGUMENT_INVALID')
       if(a.question!==undefined||a.decision?.question!==undefined||a.humanRequest!==undefined)fail('TASK_QUESTION_DISABLED')
       if(a.resultSource!==undefined&&(a.resultSource!=='pi-task-result'||!['wait','blocked'].includes(a.action)||a.technicalFailure!==undefined||a.reviewFailureCode!==undefined))fail('TASK_RESULT_SOURCE_INVALID')
-      const task = currentTask(a.binding, { active: false, allowHumanReview: true })
+      const task = currentTask(a.binding, { active: interrupted, allowHumanReview: !interrupted })
+      if(interrupted)task.interruption={leaseEpoch:task.leaseEpoch,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,contextRevision:task.contextRevision??0,at:stamp}
       if (task.humanReviewLease === a.binding.leaseEpoch && (a.question?.trim() || a.decision?.question?.trim())) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
       let notification = null
       if (a.humanReply) {
@@ -2156,12 +2160,12 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           if(!reassessStart)return { ...recorded, replayed: true, dispatchEligible: false }
         }
         // 与任务状态在同一事务保存完整决定；失败命令不留伪决定，同一命令重试不重复追加。
-        const recordsDecision = ['task.wait', 'task.complete', 'task.dialogue.reply'].includes(kind)
+        const recordsDecision = ['task.wait', 'task.interrupted', 'task.complete', 'task.dialogue.reply'].includes(kind)
         const triggers = recordsDecision ? wakes(args.binding.taskId).filter(w => w.state === 'claimed' && w.leaseEpoch === args.binding.leaseEpoch)
           .map(w => ({ wakeId: w.wakeId, kind: w.kind, ...Object.fromEntries(['executionId', 'inputVersion', 'leaseEpoch', 'lastSequence'].filter(key => w.payload?.[key] !== undefined).map(key => [key, w.payload[key]])) })) : []
         const value = { ...reduce(kind, args, id), replayed: false }
         if (recordsDecision) {
-          const decision = kind === 'task.wait' ? { ...value.result.task.lastDecision,
+          const decision = kind === 'task.wait' || kind === 'task.interrupted' ? { ...value.result.task.lastDecision,
             ...(args.audience || args.humanRequest ? { audience: args.audience ?? args.humanRequest.audience ?? 'operator' } : {}),
             ...(args.attemptedActions || args.humanRequest ? { attemptedActions: args.attemptedActions ?? args.humanRequest.attemptedActions ?? [] } : {}) }
             : kind === 'task.complete' ? { action: 'complete', summary: args.summary, evidence: [], limitations: [], ...args.result }

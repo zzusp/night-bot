@@ -64,7 +64,7 @@ explicit reply failure; human review retains its pending evidence and failure.
 Recovery alone does not resume the model. A new explicit source or trusted Host
 wake can resume the task under its existing authorization and effect fences.
 
-任务记录本次执行最后一个 Pi assistant 结果。Pi 可在尝试压缩前从活动上下文移除超限响应；Host 按原生事件观察，后续成功响应会替换已恢复的早期失败。`technicalFailure.code` 仍区分供应方错误与缺少 `task_result`；明确的超时、输入超限、内容策略拒绝分别附 `providerReason: TIMEOUT | CONTEXT_WINDOW_EXCEEDED | POLICY_REFUSAL`。其它供应方错误保留原通用记录，旧记录不补写。供应方原文仍是受控的 Pi 历史证据，不复制到任务账本或 Router 巡检。分类不决定重试、压缩或是否能续办。
+任务记录本次执行最后一个 Pi assistant 结果。Pi 可在尝试压缩前从活动上下文移除超限响应；Host 按原生事件观察，后续成功响应会替换已恢复的早期失败。普通业务轮的 Pi 正常停止可直接结束该轮，不要求额外提交 `task_result`。未排空、当前调用效果未知或异常退出时不记完成。`technicalFailure.code` 区分供应方错误和异常退出未能形成有效结果；明确的超时、输入超限、内容策略拒绝分别附 `providerReason: TIMEOUT | CONTEXT_WINDOW_EXCEEDED | POLICY_REFUSAL`。其它供应方错误保留原通用记录，旧记录不补写。供应方原文仍是受控的 Pi 历史证据，不复制到任务账本或 Router 巡检。分类不决定重试、压缩或是否能续办。
 
 Provider profiles accept `retry.enabled`, `maxRetries`, `baseDelayMs`,
 `maxAgentDelayMs` and `provider.{timeoutMs,maxRetries,maxRetryDelayMs}`. Defaults

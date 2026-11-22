@@ -9,9 +9,9 @@ export {latestInput,waitUntil,topicTaskCalls,modelToolValues}
 export const taskRequest=request=>request.tools.some(tool=>tool.name==='task_result')
 export const result=(action='wait',summary='Preserve original task evidence')=>({name:'task_result',args:{decision:{action,summary,evidence:['native evidence'],limitations:[]}}})
 export const usage={input:1,output:1,cacheRead:0,cacheWrite:0,totalTokens:2,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}
-export async function providerHost(t,{root,initialize=true,retry={enabled:true,maxRetries:1,baseDelayMs:2,maxAgentDelayMs:5,provider:{maxRetries:0}},decide=()=>[result()],intercept,route,config={},models=[]}={}){
+export async function providerHost(t,{root,initialize=true,retry={enabled:true,maxRetries:1,baseDelayMs:2,maxAgentDelayMs:5,provider:{maxRetries:0}},decide=()=>[result()],intercept,route,config={},models=[],compactionSummary}={}){
  const owned=!root;root??=await mkdtemp(join(tmpdir(),'night-provider-single-'))
- const h=await nativeRuntimeHost(root,(request,host)=>taskRequest(request)?decide(request,host):route?.(request,host)??topicTaskCalls(request),{initialize,config,models})
+ const h=await nativeRuntimeHost(root,(request,host)=>taskRequest(request)?decide(request,host):route?.(request,host)??topicTaskCalls(request),{initialize,config,models,compactionSummary})
  t.after(async()=>{await h.close();if(owned)await rm(root,{recursive:true,force:true})})
  h.events=[];h.actors=[];h.effects=0;h.taskRequests=()=>h.requests.filter(taskRequest)
  h.ctx.on('agent/created',({agent})=>{h.actors.push(agent);agent.piSession.subscribe(event=>{if(['auto_retry_start','auto_retry_end'].includes(event.type))h.events.push({actorId:agent.id,...event})})})

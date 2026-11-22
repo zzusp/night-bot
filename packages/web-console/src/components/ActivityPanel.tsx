@@ -16,15 +16,15 @@ function TaskRow({task}: {task: Task}) {
   </a>;
 }
 
-function TaskSection({title, tasks, href, tone, failed}: {title: string; tasks?: Page<Task> | null; href?: string; tone: 'running' | 'waiting' | 'recent'; failed: boolean}) {
-  const Icon = tone === 'running' ? RiLoader4Line : tone === 'waiting' ? RiTimeLine : RiCheckboxCircleLine;
+function TaskSection({title, tasks, href, tone, failed}: {title: string; tasks?: Page<Task> | null; href?: string; tone: 'running' | 'interrupted' | 'recent'; failed: boolean}) {
+  const Icon = tone === 'running' ? RiLoader4Line : tone === 'interrupted' ? RiTimeLine : RiCheckboxCircleLine;
   return <section className={`rail-section rail-section-${tone}`} aria-label={title}>
     <div className="rail-section-title"><h3><Icon size={16} aria-hidden="true" />{title}</h3>{href && <a href={href} aria-label={`查看${title}任务`}>查看<RiArrowRightSLine size={15} aria-hidden="true" /></a>}</div>
-    {tasks?.items.length ? <div className="rail-task-list">{tasks.items.slice(0, 5).map(task => <TaskRow key={task.taskId} task={task}/>)}</div> : <p className="rail-empty">{failed || !tasks || tasks.total > 0 ? '—' : tone === 'running' ? '暂无执行中的任务' : tone === 'waiting' ? '暂无等待中的任务' : '暂无任务'}</p>}
+    {tasks?.items.length ? <div className="rail-task-list">{tasks.items.slice(0, 5).map(task => <TaskRow key={task.taskId} task={task}/>)}</div> : <p className="rail-empty">{failed || !tasks || tasks.total > 0 ? '—' : tone === 'running' ? '暂无执行中的任务' : tone === 'interrupted' ? '暂无中断的任务' : '暂无任务'}</p>}
   </section>;
 }
 
-type ActivityData = Pick<Overview, 'tasks' | 'running' | 'waiting' | 'sectionErrors'>;
+type ActivityData = Pick<Overview, 'tasks' | 'running' | 'interrupted' | 'sectionErrors'>;
 type ActivityProps = {conversation: {kind: 'chat'|'conversations'; id?: string}; data?: ActivityData; loading: boolean; error: unknown; onRetry: () => void};
 export function ActivityPanel(props: ActivityProps) {
   return props.conversation.kind === 'conversations'
@@ -43,15 +43,14 @@ function ActivityPanelContent({data, loading, error, onRetry, conversation}: Act
   // global collection from a scoped count; individual task details stay linked.
   const allTasks=conversation.kind==='chat' ? '#/tasks' : undefined;
   const runningTasks=allTasks ? '#/tasks?state=running' : undefined;
-  const waitingTasks=allTasks ? '#/tasks?state=waiting' : undefined;
-  // The overview pages own their totals and membership. Waiting never implies a
-  // human approval request, and an unavailable page must not become a zero.
+  const interruptedTasks=allTasks ? '#/tasks?state=interrupted' : undefined;
+  // An unavailable page must not become a zero.
   const incomplete = !!Object.keys(data?.sectionErrors || {}).length;
   const partialError=useMemo(()=>new ApiError(503,'OVERVIEW_PARTIAL'),[]);
-  const idle = !error && !!data?.running && !!data?.waiting
-    && !data.sectionErrors?.running && !data.sectionErrors?.waiting
-    && data.running.total === 0 && data.waiting.total === 0
-    && data.running.items.length === 0 && data.waiting.items.length === 0;
+  const idle = !error && !!data?.running && !!data?.interrupted
+    && !data.sectionErrors?.running && !data.sectionErrors?.interrupted
+    && data.running.total === 0 && data.interrupted.total === 0
+    && data.running.items.length === 0 && data.interrupted.items.length === 0;
   return <aside id="activity-panel" className="activity-rail" aria-label="任务动态">
     <div className="rail-heading"><h2>工作动态</h2>{allTasks && <a href={allTasks}>全部任务<RiArrowRightSLine size={16} aria-hidden="true" /></a>}</div>
     {!!error && <Notice error={error} stale={!!data} onRetry={onRetry}/>}
@@ -60,10 +59,10 @@ function ActivityPanelContent({data, loading, error, onRetry, conversation}: Act
     {!data && loading ? <Loading/> : <>
       <div className="activity-counts">
         {runningTasks ? <a href={runningTasks}><span><i className="count-dot info"/>执行中</span><strong>{data?.sectionErrors?.running ? '—' : data?.running?.total ?? '—'}</strong></a> : <div><span><i className="count-dot info"/>执行中</span><strong>{data?.sectionErrors?.running ? '—' : data?.running?.total ?? '—'}</strong></div>}
-        {waitingTasks ? <a href={waitingTasks}><span><i className="count-dot warning"/>等待中</span><strong>{data?.sectionErrors?.waiting ? '—' : data?.waiting?.total ?? '—'}</strong></a> : <div><span><i className="count-dot warning"/>等待中</span><strong>{data?.sectionErrors?.waiting ? '—' : data?.waiting?.total ?? '—'}</strong></div>}
+        {interruptedTasks ? <a href={interruptedTasks}><span><i className="count-dot warning"/>执行中断</span><strong>{data?.sectionErrors?.interrupted ? '—' : data?.interrupted?.total ?? '—'}</strong></a> : <div><span><i className="count-dot warning"/>执行中断</span><strong>{data?.sectionErrors?.interrupted ? '—' : data?.interrupted?.total ?? '—'}</strong></div>}
       </div>
       <TaskSection title="正在执行" tasks={data?.running} href={runningTasks} tone="running" failed={!!data?.sectionErrors?.running}/>
-      <TaskSection title="等待继续" tasks={data?.waiting} href={waitingTasks} tone="waiting" failed={!!data?.sectionErrors?.waiting}/>
+      <TaskSection title="中断的任务" tasks={data?.interrupted} href={interruptedTasks} tone="interrupted" failed={!!data?.sectionErrors?.interrupted}/>
       {idle && <TaskSection title="最近任务" tasks={data?.tasks} href={allTasks} tone="recent" failed={!!data?.sectionErrors?.tasks}/>}
     </>}
   </aside>;

@@ -1,4 +1,6 @@
 import {createHash} from 'node:crypto'
+import {getCurrentSystemMessage} from '@earendil-works/pi-ai'
+const conversationStateSection='night_'+Buffer.from('conversation-state').toString('hex')
 // Scripted routing model readers; all history and tool execution stay in the official SDK.
 const modelMessageParts = message => typeof message.content === 'string' ? [{ type: 'text', text: message.content }] : message.content ?? []
 
@@ -90,7 +92,7 @@ export async function waitUntil(read, description, timeoutMs = 10000) {
   throw new Error('Timed out: ' + description)
 }
 
-export function topicTaskCalls(request, { title = '原消息交办', objective, task, signature = '', replyRecipients } = {}) {
+export function topicTaskCalls(request, { title = '原消息交办', objective, task, replyRecipients } = {}) {
   const input = latestInput(request), names = request.tools.map(tool => tool.name)
   if(names.includes('channel_triage_submit'))return [{name:'channel_triage_submit',args:{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'This execution scenario requests original business handling'}))}}]
   if(names.includes('resident_router_settle')){
@@ -99,25 +101,30 @@ export function topicTaskCalls(request, { title = '原消息交办', objective, 
     const calls=current.filter(message=>message.role==='assistant').flatMap(message=>modelMessageParts(message)).filter(part=>part.type==='toolCall'&&accepted.has(part.id))
     if(calls.some(call=>call.name==='resident_router_settle'))return []
     const sourceEvents=input.events.filter(event=>event.source)
-    const completed=input.events.find(event=>event.taskEvent?.kind==='task.completed'&&!calls.some(call=>call.name==='resident_router_reply'&&call.arguments.operationId==='fixture-completion:'+event.taskEventId))
-    if(!sourceEvents.length&&completed){
+    const state=getCurrentSystemMessage(request.messages)?.sections?.[conversationStateSection]
+    const {taskOutcomeReplies=[]}=state?JSON.parse(state.slice(state.indexOf(String.fromCharCode(10))+1)):{}
+    const binding=taskOutcomeReplies.find(value=>!calls.some(call=>call.name==='resident_router_reply'&&call.arguments.operationId===value.operationId)
+      &&input.events.some(event=>event.taskEvent?.kind==='task.completed'&&event.taskEventId===value.outcomeEventId))
+    if(!sourceEvents.length&&binding){
+      const completed=input.events.find(event=>event.taskEventId===binding.outcomeEventId)
       const values=modelToolValues(request),row=values.findLast(value=>value.task?.taskId===completed.taskId&&value.task.requirementRevision===completed.taskEvent.requirementRevision)?.task
       if(!calls.some(call=>call.name==='resident_task_query'&&call.arguments.taskId===completed.taskId))return [{name:'resident_task_query',args:{taskId:completed.taskId,detail:'full'}}]
       if(!row)throw Error('Completion reply requires the actual current task result')
-      const sourceId=row.sourceRefs[0],source=values.findLast(value=>value.sourceId===sourceId)
-      if(!calls.some(call=>call.name==='resident_source_get'&&call.arguments.sourceId===sourceId))return [{name:'resident_source_get',args:{sourceId}}]
-      if(!source)throw Error('Completion reply requires the authenticated original source')
-      return [{name:'resident_router_reply',args:{operationId:'fixture-completion:'+completed.taskEventId,sourceId:source.sourceId,messageVersion:source.version,text:(row.completion?.result?.summary??row.completion?.summary)+signature,...(replyRecipients?{recipientActorIds:replyRecipients}:{}),...(row.completion?.result?.artifactFiles?.length?{taskDelivery:{taskId:row.taskId,requirementRevision:row.requirementRevision,artifactIds:row.completion.result.artifactFiles.map(file=>file.artifact.artifactId)}}:{})}}]
+      const {outcomeEventId,...identity}=binding,files=row.completion?.result?.artifactFiles
+      const delivery=files?.length?{completionEventId:outcomeEventId,taskDelivery:{taskId:row.taskId,requirementRevision:row.requirementRevision,artifactIds:files.map(file=>file.artifact.artifactId)},...replyRecipients?{recipientActorIds:replyRecipients}:{}}:{outcomeEventId}
+      return [{name:'resident_router_reply',args:{...identity,text:row.completion?.result?.summary??row.completion?.summary,...delivery}}]
     }
     if(task){
       const next=sourceEvents.find(event=>!calls.some(call=>call.name==='resident_task_action'&&call.arguments.sourceId===event.source.sourceId))
-      if(next)return [{name:'resident_task_action',args:{operationId:'fixture-context:'+next.source.sourceId,sourceId:next.source.sourceId,messageVersion:next.source.version,kind:'supplement',taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,text:next.source.text}}]
+      if(next)return [{name:'resident_task_action',args:{operationId:'fixture-context:'+next.source.sourceId,sourceId:next.source.sourceId,messageVersion:next.source.version,kind:'supplement',taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,text:next.source.text,handoff:next.source.text}}]
       return [{name:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'fixture-settle:'+input.events.map(event=>event.id).join(',')}}]
     }
-    if(sourceEvents.length&&!calls.some(call=>call.name==='resident_task_plan'))return [{name:'resident_task_plan',args:{operationId:'fixture-plan:'+sourceEvents.map(event=>event.source.sourceId).join(','),sourceId:sourceEvents[0].source.sourceId,messageVersion:sourceEvents[0].source.version,
-      tasks:sourceEvents.map(event=>({taskId:'fixture-task-'+createHash('sha256').update(event.source.sourceId).digest('hex').slice(0,24),title,objective:objective??event.source.text,requirements:['Complete the original request and retain evidence'],quote:event.source.text})),dependencies:[]}}]
-    const confirmation=sourceEvents.find(event=>!calls.some(call=>call.name==='resident_router_reply'&&call.arguments.sourceId===event.source.sourceId))
-    if(confirmation)return [{name:'resident_router_reply',args:{operationId:'fixture-confirmation:'+confirmation.source.sourceId,sourceId:confirmation.source.sourceId,messageVersion:confirmation.source.version,text:'已接收原交办，按当前要求核查。'+signature}}]
+    const unplanned=sourceEvents.find(event=>!calls.some(call=>call.name==='resident_task_plan'&&call.arguments.sourceId===event.source.sourceId))
+    if(unplanned){
+      const source=unplanned.source, goal=objective??source.text
+      return [{name:'resident_task_plan',args:{operationId:'fixture-plan:'+source.sourceId,sourceId:source.sourceId,messageVersion:source.version,
+        tasks:[{taskId:'fixture-task-'+createHash('sha256').update(source.sourceId).digest('hex').slice(0,24),title,objective:goal,handoff:goal,requirements:['Complete the original request and retain evidence'],quote:source.text}],dependencies:[]}}]
+    }
     return [{name:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'fixture-settle:'+input.events.map(event=>event.id).join(',')}}]
   }
 

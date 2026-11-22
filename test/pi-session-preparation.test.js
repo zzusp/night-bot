@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestText} from './fixtures/resident-router-host.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
+import {writeFile} from 'node:fs/promises'
+import {join} from 'node:path'
 const triage=body=>requestEnvelope(body,'一级分诊请求：')
 const router=body=>requestEnvelope(body,'Router 请求：')
 const submit=input=>({tool:'channel_triage_submit',args:{dispositions:input.messages.map(s=>({sourceId:s.sourceId,messageVersion:s.version,needsHandling:true,reason:'Synthetic current request',handoff:{assignment:'explicit',summary:'明确只读合成事项，优先匹配原任务。'}}))}})
@@ -25,6 +27,37 @@ test('real task preparation overlaps independent ledger reads after claim while 
  const received=h.receive(channelMessage('prepare'));await entered.promise;assert.equal(active,2);release.resolve();await received;await h.service.whenIdle()
  assert.equal(peak,2);const task=await h.query('task.get',{taskId:'overlap-task'});assert.equal(task.status,'completed');assert.equal(task.runSequence,1)
  assert.deepEqual(await h.query('execution.list',{taskId:task.taskId}),[])
+})
+
+test('a claimed task revalidates the journal route after preparing its sources', {timeout:nativeTestTimeout(30000)}, async t=>{
+ const taskId='changed-journal-route';let h,planned=false,claimed=false,changed=false,taskRequests=0
+ h=await residentRouterHost(t,body=>{
+  const names=requestTools(body)
+  if(names.includes('task_result')){taskRequests++;return {text:'Unexpected task request'}}
+  if(!names.includes('resident_router_settle'))return {text:'No other work'}
+  if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle')return {text:'Synthetic settled'}
+  const input=router(body),event=input.events.find(row=>row.source)
+  if(event&&!planned){planned=true;return {tool:'resident_task_plan',args:{operationId:'changed-route-plan',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId,title:'Check synthetic task',objective:'Read only',requirements:[],handoff:event.source.text}],dependencies:[]}}}
+  return settle(input)
+ },{config:{retryIntervalMs:600000},wrapStore:store=>({...store,
+  command:async c=>{const receipt=await store.command(c);if(c.kind==='task.claim'&&c.args.taskId===taskId)claimed=true;return receipt},
+  query:async q=>{
+   if(claimed&&!changed&&q.taskId===taskId&&q.kind==='operation.list'){
+    changed=true
+    const marker=join(h.host.ctx.runtimePaths.workspaces,'tasks',taskId,'.task-session.json')
+    await writeFile(marker,JSON.stringify({taskId,sessionId:'unrelated-session'}))
+   }
+   return store.query(q)
+  },
+ })})
+ await h.receive(channelMessage('route-check',{text:'Check the synthetic task without writing.'}));await h.service.whenIdle()
+ assert.ok(changed)
+ const task=await h.query('task.get',{taskId})
+ assert.equal(task.sessionBound,false);assert.equal(task.drained,true);assert.equal(taskRequests,0)
+ assert.equal(task.inspection?.reason,'execution-failed')
+ assert.deepEqual(task.lastDecision.limitations,['TASK_SESSION_START_FAILED'])
+ assert.ok((await h.query('wake.list',{taskId})).some(row=>row.state!=='acked'))
+ assert.equal((await h.service.taskDialogue(taskId)).error,'TASK_ARCHIVE_SESSION_CONFLICT')
 })
 
 test('same controlled follow-up avoids one model query/request when exact current quote/task bindings are already projected',{timeout:nativeTestTimeout(60000)},async t=>{

@@ -71,7 +71,7 @@ test('historical conversation task questions reach the original requester and re
     const created=await h.service.createTask({requestId:'question-'+audience,title:'audience-'+audience,objective:input.text,channel:input})
     await h.service.whenIdle()
     const scaffold=await h.query('task.get',{taskId:created.taskId})
-    assert.equal(scaffold.drained,true);assert.equal(scaffold.lastDecision.action,'wait')
+    assert.equal(scaffold.drained,true);assert.equal(scaffold.status,'completed');assert.equal(scaffold.completion.result.action,'wait')
     assert.equal(scaffold.humanRequests.length,0,'new execution does not open a question')
     assert.equal(h.sent.length,before,'technical wait sends nothing')
     const dbPath=join(h.host.ctx.runtimePaths.state,'tasks.sqlite')

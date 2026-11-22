@@ -861,6 +861,7 @@ test('任务修订和取消携带CAS版本，路径身份不可覆盖，历史�
     const post = (id, action, value) => fetch(base + `/tasks/${id}/${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(value) })
     const revision = { requestId: 'revise', context: '补充实际限制', progressImpact: 'replan', expectedRequirementRevision: 2, expectedControlRevision: 3 }
     const cancel = { requestId: 'cancel', reason: '不再需要', expectedControlRevision: 3 }
+    for (const reason of [undefined, '  ']) assert.equal((await post('live', 'cancel', { ...cancel, reason })).status, 400)
     assert.equal((await post('live', 'context', revision)).status, 200)
     assert.equal((await post('live', 'cancel', cancel)).status, 200)
     assert.deepEqual(calls.map(value => value.taskId), ['live', 'live'])

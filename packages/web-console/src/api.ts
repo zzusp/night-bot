@@ -19,7 +19,7 @@ export interface TaskBlocker { kind: 'execution' | 'operation' | 'legacy' | 'ses
 export interface TaskDuration { milliseconds: number | null; activeSince: string | null; estimated?: boolean }
 export interface Task {
   taskId: string; title?: string; objective?: string; state: string; controlState?: string;
-  createdAt?: string; updatedAt?: string; result?: unknown;
+  createdAt?: string; updatedAt?: string; result?: unknown; cancellationReason?: string;
   durations?: { total: TaskDuration; execution: TaskDuration; observedAt: string };
   session?: { sessionId?: string; role?: string; status?: string };
   timeline?: { task?: TimelineTrack; executions?: TimelineTrack[]; human?: TimelineTrack; version?: number }; blockers?: TaskBlocker[];
@@ -88,7 +88,7 @@ export interface LearningChange {
 }
 export interface TaskLearning { changesComplete?: {memory: boolean; skill: boolean}; status: 'ready' | 'unavailable'; reason?: string; revision?: string; reviews: TaskReview[] | null; changes: LearningChange[] | null }
 export interface LearningBody { id: string; kind: 'memory' | 'skill'; text: string; version: string | number; source: LearningSource; redacted: boolean; truncated?: boolean }
-export interface Overview { tasks: Page<Task> | null; running: Page<Task> | null; waiting: Page<Task> | null; channels: Channel[] | null; conversations: Conversation[] | null; timestamp?: string; sectionErrors?: Record<string, string> }
+export interface Overview { tasks: Page<Task> | null; running: Page<Task> | null; interrupted: Page<Task> | null; channels: Channel[] | null; conversations: Conversation[] | null; timestamp?: string; sectionErrors?: Record<string, string> }
 
 export interface MemoryProvenance {channelId?: string;conversationId?: string;conversationName?: string;conversationType?: 'chat'|'chat-room';conversationKey?: string;taskId?: string;taskTitle?: string;messageId?: string;resolvedFrom?: string}
 export interface EvolutionItem {

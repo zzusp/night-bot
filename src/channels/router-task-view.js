@@ -18,6 +18,8 @@ export function routerTaskSummary(task){
   }
   if(task.lastDecision)value.lastDecision={...pick(task.lastDecision,['action','at','requirementRevision','controlRevision']),summary:preview(task.lastDecision.summary,'lastDecision.summary')}
   if(task.inspection)value.inspection=pick(task.inspection,['pending','reason','at','leaseEpoch','resolvedAt','resolvedOperationId','waitingSince','nextCheckAt','review'])
+  if(task.technicalFailure)value.technicalFailure=pick(task.technicalFailure,['code','phase','stopReason','providerReason'])
+  if(task.cancellationReason)value.cancellationReason=preview(task.cancellationReason,'cancellationReason')
   if(task.providerRecovery)value.providerRecovery={...pick(task.providerRecovery,['attempts','requirementRevision','controlRevision','nextAttemptAt','exhausted']),failure:pick(task.providerRecovery.failure,['code','kind'])}
   if(task.archiveRestore)value.archiveRestore=pick(task.archiveRestore,['reviewRequired'])
   if(task.restartRecoveryOperations){value.restartRecoveryOperations=list(task.restartRecoveryOperations,'restartRecoveryOperations');value.restartRecoveryOperationCount=task.restartRecoveryOperations.length}
