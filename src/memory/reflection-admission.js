@@ -1,7 +1,7 @@
 import {boundedRead} from './previous.js'
 import {reviewMemoryKeys} from './reflection-keys.js'
 import {failure} from '../runtime/files.js'
-import {hash,checkedTextWithLimit,renderMemoryContent} from './format.js'
+import {hash,checkedTextWithLimit,renderMemoryContent,preserveReuseGuidance,reuseIndexCue} from './format.js'
 import {installedSkills} from './skill-inventory.js'
 import {parseSkillFrontmatter} from '../native-skill-filesystem.js'
 
@@ -11,7 +11,6 @@ export const ADMISSION_PROMPT='NIGHT_BOT_TASK_REFLECTION. 返回 JSON {"lessons"
 const array=(value)=>Array.isArray(value)&&value.every(v=>typeof v==='string')&&new Set(value).size===value.length
 const suffixCollision=(key,keys)=>{const match=typeof key==='string'&&key.match(/^(.*)-([0-9]+)$/);return !!match&&Number(match[2])>=2&&keys.includes(match[1])}
 const skillBody=value=>value.body??value.guidance??(value.steps??[]).join('\n')
-const scenarioText=(text,decision)=>typeof text!=='string'?text:text+Object.entries({category:'适用类别',when:'触发条件',changes:'改变的判断/动作',boundaries:'必要边界'}).filter(([key])=>!text.includes(decision[key])).map(([key,label])=>'\n'+label+'：'+decision[key]).join('')
 
 // Batches follow the resolved model's context, never library cardinality. Every
 // oversized item is split without dropping text; identities remain on each part.
@@ -133,10 +132,10 @@ export function admitReflectionLessons(output,admission){
    if(skill.action==='new'?(suffixCollision(skillKey,[...admission.catalog.skills.map(s=>s.key),...admission.catalog.reservedSkillKeys])||skill.expectedRevision!==0||catalog||admission.catalog.reservedSkillKeys.includes(skillKey)):(!prior||prior.origin!=='task-reflection'||prior.revision!==skill.expectedRevision))throw failure('REFLECTION_ADMISSION_TARGET_FORBIDDEN')
    if(!candidate||candidate.evidenceBacked!==true||typeof candidate.applicability!=='string'||!candidate.applicability.trim()||candidate.applicability==='Not established')throw failure('REFLECTION_ADMISSION_SKILL_UNSUPPORTED')
    const guidance=skillBody(candidate);if(!guidance.trim())throw failure('REFLECTION_ADMISSION_SKILL_UNSUPPORTED')
-   candidate={...candidate,guidance:scenarioText(guidance,skill)}
+   candidate={...candidate,guidance:preserveReuseGuidance(guidance,skill)}
    if(usedSkill.has(skillKey))throw failure('REFLECTION_DUPLICATE_KEY');usedSkill.add(skillKey)
   }
-  return [{...lesson,howToApply:scenarioText(lesson.howToApply,memory),key:skillKey,memoryKey:memory.key,skill:candidate,admission:{memory,skill,expectedMemoryId:old?.id,scopeRevision:admission.index.revision,skillsHash:admission.skillsHash}}]
+  return [{...lesson,reuseCue:reuseIndexCue(memory),howToApply:preserveReuseGuidance(lesson.howToApply,memory),key:skillKey,memoryKey:memory.key,skill:candidate,admission:{memory,skill,expectedMemoryId:old?.id,scopeRevision:admission.index.revision,skillsHash:admission.skillsHash}}]
  })
 }
 

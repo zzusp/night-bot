@@ -92,7 +92,7 @@ export default class Reflection extends Service {
             if(!validKey(lesson.key)||!Array.isArray(lesson.evidenceIds)||!lesson.evidenceIds.length||lesson.evidenceIds.some(e=>!known.has(e)))throw failure('REFLECTION_EVIDENCE_INVALID')
             if(keys.has(lesson.key))throw failure('REFLECTION_DUPLICATE_KEY');keys.add(lesson.key)
             if(lesson.memoryKey!==undefined&&!validKey(lesson.memoryKey))throw failure('REFLECTION_MEMORY_KEY_INVALID')
-            const value={...lesson.admission?{memoryKey:lesson.memoryKey,admission:lesson.admission}:{},key:lesson.key,summary:checkedText(lesson.summary),why:checkedText(lesson.why),howToApply:checkedText(lesson.howToApply),evidenceIds:lesson.evidenceIds}
+            const value={...lesson.admission?{memoryKey:lesson.memoryKey,admission:lesson.admission,reuseCue:lesson.reuseCue}:{},key:lesson.key,summary:checkedText(lesson.summary),why:checkedText(lesson.why),howToApply:checkedText(lesson.howToApply),evidenceIds:lesson.evidenceIds}
             if(lesson.skill?.evidenceBacked===true&&typeof lesson.skill.applicability==='string'&&lesson.skill.applicability.trim()&&lesson.skill.applicability!=='Not established'){
               const guidance=lesson.skill.guidance??(Array.isArray(lesson.skill.steps)?lesson.skill.steps.join(String.fromCharCode(10)):undefined)
               value.skill={guidance:checkedTextWithLimit(guidance,12000),reason:brief(lesson.skill.reason),applicability:brief(lesson.skill.applicability),evidenceBacked:true}
@@ -104,7 +104,7 @@ export default class Reflection extends Service {
           const prior=initial.skills[lesson.key]
           if(prior?.origin==='router'||prior?.source)throw failure('REFLECTION_ADMISSION_TARGET_FORBIDDEN')
           // 候选与原始证据交给实际 creator；慢生成不占用共享发布锁。
-          lesson.generated=await this.generateSkill({key:lesson.key,candidate:lesson.skill,evidence:input,source:{eventId:event.id,taskId:task.taskId},previous:prior?{body:prior.body,steps:prior.steps,applicability:prior.applicability,revision:prior.revision}:null},{model:source.model,credentials:source.credentials,signal:this.abort.signal})
+          lesson.generated=await this.generateSkill({key:lesson.key,candidate:lesson.skill,reuse:lesson.admission?.skill,evidence:input,source:{eventId:event.id,taskId:task.taskId},previous:prior?{body:prior.body,steps:prior.steps,applicability:prior.applicability,revision:prior.revision}:null},{model:source.model,credentials:source.credentials,signal:this.abort.signal})
           lesson.generated.expectedRevision=prior?.revision??initial.skillRevisions?.[lesson.key]??0
         }
       }catch(error){preparationError=error}
@@ -145,7 +145,8 @@ export default class Reflection extends Service {
           lesson.memoryWrite='uncertain'
           await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n')
           let result
-          try{result=await this.host.memory.store.remember(scope,{scopeRevision,expectedRevision:lesson.admission?.memory.expectedRevision??0,topic:'experience',key:memoryKey,text:renderMemoryContent(lesson),content:{summary:lesson.summary,why:lesson.why,howToApply:lesson.howToApply},source:{sessionId:task.sessionId??task.taskId,messageId:event.id,quoteSha256:hash(JSON.stringify(input.facts))},...priorMemory?{originSource:priorMemory.originSource??priorMemory.source}:{},provenance:this.host.memory.provenance({task}),...(lesson.admission?.memory.action==='update'?{validate:async()=>{const prior=snapshot.entries.find(e=>e.topic==='experience'&&e.key===memoryKey);if(!prior||prior.id!==lesson.admission.expectedMemoryId)throw failure('REFLECTION_ADMISSION_TARGET_FORBIDDEN')}}:{})})}
+          const content={summary:lesson.summary,why:lesson.why,howToApply:lesson.howToApply,reuseCue:lesson.reuseCue}
+          try{result=await this.host.memory.store.remember(scope,{scopeRevision,expectedRevision:lesson.admission?.memory.expectedRevision??0,topic:'experience',key:memoryKey,text:renderMemoryContent(content),content,source:{sessionId:task.sessionId??task.taskId,messageId:event.id,quoteSha256:hash(JSON.stringify(input.facts))},...priorMemory?{originSource:priorMemory.originSource??priorMemory.source}:{},provenance:this.host.memory.provenance({task}),...(lesson.admission?.memory.action==='update'?{validate:async()=>{const prior=snapshot.entries.find(e=>e.topic==='experience'&&e.key===memoryKey);if(!prior||prior.id!==lesson.admission.expectedMemoryId)throw failure('REFLECTION_ADMISSION_TARGET_FORBIDDEN')}}:{})})}
           catch(error){if(!['committed','uncertain'].includes(previousWrite)&&['MEMORY_SCOPE_CHANGED','MEMORY_REVISION_CONFLICT'].includes(error.code))lesson.memoryWrite='not-applied';throw error}
           if(!result.ok)continue
           lesson.memoryWrite='committed'

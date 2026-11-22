@@ -24,8 +24,9 @@ test('real default Host learns completed SQLite task evidence, deduplicates, cre
   assert.equal(saved[0].key,'inspect-first');assert.equal(saved[0].provenance.taskId,'one');assert.ok(saved[0].source.messageId)
   assert.equal((await f.host.ctx.skills.list({scope:a.agent})).filter(s=>s.provider==='learned').length,1)
   await completed(store,f.host.ctx.runtimePaths.workspaces,'two');f.host.ctx.reflection.scan();await f.host.ctx.reflection.whenIdle()
-  const available=await f.host.ctx.skills.list({scope:a.agent});assert.equal(available.find(s=>s.name==='learned-inspect-first')?.description,'Local evidence-first edits: inspect state before writes')
-  const skill=await f.host.ctx.skills.get('learned-inspect-first',{scope:a.agent});assert.doesNotMatch(skill.content,/Observed in tasks:|Skill revision:|Current instructions and permissions prevail|Applicability:|not authority/);assert.match(skill.content,/Inspect current state/);assert.match(skill.content,/description: "Local evidence-first edits: inspect state before writes"/)
+  const description='When the evidenced local scenario recurs — Choose an evidence-backed action before writing'
+  const available=await f.host.ctx.skills.list({scope:a.agent});assert.equal(available.find(s=>s.name==='learned-inspect-first')?.description,description)
+  const skill=await f.host.ctx.skills.get('learned-inspect-first',{scope:a.agent});assert.doesNotMatch(skill.content,/Observed in tasks:|Skill revision:|Current instructions and permissions prevail|Applicability:|not authority/);assert.match(skill.content,/Inspect current state/);assert.ok(skill.content.includes(`description: ${JSON.stringify(description)}`))
   const learnedFile=join(f.host.ctx.reflection.directory(await f.host.ctx.memory.scope(a.agent,{})),'skills','inspect-first','SKILL.md');assert.equal(await readFile(learnedFile,'utf8'),skill.content)
   const usageScope=await f.host.ctx.memory.scope(a.agent,{})
   assert.equal((await readUsage(f.host.ctx.memory.store,usageScope)).readCount,1)
@@ -58,6 +59,11 @@ test('real default Host learns completed SQLite task evidence, deduplicates, cre
   const key=(await f.host.ctx.memory.read(a.agent,{topic:'experience'})).entries[0].key
   const manager=a.session.sessionManager
   const historicalId=manager.appendCustomMessageEntry('night.tool-context',[{type:'text',text:rememberedSkill}],false)
+  const correction='Use the current evidence record before changing files'
+  assert.equal((await f.host.ctx.memory.store.index(scope,{topic:'experience'})).entries[0].summary,description)
+  await f.say(a.agent,`修改记忆 experience/${key}：${correction}`)
+  assert.equal((await f.host.ctx.memory.store.index(scope,{topic:'experience'})).entries[0].summary,correction)
+  assert.equal((await f.host.ctx.skills.list({scope:a.agent})).filter(s=>s.provider==='learned').length,0)
   await f.say(a.agent,'忘记 experience/'+key)
   assert.equal((await f.host.ctx.skills.list({scope:a.agent})).filter(s=>s.provider==='learned').length,0)
   const projection=manager.buildSessionProjection(),historical=projection.entries.find(entry=>entry.sourceEntry.id===historicalId).messages[0]

@@ -50,7 +50,7 @@ review provenance. The task-review producer admits at most 20 active learned ski
 catalog admission limit, not a repetition threshold or a Router maintenance gate. No
 executable scripts are generated.
 
-学习 Skill 的 applicability 直接作为 frontmatter 和模型目录中的 description，写清触发情境及能够解决的问题，模型无需先加载正文才能判断相关性。正文来自 creator 生成，可包含必要说明与验证步骤；不机械重复列出 Applicability、Observed in tasks、Skill revision 或通用权限声明。任务来源、Skill 版本和支持关系仍保留在 Host 元数据中；内容精简不删除审计或改变权限校验。
+复盘用已核对的触发场景和区分这项经验的具体动作生成记忆索引及 Skill description，不再让正文生成阶段把复盘已选中的可查线索替换成空泛提示。目录只显示短提示；同类任务按直接链接读取记忆、按 description 加载 Skill，再核对适用边界和当前事实。creator 仍生成可独立使用的正文；发布时保留复盘已选定的触发条件、动作和必要边界，避免生成正文时遗漏。Router 直接维护时由 Router 提供具体触发词和动作。任务来源、Skill 版本和支持关系仍保留在 Host 元数据中。既有历史条目不自动重写；没有增加检索模型或额外审批。
 
 Learned Markdown lives under `data/memory/v2/bot/evolution/skills/<name>/SKILL.md`.
 The common `learned` provider rechecks the live bound actor but selects the same Bot
