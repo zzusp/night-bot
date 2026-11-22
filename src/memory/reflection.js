@@ -89,9 +89,10 @@ export default class Reflection extends Service {
           output.lessons=admitReflectionLessons(output,admission)
           const keys=new Set()
           lessons=output.lessons.map(lesson=>{
-            if(!validKey(lesson.key)||!Array.isArray(lesson.evidenceIds)||!lesson.evidenceIds.length||lesson.evidenceIds.some(e=>!known.has(e)))throw failure('REFLECTION_EVIDENCE_INVALID')
+            if(!Array.isArray(lesson.evidenceIds)||!lesson.evidenceIds.length||lesson.evidenceIds.some(e=>!known.has(e)))throw failure('REFLECTION_EVIDENCE_INVALID')
+            if(!validKey(lesson.memoryKey))throw failure('REFLECTION_MEMORY_KEY_INVALID')
+            if(lesson.skill&&!validKey(lesson.key))throw failure('REFLECTION_SKILL_KEY_INVALID')
             if(keys.has(lesson.key))throw failure('REFLECTION_DUPLICATE_KEY');keys.add(lesson.key)
-            if(lesson.memoryKey!==undefined&&!validKey(lesson.memoryKey))throw failure('REFLECTION_MEMORY_KEY_INVALID')
             const value={...lesson.admission?{memoryKey:lesson.memoryKey,admission:lesson.admission,reuseCue:lesson.reuseCue}:{},key:lesson.key,summary:checkedText(lesson.summary),why:checkedText(lesson.why),howToApply:checkedText(lesson.howToApply),evidenceIds:lesson.evidenceIds}
             if(lesson.skill?.evidenceBacked===true&&typeof lesson.skill.applicability==='string'&&lesson.skill.applicability.trim()&&lesson.skill.applicability!=='Not established'){
               const guidance=lesson.skill.guidance??(Array.isArray(lesson.skill.steps)?lesson.skill.steps.join(String.fromCharCode(10)):undefined)

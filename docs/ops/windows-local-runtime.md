@@ -116,7 +116,7 @@ API Key profile 使用声明的 `apiKeyEnv` 引用。可通过既有环境或 `n
 
 会话启动、请求前和轮末仍刷新技能。学习技能按批读取共享状态和支持证据，现有私有文件仍进行内容、路径和发布前授权复核。此改动无需迁移或调整配置，更新并正常重启后生效。复测耗时请对比同会话 `skills` 分项，不要把它与父级 `resources-*` 相加。
 
-新技能和正文更新必须通过本发行内置 `skill-creator` 生成，复盘自身仍无工具。`SKILL_CREATOR_UNAVAILABLE`、`SKILL_CREATOR_NOT_USED`、`SKILL_GENERATION_INCOMPLETE` 或 `SKILL_GENERATION_INVALID` 表示生成未完成，不是业务任务回滚。核对复盘报告或受管 `generationFailures` 的来源与错误，再检查发行内置资源和实际模型配置；不能手写 SKILL.md、补造 creator 收据或回退直接拼装求成功。已存在技能仅按已提交状态重建，不自动批量重生成；历史没有 creator 证据的版本继续按历史显示。参见 [自进化](../SELF-EVOLUTION.md#内置-creator-生成阶段)。
+新技能和正文更新必须通过本发行内置 `skill-creator` 生成，复盘自身仍无工具。`SKILL_CREATOR_UNAVAILABLE`、`SKILL_CREATOR_NOT_USED`、`SKILL_GENERATION_INCOMPLETE` 或 `SKILL_GENERATION_INVALID` 表示生成未完成，不是业务任务回滚。核对复盘报告或受管 `generationFailures` 的来源与错误，再检查发行内置资源和实际模型配置；不能手写 SKILL.md、补造 creator 收据或回退直接拼装求成功。若复盘报告是 `REFLECTION_MEMORY_KEY_INVALID` 或 `REFLECTION_SKILL_KEY_INVALID`，先查对应条目的机器标识；`REFLECTION_EVIDENCE_INVALID` 查本次事实引用。这些拒绝发生在 creator 和写入之前，均不影响已提交的业务结果。已存在技能仅按已提交状态重建，不自动批量重生成；历史没有 creator 证据的版本继续按历史显示。参见 [自进化](../SELF-EVOLUTION.md#内置-creator-生成阶段)。
 
 ## 启动与停止
 
