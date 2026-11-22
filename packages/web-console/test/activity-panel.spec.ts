@@ -27,7 +27,9 @@ test('activity rail prioritizes real active/interrupted pages and stays a separa
   const rail=page.getByRole('complementary',{name:'任务动态'});
   await expect(rail).toBeVisible();
   await expect(rail.getByRole('region',{name:'正在执行'})).toContainText(tasks[0].title);
-  await expect(rail.getByRole('region',{name:'中断的任务'})).toContainText(tasks[1].title);
+  await expect(rail.getByRole('region',{name:'中断的任务'}).getByRole('link',{name:new RegExp(tasks[1].title)})).toHaveAttribute('href','#/tasks/sidebar-interrupted');
+  await expect(rail.locator('.activity-counts strong')).toHaveText(['1']);
+  await expect(rail.locator('a[href="#/tasks?state=interrupted"]')).toHaveCount(0);
   await expect(rail).not.toContainText('已配置渠道');
   await expect(rail.getByRole('link',{name:'查看正在执行任务'})).toHaveAttribute('href','#/tasks?state=running');
   await expect(rail.locator('.rail-task').first()).toHaveAttribute('href','#/tasks/sidebar-running');
@@ -83,7 +85,8 @@ for (const scenario of [
       await expect(rail.getByRole('region',{name:'正在执行'})).toContainText('—');
     }
     if (scenario.name === 'interrupted unavailable') {
-      await expect(rail.locator('.activity-counts a').last()).toContainText('—');
+      await expect(rail.locator('.activity-counts strong')).toHaveText(['0']);
+      await expect(rail.getByRole('region',{name:'中断的任务'})).toContainText('—');
     }
   });
 }
