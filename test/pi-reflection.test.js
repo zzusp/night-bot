@@ -75,15 +75,42 @@ test('real default Host learns completed SQLite task evidence, deduplicates, cre
   assert.deepEqual(Object.values(forgotten.reviews).find(review=>review.taskId==='two').lessons,[])
   detach();await f.close();await store.close();await f.boot();store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning'});detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await f.host.ctx.reflection.whenIdle();assert.equal(analyses,2);detach()
 })
-test('invalid reflection evidence cannot invent memory or block committed task delivery; retry state is durable',async t=>{
-  let store,service,fixtureHost
-  t.after(async()=>{await service?.close();await fixtureHost?.close();await store?.close()})
-  const f=fixtureHost=await memoryHost(t,body=>JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')?{text:JSON.stringify({lessons:[{key:'bad',summary:'invented',why:'unknown',howToApply:'unknown',evidenceIds:['forged']}]})}:undefined)
-  store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning-fail',initialize:true});;await completed(store,f.host.ctx.runtimePaths.workspaces,'bad','group-a')
-  const detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});t.after(detach);await f.host.ctx.reflection.whenIdle()
-  assert.equal((await store.query({kind:'task.get',taskId:'bad'})).status,'completed')
+test('reflection reports invalid memory keys, skill keys and evidence separately without writing or undoing completion',async t=>{
+  let store,f,detach
+  t.after(async()=>{detach?.();await f?.close();await store?.close()})
+  const cases={
+    'unknown-evidence':{code:'REFLECTION_EVIDENCE_INVALID',evidenceIds:['forged']},
+    'empty-evidence':{code:'REFLECTION_EVIDENCE_INVALID',evidenceIds:[]},
+    'invalid-memory':{code:'REFLECTION_MEMORY_KEY_INVALID',memoryKey:'Box quote'},
+    'invalid-skill':{code:'REFLECTION_SKILL_KEY_INVALID',skillKey:'../verify'},
+  }
+  let prompt,creatorCalls=0
+  f=await memoryHost(t,body=>{
+    const text=JSON.stringify(body.messages)
+    if(text.includes('NIGHT_BOT_SKILL_GENERATION')){creatorCalls++;return}
+    if(!text.includes('NIGHT_BOT_TASK_REFLECTION'))return
+    prompt=text
+    const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content),scenario=cases[input.taskId],value=JSON.parse(lesson(input).text),row=value.lessons[0]
+    if(scenario.evidenceIds)row.evidenceIds=scenario.evidenceIds
+    row.key=scenario.memoryKey??'inspection-note'
+    if(scenario.skillKey)row.skillDecision={action:'new',key:scenario.skillKey,expectedRevision:0,category:'Inspection',when:'Before inspection',changes:'Read evidence',boundaries:'Current task only',reason:'Recorded result'}
+    if(scenario.memoryKey)delete row.skill
+    return {text:JSON.stringify(value)}
+  })
+  store=await openDynamicTaskStore({dbPath:join(f.host.ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'learning-fail',initialize:true})
+  for(const id of Object.keys(cases))await completed(store,f.host.ctx.runtimePaths.workspaces,id,'group-a')
+  detach=f.host.ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await f.host.ctx.reflection.whenIdle()
   const scope=memoryScope({actorId:'owner',groupId:'group-a',groupWrite:true},{scope:'group'}),state=await f.host.ctx.reflection.state(scope)
-  assert.equal(Object.values(state.reviews)[0].code,'REFLECTION_EVIDENCE_INVALID');assert.equal((await f.host.ctx.memory.store.read(scope,{topic:'experience'})).entries.length,0)
+  for(const [id,{code}]of Object.entries(cases)){
+    assert.equal((await store.query({kind:'task.get',taskId:id})).status,'completed')
+    const review=Object.values(state.reviews).find(row=>row.taskId===id)
+    assert.equal(review?.status,'failed',id);assert.equal(review?.code,code,id)
+    assert.equal(review.attempts,1);assert.ok(Number.isFinite(review.retryAt));assert.deepEqual(review.destinations,[])
+  }
+  assert.equal(creatorCalls,0);assert.deepEqual(state.skills,{})
+  assert.equal((await f.host.ctx.memory.store.read(scope,{topic:'experience'})).entries.length,0)
+  assert.match(prompt,/\^\[a-z0-9\]\+\(\?:-\[a-z0-9\]\+\)\*\$/)
+  assert.match(prompt,/1–60/)
 })
 test('actual task service attaches the default Host reflection consumer and recovers preexisting durable completion events',async t=>{
   let store,service,fixtureHost
