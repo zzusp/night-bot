@@ -176,11 +176,14 @@ test('任务列表筛选、分页、详情与执行记录', async ({page}) => {
 
 test('已完成和已取消分别筛选，取消原因按真实记录展示', async ({page}) => {
   await login(page)
-  await page.goto('/#/tasks?state=waiting')
   const states = page.getByRole('navigation', {name: '任务状态'})
   const table = page.locator('.task-table')
-  await expect(states.getByRole('link', {name: '全部', exact: true})).toHaveAttribute('aria-current', 'page')
-  await expect(states.getByRole('link', {name: '等待中', exact: true})).toHaveCount(0)
+  for (const retired of ['waiting', 'interrupted']) {
+    await page.goto(`/#/tasks?state=${retired}`)
+    await expect(states.getByRole('link', {name: '全部', exact: true})).toHaveAttribute('aria-current', 'page')
+    await expect(table.locator('tbody tr')).toHaveCount(10)
+  }
+  await expect(states.getByRole('link')).toHaveText(['全部', '执行中', '排队中', '已完成', '已取消'])
   await states.getByRole('link', {name: '已完成', exact: true}).click()
   await expect(table.getByText('已完成', {exact: true}).first()).toBeVisible()
   await expect(table.getByText('已取消', {exact: true})).toHaveCount(0)

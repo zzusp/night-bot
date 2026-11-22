@@ -43,7 +43,6 @@ function ActivityPanelContent({data, loading, error, onRetry, conversation}: Act
   // global collection from a scoped count; individual task details stay linked.
   const allTasks=conversation.kind==='chat' ? '#/tasks' : undefined;
   const runningTasks=allTasks ? '#/tasks?state=running' : undefined;
-  const interruptedTasks=allTasks ? '#/tasks?state=interrupted' : undefined;
   // An unavailable page must not become a zero.
   const incomplete = !!Object.keys(data?.sectionErrors || {}).length;
   const partialError=useMemo(()=>new ApiError(503,'OVERVIEW_PARTIAL'),[]);
@@ -59,10 +58,9 @@ function ActivityPanelContent({data, loading, error, onRetry, conversation}: Act
     {!data && loading ? <Loading/> : <>
       <div className="activity-counts">
         {runningTasks ? <a href={runningTasks}><span><i className="count-dot info"/>执行中</span><strong>{data?.sectionErrors?.running ? '—' : data?.running?.total ?? '—'}</strong></a> : <div><span><i className="count-dot info"/>执行中</span><strong>{data?.sectionErrors?.running ? '—' : data?.running?.total ?? '—'}</strong></div>}
-        {interruptedTasks ? <a href={interruptedTasks}><span><i className="count-dot warning"/>执行中断</span><strong>{data?.sectionErrors?.interrupted ? '—' : data?.interrupted?.total ?? '—'}</strong></a> : <div><span><i className="count-dot warning"/>执行中断</span><strong>{data?.sectionErrors?.interrupted ? '—' : data?.interrupted?.total ?? '—'}</strong></div>}
       </div>
       <TaskSection title="正在执行" tasks={data?.running} href={runningTasks} tone="running" failed={!!data?.sectionErrors?.running}/>
-      <TaskSection title="中断的任务" tasks={data?.interrupted} href={interruptedTasks} tone="interrupted" failed={!!data?.sectionErrors?.interrupted}/>
+      <TaskSection title="中断的任务" tasks={data?.interrupted} tone="interrupted" failed={!!data?.sectionErrors?.interrupted}/>
       {idle && <TaskSection title="最近任务" tasks={data?.tasks} href={allTasks} tone="recent" failed={!!data?.sectionErrors?.tasks}/>}
     </>}
   </aside>;

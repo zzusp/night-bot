@@ -87,6 +87,15 @@ function taskBusinessFailure(value){
   return clone(value)
 }
 const hasUnknownTaskEffect=task=>task.lastDecision?.limitations?.some(code=>['TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(code))
+export function needsHistoricalTaskClosure(task){
+  const decision=task.lastDecision
+  return task.status==='active'&&task.control==='active'&&task.drained===true&&task.sessionBound===true&&!task.archivedAt&&!task.completion&&!task.archiveRestore
+    &&!task.technicalFailure&&!task.sessionFailure&&!task.recovering&&!taskInspectionReason(task)&&!task.inspection?.pending&&!task.providerRecovery
+    &&task.humanReviewLease!==task.leaseEpoch&&!task.humanRequests?.some(item=>item.status==='waiting-reply')&&!task.dialogue?.some(item=>!item.reply&&!item.replyError)
+    &&!task.liveSupplements?.some(item=>item.state==='pending')&&!task.effectReconciliations?.some(item=>item.state==='prepared')&&!hasUnknownTaskEffect(task)
+    &&decision?.resultSource==='pi-task-result'&&['wait','blocked'].includes(decision.action)&&!decision.question
+    &&['requirementRevision','controlRevision','contextRevision'].every(key=>(decision[key]??0)===(task[key]??0))
+}
 function clearDisabledTaskRetry(task,{freshRouterHandoff=false}={}){if(task.drained&&!task.recovering&&(freshRouterHandoff||!hasUnknownTaskEffect(task))&&task.providerRecovery?.hostRetryDisabled){task.providerRecovery=null;task.technicalFailure=null}}
 // Host-owned active intervals only. Never reconstruct legacy/restarted intervals.
 function stopExecutionTiming(execution, stamp) {
@@ -1187,6 +1196,27 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       const wakeId = wake(task.taskId, 'human.responded', { requestId: request.requestId, sourceId: source.sourceId }, `wake:${commandId}`)
       if (permission && a.source) reduce('source.routed', { sourceId: source.sourceId, receipt: [{ taskId: task.taskId, humanRequestId: request.requestId }] }, `${commandId}:routed`)
       return changed({ task, request, wakeId })
+    }
+    if (kind === 'task.historical-close') {
+      const task=get('dynamic_tasks',text(a.taskId,'taskId')),read=id=>JSON.parse(readReceiptRow(db,id)?.body??'null')
+      const decisionId=`wait:${task.taskId}:${task.leaseEpoch}`,ackId=`wake-ack:${task.taskId}:${task.leaseEpoch}`,drainId=`task-drained:${task.taskId}:${task.leaseEpoch}`
+      const decision=read(decisionId)?.taskDecision,ack=read(ackId)?.result,release=read(drainId)?.result
+      const same=row=>row&&['taskId','sessionId','requirementRevision','controlRevision','contextRevision','leaseEpoch'].every(key=>(row[key]??0)===(task[key]??0))
+      const triggered=decision?.triggers?.map(item=>item.wakeId)??[],allWakes=wakes(task.taskId)
+      if(!needsHistoricalTaskClosure(task)||!same(a.binding)||!same(decision)||!same(release?.task)||release.task.drained!==true||release.interruptedDrain
+        ||!['action','summary','resultSource','at'].every(key=>decision.decision?.[key]===task.lastDecision[key])
+        ||!triggered.length||ack?.remainingWakeIds?.length||digest([...triggered].sort())!==digest([...(ack?.wakeIds??[])].sort())
+        ||!triggered.every(id=>allWakes.some(item=>item.wakeId===id&&item.leaseEpoch===task.leaseEpoch&&item.state==='acked'))
+        ||allWakes.some(item=>item.state!=='acked')||!ingressTimestamp(release.task.updatedAt,false)||Date.parse(release.task.updatedAt)<Date.parse(task.lastDecision.at)
+        ||typeof a.resultEntryId!=='string'||!a.resultEntryId||!(/^[a-f0-9]{64}$/).test(a.journalDigest))fail('TASK_HISTORICAL_CLOSE_UNPROVEN')
+      assertClear(task.taskId)
+      // Persist the old terminal state without emitting a new business event.
+      task.status='completed'
+      task.completion={summary:task.lastDecision.summary,result:task.lastDecision,at:release.task.updatedAt,commandId,instructionIds:[],runSequence:task.runSequence,
+        contextRevision:task.contextRevision??0,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,leaseEpoch:task.leaseEpoch,
+        historical:{decisionId,ackId,drainId,resultEntryId:a.resultEntryId,journalDigest:a.journalDigest}}
+      put('dynamic_tasks',task)
+      return changed({task})
     }
     if (kind === 'task.complete') {
       const task = currentTask(a.binding)

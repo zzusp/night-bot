@@ -24,6 +24,8 @@ model request after completion, not another execution session.
 
 业务轮正常收尾即记为已完成，结论可以明确列出未办成的事项。这个状态不证明目标达成、送达或依赖获准。Router 默认把可用结果和必要卡点送回原渠道。用户只说不用发文件时，仍反馈文字结果；明确要求不发结果才静默。普通等待或运行时巡检不是执行结论；已排空的技术失败可由 Router 说明本轮停止原因，但不代写业务结果。
 
+升级时，旧版以 `wait` / `blocked` 正常收尾但留为开放的普通任务，只有原 Pi 结果、同一轮的决定、输入确认及排空证据全部吻合时才补记完成。原结论和结束时间不改，不产生新的 Router 结果事件、通知或依赖授权。未确认排空、证据不全、当前有待处理输入或未决效果的任务不改判。
+
 ## 执行生命周期
 
 The authoritative task ledger owns creation, requirement/control versions,

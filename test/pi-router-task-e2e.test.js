@@ -190,3 +190,44 @@ test('a normal round with missing input stays completed across time and restart 
   const events=(await h.query('task.events')).events.filter(event=>event.taskId===taskId)
   assert.equal(events.filter(event=>event.kind==='task.completed').length,1);assert.equal(events.filter(event=>event.kind==='task.inspection').length,0)
 })
+
+test('legacy normal blocked rounds close from their own receipts without new delivery or execution',{timeout:nativeTestTimeout(120000)},async t=>{
+  const taskIds=['legacy-drained-e2e','legacy-missing-drain-e2e'];let h,planned=false,turns=0
+  h=await residentRouterHost(t,body=>{
+    const names=requestTools(body)
+    if(names.includes('task_result')){turns++;return call('task_result',{decision:{action:'blocked',summary:'External observation is unavailable.',evidence:[],limitations:['No external observation']}})}
+    if(names.includes('resident_router_settle')){
+      if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1).result.isError)return {text:'Current batch settled'}
+      const input=requestEnvelope(body,'Router 请求：')
+      if(!planned){planned=true;const source=input.events.find(e=>e.source).source;return call('resident_task_plan',{operationId:'legacy-close-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:taskIds.map(taskId=>({taskId,handoff:'Verify the external observation.',title:taskId,objective:'Report the result of the attempted observation',requirements:[]})),dependencies:[]})}
+      return call('resident_router_settle',{operationId:'legacy-close-settle:'+input.events.map(e=>e.id).join(','),eventIds:input.events.map(e=>e.id)})
+    }
+    return {text:'No additional action'}
+  },{wrapStore(store){
+    return Object.create(store,{command:{value(action){
+      const {binding,result}=action.args
+      if(action.kind==='task.complete'&&taskIds.includes(binding.taskId))return store.command({id:`wait:${binding.taskId}:${binding.leaseEpoch}`,kind:'task.wait',args:{binding,...result,resultSource:'pi-task-result'}})
+      if(action.kind==='task.drained'&&binding.taskId===taskIds[1])return store.command({...action,id:'test-drain-without-legacy-receipt'})
+      return store.command(action)
+    }}})
+  }})
+  await h.receive(channelMessage('legacy-rounds'));await h.service.whenIdle()
+  const before=await Promise.all(taskIds.map(taskId=>h.query('task.get',{taskId})))
+  assert.equal(turns,2)
+  for(const task of before){assert.equal(task.status,'active');assert.equal(task.drained,true);assert.equal(task.lastDecision.action,'blocked')}
+  const events=await h.query('task.events'),sent=h.sent.length
+  const journals=await Promise.all(before.map(task=>h.host.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})))
+  const drain=await h.query('receipt.get',{id:`task-drained:${taskIds[0]}:${before[0].leaseEpoch}`})
+  await h.restart();await h.service.whenIdle()
+  const closed=await h.query('task.get',{taskId:taskIds[0]}),unproven=await h.query('task.get',{taskId:taskIds[1]})
+  assert.equal(closed.status,'completed');assert.deepEqual(closed.completion.result,before[0].lastDecision)
+  assert.equal(closed.completion.at,drain.result.task.updatedAt);assert.equal(closed.sessionId,before[0].sessionId)
+  assert.equal(closed.completion.historical.journalDigest,journals[0].journalDigest.split(':').at(-1))
+  assert.deepEqual(unproven,before[1],'missing original drain receipt must preserve the entire task')
+  const completed=await h.query('observer.page',{collection:'tasks',state:'completed'})
+  assert.deepEqual(completed.items.map(task=>task.taskId),[taskIds[0]])
+  await h.restart();await h.service.whenIdle()
+  assert.deepEqual((await h.query('task.get',{taskId:taskIds[0]})).completion,closed.completion)
+  assert.equal(turns,2);assert.equal(h.sent.length,sent);assert.deepEqual(await h.query('task.events'),events)
+  for(const [index,task] of before.entries())assert.deepEqual((await h.host.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})).entries,journals[index].entries)
+})

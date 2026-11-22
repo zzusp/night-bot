@@ -1,18 +1,21 @@
-case,round-1,evidence,round-2,round-2-evidence
-领取至绑定本机前后对照,PASS,各四次；中位 1856ms → 1531ms；bga6h4ntj,NOT_RUN,沿用首轮同夹具 A/B；未重新测量
-原启动夹具和归属围栏,PASS,合法计划与无效原来源结清；旧标记冲突拒绝绑定并保留唤醒；b3mxero3y / bxjkhdrgy,PASS,本轮运行时及路由实跑；b61zbeg81 / b1cb3tjg2
-正常结束与未完成项,PASS,缺项及纯文字或空正文正常收尾；冷恢复不重跑；bxjkhdrgy / b0nm380lw / bphetz8dp,PASS,正常结束保存结论；b61zbeg81 / b1cb3tjg2
-巡检通知与显式决策,PASS,真实中断和启动失败；同租约去重；Router 暂不可用或忙时持久保留；bqtenpwv2 / bkgzf7x5z,PASS,中断与重试场景实跑；b61zbeg81 / b1cb3tjg2
-取消与状态读模型,PASS,取消原因持久化；CAS；JS 和 SQL 筛选；bjo4jrjya / bs00jp1zu,PASS,互斥筛选和持久原因显示；b1cb3tjg2 / ba5wnd3gp
-Web 修订和材料恢复,PASS,9 项；旧版本排空后接纳；原请求重投不重跑；bxgtfjee3,PASS,绑定竞态/续办及材料恢复；b1cb3tjg2 / b61zbeg81
-原会话重开与历史兼容,PASS,32 个续办租约；原效果只执行一次；旧人工答复和只读工具保护；bif492q6b / b86nzokvh / bmgjurhgc / bkgzf7x5z,PASS,冷恢复原会话及已确认答复与 SDK 重试；b61zbeg81 / bwzhgmlwp
-未知效果及历史作业文本,PASS,原调用隔离且显式读回；历史文本独跑 16.6 秒不启动作业；bjo4jrjya / b0nm380lw,PASS,旧效果不重放且只回查；b61zbeg81 / b4ivzulgn
-Web 构建与真实浏览器,PASS,构建和 10 项 Playwright；另有真实 HTTP；b2gjs7we7 / b300zz4ps,PASS,构建及本轮浏览器 14+3；bmx5igce4 / ba5wnd3gp / bgneoqmyr
-生产导入与原生源码守卫,PASS,pnpm check 和 git diff --check；biors33w3,PASS,pnpm check 和 git diff --check；bjx7q153i
-路由全量,FAIL,245 项：225 通过；19 失败；1 取消；berixn22u,PASS,244/244；b1cb3tjg2；版本边界见第二轮
-运行时全量,FAIL,169 项：93 通过；46 失败；18 取消；12 跳过；brw8ud3un,PASS,165 项：153 通过；0 失败；0 取消；12 平台跳过；b61zbeg81
-Web 单测全量,FAIL,375 项：370 通过；2 失败；1 取消；2 跳过；bjgm9nxa1,FAIL,371 通过；2 失败；0 取消；2 跳过；bevsarsep；反证见第二轮
-Linux containment 和仅 Linux 作业,NOT_RUN,本轮为 Windows；未放宽执行隔离,NOT_RUN,Windows 保持拒绝执行；运行时 12 项平台跳过
-生产运行与实际渠道送达,NOT_RUN,仅隔离库及假渠道；未部署或真实发信,NOT_RUN,假渠道；未部署或真实发信
-Router Markdown 和旧回执兼容,NOT_RUN,首轮未纳入,PASS,真实 Pi / 假渠道 5+69；浏览器通过；b0w5ue0pf / b4ivzulgn / ba5wnd3gp
-浏览器宽跑和主干对照,NOT_RUN,首轮只跑专项,FAIL,原宽跑 26/37；11 个失败同点复现于主干；6 个相关用例修后复测通过；另外 5 个基底失败保留
+case,round-1,evidence,round-2,round-2-evidence,round-3,round-3-evidence
+领取至绑定本机前后对照,PASS,各四次；中位 1856ms → 1531ms；bga6h4ntj,NOT_RUN,沿用首轮同夹具 A/B；未重新测量,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+原启动夹具和归属围栏,PASS,合法计划与无效原来源结清；旧标记冲突拒绝绑定并保留唤醒；b3mxero3y / bxjkhdrgy,PASS,本轮运行时及路由实跑；b61zbeg81 / b1cb3tjg2,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+正常结束与未完成项,PASS,缺项及纯文字或空正文正常收尾；冷恢复不重跑；bxjkhdrgy / b0nm380lw / bphetz8dp,PASS,正常结束保存结论；b61zbeg81 / b1cb3tjg2,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+巡检通知与显式决策,PASS,真实中断和启动失败；同租约去重；Router 暂不可用或忙时持久保留；bqtenpwv2 / bkgzf7x5z,PASS,中断与重试场景实跑；b61zbeg81 / b1cb3tjg2,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+取消与状态读模型,PASS,取消原因持久化；CAS；JS 和 SQL 筛选；bjo4jrjya / bs00jp1zu,PASS,互斥筛选和持久原因显示；b1cb3tjg2 / ba5wnd3gp,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+Web 修订和材料恢复,PASS,9 项；旧版本排空后接纳；原请求重投不重跑；bxgtfjee3,PASS,绑定竞态/续办及材料恢复；b1cb3tjg2 / b61zbeg81,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+原会话重开与历史兼容,PASS,32 个续办租约；原效果只执行一次；旧人工答复和只读工具保护；bif492q6b / b86nzokvh / bmgjurhgc / bkgzf7x5z,PASS,冷恢复原会话及已确认答复与 SDK 重试；b61zbeg81 / bwzhgmlwp,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+未知效果及历史作业文本,PASS,原调用隔离且显式读回；历史文本独跑 16.6 秒不启动作业；bjo4jrjya / b0nm380lw,PASS,旧效果不重放且只回查；b61zbeg81 / b4ivzulgn,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+Web 构建与真实浏览器,PASS,构建和 10 项 Playwright；另有真实 HTTP；b2gjs7we7 / b300zz4ps,PASS,构建及本轮浏览器 14+3；bmx5igce4 / ba5wnd3gp / bgneoqmyr,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+生产导入与原生源码守卫,PASS,pnpm check 和 git diff --check；biors33w3,PASS,pnpm check 和 git diff --check；bjx7q153i,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+路由全量,FAIL,245 项：225 通过；19 失败；1 取消；berixn22u,PASS,244/244；b1cb3tjg2；版本边界见第二轮,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+运行时全量,FAIL,169 项：93 通过；46 失败；18 取消；12 跳过；brw8ud3un,PASS,165 项：153 通过；0 失败；0 取消；12 平台跳过；b61zbeg81,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+Web 单测全量,FAIL,375 项：370 通过；2 失败；1 取消；2 跳过；bjgm9nxa1,FAIL,371 通过；2 失败；0 取消；2 跳过；bevsarsep；反证见第二轮,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+Linux containment 和仅 Linux 作业,NOT_RUN,本轮为 Windows；未放宽执行隔离,NOT_RUN,Windows 保持拒绝执行；运行时 12 项平台跳过,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+生产运行与实际渠道送达,NOT_RUN,仅隔离库及假渠道；未部署或真实发信,NOT_RUN,假渠道；未部署或真实发信,NOT_RUN,未发布生产；UAT 入口恢复但未发真实测试消息
+Router Markdown 和旧回执兼容,NOT_RUN,首轮未纳入,PASS,真实 Pi / 假渠道 5+69；浏览器通过；b0w5ue0pf / b4ivzulgn / ba5wnd3gp,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+浏览器宽跑和主干对照,NOT_RUN,首轮只跑专项,FAIL,原宽跑 26/37；11 个失败同点复现于主干；6 个相关用例修后复测通过；另外 5 个基底失败保留,NOT_RUN,沿用本地历史证据；本轮为 UAT 就地升级
+UAT 正式镜像与原工作负载,NOT_RUN,本轮未部署,NOT_RUN,本轮未部署,PASS,发布按摘要回拉；实际 imageID 和 9 文件哈希匹配；原卷和配置未变
+UAT Web 鉴权与任务读模型,NOT_RUN,仅本地验证,NOT_RUN,仅本地验证,PASS,未认证 401；认证 200；完成取消互斥；旧 waiting 筛选 400
+UAT 存量身份原始会话与回执,NOT_RUN,本轮未部署,NOT_RUN,本轮未部署,PASS,69 个任务及 8 个 Router 的 journal 字节不变；429 条冻结回执保留；历史未结项单列
