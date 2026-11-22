@@ -130,6 +130,125 @@ test('a fresh task discovers and uses the original verified action from memory a
   assert.deepEqual(selected,['catalog','memory','skill','verified'])
 })
 
+test('不同事项独立复用记忆或 Skill，同类新证据更新原条目，近似事项不套用',{timeout:nativeTestTimeout(150000)},async t=>{
+  t=cleanupContext(t)
+  const memoryKey='dispatch-crate-capacity',skillKey='photo-evidence-order',path='work/input.txt'
+  const cases=[
+    {id:'crate-policy',type:'producer',topic:'装箱报价',input:'capacity=7 quantity=16',summary:'需 3 箱'},
+    {id:'photo-policy',type:'producer',topic:'档案照片核验',input:'priority=seal,weight,photo candidates=A:001,B:100,C:010',summary:'优先采用 B'},
+    {id:'crate-estimate',type:'consumer',topic:'装箱报价',input:'quantity=23',summary:'需 4 箱',tools:['memory_read','read','task_result']},
+    {id:'photo-review',type:'consumer',topic:'档案照片核验',input:'candidates=D:011,E:100,F:010',summary:'优先采用 E',tools:['skill','read','task_result']},
+    {id:'inventory-count',type:'consumer',topic:'同批货物的实际库存登记，只记实数',input:'quantity=23',summary:'登记 23 件',tools:['read','task_result']},
+    {id:'crate-policy-update',type:'producer',topic:'装箱报价',input:'capacity=9 quantity=21',summary:'需 3 箱'},
+    {id:'photo-policy-update',type:'producer',topic:'档案照片核验',input:'priority=weight,seal,photo candidates=G:100,H:010,I:001',summary:'优先采用 H'},
+    {id:'crate-estimate-updated',type:'consumer',topic:'装箱报价',input:'quantity=25',summary:'需 3 箱',tools:['memory_read','read','task_result']},
+    {id:'photo-review-updated',type:'consumer',topic:'档案照片核验',input:'candidates=J:100,K:010,L:001',summary:'优先采用 K',tools:['skill','read','task_result']},
+    {id:'crate-policy-repeat',type:'producer',skip:true,topic:'装箱报价',input:'capacity=9 quantity=37',summary:'需 5 箱'},
+    {id:'photo-policy-repeat',type:'producer',skip:true,topic:'档案照片核验',input:'priority=weight,seal,photo candidates=M:001,N:100,O:010',summary:'优先采用 O'},
+  ]
+  let h,current,step,seeded
+  t.after(()=>{seeded?.resolve();return h?.close()})
+  const complete=(summary,evidence=[])=>({tool:'task_result',args:{decision:{action:'complete',summary,evidence,limitations:[]}}})
+  const read=()=>({tool:'read',args:{path},beforeFinish:()=>seeded.promise})
+  const f=await memoryHost(t,body=>{
+    const system=taskSystemPrompt(body),last=body.messages.at(-1),tool=last?.role==='tool'?JSON.stringify(last.content):''
+    if(system.includes('NIGHT_BOT_TASK_REFLECTION')){
+      const {eventId,facts,details}=JSON.parse(body.messages.findLast(m=>m.role==='user').content)
+      if(current.type!=='producer')return {text:'{"lessons":[]}'}
+      const target=(key,kind)=>{const existing=details[kind].find(row=>row.key===key);return {action:existing?'update':'new',key,expectedRevision:existing?.revision??0}}
+      const evidence=facts.find(fact=>fact.id===eventId)?.evidence?.[0]??''
+      if(current.topic==='装箱报价'){
+        const capacity=evidence.match(/capacity=(\d+)/)?.[1];if(!capacity)return {text:'{"lessons":[]}'}
+        if(details.memories.some(row=>row.key===memoryKey&&row.text.includes(`capacity=${capacity} `)))return {text:'{"lessons":[]}'}
+        const use={...target(memoryKey,'memories'),category:'发货报价',when:'装箱报价',changes:'按每箱容量预估整箱数',boundaries:'只用于报价，不改写实际库存登记',reason:'读取并核对了有效的报价规则'}
+        return {text:JSON.stringify({lessons:[{key:memoryKey,summary:`耗用箱数按 quantity 除以 capacity=${capacity} 向上取整`,why:use.reason,howToApply:'以本次发货件数计算',evidenceIds:[eventId],memory:use,skillDecision:{action:'skip',reason:'一条短规则足够'}}]})}
+      }
+      const priority=evidence.match(/priority=([a-z,]+)/)?.[1];if(!priority)return {text:'{"lessons":[]}'}
+      if(details.skills.some(row=>row.key===skillKey&&row.body.includes(`priority=${priority}。`)))return {text:'{"lessons":[]}'}
+      const use={...target(skillKey,'skills'),category:'附件证据归档',when:'档案照片核验',changes:'比较各项证据后取排序最先的材料',boundaries:'只比较同一档案的三个核验位，材料不足不补造',reason:'已核对三种竞争的证据组合'}
+      return {text:JSON.stringify({lessons:[{key:skillKey,summary:'不能只看附件数，应按证据可靠度排序',why:use.reason,howToApply:'三个核验位必须分别回读；排序办法见已验证的方法',evidenceIds:[eventId],memory:{...use,...target(skillKey,'memories')},skillDecision:use,skill:{guidance:`priority=${priority}。按优先级比较三项证据位；按第一处不同选较强的一份，不按通过项总数。`,reason:use.reason,applicability:use.when,evidenceBacked:true}}]})}
+    }
+    if(system.includes('NIGHT_BOT_SKILL_GENERATION'))return
+    if(!requestTools(body).includes('task_result'))return
+    const turn=step++
+    if(turn===0){
+      if(current.type==='producer'||current.id==='inventory-count')return read()
+      if(current.topic==='装箱报价'){
+        const link=system.split('\n').find(line=>line.includes('装箱报价')&&line.includes('预估整箱数'))?.match(/\]\(([^)]+)\)/)?.[1]
+        return link?{tool:'memory_read',args:{path:link}}:{text:'未找到报价经验'}
+      }
+      const candidate=[...system.matchAll(/<name>([^<]+)<\/name>\s*<description>([^<]+)<\/description>/g)].find(([, ,description])=>description.includes('档案照片核验'))
+      return candidate?{tool:'skill',args:{name:candidate[1]}}:{text:'未找到照片核验方法'}
+    }
+    const history=JSON.stringify(body.messages.filter(message=>message.role==='tool'))
+    if(current.type==='consumer'&&current.id!=='inventory-count'&&turn===1)return read()
+    if(current.topic==='装箱报价'){
+      const capacity=Number(history.match(/capacity=(\d+)/)?.[1]),quantity=Number(tool.match(/quantity=(\d+)/)?.[1])
+      if(capacity&&quantity)return complete(`需 ${Math.ceil(quantity/capacity)} 箱`,[`capacity=${capacity} quantity=${quantity} 已读回`])
+    }else if(current.topic==='档案照片核验'){
+      const priority=history.match(/priority=([a-z,]+)/)?.[1],rows=[...tool.matchAll(/([A-Z]):([01]{3})/g)]
+      if(priority&&rows.length===3){
+        const positions=['seal','weight','photo'],score=bits=>priority.split(',').map(name=>bits[positions.indexOf(name)]).join('')
+        rows.sort((a,b)=>score(b[2]).localeCompare(score(a[2])))
+        return complete(`优先采用 ${rows[0][1]}`,[`priority=${priority}；已比较本次三份材料`])
+      }
+    }else if(current.id==='inventory-count'){
+      const quantity=tool.match(/quantity=(\d+)/)?.[1]
+      if(quantity)return complete(`登记 ${quantity} 件`)
+    }
+    return {text:'缺少当前输入或已读取的规则正文'}
+  })
+  h=await serviceFor(f)
+  const sessions=new Set(),memoryIds=new Map(),scope=await f.host.ctx.memory.scope((await f.agent('review-reader',{actorId:'owner'})).agent,{})
+  for(current of cases){
+    step=0;seeded=Promise.withResolvers()
+    const requestStart=f.requests.length
+    const task=await h.service.createTask({requestId:current.id,objective:`${current.topic}：读取本次 input.txt 并提交结果。`})
+    await writeFile(join(task.session.workspaceDir,path),current.input);seeded.resolve()
+    await h.service.whenIdle()
+    const row=await h.store.query({kind:'task.get',taskId:task.taskId})
+    assert.equal(row.drained,true,current.id)
+    assert.equal(row.status,'completed',current.id);assert.equal(row.completion.result.summary,current.summary,current.id)
+    assert.ok(!sessions.has(row.sessionId));sessions.add(row.sessionId)
+    await f.host.ctx.reflection.whenIdle()
+    const review=Object.values((await f.host.ctx.reflection.state(scope)).reviews).find(item=>item.taskId===task.taskId)
+    assert.equal(review?.status,current.type==='producer'&&!current.skip?'done':'skipped',current.id)
+    if(current.tools){
+      const taskRequests=f.requests.slice(requestStart).filter(body=>requestTools(body).includes('task_result'))
+      const incoming=JSON.stringify(taskRequests[0].messages.filter(message=>message.role==='user'))
+      assert.doesNotMatch(incoming,/dispatch-crate-capacity|photo-evidence-order|capacity=\d|priority=|登记 23 件|需 [34] 箱|采用 [EK]/)
+      const journal=await f.host.ctx.sessionPersistence.readNative(row.sessionId,{requireComplete:true})
+      const receipts=journal.entries.filter(entry=>entry.type==='message'&&entry.message.role==='toolResult').map(entry=>entry.message)
+      assert.deepEqual(receipts.map(message=>[message.toolName,message.isError]),current.tools.map(name=>[name,false]),current.id)
+      assert.deepEqual(review.destinations,[])
+    }else if(current.skip){
+      assert.deepEqual(review.destinations,[])
+    }else{
+      assert.equal(review.destinations.length,1)
+      const photo=current.topic==='档案照片核验',key=photo?skillKey:memoryKey
+      assert.equal(review.destinations[0].skill?.key,photo?skillKey:undefined)
+      const memory=(await f.host.ctx.memory.store.read(scope,{topic:'experience',key,includePrevious:true})).entries[0]
+      assert.equal(memory.source.messageId,review.eventId)
+      if(current.id.endsWith('-update')){
+        const first=memoryIds.get(key)
+        assert.equal(memory.id,first.id);assert.equal(memory.revision,2)
+        assert.equal(memory.originSource.messageId,first.source.messageId)
+        if(!photo)assert.match(memory.previous.text,/capacity=7/)
+      }else{
+        assert.equal(memory.revision,1);memoryIds.set(key,memory)
+      }
+      if(photo){
+        const skill=(await f.host.ctx.reflection.state(scope)).skills[key]
+        assert.equal(skill.revision,memory.revision);assert.ok(skill.generation.creator.callId)
+        if(skill.revision===2){assert.match(skill.previous.text,/priority=seal,weight,photo/);assert.equal(skill.supports.length,2)}
+      }
+    }
+  }
+  const entries=(await f.host.ctx.memory.store.read(scope,{topic:'experience'})).entries
+  assert.deepEqual(entries.map(row=>[row.key,row.revision]).sort(),[[memoryKey,2],[skillKey,2]])
+  assert.deepEqual(Object.keys((await f.host.ctx.reflection.state(scope)).skills),[skillKey])
+})
+
 test('native task overflow preserves the next verification and resumes without replaying completed writes',{timeout:nativeTestTimeout(30000)},async t=>{
   t=cleanupContext(t)
   let h,step=0;t.after(()=>h?.close())

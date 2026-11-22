@@ -149,23 +149,43 @@ test('到期定时器与冷启动到期检查执行集中复盘，已完成空�
  assert.equal(f.requests.length,count+1);assert.equal((await audit(f.host.ctx.reflection.maintenance)).reason,'periodic')
 })
 
-test('整理经验同步撤销派生 Skill 和复盘正文，不移动仍在使用的技能文件',async t=>{
+test('新规则保存即触发维护，撤销过时经验及派生 Skill 并各自留据',async t=>{
  const f=await memoryHost(t,body=>{
-  if(isIndex(body)){const row=input(body).items.find(row=>row.kind==='memory');return reply({groups:[[row.id]],deferred:[]})}
-  if(isPlan(body))return reply({actions:[action('memory','delete',[input(body).items[0].id],[])],deferred:[]})
+  if(isIndex(body))return reply({groups:[input(body).items.filter(row=>row.kind==='memory').map(row=>row.id)],deferred:[]})
+  if(isPlan(body)){
+   const items=input(body).items,old=items.find(row=>row.key==='lesson'),replacement=items.find(row=>row.key==='replacement')
+   const actions=old&&replacement?.text.includes('旧照片规则不可再用')?[action('memory','delete',[old.id],[],[old.id,replacement.id])]:[]
+   return reply({actions,deferred:[]})
+  }
  },{hostConfig:{reflection:{maintenance:{enabled:true}}}})
  const m=f.host.ctx.reflection.maintenance,id=hash('completed-event'),key='lesson'
  await remember(f,'experience',key,'需要撤销的旧经验')
+ await remember(f,'experience','archive-check','仍有效的独立档案校验')
  const state={version:1,reviews:{[id]:{memoryKeyVersion:1,status:'done',eventId:'completed-event',taskId:'task',lessons:[{key:'lesson',memoryKey:key,summary:'需要撤销的旧经验'}],destinations:[{memory:{key}}]}},skills:{derived:{active:true,steps:['旧步骤'],reason:'旧经验',applicability:'本地核对',revision:1,taskIds:['task'],memoryKeys:[key],supports:[{taskId:'task',memoryKey:key}]}}}
+ state.skills['archive-check']={...state.skills.derived,steps:['有效的核验步骤'],memoryKeys:[key,'archive-check'],supports:[...state.skills.derived.supports,{taskId:'another-task',memoryKey:'archive-check'}]}
  await atomicWrite(join(m.directory,'state.json'),JSON.stringify(state));await atomicWrite(join(m.directory,'skills','derived','SKILL.md'),'RUNNING_FILE_RETAINED')
  let archiveCalls=0,lastArchive
  const source={store:{query:async args=>args.kind==='task.get'?{taskId:args.taskId}:{events:[],nextCursor:0,hasMore:false}},ownerActorId:'owner',after:0,pending:new Map(),archivePending:new Map(),onReview:async(_task,report)=>{archiveCalls++;if(archiveCalls===1)throw Object.assign(new Error('archive temporarily unavailable'),{code:'TASK_REVIEW_ARCHIVE_FAILED'});lastArchive=report}}
  f.host.ctx.reflection.sources.add(source)
- await m.trigger('manual');await f.host.ctx.reflection.whenIdle()
+ const a=await f.agent('maintenance-reader',{actorId:'owner'})
+ const oldMarker=f.host.ctx.reflection.skillMarker(scope,'derived',state.skills.derived)
+ assert.equal(await f.host.ctx.reflection.authorizesSkillHistory(scope,oldMarker),true)
+ await f.say(a.agent,'记住 experience/replacement：新档案使用数字原件，旧照片规则不可再用。');await f.host.ctx.reflection.whenIdle()
  assert.equal(source.archivePending.size,1)
+ const report=await audit(m)
+ assert.equal(report.reason,'change');assert.equal(new Date(report.completedAt)<new Date(m.status().nextDueAt),true)
+ const retired=report.changes.find(row=>row.kind==='skill'&&row.operation==='delete')
+ assert.equal(retired?.before[0].id,'skill:derived')
+ assert.equal(retired.before[0].hash,hash(JSON.stringify(state.skills.derived)))
+ assert.deepEqual(retired.evidence,report.changes.find(row=>row.kind==='memory').before.map(row=>row.id))
+ assert.deepEqual((await f.host.ctx.memory.store.index(scope,{topic:'experience'})).entries.map(row=>row.key).sort(),['archive-check','replacement'])
+ assert.deepEqual((await f.host.ctx.reflection.catalog(a.agent)).map(row=>row.name),['learned-archive-check'])
+ assert.equal(await f.host.ctx.reflection.authorizesSkillHistory(scope,oldMarker),false)
  f.host.ctx.reflection.scan();await f.host.ctx.reflection.whenIdle()
  assert.equal(source.archivePending.size,0);assert.equal(archiveCalls,2);assert.equal(lastArchive.forgotten,true)
- const current=await f.host.ctx.reflection.state(scope);assert.equal(current.forgetGeneration,1);assert.equal(current.skillRevisions.derived,2);assert.deepEqual(current.skills,{});assert.deepEqual(current.reviews[id].lessons,[]);assert.deepEqual(current.reviews[id].destinations,[])
+ const current=await f.host.ctx.reflection.state(scope)
+ // 新经验保存和维护撤销各推进一次遗忘代次，旧版加载都不能延续。
+ assert.equal(current.forgetGeneration,2);assert.equal(current.skillRevisions.derived,2);assert.deepEqual(Object.keys(current.skills),['archive-check']);assert.deepEqual(current.skills['archive-check'].memoryKeys,['archive-check']);assert.deepEqual(current.reviews[id].lessons,[]);assert.deepEqual(current.reviews[id].destinations,[])
  assert.equal(await readFile(join(m.directory,'skills','derived','SKILL.md'),'utf8'),'RUNNING_FILE_RETAINED')
  assert.doesNotMatch(await readFile(join(m.directory,'reviews',id+'.json'),'utf8'),/需要撤销的旧经验/)
 })

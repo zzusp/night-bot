@@ -152,7 +152,7 @@ export class MemoryMaintenance {
    }
  }
  apply(s,evolution,byId,actions,report,schedule,prepared){
-  const used=new Set(),outputs=new Set(),removedExperience=new Set(),replacements=new Map(),changedReviews=new Map()
+  const used=new Set(),outputs=new Set(),removedExperience=new Map(),replacements=new Map(),changedReviews=new Map()
   for(const action of actions){
    checkedText(action.reason)
    const source=action.sources.map(id=>{const item=byId.get(id);if(!item||item.kind!==action.kind||used.has(id))throw failure('MEMORY_MAINTENANCE_TARGET_INVALID');used.add(id);return item})
@@ -176,7 +176,7 @@ export class MemoryMaintenance {
    for(const item of source){
     const entries=action.kind==='candidate'?s.candidates:s.topics.get(item.topic).entries
     entries.splice(entries.findIndex(entry=>entry.id===item.entry.id),1);s.meta.forgotten.push(hash(item.entry.text))
-    if(action.kind==='memory'&&item.topic==='experience')removedExperience.add(item.key)
+    if(action.kind==='memory'&&item.topic==='experience')removedExperience.set(item.key,item.id)
    }
    const created=[]
    for(const output of action.outputs){
@@ -201,8 +201,14 @@ export class MemoryMaintenance {
    report.changes.push({kind:action.kind,operation:action.operation,reason:action.reason,evidence:action.evidence,before:source.map(item=>({id:item.id,hash:digest(item),source:item.entry.source})),after:created.map(item=>({id:item.id,hash:digest(item)}))})
   }
   for(const [name,skill]of Object.entries(evolution.skills)){
-   skill.supports=(skill.supports??[]).filter(row=>!removedExperience.has(row.memoryKey));skill.memoryKeys=(skill.memoryKeys??[]).filter(value=>!removedExperience.has(value))
-   if(!learnedSkillSupported(skill,s.topics.get('experience')?.entries??[])&&removedExperience.size&&!used.has('skill:'+name)){evolution.skillRevisions??={};evolution.skillRevisions[name]=Math.max(skill.revision??0,evolution.skillRevisions[name]??0)+1;delete evolution.skills[name]}
+   const supports=(skill.supports??[]).filter(row=>!removedExperience.has(row.memoryKey)),id='skill:'+name
+   const evidence=[...new Set((skill.supports??[]).map(row=>removedExperience.get(row.memoryKey)).filter(Boolean))]
+   if(evidence.length&&!used.has(id)&&!learnedSkillSupported({...skill,supports},s.topics.get('experience')?.entries??[])){
+    evolution.skillRevisions??={};evolution.skillRevisions[name]=Math.max(skill.revision??0,evolution.skillRevisions[name]??0)+1;delete evolution.skills[name]
+    report.changes.push({kind:'skill',operation:'delete',reason:'整理撤销了此技能最后的有效经验支持',evidence,before:[{id,hash:hash(JSON.stringify(skill))}],after:[]})
+   }else{
+    skill.supports=supports;skill.memoryKeys=(skill.memoryKeys??[]).filter(value=>!removedExperience.has(value))
+   }
   }
   for(const [id,review]of Object.entries(evolution.reviews))if(review.lessons){
    const kept=review.lessons.filter((lesson,index)=>!removedExperience.has(reviewLessonMemoryKey(review,index)))

@@ -99,7 +99,7 @@ Skill 说明何时适用、要达到什么目标、主要环节、遇到不同�
 
 慢推理和实际 creator 生成不占 evolution 共享发布锁。提交时复核完整 evolution 指纹与记忆 revision；并发 Router、复盘或遗忘变化使旧计划整批拒绝。记忆、技能状态/派生文件、review 与维护水位/收据复用严格 redo journal 原子提交；中断后先恢复，不重新执行已提交计划。无业务变化的水位更新不增加记忆 revision。结构化正文保留主体及证据；候选不晋升，普通记忆不变为长期指令，不跨主体合并，长期指令不能由维护模型改写或丢失原条件。
 
-撤销推进 Skill 墓碑版本；保留原来源、previous 与生成收据，旧幂等操作不能复活被替换版本。经验撤销使用实际 reflection memoryKey 并推进遗忘代次，档案回调失败进入现有 archivePending。旧技能文件不物理删除，以免影响运行中工作；有效状态和历史加载授权以当前 state 为准。秘密来源的原始审计、Pi 历史、已有离线备份不承诺安全擦除。
+撤销推进 Skill 墓碑版本；保留原来源、previous 与生成收据，旧幂等操作不能复活被替换版本。维护撤销经验时，如果派生 Skill 因此失去最后的有效支持，同一份维护回执分别记录撤销的经验和 Skill，并用经验条目 ID 串联；仍有有效支持的 Skill 保留。经验撤销使用实际 reflection memoryKey 并推进遗忘代次，档案回调失败进入现有 archivePending。旧技能文件不物理删除，以免影响运行中工作；有效状态和历史加载授权以当前 state 为准。秘密来源的原始审计、Pi 历史、已有离线备份不承诺安全擦除。
 
 `memory_status.review` 显示 enabled、running、nextDueAt、lastRunId、status、code、deferredCount。持久水位位于 evolution/maintenance.json，每次收据位于 evolution/maintenance/<runId>.json，保留动作、来源版本和前后 hash，不重复保存正文。失败、取消和提交不确定分别报告；Host 关闭取消并排空维护。开启定时器或读取索引不等于完成一次现有数据的完整实质复盘；本变更不增加渠道手动维护 API，也未执行真实 Bot 历史清理。
 

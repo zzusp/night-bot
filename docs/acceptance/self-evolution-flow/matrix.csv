@@ -1,0 +1,12 @@
+case,round-1,round-2,scope,evidence
+memory-only-reuse,PASS,NOT_RUN,isolated-host,pi-single-task.test.js
+skill-only-reuse,PASS,NOT_RUN,isolated-host,pi-single-task.test.js
+joint-reuse,PASS,NOT_RUN,isolated-host-baseline,pi-single-task.test.js
+non-applicable-task,PASS,NOT_RUN,isolated-host,pi-single-task.test.js
+same-scenario-version-update,PASS,NOT_RUN,isolated-host,pi-single-task.test.js
+repeated-result-no-version-change,PASS,NOT_RUN,isolated-host,pi-single-task.test.js
+obsolete-memory-and-skill-retired-with-receipts,PASS,PASS,isolated-host,pi-memory-maintenance.test.js
+unrelated-support-preserved,PASS,PASS,isolated-host,pi-memory-maintenance.test.js
+automatic-maintenance-opt-in,PASS,PASS,isolated-host,pi-memory-maintenance.test.js
+full-maintenance-suite-final,NOT_RUN,PASS,isolated-host,round-2.md
+live-model-autonomous-reuse-and-retirement,NOT_RUN,NOT_RUN,live-model,not-authorized
