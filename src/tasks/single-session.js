@@ -10,7 +10,8 @@ import {unresolvedNativeJobReceipts,isJobOutcomeUncertain,jobReceiptKinds} from 
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {taskAuditKinds,validateTaskIdentity} from './session-audit.js'
-import {effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectScopeDigest,validateTaskEffectIntent,validateTaskEffectResult} from './effect-reconciliation.js'
+import {effectReconciliationAuditKinds,ownerDrainedReceipt,ownerDrainedInputsReceipt,taskEffectBinding,taskEffectScopeDigest,validateTaskEffectIntent,validateTaskEffectResult} from './effect-reconciliation.js'
+import {SessionManager} from '@earendil-works/pi-coding-agent'
 const fail=code=>Object.assign(new Error(code),{code})
 const fingerprint=value=>createHash('sha256').update(JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item)).digest('hex')
 const taskInputSnapshot=executionTaskBrief
@@ -55,6 +56,30 @@ function effectState(receipts){
     }
   }
   return intents
+}
+/** The old task_result concluded a round with a tool result, not an assistant stop. */
+export function historicalTaskResultEvidence(task,stored,cwd){
+  const [identity,...extra]=stored.audit.filter(row=>row.domain==='task'&&row.kind==='identity')
+  if(stored.format!=='pi-native-v1'||stored.header.id!==task.sessionId||stored.header.cwd!==cwd||extra.length||identity?.version!==1
+    ||!validateTaskIdentity(identity.payload)||identity.payload.taskId!==task.taskId||identity.payload.sessionId!==task.sessionId)return null
+  const manager=SessionManager.inMemory(cwd,{id:task.sessionId},structuredClone(stored.entries)),branch=manager.getBranch()
+  const result=branch.findLast(entry=>entry.type==='message'),message=result?.message
+  if(message?.role!=='toolResult'||message.toolName!=='task_result'||message.isError!==false)return null
+  const assistant=branch.findLast(entry=>entry.type==='message'&&entry.message.role==='assistant')
+  const call=assistant?.message.content.find(item=>item.type==='toolCall'&&item.name==='task_result'&&item.id===message.toolCallId)
+  let accepted
+  try{accepted=JSON.parse(message.content.find(part=>part.type==='text')?.text)}catch{return null}
+  if(!call||accepted?.received!==true||accepted.accepted!==true||call.arguments.decision?.action!==task.lastDecision.action
+    ||call.arguments.decision?.summary!==task.lastDecision.summary)return null
+  const origin=taskToolInputOrigin(manager,{callId:call.id,name:call.name,args:call.arguments,taskId:task.taskId,sessionId:task.sessionId,atEntryId:assistant.id})
+  if(!isDeepStrictEqual(origin.binding,taskEffectBinding(task)))return null
+  if(unresolvedTaskInputOrigins(manager,effectState(stored.audit),task).some(row=>row.originBinding.leaseEpoch>=task.leaseEpoch))return null
+  const firstInput=stored.entries.findIndex(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'&&entry.details?.source?.taskSession?.leaseEpoch===task.leaseEpoch)
+  if(firstInput<0)return null
+  const oldJobs=new Set(stored.entries.slice(0,firstInput).filter(entry=>entry.type==='custom'&&entry.customType==='night.audit'
+    &&entry.data.domain==='job'&&entry.data.kind==='registered').map(entry=>entry.data.payload.jobId))
+  if(unresolvedNativeJobReceipts(stored.audit,task.sessionId).some(job=>job.uncertain||job.resourceOwnership&&job.resourceOwnership.status!=='released'||!oldJobs.has(job.jobId)))return null
+  return {resultEntryId:result.id,journalDigest:stored.journalDigest.split(':').at(-1)}
 }
 /** One task owns one official AgentSession. These receipts are business effect
  * and admission facts; Pi alone owns messages, queue delivery and model context. */

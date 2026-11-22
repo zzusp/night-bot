@@ -11,7 +11,7 @@ import {AsyncLocalStorage} from 'node:async_hooks'
 import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import {TaskArchives} from '../../src/tasks/archive.js'
 import {freezeSingleTaskFiles} from '../../src/tasks/delivery.js'
-import {createSingleTaskSessions} from '../../src/tasks/single-session.js'
+import {createSingleTaskSessions,historicalTaskResultEvidence} from '../../src/tasks/single-session.js'
 import {routerHandoffTaskInput} from '../../src/tasks/execution-context.js'
 import {createTaskEffectReconciliation,taskEffectReconciliationIdentity,taskEffectDigest,effectReconciliationAuditKinds} from '../../src/tasks/effect-reconciliation.js'
 import {readTaskEffectScope} from '../../src/tasks/effect-scope.js'
@@ -28,7 +28,7 @@ import { hasRestartIsolation } from './native-restart-isolation.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, lstat, link, unlink } from 'node:fs/promises'
 import { dirname, extname, join, resolve } from 'node:path'
-import { openDynamicTaskStore, ingressTimestamp, pendingTaskHumanReview, taskHumanWait } from './dynamic-task-store.js'
+import { openDynamicTaskStore, ingressTimestamp, needsHistoricalTaskClosure, pendingTaskHumanReview, taskHumanWait } from './dynamic-task-store.js'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
 import { readExecutionResourceCatalog, createExecutionResourceCatalog } from './execution-resource-catalog.js'
 import { taskSessionModelSelection, taskModelConfig, taskModelSelection } from './task-model-config.js'
@@ -280,7 +280,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (receipt.result?.task) taskCache.set(receipt.result.task.taskId, topicTaskView(receipt.replayed?await query('task.get',{taskId:receipt.result.task.taskId}):receipt.result.task))
     for(const task of receipt.result?.tasks??[])taskCache.set(task.taskId,topicTaskView(receipt.replayed?await query('task.get',{taskId:task.taskId}):task))
     for(const notification of receipt.result?.notifications??[]){notificationCache.set(notification.id,notification);await projectTaskNotification({residentStore,notification})}
-    if(residentRouter&&receipt.result?.task?.conversationId)void hostScheduler(()=>residentRouter.schedule(receipt.result.task.conversationId)).catch(error=>recordRouterFailure(receipt.result.task.conversationId,error))
+    if(kind!=='task.historical-close'&&residentRouter&&receipt.result?.task?.conversationId)void hostScheduler(()=>residentRouter.schedule(receipt.result.task.conversationId)).catch(error=>recordRouterFailure(receipt.result.task.conversationId,error))
     for (const fact of receipt.topicFacts ?? receipt.result?.topicFacts ?? []) {
       if (fact.state === 'unbound') failures.set(`topic-fact:${fact.id}`, { id: fact.taskId, code: 'TOPIC_FACT_REPLY_BINDING_MISSING' })
       else if (fact.state === 'pending' && !closed) void kickGroup(fact.groupId, true).catch(error => {
@@ -1453,6 +1453,24 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const estimates=interruptedTimingEvidence(task,stored,windows)
     if(estimates.length)await command('observer.timing.record',{taskId:task.taskId,sessionId:task.sessionId,estimates},'observer-timing:'+hash([task.sessionId,estimates]))
   }
+  async function recoverHistoricalTaskClosure(task,cwd){
+    if(!needsHistoricalTaskClosure(task)||inflightTasks.has(task.taskId)||ctx.piAuthority.describe(task.sessionId))return
+    let evidence
+    try{
+      const stored=await ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
+      evidence=historicalTaskResultEvidence(task,stored,cwd)
+    }catch(error){
+      ctx.logger?.warn?.(`historical task closure evidence: ${error.code??error.name}`)
+      return
+    }
+    if(!evidence)return
+    const binding={taskId:task.taskId,sessionId:task.sessionId,...inspectionVersion(task)}
+    try{await command('task.historical-close',{taskId:task.taskId,binding,...evidence},`historical-close:${task.taskId}:${task.leaseEpoch}`)}
+    catch(error){
+      if(!['TASK_HISTORICAL_CLOSE_UNPROVEN','DYNAMIC_TASK_NOT_QUIESCENT'].includes(error.code))throw error
+      ctx.logger?.warn?.(`historical task closure: ${error.code}`)
+    }
+  }
   async function recover({waitForRouter=true}={}) {
     if (closed) return { failures: [] }
     // Inspection must keep recording incidents while a previous recovery waits
@@ -1486,7 +1504,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       for (const task of await query('task.list')) if (task.sessionBound) {
         const cwd = await taskWorkspace(root,task.taskId,task)
         await attachWorkspace(task.sessionId, cwd, task.title)
-        if(!timingBackfilled)await recoverTaskTiming(task)
+        if(!timingBackfilled){
+          await recoverTaskTiming(task)
+          await recoverHistoricalTaskClosure(task,cwd)
+        }
       }
       timingBackfilled=true
 
