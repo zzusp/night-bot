@@ -1,4 +1,5 @@
 import {createBackgroundCompaction} from './pi-background-compaction.js'
+import {observeAdoptedPiCompaction} from './pi-agent-observation.js'
 import {compactPiCandidate,snapshotPiCompaction} from './pi-background-candidate.js'
 import {bindPiLiveOutput} from './pi-live-output.js'
 import {skillCommand} from './pi-skill-command-input.js'
@@ -70,6 +71,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
   tools.bindContextDelivery(createOfficialToolContextDelivery({session,actor,fence}))
   if(!deferResources){await bridge.refreshResources();await bridge.reloadResources()}
   if(['channel-triage','conversation-router'].includes(store.header.runtimeOwner))background=createBackgroundCompaction({session,store,admission,signal:actor.lifecycle?.signal,commit:()=>durability.commit(),measurePhase,outputReserveTokens:resolved.requestOptions?.maxTokens,getInitialPromptTokens:()=>bridge.estimateInputPromptTokens(),
+   onAdopted:(entryId,elapsedMs)=>observeAdoptedPiCompaction(actor,entryId,elapsedMs),
    isHealthy:()=>!failure&&!durability.failure&&!durability.requestFailure&&!bridge.policyFailure&&!imageBudget?.failure,
    // The next agent_start clears a prior per-request rejection. It must not
    // prevent a fresh durable input; permanent durability/policy fences remain.

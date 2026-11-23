@@ -1,8 +1,23 @@
 import type { Message } from './api';
 
-export type ToolItem = { kind: 'tool'; id: string; call?: Message; results: Message[]; resultStatus?: string; inputElsewhere?: boolean };
+export type ToolItem = { kind: 'tool'; id: string; call?: Message; results: Message[]; resultStatus?: string; inputElsewhere?: boolean; timing?: Message['timing'] };
 export type TranscriptItem = { kind: 'message'; message: Message } | ToolItem;
 export type ExecutionItem = TranscriptItem | { kind: 'tool-group'; id: string; tools: ToolItem[] };
+
+// Timing is server evidence, never inferred from a timeout or record timestamp.
+// A result can supply duration while its exact matching call supplies the clock.
+export function toolTiming(...records: Array<Message['timing']>): Message['timing'] {
+  const timing: NonNullable<Message['timing']> = {};
+  for (const record of records) {
+    if (!record) continue;
+    for (const key of ['durationMs', 'modelWaitMs', 'modelDurationMs'] as const) {
+      const value = record[key];
+      if (typeof value === 'number' && Number.isFinite(value) && value >= 0) timing[key] = value;
+    }
+    if (typeof record.startedAt === 'string' && Number.isFinite(Date.parse(record.startedAt))) timing.startedAt = record.startedAt;
+  }
+  return Object.keys(timing).length ? timing : undefined;
+}
 
 export function toolState(item: ToolItem): string {
   const result = item.results.at(-1);
@@ -31,7 +46,7 @@ export function transcriptItems(messages: Message[]): TranscriptItem[] {
     const key = message.callId ? JSON.stringify([message.source?.sessionId || '', message.callId]) : undefined;
     if (['task_result', 'resident_router_reply'].includes(message.toolName || '') && key && resultCalls.has(JSON.stringify([message.source?.sessionId || '', message.callId, message.toolName]))) continue;
     if (message.kind === 'tool-call') {
-      const item: ToolItem = { kind: 'tool', id: message.id, call: message, results: [] };
+      const item: ToolItem = { kind: 'tool', id: message.id, call: message, results: [], timing: toolTiming(message.timing) };
       items.push(item);
       callSegments.set(item, segment);
       if (key) calls.set(key, item);
@@ -41,9 +56,12 @@ export function transcriptItems(messages: Message[]): TranscriptItem[] {
         // Visible output stays at its raw position. Keep only its status on the
         // earlier input row, so polling neither duplicates text nor says waiting.
         call.resultStatus = toolState({ kind: 'tool', id: message.id, results: [message] });
-        items.push({ kind: 'tool', id: message.id, results: [message], inputElsewhere: true });
-      } else if (call && call.call?.toolName === message.toolName) call.results.push(message);
-      else items.push({ kind: 'tool', id: message.id, results: [message] });
+        call.timing = toolTiming(call.timing, message.timing);
+        items.push({ kind: 'tool', id: message.id, results: [message], inputElsewhere: true, timing: call.timing });
+      } else if (call && call.call?.toolName === message.toolName) {
+        call.results.push(message);
+        call.timing = toolTiming(call.timing, message.timing);
+      } else items.push({ kind: 'tool', id: message.id, results: [message], timing: toolTiming(message.timing) });
     }
   }
   return items;

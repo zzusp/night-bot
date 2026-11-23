@@ -58,6 +58,7 @@ export interface ChatSummary { id: string; title: string; updatedAt: string; sta
 export interface MessageSource { sessionId: string; entryId: string; callId?: string }
 export interface MessageBodyPage { messageId: string; text: string; offset: number; nextOffset: number | null; total: number; revision: string; source: MessageSource; redacted: boolean }
 export interface HistoryReader { endpoint: string; revision: string; onRecover?: () => void }
+export interface MessageTiming {durationMs?: number; startedAt?: string; modelWaitMs?: number; modelDurationMs?: number; turnDurationMs?: number}
 export interface Message {
   messageVersion?: number;
   transient?: boolean;
@@ -65,7 +66,9 @@ export interface Message {
   status?: string; senderName?: string; requestId?: string; taskIds?: string[];
   attachments?: { name: string; mediaType: string; bytes: number }[];
   failure?: {reason: string; code?: string};
-  kind?: string; toolName?: string; callId?: string; isError?: boolean; redacted?: boolean; truncated?: boolean;
+  timing?: MessageTiming;
+  compaction?: {mode?: 'foreground' | 'background'; tokensBefore?: number; tokensAfter?: number; summaryHidden?: boolean};
+  kind?: string; toolName?: string; callId?: string; isError?: boolean; redacted?: boolean; truncated?: boolean; resourceContent?: boolean;
   source?: MessageSource; textTotal?: number; textNextOffset?: number | null;
 }
 export interface Chat {
@@ -77,9 +80,9 @@ export interface TaskTodos {
   items: { text: string; status: 'pending' | 'in_progress' | 'completed'; redacted: boolean }[];
   updatedAt: string | null; source: MessageSource;
 }
-export interface ExecutionLive {items: Message[]; active: boolean; revision?: string; phase?: 'waiting' | 'thinking' | 'text' | 'tool'; phaseStartedAt?: string}
+export interface ExecutionLive {items: Message[]; tools?: {callId: string; startedAt: string}[]; active: boolean; revision?: string; phase?: 'preparing' | 'waiting' | 'thinking' | 'text' | 'tool' | 'compaction' | 'retry'; phaseStartedAt?: string; notice?: {kind: 'failed' | 'cancelled' | 'retry'; source?: 'model' | 'compaction'; message?: string; attempt?: number; maxAttempts?: number}}
 export interface TokenUsage {input: number | null; output: number | null; cacheWrite: number | null; cacheRead: number | null; total: number | null; basis: 'committed-native-entries'}
-export interface ExecutionPage extends Page<Message> { tokenUsage?: TokenUsage; liveProof?: string; historyChanged?: boolean; live?: ExecutionLive; status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number; checkpoint?: string | null; before?: string | null; hasNewer?: boolean; todos?: TaskTodos | null }
+export interface ExecutionPage extends Page<Message> { timingUpdates?: Record<string, MessageTiming>; compactionUpdates?: Record<string, {mode?: 'foreground' | 'background'; tokensAfter?: number}>; tokenUsage?: TokenUsage; liveProof?: string; historyChanged?: boolean; live?: ExecutionLive; status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number; checkpoint?: string | null; before?: string | null; hasNewer?: boolean; todos?: TaskTodos | null }
 export interface LearningSource { taskId: string; eventId: string; reviewId: string }
 export interface TaskReview { reviewId: string; taskId: string; status: 'done' | 'skipped' | 'failed'; summary: string; at: string; eventId: string }
 export interface LearningChange {

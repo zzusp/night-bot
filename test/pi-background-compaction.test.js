@@ -6,22 +6,23 @@ import {createBackgroundCompaction} from '../src/runtime/pi-background-compactio
 const deferred=()=>Promise.withResolvers()
 async function eventually(predicate){for(let i=0;i<100;i++){if(predicate())return;await delay(2)}assert.ok(predicate(),'condition did not settle')}
 function fixture(t,{tokens=300000,compact,commit,outputReserveTokens,isHealthy,isInputHealthy}={}){
- const listeners=new Set(),calls=[],appends=[],errors=[],phases=[]
+ const listeners=new Set(),calls=[],appends=[],errors=[],phases=[],adopted=[]
  const state={leaf:'leaf',revision:1,entries:[{id:'leaf'}],tokens,paused:false,inputs:[],refreshes:0,commits:0,projection:[],settings:{},foreground:0}
  const signal=new AbortController()
  const session={model:{provider:'fixture',id:'model',contextWindow:1000000},settingsManager:{getSettings:()=>state.settings,getCompactionSettings:model=>SettingsManager.inMemory(state.settings).getCompactionSettings(model),applyOverrides:overrides=>{const manager=SettingsManager.inMemory(state.settings);manager.applyOverrides(overrides);state.settings=manager.getSettings()}},thinkingLevel:'low',systemPrompt:'prompt',isIdle:true,pendingMessageCount:0,isRetrying:false,getActiveToolNames:()=>['read'],getContextUsage:()=>({tokens:state.tokens}),subscribe:listener=>{listeners.add(listener);return()=>listeners.delete(listener)},refreshContext(){state.refreshes++}}
- const store={snapshot:()=>({revision:state.revision}),manager:{getLeafId:()=>state.leaf,getEntries:()=>state.entries,getBranch:()=>state.entries,appendCompaction(...args){appends.push(args);state.leaf='compacted';state.entries.push({id:state.leaf});state.revision++}}}
+ const store={snapshot:()=>({revision:state.revision}),manager:{getLeafId:()=>state.leaf,getEntries:()=>state.entries,getBranch:()=>state.entries,appendCompaction(...args){appends.push(args);state.leaf='compacted';state.entries.push({id:state.leaf});state.revision++;return state.leaf}}}
  session.sessionManager={buildSessionProjection:()=>({messages:state.projection})};session.compact=async()=>{state.foreground++;state.tokens=10;state.projection=[]}
- const worker=createBackgroundCompaction({session,store,outputReserveTokens,isHealthy,isInputHealthy,signal:signal.signal,admission:{get paused(){return state.paused},pending:()=>state.inputs},compact:args=>{calls.push(args);return compact?compact(args):Promise.resolve(result())},commit:async()=>{state.commits++;await commit?.()},onError:error=>errors.push(error),measurePhase:async(name,run)=>{phases.push(name);return run()}})
+ const worker=createBackgroundCompaction({session,store,outputReserveTokens,isHealthy,isInputHealthy,signal:signal.signal,admission:{get paused(){return state.paused},pending:()=>state.inputs},compact:args=>{calls.push(args);return compact?compact(args):Promise.resolve(result())},commit:async()=>{state.commits++;await commit?.()},onError:error=>errors.push(error),onAdopted:(id,elapsedMs)=>adopted.push({id,elapsedMs}),measurePhase:async(name,run)=>{phases.push(name);return run()}})
  const emit=type=>{for(const listener of listeners)listener({type})}
  t.after(()=>worker.close())
- return {worker,session,store,state,calls,appends,errors,phases,emit,signal,listeners}
+ return {worker,session,store,state,calls,appends,adopted,errors,phases,emit,signal,listeners}
 }
 const result=()=>({summary:'Native summary',firstKeptEntryId:'leaf',tokensBefore:300000,details:{readFiles:[]}})
 test('only idle settled round at soft threshold creates and commits candidate',async t=>{
  const f=fixture(t,{tokens:283199});f.worker.settled();await delay(10);assert.equal(f.calls.length,0)
  f.state.tokens=283200;f.emit('agent_settled');await eventually(()=>f.state.refreshes===1)
  assert.equal(f.calls.length,1);assert.equal(f.appends.length,1);assert.equal(f.state.commits,1);assert.ok(f.phases.includes('background-compaction-adopted'))
+ assert.ok(f.adopted.length===1&&f.adopted[0].id==='compacted'&&f.adopted[0].elapsedMs>=0)
 })
 test('queued inputs, streaming, retrying and paused admission prevent background starts',async t=>{
  const f=fixture(t)
@@ -94,7 +95,7 @@ test('a failed durable adoption never refreshes the live context',async t=>{
  const f=fixture(t,{commit:async()=>{throw new Error('disk failure')}})
  f.worker.settled();await eventually(()=>f.errors.length===1)
  assert.equal(f.state.refreshes,0)
- assert.equal(f.appends.length,1,'the native store owns uncertain append fencing')
+ assert.equal(f.appends.length,1,'the native store owns uncertain append fencing');assert.deepEqual(f.adopted,[])
 })
 
 test('closing foreground compaction settles its observation span',async t=>{

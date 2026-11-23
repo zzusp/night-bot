@@ -8,10 +8,9 @@ test('Pi dashboard execution and task card surfaces preserve data and responsive
  await page.goto('/#/tasks/task-research');
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
- const group=page.locator('.execution-tool-group');
- await expect(group).toBeVisible();
- await group.locator(':scope > summary').click();
- const step=group.locator('.pi-tool-step').first();
+ const process=page.locator('.execution-turn-process');
+ await expect(process).toHaveAttribute('open', '');
+ const step=process.locator('.pi-tool-step').first();
  await step.locator('summary').click();
  await expect(step.locator('.tool-content')).toHaveText(['echo a','result a']);
  await expect(page.locator('.pi-tool-frame.is-running .pi-tool-shimmer')).toBeVisible();
@@ -86,7 +85,7 @@ test('native shell arguments remain compact and real output copies its final new
  await expect(page.locator('.pi-tool-body')).not.toContainText(args.description);
  const code=page.locator('.pi-plain-output > code');
  expect(await code.textContent()).toBe(output);
- expect(await code.locator('..').evaluate(el=>({max:getComputedStyle(el).maxHeight,bg:getComputedStyle(el).backgroundColor,radius:getComputedStyle(el).borderRadius}))).toEqual({max:'320px',bg:'rgb(245, 245, 245)',radius:'4px'});
+ expect(await code.locator('..').evaluate(el=>({max:getComputedStyle(el).maxHeight,bg:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderTopWidth}))).toEqual({max:'155px',bg:'rgba(0, 0, 0, 0)',border:'0px'});
  await code.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const s=window.getSelection()!;s.removeAllRanges();s.addRange(range);});
  await page.keyboard.press('Control+c');
  expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe(output);

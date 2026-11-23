@@ -96,6 +96,35 @@ test('the real SDK first-token signal is measured without retaining the native d
  assert.equal(JSON.stringify(records).includes('SECRET_NATIVE_DELTA'),false)
 })
 
+test('native turn and complete thinking block durations attach to the exact saved assistant entry without retaining hidden bodies',async t=>{
+ const {createAssistantMessageEventStream}=await import('@earendil-works/pi-ai'),f=await sdk(t,()=>{}),model=f.session.agent.state.model
+ let ms=0
+ f.session.agent.streamFunction=()=>{
+  const stream=createAssistantMessageEventStream()
+  const content=[{type:'thinking',thinking:'PUBLIC_BUT_NOT_TELEMETRY'},{type:'thinking',thinking:'HIDDEN_THOUGHT',redacted:true},{type:'thinking',thinking:'NO_END'},{type:'text',text:'answer'}]
+  const message={role:'assistant',content,api:model.api,provider:model.provider,model:model.id,timestamp:base,stopReason:'stop',usage:{input:1,output:1,cacheRead:0,cacheWrite:0,totalTokens:2,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}}
+  queueMicrotask(()=>{
+   stream.push({type:'start',partial:message})
+   for(let i=0;i<3;i++){
+    stream.push({type:'thinking_start',contentIndex:i,partial:message})
+    if(i<2)stream.push({type:'thinking_end',contentIndex:i,content:content[i].thinking,partial:message})
+   }
+   stream.push({type:'done',reason:'stop',message});stream.end(message)
+  })
+  return stream
+ }
+ const records=[],observer=bindPiAgentObservation({actor:f.actor,elapsed:()=>++ms,emit:(_actor,event)=>records.push(event)});t.after(()=>observer.close())
+ await f.run([])
+ const assistant=records.find(event=>event.kind==='model-completed').entryId
+ const thoughts=records.filter(event=>event.kind==='thinking-completed')
+ assert.equal(thoughts.length,1)
+ assert.equal(thoughts[0].entryId,assistant)
+ assert.deepEqual(thoughts[0].summary,{elapsedMs:1,contentIndex:0})
+ const turn=records.find(event=>event.kind==='turn-completed')
+ assert.equal(turn.entryId,assistant);assert.ok(turn.summary.elapsedMs>thoughts[0].summary.elapsedMs)
+ assert.doesNotMatch(JSON.stringify(records),/PUBLIC_BUT_NOT_TELEMETRY|HIDDEN_THOUGHT|NO_END/)
+})
+
 test('observation failures and a pending metadata write do not block real SDK business effects; close joins its accepted queue',async t=>{
  let effects=0;const f=await sdk(t,({ctx})=>ctx.tools.register(definition('effect',async()=>{effects++;return{ok:true}})))
  const entered=Promise.withResolvers(),release=Promise.withResolvers(),seen=[],errors=[]

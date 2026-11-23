@@ -1,0 +1,107 @@
+/* Compact session detail disclosures, adapted from pi-web's process, thinking
+   and compaction panels. Keep Night Bot's canvas and contrast tokens. */
+.execution-turn-process, .execution-compaction {
+  min-width: 0;
+  max-width: 100%;
+}
+.execution-turn-process > summary, .execution-compaction > summary,
+.execution-thought > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  list-style: none;
+  cursor: pointer;
+}
+.execution-turn-process > summary::-webkit-details-marker,
+.execution-compaction > summary::-webkit-details-marker,
+.execution-thought > summary::-webkit-details-marker { display: none; }
+.execution-turn-process > summary {
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+  padding: 5px 8px;
+  border-radius: 5px;
+  color: var(--board-muted);
+  font-size: 12px;
+}
+.execution-turn-process > summary:hover, .execution-compaction > summary:hover {
+  background: var(--board-panel);
+}
+.execution-turn-process > summary:focus-visible, .execution-compaction > summary:focus-visible,
+.execution-thought > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.execution-turn-process[open] > summary .pi-tool-chevron,
+.execution-compaction[open] > summary .pi-tool-chevron,
+.execution-thought[open] > summary .pi-tool-chevron { transform: rotate(90deg); }
+.execution-turn-items { display: grid; gap: 8px; min-width: 0; padding-block: 5px; }
+.execution-compaction {
+  color: var(--board-muted);
+  border: 1px solid var(--board-border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.execution-compaction > summary { padding: 8px 10px; flex-wrap: wrap; }
+.execution-compaction summary strong { color: var(--board-text); }
+.execution-compaction time { margin-inline-start: auto; }
+.execution-compaction-content { border-top: 1px solid var(--board-border); padding: 8px 12px; }
+.execution-thought > summary { flex-wrap: nowrap; }
+.execution-thought-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--board-muted);
+}
+.execution-thought[open] .execution-thought-preview { visibility: hidden; }
+.execution-turn-time, .execution-message-time { font-variant-numeric: tabular-nums; color: var(--board-muted); white-space: nowrap; }
+.execution-message-time { font-size: 11px; }
+.execution-transcript [data-message-id] { scroll-margin-block: 12px; }
+.execution-transcript .markdown :is(pre,table) { max-width: 100%; overflow-x: auto; }
+.execution-transcript .markdown table { display: block; width: max-content; }
+
+@media (max-width: 760px) {
+  .execution-turn-process > summary, .execution-compaction > summary { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.execution-turn-process, .execution-compaction, .execution-thought) .pi-tool-chevron { transition: none; }
+}
+
+/* pi-web keeps thinking aligned with the transcript and uses a compact
+   mono disclosure with an ellipsized first line. */
+.execution-transcript .thinking-message.execution-thought {
+  padding: 4px 9px; border: 1px solid var(--board-border);
+  border-radius: 7px; background: var(--board-surface);
+  font-family: var(--font-mono, ui-monospace, monospace); line-height: 1.5;
+}
+.execution-transcript .thinking-message.execution-thought > summary { padding: 0; }
+.execution-transcript .thinking-message.execution-thought[open] .execution-thought-preview { opacity: 0; }
+.execution-transcript .execution-thought .markdown {
+  max-height: min(52vh, 440px); overflow: auto; overflow-wrap: anywhere;
+}
+.execution-model-wait { margin: 0 0 3px 9px; }
+.execution-transcript .pi-live-message:not(:has(.thinking-message)) > .message-body::after {
+  content: none;
+}
+.execution-compaction-heading {
+  display: flex; gap: 7px; align-items: center; flex-wrap: wrap;
+  padding: 8px 10px;
+}
+.execution-compaction-heading > strong { color: var(--board-text); }
+.execution-transcript .execution-compaction > summary,
+.execution-transcript .execution-compaction-heading { justify-content: flex-start; text-align: start; }
+
+.execution-transcript .message > time.execution-message-time {
+  display: block; margin-top: 3px; line-height: 1.35; text-align: start;
+}
+.execution-transcript .message-user > time.execution-message-time { text-align: end; }
+.execution-transcript .message-user .execution-message-role { align-self: flex-end; }
+.execution-turn-process > summary > .pi-tool-chevron,
+.execution-compaction > summary > .pi-tool-chevron,
+.execution-thought > summary > .pi-tool-chevron { margin-inline-start: 0; }
+
+/* Pi Web leaves ordinary generated prose unboxed. Night Bot's explicit
+   business-result/legacy conclusion remain the existing message cards. */
+.execution-transcript .message-assistant:not(.execution-result, .task-final-conclusion):not(:has(.thinking-message)) > .message-body {
+  padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent;
+}

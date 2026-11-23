@@ -59,9 +59,14 @@ export function useExecutionStream(endpoint: string) {
           return;
         }
         historyDue = Date.now() + 2500;
-        let data = page;
+        const withTiming = (rows: Message[]) => !page.timingUpdates && !page.compactionUpdates ? rows : rows.map(row => {
+          const timing = page.timingUpdates && Object.hasOwn(page.timingUpdates, row.id) ? page.timingUpdates[row.id] : undefined;
+          const compaction = row.kind === 'compaction' && row.compaction && page.compactionUpdates && Object.hasOwn(page.compactionUpdates, row.id) ? page.compactionUpdates[row.id] : undefined;
+          return timing || compaction ? {...row, ...(timing ? {timing: {...row.timing, ...timing}} : {}), ...(compaction ? {compaction: {...row.compaction, ...compaction}} : {})} : row;
+        });
+        let data = {...page, items: withTiming(page.items)};
         if (page.status === 'ready' && previous?.status === 'ready' && previous.checkpoint) {
-          data = {...page, items: unique(kind === 'older' ? [...page.items, ...previous.items] : [...previous.items, ...page.items]),
+          data = {...page, items: withTiming(unique(kind === 'older' ? [...page.items, ...previous.items] : [...previous.items, ...page.items])),
             before: kind === 'older' ? page.before : previous.before};
         }
         // A commit barrier keeps the last authorized snapshot, not a read error.

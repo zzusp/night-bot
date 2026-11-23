@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
+import {taskSessionView} from '../packages/web-console/server/session-view.js'
 import {executionContext} from '../src/tasks/execution-context.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {residentRouterHost,channelMessage,requestEnvelope,requestText,requestTools,eventually} from './fixtures/resident-router-host.js'
@@ -76,6 +77,12 @@ for(const mode of ['completed','waiting','running','racing'])test('operator inpu
  assert.ok(!routed.includes(followup),'direct operator message is never submitted to Router')
  assert.equal(h.sent.length,originalCount)
  assert.ok(h.results.some(row=>row.name==='resident_router_reply'&&row.result.isError&&JSON.stringify(row.result).includes('ROUTER_CHANNEL_OUTCOME_SUPPRESSED')))
+ const history=()=>taskSessionView({task:finished,persistence:h.host.ctx.sessionPersistence,
+   readTaskInputIds:sessionId=>h.query('task.web-input-history',{taskId,sessionId})})
+ const projected=await history()
+ assert.deepEqual(projected.items.filter(row=>row.requestId).map(row=>[row.requestId,row.text]),[[requestId,followup]])
+ assert.deepEqual(await h.query('task.web-input-history',{taskId,sessionId:'different-pi'}),[])
+ assert.deepEqual(await h.query('task.web-input-history',{taskId:'unrelated-task',sessionId:task.sessionId}),[])
  await h.restart();assert.deepEqual(await h.service.taskInputReceipt({taskId,requestId}),receipt)
 })
 

@@ -1948,6 +1948,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if(filter.sessionId&&!observation.listPerformance({sessionId:filter.sessionId}).rows.some(row=>row.sessionId===filter.sessionId))fail('SESSION_NOT_FOUND')
       return residentStore.listExecutionTrace(filter)
     },
+    executionHistoryTiming(scope){
+      // Session history checks the exact task or published Router generation
+      // against its committed Pi journal and rechecks the caller on response.
+      return residentStore?.executionHistoryTiming?.(scope)
+    },
     listActivities: observation.listActivities, listTaskTimings: observation.listTaskTimings, listPerformance: observation.listPerformance, getActivityAuditStatus: observation.getActivityAuditStatus,
     listAlerts:observerAlerts.all, listAlertPage:observerAlerts.page,
     listTopics: groupId => residentStore.listTopics(groupId), getTopic: (groupId, topicId) => residentStore.getTopic(groupId, topicId),

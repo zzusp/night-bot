@@ -1,5 +1,5 @@
 import {z} from 'zod'
-import {agentObservationSchema} from './pi-agent-observation.js'
+import {agentObservationSchema,agentToolSpanId} from './pi-agent-observation.js'
 export const TRACE_LIMIT=2048,TRACE_GLOBAL_LIMIT=4096
 const id=z.string().min(1).max(512),time=z.number().finite().nonnegative().max(8640000000000000)
 const identity=z.object({sessionId:id,generation:z.number().int().positive().optional(),taskId:id.optional(),groupId:id.optional(),runtimeOwner:z.enum(['channel-triage','conversation-router']).optional()})
@@ -26,6 +26,44 @@ export function buildTraceLedger(spans,{startedAt,endedAt}={}){
  return{startedAt:startedAt??null,endedAt:endedAt??null,wallMs:valid?endedAt-startedAt:null,coveredMs:valid?length(covered):null,unattributedMs:valid?endedAt-startedAt-length(covered):null,byKind,openOrInvalidSpans,complete:false,interpretation:'unattributed-is-unknown-not-idle'}
 }
 const key=(session,run)=>JSON.stringify([session,run])
+// Private DTO correlation from one bounded performance partition, consumed only
+// after the reader proves the same committed task/session journal. Unpaired,
+// inconsistent or evicted spans are omitted, never treated as zero or "idle".
+export function executionHistoryTiming(projection,{sessionId,taskId,conversationId,generation}){
+ const spans=new Map(),model=new Map(),turn=new Map(),thinking=new Map(),compaction=new Map(),tools=new Map()
+ const only=(map,key,value)=>map.set(key,map.has(key)?null:value)
+ for(const entry of projection?.trace?.entries??[]){
+  if(entry.type!=='observation'||entry.identity.sessionId!==sessionId||entry.identity.taskId!==taskId||entry.observation.ownerId!==sessionId)continue
+  if(taskId?entry.identity.runtimeOwner:entry.identity.runtimeOwner!=='conversation-router'||entry.identity.groupId!==conversationId||entry.identity.generation!==generation)continue
+  const {entryId,runId,spanId,kind,timestamp,summary}=entry.observation
+  if(kind==='turn-completed'){only(turn,entryId,summary.elapsedMs);continue}
+  if(kind==='thinking-completed'){only(thinking,JSON.stringify([entryId,summary.contentIndex]),summary.elapsedMs);continue}
+  if(kind==='compaction-completed'){only(compaction,entryId,{durationMs:summary.elapsedMs,tokensAfter:summary.tokensAfter,mode:summary.compactionMode});continue}
+  if(!kind.startsWith('model-')&&!kind.startsWith('tool-'))continue
+  const spanKey=JSON.stringify([runId,spanId]),span=spans.get(spanKey)??{runId,spanId,events:new Map()}
+  only(span.events,kind,{entryId,timestamp})
+  spans.set(spanKey,span)
+ }
+ for(const {runId,spanId,events} of spans.values()){
+  const modelStart=events.get('model-started'),modelEnd=events.get('model-completed'),first=events.get('model-first-token')
+  if(modelEnd?.entryId&&modelStart&&modelEnd.timestamp>=modelStart.timestamp){
+   only(model,modelEnd.entryId,{modelDurationMs:modelEnd.timestamp-modelStart.timestamp,...first&&first.timestamp>=modelStart.timestamp&&first.timestamp<=modelEnd.timestamp?{modelWaitMs:first.timestamp-modelStart.timestamp}:{}})
+  }
+  const start=events.get('tool-started'),end=events.get('tool-completed')
+  if(start?.entryId&&start.entryId===end?.entryId&&end.timestamp>=start.timestamp){
+   const candidates=tools.get(start.entryId)??[];candidates.push({runId,spanId,durationMs:end.timestamp-start.timestamp});tools.set(start.entryId,candidates)
+  }
+ }
+ return {
+  assistant(entryId){const turnDurationMs=turn.get(entryId),timing=model.get(entryId);return timing||turnDurationMs!=null?{...timing,...turnDurationMs!=null?{turnDurationMs}:{}}:undefined},
+  thinking(entryId,contentIndex){return thinking.get(JSON.stringify([entryId,contentIndex]))??undefined},
+  compaction(entryId){return compaction.get(entryId)??undefined},
+  tool(entryId,nativeCallId){
+   const matches=tools.get(entryId)?.filter(span=>span.spanId===agentToolSpanId(sessionId,span.runId,entryId,nativeCallId))
+   return matches?.length===1?matches[0].durationMs:undefined
+  }
+ }
+}
 const overlap=(span,root)=>span.startedAt!==null&&(root.completedAt===null||span.startedAt<=root.completedAt)&&(span.endedAt===null||span.endedAt>=root.startedAt)
 export function listExecutionTrace(projections,filter={}){
  if(!['sessionId','taskId','groupId','sourceId'].some(k=>typeof filter[k]==='string'&&filter[k]))throw new Error('trace_scope_required')

@@ -1305,3 +1305,91 @@ test('Router principles HTTP uses an independent authenticated file and version'
  assert.equal((await put(router,'',saved.version)).body.text,'')
  assert.deepEqual((await get(execution)).body,executionEdit.body)
 })
+
+test('execution HTTP independently authorizes exact resource bodies and revokes continuations after edits', async t => {
+  const {Context} = await import('@deepseek-ai/cordis')
+  const {default: PiPersistence} = await import('../../../src/pi-session-persistence.js')
+  const Authority = await import('../../../src/pi-authority.js')
+  const {renderMemoryIndex} = await import('../../../src/memory/tools.js')
+  const {renderSkillContent} = await import('../../../src/native-skill-protocol.js')
+  const root = await mkdtemp(join(tmpdir(), 'night-web-resource-tools-')), ctx = new Context()
+  t.after(async () => {await ctx.fiber.dispose(); await rm(root, {recursive: true, force: true})})
+  await ctx.plugin(Authority)
+  const paths = runtimePaths({installRoot: root, dataDir: 'data'})
+  await prepareRuntimePaths(paths)
+  const store = new MarkdownMemoryStore(paths.memory), scope = memoryScope({actorId:'writer'})
+  const persistence = new PiPersistence(ctx,{root:join(root,'journals')})
+  const fact = 'Authoritative memory body; retained compatibility.'
+  await store.remember(scope,{topic:'facts',key:'one',text:fact,source:{sessionId:'PRIVATE_ORIGIN',messageId:'PRIVATE_MESSAGE'}})
+  const scopeToken = scope.kind+'/'+scope.id
+  const value = {kind:'night-memory-result',scopeToken,...await store.read(scope,{topic:'facts',key:'one',includeSources:false})}
+  const index = {kind:'night-memory-result',scopeToken,stage:'filtered-index',...await store.index(scope,{topic:'facts'})}
+  index.entries[0].applicability = {status:'reference-only',sourceMessageIds:['PRIVATE_SUBJECT']}
+  index.markdown = renderMemoryIndex(index)
+
+  const body = 'Section one\n'+'x'.repeat(15980)+'ROTATINGPRIVATEVALUE'+'\ncontinue here\n'+'y'.repeat(600)
+  const dir = join(paths.skills,'public-check'), file = join(dir,'SKILL.md')
+  const skillDoc = (name, text, extra='') => '---\nname: '+name+'\ndescription: Public shared instructions\n'+extra+'---\n\n'+text+'\n'
+  await mkdir(dir,{recursive:true})
+  await writeFile(file,skillDoc('public-check',body))
+  const skill = {name:'public-check',provider:'filesystem',resourceBase:{kind:'directory',path:dir},content:body}
+  const privateDir = join(paths.workspaces,'task-private','.agents','skills','public-check')
+  await mkdir(privateDir,{recursive:true})
+  await writeFile(join(privateDir,'SKILL.md'),skillDoc('public-check','PRIVATE_LOCAL_BODY'))
+  const privateSkill = {...skill,resourceBase:{kind:'directory',path:privateDir},content:'PRIVATE_LOCAL_BODY'}
+  const writer = await persistence.createNative({version:4,id:'pi-one',createdAt:Date.now(),isSeeded:false,cwd:root},{auditKinds:{'task/identity':()=>true}})
+  writer.appendAudit({version:1,domain:'task',kind:'identity',payload:{taskId:'task-one',sessionId:'pi-one'}})
+  const append = (id,name,args,value,rendered,{orphan=false,receipt=true}={}) => {
+    if (!orphan) writer.manager.appendMessage({role:'assistant',content:[{type:'toolCall',id,name,arguments:args}],timestamp:Date.now()})
+    const content=[{type:'text',text:rendered}]
+    writer.manager.appendMessage({role:'toolResult',toolName:name,toolCallId:id,isError:false,content,timestamp:Date.now(),
+      ...receipt?{details:{nativeResult:{value,content,isError:false}}}:{}})
+  }
+  const args = {topic:'facts',key:'one'}
+  append('memory-fact','memory_read',args,value,JSON.stringify(value))
+  append('memory-path','memory_read',{path:index.entries[0].path,includeSources:true},value,JSON.stringify(value))
+  append('memory-index','memory_read',{topic:'facts'},index,index.markdown)
+  const foreign = {...value,scopeToken:'personal/foreign'}
+  append('foreign-memory','memory_read',args,foreign,JSON.stringify(foreign))
+  append('missing-native-receipt','memory_read',args,value,JSON.stringify(value),{receipt:false})
+  append('skill','skill',{name:skill.name},skill,renderSkillContent(skill))
+  append('private-skill','skill',{name:skill.name},privateSkill,renderSkillContent(privateSkill))
+  append('orphan-skill','skill',{name:skill.name},skill,renderSkillContent(skill),{orphan:true})
+  await writer.close()
+
+  let actorId='operator'
+  const memory={store,host:{runtimePaths:paths, get:()=>undefined}}
+  const f=await fixture(t,{persistence,memory,identityBinding:()=>({actorId}),redactionSecrets:async()=>['ROTATINGPRIVATEVALUE']})
+  const endpoint='/api/tasks/task-one/session'
+  assert.equal((await f.fetchApi(endpoint)).status,401)
+  await f.login()
+  const page=await f.fetchApi(endpoint+'?stream=1')
+  assert.equal(page.status,200)
+  assert.equal(page.body.liveProof,undefined)
+  const rows=page.body.items.filter(row=>row.kind==='tool-result')
+  assert.deepEqual(rows.map(row=>[Boolean(row.resourceContent),row.toolName]),[[true,'memory_read'],[true,'memory_read'],[true,'memory_read'],[false,'memory_read'],[false,'memory_read'],[true,'skill'],[false,'skill'],[false,'skill']])
+  assert.equal(rows[0].text,fact)
+  assert.equal(rows[1].text,fact)
+  assert.match(rows[2].text,/^# Memory index[\s\S]+categories\/facts\/entries\/one.md/)
+  assert.doesNotMatch(rows[2].text,/仅供参考/)
+  assert.ok(rows[5].redacted)
+  assert.equal(rows[5].textNextOffset,16000)
+  assert.doesNotMatch(JSON.stringify(page.body),/PRIVATE_ORIGIN|PRIVATE_MESSAGE|PRIVATE_SUBJECT|PRIVATE_LOCAL|ROTATINGPRIVATE|resourceBase/)
+  const continuation=(row,offset)=>endpoint+'/messages/'+row.id+'?revision='+page.body.revision+'&offset='+offset
+  const next=await f.fetchApi(continuation(rows[5],16000))
+  assert.equal(next.status,200);assert.equal(next.body.resourceContent,true)
+  assert.equal(rows[5].text+next.body.text,body.replace('ROTATINGPRIVATEVALUE','[已隐藏]'))
+  actorId='different-operator'
+  assert.equal((await f.fetchApi(continuation(rows[5],16000))).status,409)
+  assert.ok((await f.fetchApi(endpoint+'?stream=1')).body.items.every(row=>!row.resourceContent))
+  actorId='operator'
+  await writeFile(file,skillDoc('public-check','Only current text is authorized.','disable-model-invocation: true\n'))
+  assert.equal((await f.fetchApi(continuation(rows[5],16000))).status,409)
+  assert.equal((await f.fetchApi(endpoint+'?stream=1&checkpoint='+page.body.checkpoint)).status,409)
+  await store.forget(scope,{topic:'facts',key:'one',source:{sessionId:'writer',messageId:'forget-one'}})
+  const after=await f.fetchApi(endpoint+'?stream=1')
+  assert.equal(after.status,200)
+  assert.ok(after.body.items.every(row=>!row.resourceContent))
+  assert.doesNotMatch(JSON.stringify(after.body),/Authoritative memory body|continue here/)
+  assert.equal((await f.fetchApi(continuation(rows[0],0))).status,409)
+})

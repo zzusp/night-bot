@@ -29,6 +29,9 @@ for (const width of [1440, 390]) {
     const text = width === 390 ? '' : '  补充一条调研要求\n需保留原始换行  ';
     const writes: {url: string; method: string}[] = [];
     let committed = false;
+    let acceptedId: string | undefined;
+    let replyToPost!: () => void;
+    const holdReceipt = new Promise<void>(resolve => {replyToPost = resolve;});
     page.on('request', request => {
       if (request.method() !== 'GET' && request.url().includes('/api/') && !request.url().endsWith('/api/login')) {
         writes.push({url:new URL(request.url()).pathname,method:request.method()});
@@ -43,14 +46,15 @@ for (const width of [1440, 390]) {
     });
     await page.route(`**/api/tasks/${first}/session?*`, route => route.fulfill({json:{
       status:'ready', total:committed ? 2 : 1, items:[{id:'history-start', role:'assistant', text:'已提交的执行记录'},
-        ...(committed ? [{id:'task-new-input', role:'user', text:'补充消息已写入本任务记录'}] : [])],
+        ...(committed ? [{id:'task-new-input', role:'user', text:'补充消息已写入本任务记录', requestId:acceptedId}] : [])],
     }}));
     await page.route(inputPath, async route => {
       const value = route.request().postDataJSON();
       expect(route.request().headers()['x-csrf-token']).toBeTruthy();
       expect(value).toEqual({sessionId:targetSession, requestId:expect.stringMatching(/^[a-f0-9-]{36}$/), text,
         attachments:[{name:file.name,mediaType:file.mimeType,data:file.buffer.toString('base64')}]});
-      committed = true;
+      acceptedId = value.requestId;
+      await holdReceipt;
       await route.fulfill({status:202,json:storedReceipt(value.requestId)});
     });
     await login(page);
@@ -72,12 +76,24 @@ for (const width of [1440, 390]) {
     await fileInput(page).setInputFiles(file);
     await expect(page.getByRole('list',{name:'待发送附件'})).toContainText(file.name);
     await page.screenshot({path:testInfo.outputPath(`task-composer-${width}.png`),fullPage:true});
-    if (width === 390) await send(page).click(); else await textbox(page).press('Enter');
-    await expect(page.getByText('消息已提交给当前任务。',{exact:true})).toBeVisible();
-    await expect(textbox(page)).toHaveValue('');
-    await expect(page.getByRole('list',{name:'待发送附件'})).toHaveCount(0);
-    await expect(page.getByText('补充消息已写入本任务记录',{exact:true})).toBeVisible();
-    expect(writes).toEqual([{url:`/api/tasks/${first}/input`,method:'POST'}]);
+    const localInput = page.locator('.transcript article[data-message-id^="web-input:"]');
+    try {
+      if (width === 390) await send(page).click(); else await textbox(page).press('Enter');
+      await expect(localInput).toContainText(width === 390 ? '[附件]' : '补充一条调研要求');
+      await expect(localInput).toContainText(file.name);
+      await expect(localInput.getByText('发送中',{exact:true})).toBeVisible();
+      await expect(page.getByText('补充消息已写入本任务记录',{exact:true})).toHaveCount(0);
+      replyToPost();
+      await expect(textbox(page)).toHaveValue('');
+      await expect(localInput).toBeVisible();
+      await expect(localInput.getByText('发送中',{exact:true})).toHaveCount(0);
+      await expect(page.getByText('消息已提交给当前任务。',{exact:true})).toHaveCount(0);
+      await expect(page.getByRole('list',{name:'待发送附件'})).toHaveCount(0);
+      committed = true;
+      await expect(page.getByText('补充消息已写入本任务记录',{exact:true})).toBeVisible();
+      await expect(localInput).toHaveCount(0);
+      expect(writes).toEqual([{url:`/api/tasks/${first}/input`,method:'POST'}]);
+    } finally { replyToPost(); }
   });
 }
 
@@ -101,6 +117,7 @@ test('an uncertain response preserves text and attachments; only an explicit sam
   await send(page).click();
   await expect(page.locator('.task-input-dock').getByRole('alert')).toContainText('待核实');
   await expect(textbox(page)).toBeDisabled();
+  await expect(page.locator('.transcript article[data-message-id^="web-input:"]')).toContainText('待核实');
   expect(checks).toBe(0);
   await visitTask(page, second, otherTitle);
   await expect(textbox(page)).toHaveValue('');
@@ -113,7 +130,8 @@ test('an uncertain response preserves text and attachments; only an explicit sam
   expect(checks).toBe(1);
   expect(payloads).toHaveLength(1);
   await page.getByRole('button',{name:'重试这条消息',exact:true}).click();
-  await expect(page.getByText('消息已提交给当前任务。',{exact:true})).toBeVisible();
+  await expect(textbox(page)).toHaveValue('');
+  await expect(page.getByText('消息已提交给当前任务。',{exact:true})).toHaveCount(0);
   expect(payloads).toHaveLength(2);
   expect(payloads[1]).toEqual(payloads[0]);
   await visitTask(page, second, otherTitle);
@@ -144,7 +162,7 @@ test('a delayed receipt does not clear or route away from another task draft', a
     await expect(textbox(page)).toHaveValue('不要清除这项任务的草稿');
     await visitTask(page,first,title);
     await expect(textbox(page)).toHaveValue('');
-    await expect(page.getByText('消息已提交给当前任务。',{exact:true})).toBeVisible();
+    await expect(page.getByText('消息已提交给当前任务。',{exact:true})).toHaveCount(0);
   } finally {release();}
 });
 
@@ -161,6 +179,7 @@ test('a stale-session refusal keeps the draft editable and never switches its ta
   await expect(page.locator('.task-input-dock').getByRole('alert')).toContainText('任务会话已变化');
   await expect(textbox(page)).toBeEditable();
   await expect(textbox(page)).toHaveValue('不转交给其他会话');
+  await expect(page.locator('.transcript article[data-message-id^="web-input:"]')).toHaveCount(0);
   await expect(page.getByRole('list',{name:'待发送附件'})).toContainText(file.name);
   expect(writes).toBe(1);
 });

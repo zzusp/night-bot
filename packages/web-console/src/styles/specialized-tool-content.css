@@ -1,0 +1,8 @@
+/* Flat field rows follow pi-web ToolCallBlock's content layout. The shared
+ * tool card owns borders/disclosures; these rows add no independent controls. */
+.specialized-tool-content { min-width: 0; color: var(--board-text); }
+.specialized-tool-fields { display: grid; gap: 6px; margin: 0; font-size: 12px; line-height: 1.6; }
+.specialized-tool-fields > div { display: grid; grid-template-columns: minmax(64px, auto) minmax(0, 1fr); gap: 6px 12px; align-items: baseline; }
+.specialized-tool-fields dt { color: var(--board-muted); }
+.specialized-tool-fields dd { margin: 0; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.specialized-tool-content .specialized-tool-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

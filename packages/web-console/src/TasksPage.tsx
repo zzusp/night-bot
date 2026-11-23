@@ -81,7 +81,19 @@ export function TaskDetail({ id, header, drafts }: { id: string; header?: ReactN
       <div className="conversation-tools task-panel-tools"><div className="topbar-actions"><IconButton label={rail ? '隐藏任务面板' : '显示任务面板'} aria-expanded={rail} aria-controls="task-info-panel" onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>
       {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
       {!task ? query.loading ? <Loading>正在读取任务…</Loading> : query.error ? null : <EmptyState title="无法读取任务" /> :
-        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={null} tokenTarget={tokenTarget} taskError={query.error} taskRetry={query.refresh} conclusion={!query.error ? taskConclusion(task) : null} conclusionDuration={taskConclusionDuration(task)} refreshAfterInput={draft.accepted} />
+        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={null} tokenTarget={tokenTarget} taskError={query.error} taskRetry={query.refresh} conclusion={!query.error ? taskConclusion(task) : null} conclusionDuration={taskConclusionDuration(task)} refreshAfterInput={draft.accepted}
+          inputPreviews={!query.error && task.session?.sessionId ? [
+            ...(draft.previews ?? []).filter(value => value.sessionId === task.session?.sessionId),
+            ...(draft.attempt?.sessionId === task.session?.sessionId && draft.attempt ? [{
+              requestId: draft.attempt.requestId, text: draft.attempt.text, createdAt: draft.attempt.createdAt,
+              status: draft.attempt.state === 'sending' ? 'sending' : 'unknown',
+              attachments: draft.attempt.files.map(file => ({name: file.name, mediaType: file.type, bytes: file.size})),
+            }] : []),
+          ].map(value => ({...value, id: `web-input:${value.requestId}`, role: 'user' as const, kind: 'local-task-input', text: value.text.trim() ? value.text : '[附件]'})) : []}
+          onInputsRecorded={requestIds => drafts.update(id, previous => {
+            const previews = previous.previews?.filter(value => !requestIds.has(value.requestId));
+            return previews?.length === previous.previews?.length ? previous : {...previous, previews};
+          })} />
           <TaskInputComposer taskId={id} sessionId={writableSession} draft={draft} drafts={drafts} />
         </div>}
     </ConversationFrame>

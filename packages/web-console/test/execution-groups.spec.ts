@@ -14,26 +14,25 @@ async function openHistory(page: Page) {
   return page.locator('.task-dialogue .execution-history');
 }
 
-test('Pi工具组默认折叠，工具内输入输出展示，刷新保留状态', async ({ page }) => {
+test('Pi进行中的过程默认展开，工具正文需展开，刷新保留状态', async ({ page }) => {
   let mode = 'initial';
   await page.route(endpoint + '?*', route => {
     if (mode === 'denied') return route.fulfill({ status: 403, json: { error: 'RESOURCE_FORBIDDEN' } });
     const items = [{ id: 'note', role: 'assistant', text: '先核对已有材料，再执行脚本。', status: 'stop' }, ...done('a').map(row => ({ ...row, toolName: 'read' })), ...done('b'), call('current', 'running'), ...(mode === 'updated' ? [result('current'), call('next', 'running')] : [])];
     return route.fulfill({ json: { status: 'ready', scope: 'current-context', items, total: items.length, nextOffset: null, revision: mode } });
   });
-  const history = await openHistory(page), group = history.locator('.execution-tool-group');
+  const history = await openHistory(page), group = history.locator('.execution-turn-process');
   await expect(history.locator('.execution-transcript')).toHaveCount(1);
   await expect(history.locator('.message-avatar, .message-meta, .board-badge, .execution-tool-group-chevron')).toHaveCount(0);
-  await expect(group).not.toHaveAttribute('open');
-  await expect(group.locator('.execution-tool-group-summary')).toHaveText('读取 1 次 · 脚本 1 次');
-  await expect(history.locator('.message-column > .message-tool')).toContainText('执行中');
-  await expect(history.locator('.message-column > .message-tool .pi-tool-shimmer')).toBeVisible();
+  await expect(group).toHaveAttribute('open');
+  await expect(group.locator(':scope > summary')).toContainText('3 次工具调用');
+  await expect(group.locator('[data-message-id=current]')).toContainText('执行中');
+  await expect(group.locator('[data-message-id=current] .pi-tool-shimmer')).toBeVisible();
   await expect(group.locator('.tool-content')).toHaveCount(0);
-  await group.locator(':scope > summary').focus();
-  await page.keyboard.press('Enter');
   const step = group.locator('.pi-tool-step').first();
   await expect(step).not.toHaveAttribute('open');
-  await step.locator('summary').click();
+  await step.locator('summary').focus();
+  await page.keyboard.press('Enter');
   const input = step.locator('.tool-part').first(), output = step.locator('.tool-part').last();
   await expect(input.locator('.tool-content')).toHaveText('输入 a');
   await expect(output.locator('.tool-content')).toHaveText('输出 a');
@@ -41,7 +40,7 @@ test('Pi工具组默认折叠，工具内输入输出展示，刷新保留状态
   await expect(group).not.toContainText('fixture-execution');
   mode = 'updated';
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect(group.locator('.execution-tool-group-summary')).toHaveText('读取 1 次 · 脚本 2 次');
+  await expect(group.locator(':scope > summary')).toContainText('4 次工具调用');
   await expect(step).toHaveAttribute('open');
   for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
@@ -54,16 +53,15 @@ test('Pi工具组默认折叠，工具内输入输出展示，刷新保留状态
   await expect(history.locator('.message-tool')).toHaveCount(0);
 });
 
-test('job_output 普通合组，安全首行摘要与独立正文，无内部来源信息', async ({ page }) => {
+test('job_output 保留独立工具正文、失败与去敏，无内部来源信息', async ({ page }) => {
   const text = '用户可见的作业结果 <script>window.jobOutputExecuted=true</script>\n第二行';
   const job = [{ ...call('job'), text: '输入 job ' + '安全参数'.repeat(40) }, { ...result('job'), text }].map(row => ({ ...row, toolName: 'job_output' }));
-  const items = [...job, ...done('a').map(row => ({ ...row, toolName: 'custom_check' })), call('b'), result('b', 'error')];
+  const items = [...job, ...done('a').map(row => ({ ...row, toolName: 'custom_check' })), call('b'), {...result('b', 'error'), isError: true}];
   await page.route(endpoint + '?*', route => route.fulfill({ json: { status: 'ready', scope: 'current-context', items, total: items.length, nextOffset: null, revision: 'jobs' } }));
-  const history = await openHistory(page), group = history.locator('.execution-tool-group');
+  const history = await openHistory(page), group = history.locator('.execution-turn-process');
   await expect(group).toHaveCount(1);
-  await expect(group.locator('.execution-tool-group-summary')).toHaveText('job_output 1 次 · custom_check 1 次 · 脚本 1 次');
-  await expect(group.locator(':scope > summary')).toContainText('1 项失败');
-  await group.locator(':scope > summary').click();
+  await expect(group.locator(':scope > summary')).toContainText('3 次工具调用');
+  await expect(group.locator('[data-message-id=b] summary')).toContainText('失败');
   const activity = group.locator('.message-tool').first(), step = activity.locator('.pi-tool-step');
   await expect(activity.locator('.tool-content')).toHaveCount(0);
   await step.locator('summary').click();

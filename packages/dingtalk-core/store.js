@@ -1,4 +1,4 @@
-import {TRACE_GLOBAL_LIMIT,traceEntryTime,evictTraceEntries,sourceTraceStageSchema,projectSourceTraceStage,listExecutionTrace} from '../../src/runtime/performance-trace.js'
+import {TRACE_GLOBAL_LIMIT,traceEntryTime,evictTraceEntries,sourceTraceStageSchema,projectSourceTraceStage,listExecutionTrace,executionHistoryTiming} from '../../src/runtime/performance-trace.js'
 import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import { ObserverMemoryPages } from './observer-memory-pages.js'
 import { stableTaskResourceIdentity, mergeTaskResources } from './task-message-projections.js'
@@ -597,6 +597,12 @@ export async function openResidentStore(storageDomain) {
       }
     },
     listExecutionTrace: filter=>({...listExecutionTrace(performanceProjections(),filter),diagnostics:performanceAvailability()}),
+    executionHistoryTiming: (scope)=>{
+      const {taskId,sessionId,conversationId,generation}=scope
+      if(!sessionId||(taskId?currentTask(taskId)?.sessionId!==sessionId:!conversationId||!Number.isSafeInteger(generation)||generation<1))return undefined
+      const partition=performanceRead(`performance:${sessionId}`)
+      if(performanceAvailability().available&&partition)return executionHistoryTiming(partition,scope)
+    },
     recordSourceTraceStage: input=>{
       if(closing)return Promise.reject(new Error('resident_store_closed'))
       let stage;try{stage=sourceTraceStageSchema.parse(input)}catch(error){return Promise.reject(error)}

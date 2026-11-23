@@ -1,11 +1,13 @@
 import {SettingsManager} from '@earendil-works/pi-coding-agent'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {residentRouterHost,channelMessage,requestEnvelope,requestTools} from './fixtures/resident-router-host.js'
+import {residentRouterHost,channelMessage,requestEnvelope,requestTools,eventually} from './fixtures/resident-router-host.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
+import {readPiLiveOutput} from '../src/runtime/pi-live-output.js'
+import {routerSessionView} from '../packages/web-console/server/session-view.js'
 
 for(const mode of ['manual','automatic','overflow'])test(`native Pi ${mode} compaction preserves Router identity, journal and subsequent business delivery`,{timeout:nativeTestTimeout(60000)},async t=>{
- let summaries=0,overflowed=false
+ let summaries=0,overflowed=false,actor,liveCompaction
  // Resource reload resets applyOverrides; persist the small fixture retention
  // in Pi's in-memory storage so real overflow has an eligible history prefix.
  if(mode==='overflow'){
@@ -30,13 +32,15 @@ for(const mode of ['manual','automatic','overflow'])test(`native Pi ${mode} comp
   }
   assert.equal(requestEnvelope(body,'Router 交接请求：'),undefined)
   assert.match(JSON.stringify(body),/NIGHT_ROLE_SUMMARY=router/)
+  if(actor)liveCompaction=readPiLiveOutput(actor)
   summaries++
   return {text:'# Goal\nContinue the original conversation.\n# Progress\nEarlier input was processed; preserve source references and query current task state when needed.'}
  })
  const message=channelMessage('before-compact',{text:'Original source '+ 'fixture evidence '.repeat(500)}),conversationId=h.host.ctx.channels.identity(message).sessionId
  await h.receive(message);await h.service.whenIdle()
  await h.receive(channelMessage('before-compact-2',{text:'Second source '+ 'more evidence '.repeat(500)}));await h.service.whenIdle()
- const before=await h.query('router.get',{conversationId}),actor=h.host.ctx.agents.get(before.activeSessionId)
+ const before=await h.query('router.get',{conversationId})
+ actor=h.host.ctx.agents.get(before.activeSessionId)
  const old=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})
  // Exercise Pi's real summarizer/projection, not a substitute compressor.
  // A smaller fixture waterline avoids filling a real 256K model window.
@@ -52,8 +56,21 @@ for(const mode of ['manual','automatic','overflow'])test(`native Pi ${mode} comp
  assert.deepEqual(native.entries.slice(0,old.entries.length),old.entries)
  assert.ok(native.entries.some(e=>e.type==='compaction'))
  assert.equal(native.entries.filter(e=>e.customType==='night.business-input').length,3)
+ assert.equal(liveCompaction?.phase,'compaction')
+ assert.ok(Number.isFinite(Date.parse(liveCompaction.phaseStartedAt)))
+ const read=()=>routerSessionView({conversationId,readRouter:()=>h.query('router.get',{conversationId}),persistence:h.host.ctx.sessionPersistence,
+  executionActivity:true,stream:true,readExecutionTiming:scope=>h.service.executionHistoryTiming(scope)})
+ const committed=await eventually(async()=>(await read()).items.find(row=>row.kind==='compaction'&&row.compaction.mode==='foreground'),'exact compaction timing')
+ assert.ok(committed.timing.durationMs>=0)
+ assert.ok(committed.compaction.tokensBefore>0)
+ assert.ok(committed.compaction.tokensAfter>0)
+ assert.equal(committed.compaction.summaryHidden,true,'compacted Router inputs were not authorized raw Web text')
+ assert.equal(committed.text,'')
  await h.restart();await h.service.whenIdle()
  assert.equal((await h.query('router.get',{conversationId})).activeSessionId,before.activeSessionId)
+ const restored=(await read()).items.find(row=>row.id===committed.id)
+ assert.deepEqual(restored?.compaction,committed.compaction)
+ assert.deepEqual(restored?.timing,committed.timing)
 })
 
 test('a pre-upgrade unprepared handoff cold-recovers the original owner before new input',{timeout:nativeTestTimeout(40000)},async t=>{

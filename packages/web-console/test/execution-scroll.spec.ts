@@ -1,4 +1,4 @@
-import {test, expect, type Page} from '@playwright/test'
+import {test, expect, type Locator, type Page} from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import {FIXTURE_TOKEN, startPreview} from './preview.mjs'
 import type {Message} from '../src/api'
@@ -11,6 +11,7 @@ async function login(page: Page) {
   await expect(page.locator('.task-dialogue .transcript')).toBeVisible()
 }
 const transcript = (page: Page) => page.locator('.task-dialogue .transcript')
+const viewportY = async (row: Locator) => row.evaluate(el => el.getBoundingClientRect().top - el.closest('.transcript')!.getBoundingClientRect().top)
 async function installStream(page: Page, initialRows = Array.from({length: 650}, (_, i) => row(i))) {
   const state = {rows: initialRows, requests: [] as URL[], mode: 'ready', active: 0, maxActive: 0, holdOlder: null as Promise<void> | null}
   await page.route('**/api/tasks/task-research/session?*', async route => {
@@ -48,9 +49,9 @@ test('200 records initially, prepend stays anchored, newer bursts have no gaps o
   const first = transcript(page).locator('[data-message-id="row-450"]')
   state.mode = 'slow'
   await scrollTop(page, 80)
-  const top = (await first.boundingBox())!.y
+  const top = await viewportY(first)
   await expect(transcript(page).locator('.message-assistant')).toHaveCount(400)
-  expect(Math.abs((await first.boundingBox())!.y - top)).toBeLessThan(2)
+  await expect.poll(async () => Math.abs(await viewportY(first) - top)).toBeLessThan(2)
   const anchored = await transcript(page).evaluate(el => el.scrollTop)
   state.rows.push(...Array.from({length: 430}, (_, i) => row(650 + i)))
   await online(page)
@@ -67,67 +68,71 @@ test('200 records initially, prepend stays anchored, newer bursts have no gaps o
   state.rows.push(row(1080)); await online(page)
   await expect(transcript(page).locator('.message-assistant')).toHaveCount(1081)
   expect(await transcript(page).evaluate(el => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThan(2)
-  await page.locator('.task-info-nav').getByRole('link', {name: '执行', exact: true}).click()
   await expect(transcript(page).locator('.message-assistant')).toHaveCount(1081)
 })
 
 test('collapsed runs fill the viewport automatically and preserve expanded input/output on polling', async ({page}) => {
   const tools = Array.from({length: 520}, (_, i): Message => ({id: `tool-${i}`, role: 'tool', kind: i % 2 ? 'tool-result' : 'tool-call', toolName: 'read', callId: `call-${Math.floor(i / 2)}`,
     text: i % 2 ? `读取结果 ${i}\n第二行` : `读取资料 ${i}`, status: i % 2 ? 'completed' : 'pending'}))
-  const state = await installStream(page, [...Array.from({length: 20}, (_, i) => row(i)), ...tools])
+  const conclusion: Message = {id: 'tools-complete', role: 'assistant', kind: 'task-result', text: '检查完毕。'}
+  const state = await installStream(page, [...Array.from({length: 20}, (_, i) => row(i)), ...tools, conclusion])
   await login(page)
   await expect.poll(() => state.requests.filter(url => url.searchParams.has('before')).length).toBeGreaterThanOrEqual(2)
-  await expect(transcript(page).locator('.message-assistant')).toHaveCount(20)
-  const group = transcript(page).locator('.execution-tool-group')
+  await expect(transcript(page).locator('.message-assistant')).toHaveCount(21)
+  const group = transcript(page).locator('.execution-turn-process')
+  await expect(group).not.toHaveAttribute('open')
   await group.locator(':scope > summary').click()
-  const input = group.locator('.execution-tool-input').first(), output = group.locator('.execution-tool-output').first()
-  await input.locator('summary').click(); await output.locator('summary').click()
+  const step = group.locator('.pi-tool-step').first()
+  await step.locator(':scope > summary').click()
+  await expect(step.locator('.tool-part').first()).toContainText('读取资料 0')
+  await expect(step.locator('.tool-part').last()).toContainText('读取结果 1')
   await online(page)
   await expect(group).toHaveAttribute('open', '')
-  await expect(input).toHaveAttribute('open', ''); await expect(output).toHaveAttribute('open', '')
-  expect(await transcript(page).locator('svg,.message-avatar,.execution-tool-group-chevron').count()).toBe(0)
+  await expect(step).toHaveAttribute('open', '')
+  await expect(step.locator('.tool-part').last()).toContainText('读取结果 1')
+  await expect(transcript(page).locator('.message-avatar,.execution-tool-group-chevron')).toHaveCount(0)
 })
 
-test('prepending into an expanded tool group preserves its key, nested disclosures and visible tool anchor', async ({page}) => {
+test('prepending into an expanded process preserves its nested disclosure and visible tool anchor', async ({page}) => {
   const tools = Array.from({length: 500}, (_, i): Message => ({id: `tool-${i}`, role: 'tool', kind: i % 2 ? 'tool-result' : 'tool-call', toolName: 'read', callId: `call-${Math.floor(i / 2)}`,
     text: i % 2 ? `读取结果 ${i}\n第二行` : `读取资料 ${i}`, status: i % 2 ? 'completed' : 'pending'}))
   const state = await installStream(page, [...tools, ...Array.from({length: 60}, (_, i) => row(i))])
   let release!: () => void
   state.holdOlder = new Promise<void>(resolve => { release = resolve })
   await login(page)
-  const group = transcript(page).locator('.execution-tool-group')
-  await group.locator(':scope > summary').click()
+  const group = transcript(page).locator('.execution-turn-process')
+  await expect(group).toHaveAttribute('open')
   const tool = transcript(page).locator('[data-message-id="tool-360"]')
-  const input = tool.locator('.execution-tool-input'), output = tool.locator('.execution-tool-output')
-  await input.locator('summary').click(); await output.locator('summary').click()
+  const step = tool.locator('.pi-tool-step')
+  await step.locator(':scope > summary').click()
   await scrollTop(page, 90)
-  const y = (await tool.boundingBox())!.y
+  const y = await viewportY(tool)
   release()
   await expect(group.locator('.message-tool')).toHaveCount(170)
   await expect(group).toHaveAttribute('open', '')
-  await expect(input).toHaveAttribute('open', ''); await expect(output).toHaveAttribute('open', '')
-  expect(Math.abs((await tool.boundingBox())!.y - y)).toBeLessThan(2)
+  await expect(step).toHaveAttribute('open', '')
+  await expect(step.locator('.tool-part').last()).toContainText('读取结果 361')
+  await expect.poll(async () => Math.abs(await viewportY(tool) - y)).toBeLessThan(2)
 })
 
-test('older-read retry retains data; changed context requires explicit recovery; revoked cache stays hidden', async ({page}) => {
+test('older-read retry retains data; changed context recovers cleanly; revoked cache stays hidden', async ({page}) => {
   const state = await installStream(page)
   await login(page)
   state.mode = 'older-error'; await scrollTop(page)
-  await expect(transcript(page).locator('.notice')).toBeVisible()
+  const notice = page.getByRole('alert', {name: '读取状态汇总'})
+  await expect(notice).toBeVisible()
   await expect(transcript(page).locator('.message-assistant')).toHaveCount(200)
-  state.mode = 'ready'; await transcript(page).getByRole('button', {name: '重新获取'}).click()
+  state.mode = 'ready'; await notice.getByRole('button', {name: '重试', exact: true}).click()
   await expect(transcript(page).locator('.message-assistant')).toHaveCount(400)
-  state.mode = 'conflict'; await online(page)
-  const notice = page.locator('.execution-history > .notice')
-  await expect(notice).toContainText('执行上下文已改变')
-  await expect(transcript(page).locator('.message-assistant')).toHaveCount(400)
-  state.rows = [row(9999)]; state.mode = 'ready'
-  await notice.getByRole('button', {name: '重新获取'}).click()
+  state.rows = [row(9999)]; state.mode = 'conflict'
+  const conflict = page.waitForResponse(response => response.url().includes('checkpoint=') && response.status() === 409)
+  await online(page); await conflict
   await expect(transcript(page).locator('.message-assistant')).toHaveCount(1)
   await expect(transcript(page)).toContainText('9999')
   state.mode = 'denied'; await online(page)
+  await expect(notice).toBeVisible()
   await expect(page.locator('.execution-history')).not.toContainText('9999')
-  state.mode = 'slow'; await page.locator('.execution-history > .notice').getByRole('button', {name: '重新获取'}).click()
+  state.mode = 'slow'; await notice.getByRole('button', {name: '重试', exact: true}).click()
   await expect(page.locator('.execution-history')).not.toContainText('9999')
   await expect(transcript(page)).toContainText('9999')
 })
@@ -153,11 +158,13 @@ test('real server projects a long execution stream and captures the default and 
     await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN)
     await page.getByRole('button', {name: '连接工作空间', exact: true}).click()
     await expect(transcript(page)).toContainText('第 80 轮核对完成')
-    await page.locator('.task-info-nav').getByRole('link', {name: '执行', exact: true}).click()
-    await expect(page.locator('.task-record-controls')).toContainText('200 / 566 条')
+    await expect(transcript(page).locator('.execution-history-start')).toContainText('向上滚动载入更早记录')
+    await page.getByRole('button', {name: '搜索执行记录', exact: true}).click()
+    const search = page.getByRole('region', {name: '搜索执行记录', exact: true})
+    await expect(search).toContainText('200 条')
     await page.screenshot({path: '../../docs/tmp/execution-scroll-default.png', fullPage: true})
     await scrollTop(page)
-    await expect(page.locator('.task-record-controls')).toContainText('400 / 566 条')
+    await expect(search).toContainText('400 条')
     await expect(transcript(page)).toContainText('第 80 轮核对完成')
     await page.screenshot({path: '../../docs/tmp/execution-scroll-older.png', fullPage: true})
     await page.getByRole('button', {name: '回到最新消息', exact: true}).click()

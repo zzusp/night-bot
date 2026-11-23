@@ -162,6 +162,7 @@ export function projectAgentObservation(previous,input,{owned=false}={}){
  const session=projection.nativeSessions[identity.sessionId],{kind,spanId,summary}=observation
  session.seen.push(observation.eventId)
  appendObservationTrace(projection,identity,observation)
+ if(['turn-completed','thinking-completed','compaction-completed'].includes(kind))return{created:true,projection}
  const bucket=bucketFor(projection,identity,time)
  if(kind==='phase-completed'){
   bucket.phaseMs??={}
