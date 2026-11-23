@@ -1,6 +1,6 @@
 import {useMemo} from 'react';
 import {ApiError} from '../api';
-import { RiArrowRightSLine, RiCheckboxCircleLine, RiTimeLine, RiLoader4Line } from '@remixicon/react';
+import { RiArrowRightSLine, RiCheckboxCircleLine, RiLoader4Line } from '@remixicon/react';
 import type { Overview, Page, Task } from '../api';
 import { dateTime, useResource } from '../hooks';
 import { Loading, Notice, Status } from './Shared';
@@ -16,11 +16,11 @@ function TaskRow({task}: {task: Task}) {
   </a>;
 }
 
-function TaskSection({title, tasks, href, tone, failed}: {title: string; tasks?: Page<Task> | null; href?: string; tone: 'running' | 'interrupted' | 'recent'; failed: boolean}) {
-  const Icon = tone === 'running' ? RiLoader4Line : tone === 'interrupted' ? RiTimeLine : RiCheckboxCircleLine;
+function TaskSection({title, tasks, href, tone, failed}: {title: string; tasks?: Page<Task> | null; href?: string; tone: 'running' | 'recent'; failed: boolean}) {
+  const Icon = tone === 'running' ? RiLoader4Line : RiCheckboxCircleLine;
   return <section className={`rail-section rail-section-${tone}`} aria-label={title}>
     <div className="rail-section-title"><h3><Icon size={16} aria-hidden="true" />{title}</h3>{href && <a href={href} aria-label={`查看${title}任务`}>查看<RiArrowRightSLine size={15} aria-hidden="true" /></a>}</div>
-    {tasks?.items.length ? <div className="rail-task-list">{tasks.items.slice(0, 5).map(task => <TaskRow key={task.taskId} task={task}/>)}</div> : <p className="rail-empty">{failed || !tasks || tasks.total > 0 ? '—' : tone === 'running' ? '暂无执行中的任务' : tone === 'interrupted' ? '暂无中断的任务' : '暂无任务'}</p>}
+    {tasks?.items.length ? <div className="rail-task-list">{tasks.items.slice(0, 5).map(task => <TaskRow key={task.taskId} task={task}/>)}</div> : <p className="rail-empty">{failed || !tasks || tasks.total > 0 ? '—' : tone === 'running' ? '暂无执行中的任务' : '暂无任务'}</p>}
   </section>;
 }
 
@@ -40,27 +40,24 @@ function ChannelActivityPanel(props: ActivityProps) {
 }
 function ActivityPanelContent({data, loading, error, onRetry, conversation}: ActivityProps) {
   // The existing task-list UI cannot retain a channel filter. Do not link to a
-  // global collection from a scoped count; individual task details stay linked.
+  // global collection from a scoped activity panel; individual task details stay linked.
   const allTasks=conversation.kind==='chat' ? '#/tasks' : undefined;
   const runningTasks=allTasks ? '#/tasks?state=running' : undefined;
-  // An unavailable page must not become a zero.
-  const incomplete = !!Object.keys(data?.sectionErrors || {}).length;
   const partialError=useMemo(()=>new ApiError(503,'OVERVIEW_PARTIAL'),[]);
+  // Preserve the recent-task fallback: both pages must confirm no current work.
   const idle = !error && !!data?.running && !!data?.interrupted
     && !data.sectionErrors?.running && !data.sectionErrors?.interrupted
     && data.running.total === 0 && data.interrupted.total === 0
     && data.running.items.length === 0 && data.interrupted.items.length === 0;
+  // Hidden sections must not contribute a page-level read error.
+  const incomplete = !!data?.sectionErrors?.running || (idle && !!data?.sectionErrors?.tasks);
   return <aside id="activity-panel" className="activity-rail" aria-label="任务动态">
     <div className="rail-heading"><h2>工作动态</h2>{allTasks && <a href={allTasks}>全部任务<RiArrowRightSLine size={16} aria-hidden="true" /></a>}</div>
     {!!error && <Notice error={error} stale={!!data} onRetry={onRetry}/>}
     {incomplete && !error && <Notice read error={partialError} source={conversation.kind === 'conversations' ? `/conversations/${encodeURIComponent(conversation.id || '')}/activity` : '/overview'} message="部分工作动态暂不可读。" onRetry={onRetry}/>}
     <StageTimingChart kind={conversation.kind} id={conversation.id}/>
     {!data && loading ? <Loading/> : <>
-      <div className="activity-counts">
-        {runningTasks ? <a href={runningTasks}><span><i className="count-dot info"/>执行中</span><strong>{data?.sectionErrors?.running ? '—' : data?.running?.total ?? '—'}</strong></a> : <div><span><i className="count-dot info"/>执行中</span><strong>{data?.sectionErrors?.running ? '—' : data?.running?.total ?? '—'}</strong></div>}
-      </div>
       <TaskSection title="正在执行" tasks={data?.running} href={runningTasks} tone="running" failed={!!data?.sectionErrors?.running}/>
-      <TaskSection title="中断的任务" tasks={data?.interrupted} tone="interrupted" failed={!!data?.sectionErrors?.interrupted}/>
       {idle && <TaskSection title="最近任务" tasks={data?.tasks} href={allTasks} tone="recent" failed={!!data?.sectionErrors?.tasks}/>}
     </>}
   </aside>;
