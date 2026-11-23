@@ -136,7 +136,8 @@ test('real Host cold drains and resumes the same task/session on operator input 
   await resumeFromOperatorAfterColdDrain(h,f.task.taskId)
   const task=await h.query('task.get',{taskId:f.task.taskId}),stored=await h.ctx.sessionPersistence.readNative(f.task.sessionId,{requireComplete:true})
   assert.equal(turns,1);assert.equal(task.sessionId,f.task.sessionId);assert.equal(task.drained,true);assert.equal(task.sessionFailure,null)
-  assert.match(task.lastDecision.summary,/objective continued/)
+  assert.equal(task.status,'completed');assert.equal(task.completion.result.action,'wait')
+  assert.match(task.completion.result.summary,/objective continued/)
   assert.equal(stored.audit.filter(row=>row.domain==='job'&&row.kind==='registered').length,1)
   assert.equal(stored.audit.filter(row=>row.domain==='job'&&row.kind==='settled').length,0)
   assert.ok((await h.query('wake.list',{taskId:f.task.taskId})).every(wake=>wake.state==='acked'))
@@ -156,13 +157,17 @@ test('new input wakes the original task with a cold unresolved shell job, withou
  try{
   await h.service.recover();await h.service.whenIdle()
   assert.equal(turns,0)
-  for(const requestId of ['first-explicit-input','later-explicit-input']){
+  for(const [index,requestId] of ['first-explicit-input','later-explicit-input'].entries()){
    const task=await h.query('task.get',{taskId:f.task.taskId})
-   await h.service.appendTaskContext({taskId:task.taskId,requestId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,progressImpact:'preserve',authorizationChange:'none',context:'Read the retained evidence; do not replay the old work.'})
+   const input={taskId:task.taskId,requestId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,context:'Read the retained evidence; do not replay the old work.'}
+   if(index===0)await h.service.appendTaskContext({...input,progressImpact:'preserve',authorizationChange:'none'})
+   else await h.service.reopenTask(input)
    await h.service.whenIdle()
    const after=await h.query('task.get',{taskId:task.taskId})
    assert.equal(after.sessionId,f.task.sessionId);assert.equal(after.drained,true);assert.equal(after.sessionFailure,null)
-   assert.equal(after.lastDecision.summary,'Evidence read on the original session');assert.ok(after.lastDecision.limitations.includes('TASK_HISTORICAL_JOB_OUTCOME_UNKNOWN'));assert.ok(!after.lastDecision.limitations.includes('TASK_JOB_UNCERTAIN_NO_REPLAY'))
+   assert.equal(after.status,'completed');assert.equal(after.completion.result.action,'wait')
+   const result=after.completion.result
+   assert.equal(result.summary,'Evidence read on the original session');assert.ok(result.limitations.includes('TASK_HISTORICAL_JOB_OUTCOME_UNKNOWN'));assert.ok(!result.limitations.includes('TASK_JOB_UNCERTAIN_NO_REPLAY'))
   }
   assert.equal(turns,4);assert.equal(h.toolResults.some(row=>['pwsh','bash'].includes(row.name)),false)
   const saved=await h.ctx.sessionPersistence.readNative(f.task.sessionId,{requireComplete:true})
@@ -216,9 +221,10 @@ test('cold shell effect closes through real job CLI and Host readback, then a ne
  assert.equal((await cli(f,'close',proposalFile,noteFile,'--check')).noWrites,true)
  assert.deepEqual(await readFile(f.route.path),original)
  await cli(f,'close',proposalFile,noteFile)
- const store=await openDynamicTaskStore(f.options);let phase='readback',shellIssued=false
+ const store=await openDynamicTaskStore(f.options);let phase='readback',readIssued=false,shellIssued=false
  const h=await nativeRuntimeHost(f.root,async request=>{
   if(!request.tools.some(tool=>tool.name==='task_result'))return topicTaskCalls(request)
+  if(phase==='readback'&&!readIssued){readIssued=true;return [{name:'read',args:{path:'work/readback.txt'}}]}
   if(phase==='continue'&&!shellIssued){shellIssued=true;return [{name:nativeShell,args:{description:'Run a new independent local shell after exact old-effect closure',command:'echo independent-shell-ok'}}]}
   return [{name:'task_result',args:{decision:{action:'wait',summary:phase==='continue'?'Independent shell finished':'Original output retained; no old shell replay',evidence:['retained operator readback'],limitations:['Original exit and effects remain unknown']}}}]
  },{store,permissionMode:'full'})
@@ -226,6 +232,8 @@ test('cold shell effect closes through real job CLI and Host readback, then a ne
   await resumeFromOperatorAfterColdDrain(h,f.task.taskId)
   const task=await h.query('task.get',{taskId:f.task.taskId}),inspection=await h.service.inspectTaskEffect({taskId:task.taskId,intentEntryId:f.intentEntryId})
   assert.equal(task.drained,true);assert.equal(task.sessionId,f.task.sessionId)
+  assert.equal(task.status,'completed');assert.equal(task.completion.result.action,'wait')
+  assert.match(JSON.stringify(h.toolResults.find(row=>row.name==='read')?.result??null),/exit unknown; no success claimed/)
   assert.ok(inspection.coldJobReconciliation.entryId);assert.ok(inspection.currentBinding.leaseEpoch>inspection.originBinding.leaseEpoch)
   const timed=(await h.service.taskDetail(task.taskId)).durations.execution
   assert.equal(timed.estimated,true);assert.ok(timed.milliseconds>=0)
@@ -242,20 +250,32 @@ test('cold shell effect closes through real job CLI and Host readback, then a ne
   const bytes=Buffer.from(JSON.stringify(doc)),sha256=hash(bytes),path='materials/runtime-evidence/effects/'+sha256+'.json'
   await mkdir(join(f.route.root,'materials/runtime-evidence/effects'),{recursive:true});await writeFile(join(f.route.root,path),bytes)
   const request={...Object.fromEntries(['taskId','intentEntryId','intentDigest','currentBinding','journalRevision','scopeDigest'].map(key=>[key,inspection[key]])),requestId:'close-cold-effect',evidenceRefs:[{path,sha256}],outcome:'closed-with-possible-partial-effects',noReplay:true,operatorText:'I read the retained evidence; close this exact original attempt with unknown partial effects, never replay.'}
-  assert.equal((await h.service.reconcileTaskEffect(request)).state,'committed')
+  const wakes=await h.query('wake.list',{taskId:task.taskId}),requests=h.requests.length,sent=h.sent.length
+  const result=await h.service.reconcileTaskEffect(request)
+  assert.equal(result.state,'committed');assert.equal(result.noReplay,true)
+  assert.deepEqual(await h.service.reconcileTaskEffect(request),result)
+  await h.service.recover();await h.service.whenIdle()
   const closed=await h.query('task.get',{taskId:task.taskId}),stored=await h.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
-  assert.equal(closed.control,'paused');assert.equal(stored.audit.filter(row=>row.domain==='task'&&row.kind==='owner-drained').length,1)
+  assert.equal(closed.status,'completed');assert.equal(closed.drained,true)
+  assert.equal(closed.control,task.control);assert.deepEqual(taskEffectBinding(closed),taskEffectBinding(task))
+  assert.deepEqual(closed.completion,task.completion);assert.deepEqual(closed.lastDecision,task.lastDecision)
+  assert.deepEqual(await h.query('wake.list',{taskId:task.taskId}),wakes)
+  assert.equal(h.requests.length,requests);assert.equal(h.sent.length,sent)
+  assert.equal(stored.audit.filter(row=>row.domain==='task'&&row.kind==='owner-drained').length,1)
   assert.equal(verifyTaskEffectClosures({task:closed,stored,closedIntentEntryIds:[f.intentEntryId]}).length,1)
   assert.deepEqual((await readFile(f.route.path)).subarray(0,original.length),original)
   phase='continue'
-  await store.command({id:'continue-after-cold-effect',kind:'task.control',args:{taskId:task.taskId,control:'active',expectedControlRevision:closed.controlRevision}})
-  await h.service.recover();await h.service.whenIdle()
-  const result=h.toolResults.find(row=>row.name===nativeShell)
-  assert.ok(result,'A new real shell must actually execute');assert.equal(result.result.error,undefined)
-  assert.match(JSON.stringify(result.result),/independent-shell-ok/)
+  await h.service.reopenTask({taskId:task.taskId,requestId:'continue-after-cold-effect',context:'Run a new independent shell to verify the current result. Never replay the old command.',expectedRequirementRevision:closed.requirementRevision,expectedControlRevision:closed.controlRevision})
+  await h.service.whenIdle()
+  const shells=h.toolResults.filter(row=>row.name===nativeShell)
+  assert.equal(shells.length,1,'Only the new real shell may execute')
+  assert.equal(shells[0].result.isError,false,JSON.stringify(shells[0].result))
+  assert.match(JSON.stringify(shells[0].result),/independent-shell-ok/)
   const final=await h.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
   assert.equal(final.audit.filter(row=>row.domain==='job'&&row.kind==='registered'&&row.payload.toolCall.callId===f.bound.toolCall.callId).length,1)
   assert.equal(final.audit.filter(row=>row.domain==='task'&&row.kind==='effect-intent').length,2)
-  assert.equal((await h.query('task.get',{taskId:task.taskId})).lastDecision.summary,'Independent shell finished')
+  const continued=await h.query('task.get',{taskId:task.taskId})
+  assert.equal(continued.sessionId,task.sessionId);assert.equal(continued.drained,true);assert.equal(continued.status,'completed')
+  assert.equal(continued.completion.result.summary,'Independent shell finished')
  }finally{try{await h.close()}finally{await store.close()}}
 })

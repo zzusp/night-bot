@@ -50,7 +50,7 @@ const fail=code=>{throw Object.assign(new Error(code),{code})}
 const assert=(condition,code)=>{if(!condition)fail(code)}
 const inside=(root,path)=>{const suffix=relative(root,path);return suffix===''||suffix!=='..'&&!suffix.startsWith('..'+(process.platform==='win32'?'\\':'/'))&&!isAbsolute(suffix)}
 const audit=entry=>entry.type==='custom'&&entry.customType==='night.audit'?entry.data:undefined
-const stableTask=value=>value&&value.drained===true&&!value.recovering&&!value.archivedAt&&['active','cancelled'].includes(value.status)
+export const taskEffectCanReconcile=task=>task?.drained===true&&!task.recovering&&!task.archivedAt&&['active','cancelled','completed'].includes(task.status)
 
 /** Schema for a Host lifecycle attestation only, never a kernel-exit verifier.
  * Production emission must be inside the real awaited model/tool/job/process
@@ -212,7 +212,7 @@ export function createTaskEffectReconciliation({persistence,readTask,readScope,i
  async function inspect({taskId,intentEntryId,signal}){
   text.parse(taskId);text.parse(intentEntryId);signal?.throwIfAborted()
   const task=await readTask(taskId)
-  assert(stableTask(task),'TASK_EFFECT_TASK_NOT_QUIESCENT')
+  assert(taskEffectCanReconcile(task),'TASK_EFFECT_TASK_NOT_QUIESCENT')
   const currentBinding=taskEffectBinding(task)
   assert(currentBinding.taskId===taskId&&await isSessionLive(task.sessionId)===false,'TASK_EFFECT_OWNER_LIVE')
   const stored=await persistence.readNative(task.sessionId,{requireComplete:true,signal})
@@ -231,7 +231,7 @@ export function createTaskEffectReconciliation({persistence,readTask,readScope,i
   const {drain,coldJobReconciliation}=effectOwnerDrain(entries,manager,task,currentBinding,intentEntryId,originBinding,scopeDigest)
   assert(unresolvedNativeJobReceipts(stored.audit,task.sessionId).length===0,'TASK_EFFECT_JOB_UNRESOLVED')
   const again=await readTask(taskId),againScope=scopeSchema.parse(await readScope(again,stored))
-  assert(stableTask(again)&&isDeepStrictEqual(taskEffectBinding(again),currentBinding)&&taskEffectScopeDigest(againScope)===scopeDigest&&await isSessionLive(task.sessionId)===false,'TASK_EFFECT_CURRENT_BINDING_CHANGED')
+  assert(taskEffectCanReconcile(again)&&isDeepStrictEqual(taskEffectBinding(again),currentBinding)&&taskEffectScopeDigest(againScope)===scopeDigest&&await isSessionLive(task.sessionId)===false,'TASK_EFFECT_CURRENT_BINDING_CHANGED')
   return {...coldJobReconciliation?{coldJobReconciliation}:{},kind:'single-task-effect-inspection',taskId,sessionId:task.sessionId,intentEntryId,intentDigest:taskEffectDigest(target),key:intent.payload.key,toolName:intent.payload.name,callId:intent.payload.callId,callEntryId:call.entry.id,argumentsDigest:taskEffectDigest(call.block.arguments),inputEntryId:input.id,packetId:packet.payload.id,inputDigest:taskEffectDigest(packet.payload),originBinding,currentBinding,ownerDrainEntryId:drain.id,ownerDrainDigest:taskEffectDigest(drain),scopeDigest,journalRevision:createHash('sha256').update(JSON.stringify(entries.at(-1))).digest('hex'),scope,drainedAt:drain.data.payload.proof.observedAt,proofScope:'registered-owned-provider-ranges',outcome:'unknown',noReplay:true}
  }
  async function prepare({operatorSourceId,signal,...input}){

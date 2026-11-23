@@ -22,10 +22,10 @@ test('actual HTTP inspection is zero-write and partial-effect closure is capabil
 })
 
 test('HTTP reconciliation survives cold restart without replay and rejects changed or multiply linked maintenance evidence',{timeout:20000},async t=>{
- const h=await restartDrainHost(t),task=await h.uncertain(await h.create()),intent=await h.intent(task),original=await h.native(task)
- await h.cold();await h.service.recover();await h.service.whenIdle();assert.equal(h.effects,1);assert.equal(h.f.requests.length,1);assert.deepEqual((await h.native(task)).entries,original.entries)
+ const h=await restartDrainHost(t),task=await h.uncertain(await h.create()),intent=await h.intent(task),original=await h.native(task),count=h.f.requests.length
+ await h.cold();await h.service.recover();await h.service.whenIdle();assert.equal(h.effects,1);assert.equal(h.f.requests.length,count);assert.deepEqual((await h.native(task)).entries,original.entries)
  const checked=await h.post(task,intent,'inspect');assert.equal(checked.status,200);const evidence=await h.evidence(checked.body)
  await writeFile(evidence.absolute,'changed bytes');assert.equal((await h.post(task,intent,'close',evidence.proposal)).body.error,'TASK_EFFECT_EVIDENCE_HASH_MISMATCH');await writeFile(evidence.absolute,evidence.bytes)
  const alias=evidence.absolute+'.alias';await link(evidence.absolute,alias);assert.equal((await h.post(task,intent,'close',evidence.proposal)).body.error,'TASK_EFFECT_EVIDENCE_PATH_UNSAFE');await unlink(alias)
- assert.equal((await h.post(task,intent,'close',evidence.proposal)).status,200);await h.service.recover();await h.service.whenIdle();assert.equal(h.effects,1);assert.equal(h.f.requests.length,1);assert.equal(await readFile(join(checked.body.scope.taskRoot,'work/uncertain.txt'),'utf8'),'one partial effect')
+ assert.equal((await h.post(task,intent,'close',evidence.proposal)).status,200);await h.service.recover();await h.service.whenIdle();assert.equal(h.effects,1);assert.equal(h.f.requests.length,count);assert.equal(await readFile(join(checked.body.scope.taskRoot,'work/uncertain.txt'),'utf8'),'one partial effect')
 })
