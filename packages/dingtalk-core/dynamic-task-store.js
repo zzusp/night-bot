@@ -4,7 +4,7 @@ import {sourceHistorySchema} from '../../src/channels/source-history.js'
 import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
 import {missingInterruptedTimings,readTaskTimingRows} from '../../src/tasks/observer-durations.js'
 import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
-import {effectReconciliationAuditKinds,taskEffectBinding,taskEffectDigest,taskEffectReconciliationIdentity} from '../../src/tasks/effect-reconciliation.js'
+import {effectReconciliationAuditKinds,taskEffectBinding,taskEffectCanReconcile,taskEffectDigest,taskEffectReconciliationIdentity} from '../../src/tasks/effect-reconciliation.js'
 import {installTaskArchive, archiveTable, archiveTaskRows, unarchiveTaskRows, readReceiptRow, insertReceipt, canArchiveRecord} from './task-archive.js'
 import { installTopicFacts, topicFactLedger } from './topic-facts.js'
 import {observerWorkMetadata} from './observer-work-index.js'
@@ -895,7 +895,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if(receipt.version!==1||receipt.domain!=='task'||receipt.kind!=='effect-reconciled'||!effectReconciliationAuditKinds['task/effect-reconciled'](payload)||payload.taskId!==task.taskId||payload.sessionId!==task.sessionId)fail('TASK_EFFECT_RECONCILIATION_INVALID')
       const source=get('dynamic_sources',payload.operatorSourceId)
       if(!webActorId||source.actorId!==webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+task.taskId)||payload.operatorActorId!==webActorId||taskEffectDigest(source.text)!==payload.operatorTextDigest)fail('TASK_EFFECT_OPERATOR_SOURCE_REQUIRED')
-      if(!task.drained||task.recovering||task.archivedAt||!['active','cancelled'].includes(task.status)||digest(taskEffectBinding(task))!==digest(payload.currentBinding))fail('TASK_EFFECT_PROPOSAL_STALE')
+      if(!taskEffectCanReconcile(task)||digest(taskEffectBinding(task))!==digest(payload.currentBinding))fail('TASK_EFFECT_PROPOSAL_STALE')
       task.effectReconciliations??=[]
       const previous=task.effectReconciliations.find(row=>row.requestId===payload.requestId||row.intentEntryId===payload.intentEntryId)
       if(previous){if(previous.receiptDigest!==taskEffectDigest(receipt))fail('DYNAMIC_COMMAND_ID_CONFLICT');return changed({task,reconciliation:previous})}
@@ -909,10 +909,11 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if(reconciliation.state==='committed'){if(reconciliation.entryId!==a.entryId)fail('DYNAMIC_COMMAND_ID_CONFLICT');return changed({task,reconciliation})}
       if(!task.drained||task.recovering||digest(taskEffectBinding(task))!==digest(reconciliation.receipt.payload.currentBinding))fail('TASK_EFFECT_PROPOSAL_STALE')
       reconciliation.state='committed';reconciliation.entryId=text(a.entryId,'entryId');reconciliation.committedAt=stamp
-      // Closing the uncertain attempt never authorizes continuation or success.
-      // An explicit later Host resume is required for the original objective.
-      if(!a.preserveControl&&task.control!=='cancelled'){task.control='paused';task.controlRevision++}
-      task.lastDecision={action:'wait',summary:'已按操作者证据结清为可能存在部分效果的失败尝试；原调用禁止重放，后续会话由 Router 按当前任务状态调度。',evidence:reconciliation.receipt.payload.evidenceRefs.map(ref=>ref.path),limitations:['partial effects possible','no replay'],effectDisposition:'closed-with-possible-partial-effects'}
+      // 已完成任务只记对账回执，不改变本轮结果或控制版本。
+      if(task.status!=='completed'){
+        if(!a.preserveControl&&task.control!=='cancelled'){task.control='paused';task.controlRevision++}
+        task.lastDecision={action:'wait',summary:'已按操作者证据结清为可能存在部分效果的失败尝试；原调用禁止重放，后续会话由 Router 按当前任务状态调度。',evidence:reconciliation.receipt.payload.evidenceRefs.map(ref=>ref.path),limitations:['partial effects possible','no replay'],effectDisposition:'closed-with-possible-partial-effects'}
+      }
       saveTask(task);return changed({task,reconciliation})
     }
     if(kind==='task.inspect'){

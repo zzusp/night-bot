@@ -169,6 +169,13 @@ for(const [name,options,code] of [
 for(const [name,change] of [
  ['live actor',state=>state.live=true],['unproven SQL drain',state=>state.task.drained=false],['scope owner change',state=>state.scope.ownerActorId='foreign'],['foreign task identity',state=>state.task.taskId='foreign'],
 ])test('inspection refuses '+name,async t=>{const f=await fixture(t);change(f.state);await assert.rejects(f.inspect())})
+for(const [name,change] of [
+ ['missing drain',{drained:false}],['recovery in progress',{recovering:true}],['archived task',{archivedAt:'2026-01-01T00:00:00Z'}],
+])test('completed task still refuses reconciliation for '+name,async t=>{
+ const f=await fixture(t)
+ Object.assign(f.state.task,{status:'completed',...change})
+ await assert.rejects(f.inspect(),{code:'TASK_EFFECT_TASK_NOT_QUIESCENT'})
+})
 for(const [name,options,code] of [
  ['foreign operator',{changeSource:s=>s.actorId='foreign'},'TASK_EFFECT_OPERATOR_SOURCE_REQUIRED'],
  ['model/channel source',{changeSource:s=>s.channel='im'},'TASK_EFFECT_OPERATOR_SOURCE_REQUIRED'],

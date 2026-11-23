@@ -1,4 +1,5 @@
 import {createServer} from 'node:http'
+import assert from 'node:assert/strict'
 import {mkdir,readFile,writeFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {createHash} from 'node:crypto'
@@ -15,7 +16,10 @@ export async function restartDrainHost(t,{processGate=false}={}){
  let effects=0,commands=0,service,store,resident,server,port,token,terminal
  const entered=Promise.withResolvers(),release=Promise.withResolvers()
  t.after(close)
- const f=await memoryHost(t,body=>body.tools?.some(tool=>tool.function.name==='uncertain_restart_effect')?{tool:'uncertain_restart_effect',args:{}}:undefined)
+ const f=await memoryHost(t,body=>{
+  if(!body.tools?.some(tool=>tool.function.name==='uncertain_restart_effect'))return
+  return effects===0?{tool:'uncertain_restart_effect',args:{}}:{text:'The original effect is unverified.'}
+ })
  function register(){const ctx=f.host.ctx;ctx.get('tools').register({name:'uncertain_restart_effect',description:'Fixture isolated local effect with lost acknowledgement',parameters:{type:'object',properties:{},additionalProperties:false},output:{schema:{type:'object'},render:()=>[]},async execute(_args,exec){
   effects++;const file=join(exec.agent.metadata.cwd,'work/uncertain.txt')
   if(processGate){
@@ -36,7 +40,7 @@ export async function restartDrainHost(t,{processGate=false}={}){
  }
  async function close(){release.resolve();await service?.close();await store?.close();await resident?.close();if(server){await new Promise(r=>server.close(r));server=undefined}}
  await open(true)
- return {f,entered,release,get ctx(){return f.host.ctx},get service(){return service},get effects(){return effects},get commands(){return commands},get terminal(){return terminal},get token(){return token},query:(kind,args={})=>store.query({kind,...args}),async create(){return service.createTask({requestId:'restart-unknown',objective:'Perform one authorized local effect and preserve unknown outcomes'})},async uncertain(task){await until(async()=>!!(await service.taskDialogue(task.taskId)).error);await service.whenIdle();return store.query({kind:'task.get',taskId:task.taskId})},async native(task){return f.host.ctx.sessionPersistence.readNative(task.sessionId??task.session.sessionId,{requireComplete:true})},async intent(task){const native=await this.native(task);return native.auditEntries.find(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-intent')},async post(task,intent,action,body={},headers={authorization:'Bearer '+token}){const response=await fetch(`http://127.0.0.1:${port}/tasks/${task.taskId}/effects/${intent.entryId}/${action}`,{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(body)});return {status:response.status,body:await response.json()}},async evidence(inspection){
+ return {f,entered,release,get ctx(){return f.host.ctx},get service(){return service},get effects(){return effects},get commands(){return commands},get terminal(){return terminal},get token(){return token},query:(kind,args={})=>store.query({kind,...args}),async create(){return service.createTask({requestId:'restart-unknown',objective:'Perform one authorized local effect and preserve unknown outcomes'})},async uncertain(task){await service.whenIdle();const row=await store.query({kind:'task.get',taskId:task.taskId});assert.equal(row.drained,true);assert.ok(row.lastDecision?.limitations.includes('TASK_EFFECT_UNCERTAIN_NO_REPLAY'));assert.equal(effects,1);return row},async native(task){return f.host.ctx.sessionPersistence.readNative(task.sessionId??task.session.sessionId,{requireComplete:true})},async intent(task){const native=await this.native(task);return native.auditEntries.find(entry=>entry.data.domain==='task'&&entry.data.kind==='effect-intent')},async post(task,intent,action,body={},headers={authorization:'Bearer '+token}){const response=await fetch(`http://127.0.0.1:${port}/tasks/${task.taskId}/effects/${intent.entryId}/${action}`,{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(body)});return {status:response.status,body:await response.json()}},async evidence(inspection){
   const doc={version:1,kind:'task-effect-readback',...Object.fromEntries(['taskId','sessionId','intentEntryId','intentDigest','callEntryId','argumentsDigest','originBinding','currentBinding','scopeDigest'].map(key=>[key,inspection[key]])),observedAt:new Date().toISOString(),summary:'Operator read back local bytes; partial effects remain unknown.',outcome:'partial-or-unknown',noReplay:true},bytes=Buffer.from(JSON.stringify(doc)),sha256=hash(bytes),path='materials/runtime-evidence/effects/'+sha256+'.json'
   await mkdir(join(inspection.scope.taskRoot,'materials/runtime-evidence/effects'),{recursive:true});await writeFile(join(inspection.scope.taskRoot,path),bytes)
   return {bytes,path,absolute:join(inspection.scope.taskRoot,path),proposal:{...Object.fromEntries(['taskId','intentEntryId','intentDigest','currentBinding','journalRevision','scopeDigest'].map(key=>[key,inspection[key]])),requestId:'operator-restart-close',evidenceRefs:[{path,sha256}],outcome:'closed-with-possible-partial-effects',noReplay:true,operatorText:'Read back the local effect and close it without authorizing replay.'}}
