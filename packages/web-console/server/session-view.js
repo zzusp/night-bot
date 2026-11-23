@@ -2,6 +2,8 @@ import {nativeTokenUsage} from './token-usage.js'
 import {randomUUID} from 'node:crypto'
 import {setImmediate as yieldToIO} from 'node:timers/promises'
 import {digest, fail} from './security.js'
+import {specializedToolInput, specializedToolOutput} from './specialized-tool-activity.js'
+import {isResourceTool, resourceReadCandidate} from './resource-tool-content.js'
 
 // Names cover environment variables, JSON fields and HTTP headers. A configured
 // installation token alone is not a registry of credentials used by task tools.
@@ -141,7 +143,9 @@ const toolOutputs = {
   platform_config_query: {timeZone: toolString, concurrency: toolNumber}, platform_schedule_submit: toolReceipt,
 }
 
-function toolInput(name, args) {
+function toolInput(name, args, identity) {
+  const specialized=specializedToolInput(name,args,identity)
+  if(specialized)return specialized
   if (!Object.hasOwn(toolInputs, name)) return {toolName: name, text: '此工具尚未声明可展示的输入字段；调用名称与状态保留。', redacted: true}
   const state = {hidden: false}, value = toolObject(toolInputs[name])(args ?? {}, state) ?? {}
   if (!args || typeof args !== 'object' || Array.isArray(args)) state.hidden = true
@@ -209,6 +213,12 @@ function toolOutput(call, message, identity) {
   // 同一任务已授权的执行工具正文可读；details、二进制和独立 memory/skill scope 不由此公开。
   if (identity.taskId && taskTextTools.has(name)) {
     return {toolName: name, text: text || '工具已返回，未包含文字正文。', redacted: state.hidden}
+  }
+  if (name==='resident_task_lookup_async'&&text.length<=65536) {
+    let raw
+    try {raw=JSON.parse(text)} catch {}
+    const specialized=specializedToolOutput(name,raw,identity)
+    if(specialized)return specialized
   }
   if (!Object.hasOwn(toolOutputs, name)) return summary
   let raw
@@ -281,16 +291,85 @@ function scheduledPrompts(content, source) {
   return null
 }
 
-async function projectEntries(snapshot, identity, secrets, calls = new Map(), resultMessages = true) {
+function taskInputInstructions(input, binding, inputs, sources) {
+  const direct = new Map()
+  const read = (row, value) => {
+    if (!row || typeof value !== 'string' || !value.trim()
+      || !Number.isSafeInteger(row.requirementRevision) || row.requirementRevision !== binding.requirementRevision
+      || !Number.isSafeInteger(row.controlRevision) || row.controlRevision !== binding.controlRevision
+      || !Number.isSafeInteger(row.contextRevision) || !Number.isSafeInteger(binding.contextRevision ?? 0)
+      || row.contextRevision > (binding.contextRevision ?? 0)) return false
+    if (!direct.has(row.requestId)) direct.set(row.requestId, {text: value})
+    return true
+  }
+  const updates = (Array.isArray(input?.updates) ? input.updates : []).filter(update => {
+    const row = inputs.get(update?.id)
+    return !(row && (update.sourceId === undefined || update.sourceId === row.sourceId)
+      && (update.messageVersion === undefined || update.messageVersion === row.messageVersion)
+      && read(row, update.text))
+  })
+  let supplement = input?.supplement
+  const row = inputs.get(supplement?.messageId)
+  if (row && supplement.contextRevision === row.contextRevision && read(row, supplement.text)) supplement = undefined
+  // Older source-only task packets omit updates. A committed, exactly matched
+  // source/version is accepted only when the Host ledger independently binds it to this task input.
+  if (input?.task?.inputPolicy === 'source-only-v1' && Array.isArray(input.sources)) {
+    for (const source of input.sources) {
+      const proof = sources.get(source?.sourceId)
+      if (proof && proof.messageVersion === source.version) read(proof, source.text)
+    }
+  }
+  if (!direct.size) return {instruction:taskInstruction(input), direct}
+  const task = input?.task && !updates.length ? {...input.task,request:undefined} : input?.task
+  return {instruction:taskInstruction({...input,task,updates,supplement}),direct}
+}
+
+const nonnegativeNumber = value => Number.isFinite(value) && value >= 0
+const nonnegativeInteger = value => Number.isSafeInteger(value) && value >= 0
+const timingFields = value => {
+  const pairs = ['durationMs', 'modelWaitMs', 'modelDurationMs', 'turnDurationMs'].flatMap(key => nonnegativeNumber(value?.[key]) ? [[key,value[key]]] : [])
+  return pairs.length ? Object.fromEntries(pairs) : undefined
+}
+// Pi summarizes raw tool/custom inputs, not this Web reader's projection. Only
+// an all-public text ancestry permits opening the summary. Closed/edited/
+// extension-supplied contexts still get an authentic metadata-only marker.
+function compactionSummaryVisible(entry, entries, secrets) {
+  const native=entries.get(entry.id)?.entry
+  if (native?.type!=='compaction'||native.fromHook===true||typeof native.parentId!=='string') return false
+  let id=native.parentId
+  const seen=new Set()
+  while(id!==null){
+    if(seen.has(id)||seen.size>=512)return false
+    seen.add(id)
+    const prior=entries.get(id)?.entry
+    if(!prior)return false
+    if(prior.type==='message'){
+      const message=prior.message
+      if(!['user','assistant'].includes(message?.role))return false
+      const blocks=typeof message.content==='string'?[{type:'text',text:message.content}]:message.content
+      if(!Array.isArray(blocks)||crossBlockSensitive(blocks,secrets)||blocks.some(block=>block?.type!=='thinking'&&(block?.type!=='text'||typeof block.text!=='string'||visibleText(block.text,secrets,{maxLength:Infinity}).redacted)))return false
+    }else if(!['model_change','thinking_level_change','label','session_info'].includes(prior.type)
+      &&!(prior.type==='custom'&&['night.header','night.audit','night.commit'].includes(prior.customType)))return false
+    id=prior.parentId
+  }
+  return true
+}
+async function projectEntries(snapshot, identity, secrets, calls = new Map(), resultMessages = true, taskInputs = [], executionActivity = false, executionTiming, resourceCandidates) {
   const {taskId, sessionId, conversationId, generation} = identity
-  const items = [], sources = new Set(), operatorReplies = new Set()
+  const items = [], sources = new Set(), operatorReplies = new Set(), seenTaskInputs = new Set()
+  const inputsById = new Map(taskInputs.map(row => [row.inputId, row]))
+  const inputsBySource = new Map(taskInputs.map(row => [row.sourceId, row]))
   let processed = 0
   const opaque = (...parts) => digest(JSON.stringify([sessionId, ...parts]))
+  const nativeEntries=executionActivity&&snapshot.context.projection.entries.some(row=>row.sourceEntry?.type==='compaction')?new Map(snapshot.entries.map((entry,index)=>[entry.id,{entry,index}])):undefined
+  const timeline=nativeEntries?new WeakMap():undefined
   const add = (entry, suffix, role, value, extra = {}, message) => {
-    const visible = visibleText(value, secrets, {maxLength: Infinity, preservePaths: true})
-    if (!visible.text && !extra.toolName) return
-    items.push({id: opaque(entry.id, suffix), role, createdAt: stamp(message, entry), ...visible, ...extra,
-      source: {sessionId, entryId: opaque(entry.id), ...(extra.callId ? {callId: extra.callId} : {})}})
+    const visible = visibleText(value, secrets, {maxLength: Infinity, preservePaths:extra.kind!=='compaction'})
+    if (!visible.text && !extra.toolName && extra.kind!=='compaction') return
+    const row={id: opaque(entry.id, suffix), role, createdAt: stamp(message, entry), ...visible, ...extra,
+      source: {sessionId, entryId: opaque(entry.id), ...(extra.callId ? {callId: extra.callId} : {})}}
+    items.push(row)
+    if(timeline)timeline.set(row,nativeEntries.get(entry.id)?.index??Number.MAX_SAFE_INTEGER)
   }
   const sourceText = (entry, suffix, row) => {
     if (typeof row?.text !== 'string') return
@@ -306,6 +385,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
     if (!entry || typeof entry.id !== 'string') continue
     for (const [index, message] of projected.messages.entries()) {
       if (message.role === 'assistant') {
+        const firstRow = items.length
         const blocks = typeof message.content === 'string' ? [{type: 'text', text: message.content}] : message.content
         const suppressBodies = crossBlockSensitive(blocks, secrets)
         for (const [blockIndex, block] of (Array.isArray(blocks) ? blocks : []).entries()) {
@@ -314,23 +394,32 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
             const summary = !taskId ? routerSummary(block.text) : null
             add(entry, 'assistant-' + index + '-' + blockIndex, 'assistant', summary ?? block.text, {kind: summary !== null ? 'context-summary' : 'message', ...(['stop', 'length', 'toolUse', 'error', 'aborted'].includes(message.stopReason) ? {status: message.stopReason} : {})}, message)
           } else if (block.type === 'thinking' && typeof block.thinking === 'string' && block.redacted !== true) {
-            add(entry, 'thinking-' + index + '-' + blockIndex, 'assistant', block.thinking, {kind: 'thinking'}, message)
+            const timing = timingFields({durationMs:executionTiming?.thinking(entry.id,blockIndex)})
+            add(entry, 'thinking-' + index + '-' + blockIndex, 'assistant', block.thinking, {kind: 'thinking',...(timing?{timing}:{})}, message)
           }
           if (block.type !== 'toolCall' || typeof block.name !== 'string') continue
           const callId = opaque(entry.id, index, blockIndex)
           // 厂商 ID 可跨轮重用；未配对的重复 ID 不能猜测归属。
-          const selected = toolInput(block.name, block.arguments)
+          const selected = toolInput(block.name, block.arguments, identity)
           const resultText = businessResultText(block.name, selected.text)
-          if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(block.name==='resident_operator_reply'&&typeof block.arguments?.eventId==='string'?{operatorEventKey:opaque('operator-reply',block.arguments.eventId)}:{}), ...(resultText ? {resultText} : {})})
+          if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(executionActivity?{entryId:entry.id}:{}), ...(resourceCandidates&&isResourceTool(block.name)?{resourceArgs:block.arguments}:{}), ...(block.name==='resident_operator_reply'&&typeof block.arguments?.eventId==='string'?{operatorEventKey:opaque('operator-reply',block.arguments.eventId)}:{}), ...(resultText ? {resultText} : {})})
           add(entry, 'call-' + index + '-' + blockIndex, 'tool', selected.text, {kind: 'tool-call', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), callId, status: 'result-unrecorded'}, message)
         }
+        const timing = timingFields(executionTiming?.assistant(entry.id))
+        if (timing&&items.length>firstRow) items[firstRow].timing={...items[firstRow].timing,...timing}
       } else if (message.role === 'toolResult') {
         const nativeId = message.toolCallId, pending = calls.get(nativeId)
         const call = pending?.name === message.toolName ? pending : undefined
         const callId = call?.id ?? opaque(entry.id, 'orphan-result', index)
         calls.delete(nativeId)
         const selected = toolOutput(call, message, identity)
-        add(entry, 'result-' + index, 'tool', selected.text, {kind: 'tool-result', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), ...(selected.failure ? {failure: selected.failure} : {}), callId, isError: message.isError === true, status: message.isError ? 'error' : 'completed'}, message)
+        const timing = typeof nativeId === 'string' && call?.entryId ? timingFields({durationMs:executionTiming?.tool(call.entryId,nativeId)}) : undefined
+        add(entry, 'result-' + index, 'tool', selected.text, {kind: 'tool-result', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), ...(selected.failure ? {failure: selected.failure} : {}), ...(timing?{timing}:{}), callId, isError: message.isError === true, status: message.isError ? 'error' : 'completed'}, message)
+        if (resourceCandidates && call?.resourceArgs) {
+          let candidate
+          try {candidate = resourceReadCandidate(call.name, call.resourceArgs, message, entry)} catch { /* Invalid receipt proves no body. */ }
+          if (candidate) resourceCandidates.push({id: items.at(-1).id, candidate})
+        }
         // Only a committed, uniquely paired successful Host receipt presents a result.
         // Keep the original tool records and derive a separately pageable message.
         if (resultMessages && call?.resultText && !message.isError) {
@@ -342,6 +431,15 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           const routerReply = !taskId && call.name === 'resident_router_reply' && receipt?.accepted !== false
           if (taskResult || routerReply || operatorReply) add(entry, 'business-result-' + index, 'assistant', operatorReply?receipt.result.text:call.resultText, {kind: taskResult ? 'task-result' : 'router-reply', callId}, message)
         }
+      } else if (executionActivity && message.role === 'compactionSummary' && entry.type === 'compaction' && typeof message.summary === 'string') {
+        const observation=executionTiming?.compaction(entry.id),timing=timingFields(observation)
+        const summaryVisible=compactionSummaryVisible(entry,nativeEntries,secrets)
+        const mode=['foreground','background'].includes(observation?.mode)?observation.mode:undefined
+        const compaction={...mode?{mode}:{},...nonnegativeInteger(message.tokensBefore)?{tokensBefore:message.tokensBefore}:{},
+          ...nonnegativeInteger(observation?.tokensAfter)?{tokensAfter:observation.tokensAfter}:{},...!summaryVisible?{summaryHidden:true}:{}}
+        // Use the authoritative summary and only numeric metadata. In particular
+        // never return raw extension details, the full old branch, or a saved prompt.
+        add(entry,'compaction-'+index,'assistant',summaryVisible?message.summary:'',{kind:'compaction',compaction,...!summaryVisible?{redacted:true}:{},...timing?{timing}:{}},message)
       } else if (message.role === 'user') {
         add(entry, 'user-' + index, 'user', texts(message.content), {kind: 'source'}, message)
       } else if (message.role === 'custom' && message.customType === 'night.business-input') {
@@ -351,8 +449,15 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           if (source.taskSession?.taskId !== taskId || source.taskSession?.sessionId !== sessionId) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
           let input
           try {input = JSON.parse(texts(message.content))} catch {fail('SESSION_SOURCE_INVALID', 503)}
-          const instruction = taskInstruction(input)
+          const {instruction,direct} = inputsById.size ? taskInputInstructions(input, source.taskSession, inputsById, inputsBySource)
+            : {instruction:taskInstruction(input),direct:[]}
           if (instruction) add(entry, 'instruction-' + index, 'user', instruction, {kind: 'instruction'}, message)
+          for (const [requestId,row] of direct) {
+            if (seenTaskInputs.has(requestId)) continue
+            seenTaskInputs.add(requestId)
+            const safe = visibleText(requestId,secrets).text === requestId
+            add(entry, 'task-input-' + index + '-' + requestId, 'user', row.text, {kind:'instruction',...(safe?{requestId}:{})}, message)
+          }
         } else if (source?.kind === 'schedule') {
           const content = texts(message.content)
           const prompts = scheduledPrompts(content, source)
@@ -374,7 +479,9 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
       }
     }
   }
-  return items
+  // Pi puts its latest summary first for model context; the Web timeline keeps
+  // the actual commit position relative to still-retained earlier messages.
+  return timeline?items.sort((a,b)=>timeline.get(a)-timeline.get(b)):items
 }
 
 function pageOptions({offset = 0, limit = 50, stream = false, checkpoint, before, revision}) {
@@ -437,9 +544,16 @@ export function visibleLiveText(value, secrets = [], complete = false, {shortPro
   if (visible.redacted) return ''
   return text.slice(0, cut + 1)
 }
-async function projectLive(snapshot, identity, secrets, raw, calls) {
+const isoTime = value => typeof value==='string'&&Number.isFinite(Date.parse(value))?value:undefined
+function liveNotice(value) {
+  if(!['model','compaction'].includes(value?.source))return
+  if(['failed','cancelled'].includes(value.kind))return {kind:value.kind,source:value.source}
+  if(value.kind==='retry'&&nonnegativeInteger(value.attempt)&&value.attempt>0&&nonnegativeInteger(value.maxAttempts)&&value.maxAttempts>=value.attempt)return {kind:'retry',source:value.source,attempt:value.attempt,maxAttempts:value.maxAttempts}
+}
+async function projectLive(snapshot, identity, secrets, raw, calls, executionActivity) {
   if (!raw || raw.sessionId !== identity.sessionId || typeof raw.active !== 'boolean' || typeof raw.revision !== 'string') return {active:false,items:[]}
-  if (!raw.active) return {active:false,revision:raw.revision,items:[]}
+  const notice=executionActivity?liveNotice(raw.notice):undefined
+  if (!raw.active||!executionActivity&&['compaction','retry'].includes(raw.phase)) return {active:false,revision:raw.revision,items:[],...notice?{notice}:{}}
   const extra = []
   if (raw.assistant?.message?.role === 'assistant' && typeof raw.assistant.id === 'string') {
     const message = raw.assistant.message
@@ -454,8 +568,12 @@ async function projectLive(snapshot, identity, secrets, raw, calls) {
   // Only the exact currently pending official call can lend its public result
   // schema to a live tool update; tools never self-authorize by naming a tool.
   const pending = new Map([...calls].map(([id, call]) => [id, call?.name ?? null]))
+  const tools=[]
   for (const tool of raw.tools ?? []) {
-    if (typeof tool.id !== 'string' || pending.get(tool.toolCallId) !== tool.toolName || !Array.isArray(tool.content) || !tool.content.length) continue
+    if (typeof tool.id !== 'string' || typeof tool.toolName!=='string'||pending.get(tool.toolCallId) !== tool.toolName) continue
+    const startedAt=isoTime(tool.startedAt)
+    if(executionActivity&&startedAt&&!tool.ended)tools.push({callId:calls.get(tool.toolCallId).id,startedAt})
+    if (!Array.isArray(tool.content) || !tool.content.length) continue
     if (!(identity.taskId && taskTextTools.has(tool.toolName)) && !Object.hasOwn(toolOutputs,tool.toolName)) continue
     if (!(identity.taskId && taskTextTools.has(tool.toolName)) && !tool.complete) continue
     const text=visibleLiveText(texts(tool.content),secrets,tool.complete===true)
@@ -464,7 +582,10 @@ async function projectLive(snapshot, identity, secrets, raw, calls) {
   }
   const liveEntryIds = new Set(extra.map(row=>digest(JSON.stringify([identity.sessionId,row.sourceEntry.id]))))
   const combined={...snapshot,context:{...snapshot.context,projection:{...snapshot.context.projection,entries:extra}}}
-  return {active:true,revision:raw.revision,...(['waiting','thinking','text','tool'].includes(raw.phase)?{phase:raw.phase}:{}),...(typeof raw.phaseStartedAt==='string'&&Number.isFinite(Date.parse(raw.phaseStartedAt))?{phaseStartedAt:raw.phaseStartedAt}:{}),items:(await projectEntries(combined,identity,secrets,new Map(calls),false)).filter(row=>liveEntryIds.has(row.source.entryId)).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
+  const phase=['waiting','thinking','text','tool'].includes(raw.phase)||executionActivity&&['preparing','compaction','retry'].includes(raw.phase)?raw.phase:undefined
+  const phaseStartedAt=phase?isoTime(raw.phaseStartedAt):undefined
+  return {active:true,revision:raw.revision,...phase?{phase}:{},...phaseStartedAt?{phaseStartedAt}:{},...notice?{notice}:{},...tools.length?{tools}:{},
+    items:(await projectEntries(combined,identity,secrets,new Map(calls),false)).filter(row=>liveEntryIds.has(row.source.entryId)).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
 }
 
 // No public history is cached: only short-lived committed identity/pending calls.
@@ -472,7 +593,7 @@ async function projectLive(snapshot, identity, secrets, raw, calls) {
 const liveProofs = new WeakMap()
 const liveValidity = Symbol('live-proof-validity')
 const proofTTL = 10000, proofLimit = 64
-async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = [], liveProof, proofScope, guard, includeTaskUsage = false}) {
+async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = [], liveProof, proofScope, guard, includeTaskUsage = false, readTaskInputIds, executionActivity = false, readExecutionTiming, readResourceContents}) {
   const {sessionId} = identity
   if (!sessionId || !persistence?.readNative) return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
   const identityKey = JSON.stringify(identity), secretKey = digest(JSON.stringify(secrets))
@@ -487,7 +608,7 @@ async function projection({base, identity, persistence, validIdentity, notStarte
     if (saved && saved.secret !== secretKey) fail('SESSION_REDACTION_CHANGED',409)
     if (!saved || !proofScope || saved.scope !== proofScope || saved.identity !== identityKey || !persistence.readNativeDigest) return changed()
     try {if (await persistence.readNativeDigest(sessionId) !== saved.digest) return changed()} catch {return changed()}
-    const live = await projectLive({context:{projection:{entries:[]}}}, identity, secrets, await persistence.readLive?.(sessionId), saved.calls)
+    const live = await projectLive({context:{projection:{entries:[]}}}, identity, secrets, await persistence.readLive?.(sessionId), saved.calls, executionActivity)
     return {...base, status:'ready', live, liveProof, historyChanged:false, [liveValidity]:()=>saved.expires>Date.now() && proofs.get(liveProof)===saved}
   }
   let snapshot
@@ -497,18 +618,40 @@ async function projection({base, identity, persistence, validIdentity, notStarte
     return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
   }
   if (snapshot.header?.id !== sessionId || !Array.isArray(snapshot.entries) || !Array.isArray(snapshot.context?.projection?.entries) || !validIdentity(snapshot)) fail('SESSION_IDENTITY_INVALID', 503)
-  const currentRevision = digest(JSON.stringify([sessionId, snapshot.entries.at(-1)?.id]))
-  if (revision && revision !== currentRevision) fail('SESSION_PAGE_STALE', 409)
+  const journalRevision = digest(JSON.stringify([sessionId, snapshot.entries.at(-1)?.id]))
   // Validate/redact committed history once, retaining its exact pending-call
   // pairing state for the bounded live suffix. No cached authorization.
   const calls = new Map()
-  const items = await projectEntries(snapshot, identity, secrets, calls)
-  const live = persistence.readLive ? await projectLive(snapshot, identity, secrets, await persistence.readLive(sessionId), calls) : undefined
+  const taskInputs = identity.taskId && readTaskInputIds ? await readTaskInputIds(sessionId) : []
+  let timing
+  if (executionActivity&&readExecutionTiming) try {timing=await readExecutionTiming(identity)} catch { /* Optional diagnostics never blocks committed history. */ }
+  const resourceCandidates = readResourceContents ? [] : undefined
+  const items = await projectEntries(snapshot, identity, secrets, calls, true, taskInputs, executionActivity, timing, resourceCandidates)
+  const live = persistence.readLive ? await projectLive(snapshot, identity, secrets, await persistence.readLive(sessionId), calls, executionActivity) : undefined
+  const granted = resourceCandidates?.length ? await readResourceContents(resourceCandidates) : undefined
+  const resources = []
+  if (granted?.size) for (const row of items) {
+    const body = granted.get(row.id)
+    if (typeof body !== 'string') continue
+    Object.assign(row, visibleText(body, secrets, {maxLength: Infinity}), {resourceContent: true})
+    resources.push([row.id, digest(row.text), row.redacted])
+  }
+  // A continuation or a stream prefix cannot reuse prior authorization when a
+  // resource changes independently of the physical session journal.
+  const currentRevision = resources.length ? digest(JSON.stringify([journalRevision, resources])) : journalRevision
+  if (revision && revision !== currentRevision) fail('SESSION_PAGE_STALE', 409)
   let nextProof
-  if (proofScope && calls.size <= 256 && JSON.stringify([...calls]).length <= 65536 && typeof snapshot.journalDigest === 'string' && persistence.readNativeDigest) {
+  // The lightweight request cannot reauthorize dependent bodies. Never let
+  // it refresh an already disclosed resource or cache any raw resource data.
+  const liveCalls = new Map([...calls].map(([id, call]) => {
+    if (!call?.resourceArgs) return [id, call]
+    const {resourceArgs, ...safe} = call
+    return [id, safe]
+  }))
+  if (!resources.length && proofScope && liveCalls.size <= 256 && JSON.stringify([...liveCalls]).length <= 65536 && typeof snapshot.journalDigest === 'string' && persistence.readNativeDigest) {
     while (proofs.size >= proofLimit) proofs.delete(proofs.keys().next().value)
     nextProof = randomUUID()
-    proofs.set(nextProof, {scope:proofScope, identity:identityKey, secret:secretKey, digest:snapshot.journalDigest, calls:new Map(calls), expires:Date.now()+proofTTL})
+    proofs.set(nextProof, {scope:proofScope, identity:identityKey, secret:secretKey, digest:snapshot.journalDigest, calls:liveCalls, expires:Date.now()+proofTTL})
   }
   return {...base, status: 'ready', revision: currentRevision, ...(includeTaskUsage ? {tokenUsage:nativeTokenUsage(snapshot.entries)} : {}), ...taskTodos(snapshot, identity, secrets), items, ...(live ? {live} : {}), ...(nextProof ? {liveProof:nextProof} : {})}
 }
@@ -525,9 +668,14 @@ function sessionPage(value, options) {
 // A checkpoint commits the entire authorized prefix, not just its last ID.
 // Appends remain readable without offset drift; branch/compaction/redaction or
 // a different session invalidates the prefix instead of mixing snapshots.
-function sessionStream(value, {limit = 200, checkpoint, before}) {
+function sessionStream(value, {limit = 200, checkpoint, before, executionActivity}) {
   const rows = value.items
-  const proof = index => digest(JSON.stringify(rows.slice(0, index + 1)))
+  const proof = index => digest(JSON.stringify(rows.slice(0, index + 1).map(row=>{
+    if(!row.timing)return row
+    const {timing,...stable}=row
+    if(stable.compaction){const {mode,tokensAfter,...committed}=stable.compaction;stable.compaction=committed}
+    return stable
+  })))
   let anchor = -1
   if (checkpoint) {
     const [id, hash] = checkpoint.split('.')
@@ -549,7 +697,14 @@ function sessionStream(value, {limit = 200, checkpoint, before}) {
   const last = before ? anchor : end - 1
   const items = rows.slice(start, end).map(row => ({...row, text: row.text.slice(0, 16000), textTotal: row.text.length,
     textNextOffset: row.text.length > 16000 ? 16000 : null, ...(row.text.length > 16000 ? {truncated: true} : {})}))
-  return {...value, items, total: rows.length, limit, nextOffset: null,
+  // Asynchronous diagnostic metadata must not rewrite a history cursor.
+  const previousTail=executionActivity&&checkpoint&&!before?rows.slice(Math.max(0,start-200),start):[]
+  const timingUpdates=Object.fromEntries(previousTail.flatMap(row=>row.timing?[[row.id,row.timing]]:[]))
+  const compactionUpdates=Object.fromEntries(previousTail.flatMap(row=>{
+    const {mode,tokensAfter}=row.compaction??{}
+    return mode||tokensAfter!==undefined?[[row.id,{...mode?{mode}:{},...tokensAfter!==undefined?{tokensAfter}:{}}]]:[]
+  }))
+  return {...value, items, total: rows.length, limit, nextOffset: null,...Object.keys(timingUpdates).length?{timingUpdates}:{},...Object.keys(compactionUpdates).length?{compactionUpdates}:{},
     checkpoint: last >= 0 ? `${rows[last].id}.${proof(last)}` : null,
     before: start > 0 && start < rows.length ? rows[start].id : null, hasNewer: !before && end < rows.length}
 }
@@ -558,10 +713,10 @@ function messagePage(value, {messageId, offset = 0, limit = 16000, revision}) {
     || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 16000) fail('PAGE_INVALID')
   if (value.status !== 'ready') fail(value.reason, 503)
   const row = value.items.find(item => item.id === messageId)
-  if (!row) fail('SESSION_MESSAGE_NOT_FOUND', 404)
+  if (!row || row.compaction?.summaryHidden) fail('SESSION_MESSAGE_NOT_FOUND', 404)
   if (offset > row.text.length) fail('PAGE_INVALID')
   const end = Math.min(row.text.length, offset + limit)
-  return {messageId, text: row.text.slice(offset, end), offset, nextOffset: end < row.text.length ? end : null, total: row.text.length, revision: value.revision, source: row.source, redacted: row.redacted}
+  return {messageId, text: row.text.slice(offset, end), offset, nextOffset: end < row.text.length ? end : null, total: row.text.length, revision: value.revision, source: row.source, redacted: row.redacted, ...(row.resourceContent ? {resourceContent: true} : {})}
 }
 async function taskProjection({task, ...options}) {
   const taskId = task.taskId, sessionId = task.session?.sessionId ?? task.sessionId

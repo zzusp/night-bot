@@ -1,0 +1,26 @@
+.execution-search-owner { flex-shrink: 0; min-width: 0; }
+.execution-search-owner > .board-icon-button { display: flex; margin: 0 12px 0 auto; width: 30px; height: 28px; color: var(--board-muted); }
+.execution-search { flex-shrink: 0; min-width: 0; padding: 8px 16px; border-bottom: 1px solid var(--board-border); background: var(--board-panel); }
+.execution-search-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.execution-search .search-field { flex: 1 1 160px; min-width: 0; max-width: 260px; }
+.execution-search .search-field input { width: 100%; min-width: 0; }
+.execution-search-navigation { display: flex; align-items: center; gap: 2px; }
+.execution-search-navigation > span, .execution-search-scope { color: var(--board-muted); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.execution-search-navigation .board-icon-button { width: 30px; height: 32px; }
+.execution-search-hit { display: flex; align-items: baseline; gap: 8px; width: 100%; min-width: 0; margin-top: 6px; padding: 5px 7px; color: var(--board-text); background: transparent; border: 0; border-radius: var(--board-radius-control); text-align: left; font: inherit; font-size: 12px; cursor: pointer; }
+.execution-search-hit > span:first-child { flex-shrink: 0; color: var(--board-muted); }
+.execution-search-hit > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.execution-search-hit:hover, .execution-search-hit:active { background: var(--board-hover); }
+.execution-search-hit:focus-visible { outline: 2px solid var(--board-focus); outline-offset: 2px; }
+
+/* Search has its own left-hand slot. The floating task and panel controls
+   are on the right, including when either opens inside a narrow canvas. */
+.task-dialogue .execution-search-owner { position: relative; z-index: 4; pointer-events: none; }
+.task-dialogue .execution-search-owner > :is(.board-icon-button, .execution-search) { pointer-events: auto; }
+.task-dialogue .execution-search-owner > .board-icon-button {
+  margin: 8px auto 0 16px;
+  height: 36px;
+}
+@media (max-width: 760px) {
+  .task-dialogue .execution-history:has(> .execution-search-owner) .execution-todos { inset-block-start: 44px; }
+}

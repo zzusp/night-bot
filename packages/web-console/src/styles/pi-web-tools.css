@@ -1,0 +1,83 @@
+/* ToolCallBlock / field and diff layout adapted from agegr/pi-web@432366bd.
+ * MIT © 2026 agegr; see ../licenses/pi-web-MIT.txt. Theme colors remain native. */
+.pi-web-tool-frame,
+.execution-transcript .pi-web-tool-frame { min-width: 0; width: 100%; margin: 2px 0; padding: 0; border: 0; }
+.execution-transcript .execution-turn-items:has(> .pi-web-tool-frame) { row-gap: 4px; padding-block: 3px; }
+.execution-transcript :is(.execution-turn-items, .execution-tool-group-items) > .pi-web-tool-frame { margin-block: 0; }
+.pi-web-tool-card { --tool-accent: var(--board-muted); --tool-rule: var(--board-border-strong); --tool-surface: color-mix(in srgb, var(--board-text) 6%, var(--board-surface)); width: 100%; min-width: 0; font-size: 12px; }
+.pi-web-tool-card > .pi-web-tool-summary { border-radius: 6px; }
+.pi-web-tool-glyph { flex: 0 0 14px; display: inline-flex; align-items: center; }
+.pi-web-tool-summary-meta { display: flex; align-items: center; gap: 7px; }
+.pi-web-tool-card[open] > summary .pi-tool-state { display: none; }
+.pi-web-tool-card.is-error { --tool-accent: var(--board-danger); }
+.pi-web-tool-card.is-error .pi-tool-state { color: var(--board-danger); }
+.pi-web-tool-card .pi-tool-status.is-complete { color: var(--tool-accent); }
+.pi-web-tool-card > summary { display: flex; align-items: center; min-height: 26px; gap: 7px; padding: 3px 10px; border-radius: 6px; color: var(--board-muted); }
+.pi-web-tool-card > summary:hover { background: color-mix(in srgb, var(--tool-accent) 5%, transparent); }
+.pi-web-tool-card > summary:focus-visible { outline: 2px solid var(--board-focus); outline-offset: -2px; }
+.pi-web-tool-card .pi-tool-title { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 7px; font-family: var(--execution-mono, ui-monospace, Consolas, monospace); font-size: 11px; }
+.pi-web-tool-name { flex: 0 0 auto; color: var(--tool-accent); font-weight: 600; }
+.pi-web-tool-object { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--board-muted); }
+.pi-web-tool-card .pi-tool-state { font-size: 10px; flex: 0 0 auto; }
+.pi-web-tool-card .pi-tool-chevron { flex: 0 0 14px; margin-left: 0; }
+.pi-web-tool-duration { flex: 0 0 auto; font: 11px/1.5 var(--execution-mono, ui-monospace, Consolas, monospace); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--board-muted); }
+.pi-web-tool-card > .pi-tool-body { margin: 0; padding: 0; border: 1px solid var(--tool-rule); border-radius: 11px; box-shadow: none; overflow: hidden; background: var(--tool-surface); color: var(--board-text); --pi-expanded-text: var(--board-text); }
+.pi-web-tool-card .tool-part { min-width: 0; padding: 6px 8px; margin: 0; }
+.pi-web-tool-card .tool-part + .tool-part { margin-top: 0; }
+.pi-web-tool-body-title { padding: 5px 8px 0; color: var(--board-muted); font-size: 12px; }
+.pi-web-tool-footer { min-height: 20px; display: flex; justify-content: flex-end; align-items: center; gap: 7px; padding: 0 8px 4px; color: var(--board-muted); }
+.pi-web-tool-footer .pi-tool-status { flex: 0 0 auto; gap: 3px; }
+.pi-web-tool-card.is-shell .tool-part { padding: 6px 8px; }
+.pi-web-tool-card.is-shell .pi-tool-body > .tool-part + .tool-part { padding-top: 0; }
+.pi-web-tool-card.is-shell .pi-shell-command { display: block; line-height: 1.65; }
+.pi-web-tool-card.is-shell .pi-shell-command > span { margin-right: 8px; color: var(--board-muted); }
+.pi-web-tool-card.is-shell .pi-shell-command > small { margin-left: 8px; }
+.pi-web-tool-card.is-shell .pi-shell-command code { word-break: normal; }
+.pi-web-tool-card.is-shell .tool-part > .pi-plain-output { border: 0; padding: 0 0 4px; background: transparent; white-space: pre; overflow-wrap: normal; max-height: 155px; }
+.pi-web-tool-card.is-shell .pi-plain-output .pi-code-line { white-space: inherit; }
+.pi-web-tool-card.is-shell .pi-plain-output::-webkit-scrollbar { width: 6px; height: 6px; }
+.pi-web-tool-card.is-shell .pi-plain-output::-webkit-scrollbar-thumb { border-radius: 6px; background: var(--board-scrollbar); }
+.pi-web-tool-fields { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+.pi-web-tool-fields th { width: 22%; max-width: 140px; padding: 4px 12px 4px 0; font-size: 11px; font-weight: 400; text-align: left; vertical-align: top; color: var(--board-muted); overflow-wrap: anywhere; }
+.pi-web-tool-fields td { padding: 4px 0; vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--board-text); }
+.pi-web-tool-fields code { font: 11px/1.65 var(--execution-mono, ui-monospace, Consolas, monospace); }
+.pi-web-tool-card .tool-content,
+.execution-transcript .pi-web-tool-card .tool-content { margin: 0; padding: 8px 10px; max-height: 320px; border: 1px solid var(--board-border); border-radius: 4px; box-shadow: none; background: var(--pi-code-bg); color: var(--board-text); font: 11px/1.8 var(--execution-mono, ui-monospace, Consolas, monospace); white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; }
+.pi-web-tool-card .tool-content:focus-visible { outline: 2px solid var(--board-focus); outline-offset: -2px; }
+.pi-web-tool-fields .tool-content { max-height: 260px; }
+.pi-web-tool-card .pi-read-path, .pi-web-tool-card .pi-shell-command { min-width: 0; color: var(--board-text); overflow-wrap: anywhere; }
+.pi-web-tool-card .pi-read-path + .tool-content, .pi-web-tool-card .pi-shell-command + .pi-web-tool-fields { margin-top: 8px; }
+.pi-web-edit-list { display: grid; gap: 10px; margin-top: 8px; }
+.pi-web-edit { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.pi-web-edit > section { min-width: 0; }
+.pi-web-edit-label { margin: 0 0 4px; font-size: 10px; font-weight: 500; }
+.pi-web-edit-before .pi-web-edit-label { color: var(--board-danger); }
+.pi-web-edit-after .pi-web-edit-label { color: var(--board-success); }
+.pi-web-edit-before .tool-content, .pi-web-patch .is-removed { background: color-mix(in srgb, var(--board-danger) 7%, var(--pi-code-bg)); }
+.pi-web-edit-after .tool-content, .pi-web-patch .is-added { background: color-mix(in srgb, var(--board-success) 7%, var(--pi-code-bg)); }
+.pi-web-tool-card .body-pagination { gap: 6px; flex-wrap: wrap; }
+.pi-web-tool-card .token.comment, .pi-web-tool-card .pi-line-number { color: var(--board-muted); }
+@media (max-width: 760px) {
+  .execution-transcript .pi-web-tool-frame { margin-inline: 0; }
+  .pi-web-tool-card > summary { min-height: 44px; }
+  .pi-web-tool-card .pi-tool-title { gap: 5px; }
+  .pi-web-edit { grid-template-columns: minmax(0, 1fr); }
+  .pi-web-tool-fields th { width: 28%; padding-right: 8px; }
+}
+@media (forced-colors: active) {
+  .pi-web-tool-card > .pi-tool-body, .pi-web-tool-card .tool-content { border-color: CanvasText; }
+  .pi-web-tool-card .pi-web-tool-name { color: CanvasText; }
+}
+.pi-web-tool-card > .pi-web-tool-summary { display: flex; align-items: center; min-height: 26px; gap: 7px; padding: 3px 10px; color: var(--board-muted); }
+.pi-web-tool-card > div.pi-web-tool-summary { cursor: default; }
+.pi-web-tool-card .token.pi-token-comment, .pi-web-tool-card .token.pi-token-prolog { color: #626873; }
+.pi-web-tool-card .token.pi-token-string, .pi-web-tool-card .token.pi-token-attr-value { color: #347332; }
+.pi-web-tool-card .token.pi-token-property, .pi-web-tool-card .token.pi-token-tag { color: #285bc8; }
+[data-theme="dark"] .pi-web-tool-card .token.pi-token-comment, [data-theme="dark"] .pi-web-tool-card .token.pi-token-prolog { color: #a8adb7; }
+[data-theme="dark"] .pi-web-tool-card .token.pi-token-string, [data-theme="dark"] .pi-web-tool-card .token.pi-token-attr-value { color: #98c379; }
+[data-theme="dark"] .pi-web-tool-card .token.pi-token-property, [data-theme="dark"] .pi-web-tool-card .token.pi-token-tag { color: #61afef; }
+@media (max-width: 760px) { .pi-web-tool-card > .pi-web-tool-summary { min-height: 44px; } }
+/* Accepted asynchronous receipts are not completed business work. */
+.pi-web-tool-card.is-neutral { --tool-accent: var(--board-muted); }
+.pi-web-tool-card.is-warning { --tool-accent: var(--board-warning, #925800); }
+.pi-web-tool-name { max-width: 50%; overflow: hidden; text-overflow: ellipsis; }

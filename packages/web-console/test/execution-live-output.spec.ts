@@ -126,7 +126,7 @@ test('live tool result replaces each snapshot without accumulating partial copie
  await expect(page.locator('.pi-tool-step')).toHaveCount(2);
  await expect(tool).toHaveAttribute('open');
  tick=3;await page.evaluate(()=>window.dispatchEvent(new Event('online')));
- await expect(page.locator('.execution-tool-group')).toHaveAttribute('open');
+ await expect(tool.locator('xpath=ancestor::details[contains(@class,"execution-turn-process")]')).toHaveAttribute('open');
  await expect(tool).toHaveAttribute('open');
  await expect(tool).toContainText('line 3');
  await expect(page.locator('.pi-tool-frame.is-running')).toHaveCount(0);
@@ -145,9 +145,13 @@ test('native model phases show without body; short deltas update one bubble and 
  // Only provider-public, authorized DTO text is available to the component.
  thinking=true;body='检查已公开的步骤';
  await expect(page.locator('.thinking-message')).toHaveAttribute('open');
- const thinkingStyle=await page.locator('.thinking-message').evaluate(el=>({border:getComputedStyle(el).borderLeftWidth,padding:getComputedStyle(el).paddingLeft,bodyMargin:getComputedStyle(el.querySelector('.markdown')!).marginLeft}));
- expect(thinkingStyle).toEqual({border:'0px',padding:'17px',bodyMargin:'0px'});
- expect(await page.locator('.thinking-message').evaluate(el=>Math.abs(el.querySelector('summary > span')!.getBoundingClientRect().left-el.querySelector('.markdown')!.getBoundingClientRect().left))).toBeLessThan(0.5);
+ const thought = page.locator('.thinking-message.execution-thought');
+ await expect(thought.getByText('检查已公开的步骤', {exact:true}).last()).toBeVisible();
+ expect(await thought.evaluate(el => {
+  const summary = el.querySelector('summary')!.getBoundingClientRect();
+  const body = el.querySelector('.markdown')!.getBoundingClientRect();
+  return body.left >= summary.left && body.right <= el.getBoundingClientRect().right + 1;
+ })).toBe(true);
  await page.locator('.thinking-message > summary').click();
  body='检查已公开的步骤与结果';
  await expect(page.locator('.thinking-message')).not.toHaveAttribute('open');

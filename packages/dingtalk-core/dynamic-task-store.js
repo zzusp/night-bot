@@ -589,6 +589,29 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     if(ref.sessionId!==task.sessionId)fail('TASK_INPUT_SESSION_STALE')
     if(task.archivedAt||task.archiveRestore?.reviewRequired||task.control!=='active'||!['active','completed'].includes(task.status)||taskHumanWait(task))fail('TASK_INPUT_UNAVAILABLE')
   }
+  // Read only proof IDs. A source record by itself can precede a rejected task
+  // action; require the exact operation, task/session, source and operator.
+  function taskWebInputHistory({taskId,sessionId}) {
+    const task=get('dynamic_tasks',taskId,true)
+    if(!webActorId||!task||task.sessionId!==sessionId)return []
+    const groupId=task.groupId??'task:'+taskId
+    return (task.supplements??[]).flatMap(row=>{
+      const ref=row.webTaskInput
+      if(typeof ref?.sourceId!=='string')return []
+      const source=get('dynamic_sources',ref.sourceId,true),identity=source?.requestIdentity
+      const requestId=identity?.request?.requestId,action=identity?.action,proof=action?.webTaskInput
+      if(typeof requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9:_-]{0,199}$/.test(requestId)
+        ||identity.kind!=='task-input'||identity.request.sessionId!==sessionId||action?.taskId!==taskId
+        ||!['task.supplement','task.reopen'].includes(action.kind)||proof?.sessionId!==sessionId
+        ||proof.actorId!==webActorId||proof.sourceId!==ref.sourceId||source.channel!=='web'||source.actorId!==webActorId
+        ||source.groupId!==groupId||source.version!==ref.messageVersion||source.text!==row.text
+        ||source.authorizationRevoked||source.archiveRestoreHold||source.retracted)return []
+      const inputId='router-operation:'+digest([groupId,'task-input:'+digest([taskId,requestId])])
+      if(ref.sourceId!=='web-task-input:'+digest([webActorId,taskId,requestId])||row.id!==inputId||!readReceiptRow(db,inputId))return []
+      return [{inputId,sourceId:ref.sourceId,messageVersion:ref.messageVersion,requestId,
+        requirementRevision:row.requirementRevision,contextRevision:row.contextRevision,controlRevision:ref.controlRevision}]
+    })
+  }
   function reduce(kind, a, commandId, {routerScheduling=false}={}) {
     const routerResult = routerLedger.command(kind,a,commandId)
     if(routerResult !== undefined)return routerResult
@@ -2319,6 +2342,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       else if (q.kind === 'coordination.occurrence.get') value = get('dynamic_coordination_occurrences', q.occurrenceId)
       else if (q.kind === 'coordination.job.list') value = all('dynamic_coordination_jobs')
       else if (q.kind === 'task.dependencies-ready') value = routerLedger.dependenciesReady(get('dynamic_tasks',q.taskId))
+      else if (q.kind === 'task.web-input-history') value = taskWebInputHistory(q)
       else if (q.kind === 'task.get') {value = get('dynamic_tasks', q.taskId, true);if(value)value={...value,dependencies:routerLedger.query({kind:'router.dependencies',taskId:q.taskId}),dependenciesReady:routerLedger.dependenciesReady(value)}}
       else if (q.kind === 'task.decisions') {
         get('dynamic_tasks', q.taskId)

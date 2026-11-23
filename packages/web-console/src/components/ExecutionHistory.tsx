@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ApiError } from '../api';
+import { ApiError, type Message } from '../api';
 import { dateTime } from '../hooks';
 import { useExecutionStream } from '../useExecutionStream';
 import { TaskTokenUsage } from './TaskTokenUsage';
+import { ExecutionSearch } from './ExecutionSearch';
 import { AgentProgress } from './AgentProgress';
 import { Button, EmptyState } from './BoardPrimitives';
 import { Loading, Markdown, MessageList, Notice, Status } from './Shared';
@@ -11,16 +12,32 @@ import { Loading, Markdown, MessageList, Notice, Status } from './Shared';
 const unavailableRecord = new ApiError(503, 'SESSION_UNAVAILABLE');
 
 // 聊天与任务共用连续执行流、提交等待和版本冲突处理。
-export function ExecutionHistory({ endpoint, router = false, sessionKind, status, taskTitle, taskState, controlsTarget, conclusion, conclusionDuration, tokenTarget, taskError, taskRetry, refreshAfterInput }: { refreshAfterInput?: string; tokenTarget?: HTMLElement | null; taskError?: Error | null; taskRetry?: () => void; conclusionDuration?: string | null; conclusion?: string | null; taskTitle?: string; taskState?: string; endpoint: string; router?: boolean; sessionKind?: 'router'; status?: string; controlsTarget?: HTMLElement | null }) {
+export function ExecutionHistory({ endpoint, router = false, sessionKind, status, taskTitle, taskState, controlsTarget, conclusion, conclusionDuration, tokenTarget, taskError, taskRetry, refreshAfterInput, inputPreviews, onInputsRecorded }: { refreshAfterInput?: string; inputPreviews?: Message[]; onInputsRecorded?: (requestIds: Set<string>) => void; tokenTarget?: HTMLElement | null; taskError?: Error | null; taskRetry?: () => void; conclusionDuration?: string | null; conclusion?: string | null; taskTitle?: string; taskState?: string; endpoint: string; router?: boolean; sessionKind?: 'router'; status?: string; controlsTarget?: HTMLElement | null }) {
   const query = useExecutionStream(endpoint);
+  const [focusRecord, setFocusRecord] = useState<{id: string; version: number; scope: string}>();
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
   useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
   // A retry must not briefly reveal the revoked cache while its request is pending.
   useEffect(() => { if (!query.error) setDenied(false); }, [query.updatedAt]);
   const blocked = forbidden || denied;
+  const live = !query.error && !blocked && query.data?.status === 'ready' ? query.data.live : undefined;
+  const clocks = new Map(live?.tools?.map(clock => [clock.callId, clock.startedAt]));
+  const committed = query.data?.status === 'ready' ? query.data.items : [];
+  const rendered = clocks.size
+    ? committed.map(row => row.kind === 'tool-call' && row.callId && clocks.has(row.callId)
+      ? {...row, status: 'running', timing: {...row.timing, startedAt: clocks.get(row.callId)}} : row)
+    : committed;
+  const recorded = new Set(committed.flatMap(message => message.role === 'user' && message.requestId ? [message.requestId] : []));
+  const localInputs = !blocked && !query.error
+    ? (inputPreviews ?? []).filter(message => message.requestId && !recorded.has(message.requestId))
+      .map(message => !message.status && !live?.active && (taskState === 'not-running' || taskState === 'queued' || taskState === 'scheduled')
+        ? {...message, status:'queued'} : message) : [];
+  useEffect(() => {
+    if (!blocked && !query.error && (inputPreviews ?? []).some(message => message.requestId && recorded.has(message.requestId))) onInputsRecorded?.(recorded);
+  }, [blocked, query.error, committed, inputPreviews, onInputsRecorded]);
   const emptyTitle = sessionKind === 'router' ? '还没有路由记录' : '暂无会话记录';
-  const sessionEmpty = !!sessionKind && !query.error && !blocked && (query.data?.status === 'pending' && query.data.reason === 'SESSION_NOT_STARTED' || query.data?.status === 'ready' && query.data.total === 0 && !query.data.items.length && !query.data.live?.items.length);
+  const sessionEmpty = !!sessionKind && !query.error && !blocked && (query.data?.status === 'pending' && query.data.reason === 'SESSION_NOT_STARTED' || query.data?.status === 'ready' && query.data.total === 0 && !query.data.items.length && !query.data.live?.items.length && !live?.active && !live?.notice);
   const hasRecords = !blocked && query.data?.status === 'ready' && !!query.data.items.length;
   const readFailed = blocked || !!query.error && !hasRecords || query.data?.status === 'unavailable';
   const latest = query.refresh;
@@ -30,6 +47,12 @@ export function ExecutionHistory({ endpoint, router = false, sessionKind, status
     refreshedInput.current = refreshAfterInput;
   }, [refreshAfterInput, latest]);
   const [readerEpoch, setReaderEpoch] = useState(0);
+  const searchScope = `${endpoint}:${query.epoch}:${readerEpoch}`;
+  const [unavailableSearch, setUnavailableSearch] = useState<{scope: string; ids: Set<string>}>({scope: '', ids: new Set()});
+  const onRecordUnavailable = useCallback((id: string) => {
+    setUnavailableSearch(previous => previous.scope === searchScope && previous.ids.has(id) ? previous : {scope: searchScope, ids: new Set([...(previous.scope === searchScope ? previous.ids : []), id])});
+  }, [searchScope]);
+  const excludedSearch = unavailableSearch.scope === searchScope ? unavailableSearch.ids : new Set<string>();
   const recoveryRead = useRef<number | null | undefined>(undefined);
   // Reset revoked body-page state only after a new authorized history read.
   // Ordinary polling and refreshes retain disclosure and scroll state.
@@ -53,17 +76,18 @@ export function ExecutionHistory({ endpoint, router = false, sessionKind, status
   return <div className={`execution-history${router && (!query.data?.items.length || blocked) ? ' execution-history-empty' : ''}${sessionEmpty || readFailed ? ' session-records-empty' : ''}${readFailed ? ' execution-read-failed' : ''}`}>
     {tokenTarget && createPortal(<TaskTokenUsage usage={!blocked && query.data?.status === 'ready' ? query.data.tokenUsage : undefined} error={query.error || taskError} stale={!blocked && !!query.data?.tokenUsage} onRetry={query.error ? latest : taskRetry ?? latest} />, tokenTarget)}
     {controlsTarget === undefined ? controls : controlsTarget ? createPortal(controls, controlsTarget) : null}
-    {query.error && hasRecords && <Notice read stale error={query.error} message="更新失败，当前显示上次记录" onRetry={query.loading ? undefined : latest} />}
+    {query.error && hasRecords && <Notice read stale error={query.error} message={query.error instanceof TypeError ? '连接已断开，当前显示上次记录' : '更新失败，当前显示上次记录'} onRetry={query.loading ? undefined : latest} />}
     {!blocked && query.committing && <div className="execution-scope" role="status">记录正在提交，当前显示上次已提交记录。</div>}
     {!router && !blocked && query.data?.status === 'ready' && query.data.todos && <AgentProgress key={endpoint} items={query.data.todos.items} title={taskTitle} status={taskState} />}
 
-    {query.loading && !query.data ? <Loading>{router ? '正在读取会话记录…' : '正在读取正式执行记录…'}</Loading>
-      : readFailed ? <Notice read source={!query.error ? endpoint : undefined} error={query.error ?? unavailableRecord} title={sessionKind === 'router' ? '路由记录加载失败' : '执行记录加载失败'} onRetry={query.loading ? undefined : latest} />
-      : sessionEmpty ? <EmptyState title={emptyTitle} />
-      : query.data?.status === 'pending' ? <EmptyState title={query.data.reason === 'SESSION_NOT_STARTED' ? router ? emptyTitle : '执行尚未开始' : '执行记录正在提交'} />
-      : <MessageList key={`${endpoint}:${query.epoch}:${readerEpoch}`} messages={[...(query.data?.items || []), ...(!query.error && query.data?.status === 'ready' ? query.data.live?.items || [] : [])]} live={!query.error && query.data?.status === 'ready' ? query.data.live : undefined} userLabel="用户" presentation="execution" older={{ hasMore: !!query.data?.before, loading: query.loadingOlder, error: query.olderError, disabled: !!query.error, onLoad: query.loadOlder }} history={query.data?.revision ? { endpoint, revision: query.data.revision, onRecover: recoverBody } : undefined}
+    {!blocked && !query.error && query.data?.status === 'ready' && <ExecutionSearch key={`search:${endpoint}:${query.epoch}:${readerEpoch}`} messages={committed.filter(message => !excludedSearch.has(message.id))} onLocate={id => setFocusRecord(previous => ({id, scope: searchScope, version: (previous?.version ?? 0) + 1}))} />}
+    {query.loading && !query.data && !localInputs.length ? <Loading>{router ? '正在读取会话记录…' : '正在读取正式执行记录…'}</Loading>
+      : readFailed ? <Notice read source={!query.error ? endpoint : undefined} error={query.error ?? unavailableRecord} title={blocked ? '无权查看会话记录' : sessionKind === 'router' ? '路由记录加载失败' : '执行记录加载失败'} onRetry={query.loading ? undefined : latest} />
+      : sessionEmpty && !localInputs.length ? <EmptyState title={emptyTitle} />
+      : query.data?.status === 'pending' && !localInputs.length ? <EmptyState title={query.data.reason === 'SESSION_NOT_STARTED' ? router ? emptyTitle : '执行尚未开始' : '执行记录正在提交'} />
+      : <MessageList key={`messages:${endpoint}:${query.epoch}:${readerEpoch}`} messages={[...rendered, ...(live?.items ?? []), ...localInputs]} live={live} userLabel="用户" presentation="execution" focusRecord={!blocked && !query.error && focusRecord?.scope === searchScope && !excludedSearch.has(focusRecord.id) ? focusRecord : undefined} onRecordUnavailable={onRecordUnavailable} followInput={localInputs.find(message => message.status === 'sending')?.requestId} older={{ hasMore: !!query.data?.before, loading: query.loadingOlder, error: query.olderError, disabled: !!query.error, onLoad: query.loadOlder }} history={query.data?.revision ? { endpoint, revision: query.data.revision, onRecover: recoverBody } : undefined}
         footerVersion={!query.error && !query.committing && !query.data?.live?.active ? conclusion : null}
-        footer={!query.error && !query.committing && query.data?.status === 'ready' && !query.data.live?.active && conclusion && !duplicateConclusion && <article className="message message-assistant task-final-conclusion" aria-label="最后结论">{conclusionDuration && <div className="task-conclusion-label">{conclusionDuration}</div>}<div className="message-body"><Markdown text={conclusion} /></div></article>}
+        footer={!localInputs.length && !query.error && !query.committing && query.data?.status === 'ready' && !query.data.live?.active && conclusion && !duplicateConclusion && <article className="message message-assistant task-final-conclusion" aria-label="最后结论">{conclusionDuration && <div className="task-conclusion-label">{conclusionDuration}</div>}<div className="message-body"><Markdown text={conclusion} /></div></article>}
         empty={conclusion ? <></> : <EmptyState title="暂无可展示的执行记录" />} />}
   </div>;
 }

@@ -1,6 +1,7 @@
 import {deploymentView} from './deployment.js'
 import {launchEnvironmentOf} from '../../../src/native-environment.js'
 import {schedulePage} from './schedule-view.js'
+import {readResourceToolContents} from './resource-tool-content.js'
 import {openEvolutionCache} from './evolution-cache.js'
 import {openEvolutionUsageCache} from './evolution-usage-cache.js'
 import {bindingSchema} from '../../../src/memory/scope.js'
@@ -179,14 +180,30 @@ export async function createWebConsole({channels, paths, config, getApplication,
     const session = sessions.require(request, !['GET', 'HEAD'].includes(request.method))
     const sessionGuards = async (revalidate = async () => {}) => {
       const secrets = await historySecrets(), secretKey = digest(JSON.stringify(secrets))
-      return {secrets, proofScope:digest(JSON.stringify([session.key,path])), guard:async()=>{
+      let resourceBinding
+      const readResourceContents = async candidates => {
+        try {
+          const binding = authorizedEvolutionReader(), memory = getMemory()
+          if (!memory?.store?.root) return new Map()
+          const value = await readResourceToolContents(candidates, {memory, reflection: getReflection() ?? memory.host?.get?.('reflection'), binding})
+          if (value.size) resourceBinding = binding
+          return value
+        } catch {return new Map()} // Independent resource unreadability does not block other history.
+      }
+      return {secrets, readResourceContents, proofScope:digest(JSON.stringify([session.key,path])), guard:async()=>{
         await revalidate()
         if (digest(JSON.stringify(await historySecrets())) !== secretKey) fail('SESSION_REDACTION_CHANGED',409)
         if (sessions.require(request).key !== session.key) fail('AUTH_REQUIRED',401)
+        if (resourceBinding && JSON.stringify(authorizedEvolutionReader()) !== JSON.stringify(resourceBinding)) fail('EVOLUTION_FORBIDDEN', 403)
       }}
     }
     const sessionTask = async (id) => {const tasks=application().tasks;return tasks.store?.query ? tasks.store.query({kind:'task.get',taskId:id}) : tasks.taskDetail(id)}
     const taskIdentity = value => JSON.stringify([value?.taskId,value?.groupId,value?.session?.sessionId??value?.sessionId,value?.session?.sessionBound??value?.sessionBound])
+    const taskInputIds = (value, id) => {
+      const store = application().tasks.store
+      if (!value.supplements?.some(row => row.webTaskInput) || !store?.query) return undefined
+      return sessionId => store.query({kind:'task.web-input-history', taskId:id, sessionId})
+    }
     if (request.method === 'GET' && path === '/api/session') return send(response, 200, sessionView(session))
     if (request.method === 'POST' && path === '/api/logout') {await jsonBody(request, []); sessions.logout(session, response); return send(response, 200, {ok: true})}
     if (path === '/api/feedback' || path.startsWith('/api/feedback/')) {
@@ -436,9 +453,9 @@ export async function createWebConsole({channels, paths, config, getApplication,
     }
     const taskBody = /^\/api\/tasks\/([^/]+)\/session\/messages\/([^/]+)$/.exec(path)
     if (request.method === 'GET' && taskBody) {
-      const value = await sessionTask(decodeURIComponent(taskBody[1]))
+      const id = decodeURIComponent(taskBody[1]), value = await sessionTask(id)
       if (!value) fail('TASK_NOT_FOUND', 404)
-      return send(response, 200, await taskSessionMessageView({...bodyOptions(url.searchParams), ...await sessionGuards(async()=>{if(taskIdentity(await sessionTask(decodeURIComponent(taskBody[1])))!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)}), task: value, persistence: getSessionPersistence(), messageId: decodeURIComponent(taskBody[2])}))
+      return send(response, 200, await taskSessionMessageView({...bodyOptions(url.searchParams), ...await sessionGuards(async()=>{if(taskIdentity(await sessionTask(id))!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)}), task: value, persistence: getSessionPersistence(), executionActivity:true, readTaskInputIds:taskInputIds(value,id), messageId: decodeURIComponent(taskBody[2])}))
     }
     const taskInput = /^\/api\/tasks\/([^/]+)\/input(?:\/([^/]+))?$/.exec(path)
     if(taskInput&&((request.method==='POST'&&!taskInput[2])||(request.method==='GET'&&taskInput[2]))){
@@ -473,7 +490,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const value = task[2] === 'session' ? await sessionTask(id) : await app.tasks.taskDetail(id)
       if (!value) fail('TASK_NOT_FOUND', 404)
       if (task[2] === 'session') {
-        return send(response, 200, await taskSessionView({task: value, persistence: getSessionPersistence(),
+        return send(response, 200, await taskSessionView({task: value, persistence: getSessionPersistence(), executionActivity:true, readExecutionTiming:scope=>app.tasks.executionHistoryTiming?.(scope), readTaskInputIds:taskInputIds(value,id),
           ...sessionOptions(url.searchParams), ...await sessionGuards(async()=>{if(taskIdentity(await sessionTask(id))!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)})}))
       }
       return send(response, 200, taskView(value, [credential.token]))
@@ -585,11 +602,11 @@ export async function createWebConsole({channels, paths, config, getApplication,
     const chatSession = /^\/api\/(chat|conversations)\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && chatSession) {
       const conversationId = executionContext(chatSession[1], decodeURIComponent(chatSession[2]))
-      const store = application().tasks.store
+      const taskService = application().tasks, store = taskService.store
       if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
-      const options = {conversationId, readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), ...await sessionGuards(async()=>{if(executionContext(chatSession[1],decodeURIComponent(chatSession[2]))!==conversationId)fail('SESSION_PAGE_STALE',409)})}
+      const options = {conversationId, executionActivity:true, readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), ...await sessionGuards(async()=>{if(executionContext(chatSession[1],decodeURIComponent(chatSession[2]))!==conversationId)fail('SESSION_PAGE_STALE',409)})}
       if (chatSession[3]) return send(response, 200, await routerSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[3])}))
-      return send(response, 200, await routerSessionView({...options, ...sessionOptions(url.searchParams)}))
+      return send(response, 200, await routerSessionView({...options, readExecutionTiming:scope=>taskService.executionHistoryTiming?.(scope), ...sessionOptions(url.searchParams)}))
     }
     const chat = /^\/api\/chat\/([^/]+)$/.exec(path)
     if (request.method === 'GET' && chat) {

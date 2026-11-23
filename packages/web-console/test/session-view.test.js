@@ -700,3 +700,33 @@ test('untrusted text/details, unknown codes/tools, mismatched and duplicate call
   assert.equal(row.text,'未记录失败原因');assert.deepEqual(row.failure,{reason:'未记录失败原因'});assert.doesNotMatch(JSON.stringify(page),/PRIVATE_|private\/path|nativeResult/)
  }
 })
+
+test('operator request IDs join exact admitted task updates, never raw packet IDs or unrelated text', async () => {
+  const value = snapshot()
+  const binding = {taskId:task.taskId,sessionId:'pi-one',requirementRevision:4,controlRevision:3,contextRevision:9}
+  const packet = (id, body, taskSession = binding) => project(id, {role:'custom',customType:'night.business-input',
+    details:{source:{kind:'task-input',taskSession}},content:[{type:'text',text:JSON.stringify(body)}]})
+  const body = {task:{inputPolicy:'faithful-handoff-v1'}}
+  const rows = [
+    {inputId:'operation-a',sourceId:'source-a',messageVersion:1,requestId:'operator-request-a',requirementRevision:4,controlRevision:3,contextRevision:8},
+    {inputId:'operation-b',sourceId:'source-b',messageVersion:2,requestId:'operator-request-b',requirementRevision:4,controlRevision:3,contextRevision:9},
+  ]
+  const a = {id:'operation-a',sourceId:'source-a',messageVersion:1,text:'相同正文'}
+  const b = {id:'operation-b',sourceId:'source-b',messageVersion:2,text:'相同正文'}
+  value.context.projection.entries = [
+    packet('before',{...body, updates:[a]}, {...binding,contextRevision:7}),
+    packet('foreign',{...body, updates:[{...b,sourceId:'other-source',requestId:'fake-request'}]}),
+    packet('both',{...body, updates:[a,b,{id:'unmatched',text:'常规说明',requestId:'fake-request'}]}),
+    packet('duplicate',{...body, updates:[a,b]}),
+  ]
+  const options = {task,persistence:{readNative:async()=>value},readTaskInputIds:async id=>{assert.equal(id,'pi-one');return rows}}
+  const page = await taskSessionView({...options,stream:true,limit:2})
+  assert.deepEqual(page.items.map(item=>[item.requestId,item.text]),[['operator-request-a','相同正文'],['operator-request-b','相同正文']])
+  const more = await taskSessionView({...options,stream:true,checkpoint:page.checkpoint,limit:2})
+  assert.deepEqual(more.items,[])
+  const item = await taskSessionMessageView({...options,revision:page.revision,messageId:page.items[0].id})
+  assert.equal(item.text,'相同正文')
+  const unattributed = await taskSessionView({task,persistence:options.persistence})
+  assert.ok(unattributed.items.every(item=>item.requestId===undefined))
+  assert.doesNotMatch(JSON.stringify(page),/fake-request|source-a|operation-a/)
+})

@@ -1,10 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { executionItems, transcriptItems, toolState } from '../src/execution-items.ts';
+import { executionItems, transcriptItems, toolState, toolTiming } from '../src/execution-items.ts';
 
 const call = (id, status = 'pending', sessionId = 'session') => ({ id, role: 'tool', kind: 'tool-call', callId: id, toolName: 'shell', text: 'safe projected input', status, source: { sessionId, entryId: id } });
 const result = (id, status = 'completed', sessionId = 'session') => ({ ...call(id, status, sessionId), id: `${id}-result`, kind: 'tool-result', text: 'safe projected output' });
 const done = id => [call(id), result(id)];
+
+test('tool timing merges only verified duration and exact matching call start without changing messages', () => {
+  const startedAt = '2026-11-23T09:00:00.000Z';
+  const messages = [{ ...call('timed'), timing: { startedAt } }, { ...result('timed'), timing: { durationMs: 1234 } }];
+  const before = structuredClone(messages);
+  assert.deepEqual(transcriptItems(messages)[0].timing, { startedAt, durationMs: 1234 });
+  assert.deepEqual(messages, before);
+  assert.deepEqual(toolTiming({ durationMs: 0 }), { durationMs: 0 });
+  assert.equal(toolTiming({ durationMs: -1, startedAt: 'invalid', modelWaitMs: Infinity, modelDurationMs: NaN }), undefined);
+});
+
+test('later result shares timing across a conversation boundary but never moves its body', () => {
+  const startedAt = '2026-11-23T09:00:00.000Z';
+  const items = transcriptItems([{ ...call('timed'), timing: { startedAt } }, { id: 'note', role: 'assistant', text: 'update' }, { ...result('timed'), timing: { durationMs: 500 } }]);
+  assert.deepEqual(items[0].timing, { startedAt, durationMs: 500 });
+  assert.deepEqual(items[0].results, []);
+  assert.deepEqual(items[2].timing, items[0].timing);
+  assert.equal(items[2].call, undefined);
+  assert.equal(items[2].results[0].text, 'safe projected output');
+});
+
+test('timing cannot cross a session or tool identity and no timestamp or timeout is a duration', () => {
+  const first = { ...call('same'), createdAt: '2026-11-23T09:00:00.000Z', text: '{"timeoutMs":7000}' };
+  const items = transcriptItems([first, { ...result('same', 'completed', 'other'), timing: { durationMs: 800 } }]);
+  assert.equal(items[0].timing, undefined);
+  assert.deepEqual(items[1].timing, { durationMs: 800 });
+  const mismatched = transcriptItems([{ ...first, timing: { startedAt: first.createdAt } }, { ...result('same'), toolName: 'edit', timing: { durationMs: 900 } }]);
+  assert.deepEqual(mismatched[1].timing, { durationMs: 900 });
+});
 
 test('consecutive calls/scripts form one group in received order; input objects are unchanged', () => {
   const messages = [...done('a'), ...done('b'), ...done('c')];

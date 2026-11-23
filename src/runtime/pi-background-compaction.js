@@ -4,7 +4,7 @@ import {officialConversationContextBudget} from './pi-official-settings.js'
 
 /** Disposable native Pi snapshots never own business effects. Adoption appends
  * an official compaction and commits it before admitting another model turn. */
-export function createBackgroundCompaction({session,store,admission,compact,commit,signal,isHealthy=()=>true,isInputHealthy=isHealthy,measurePhase=(_phase,run)=>run(),onError=()=>{},outputReserveTokens,getInitialPromptTokens=()=>0}) {
+export function createBackgroundCompaction({session,store,admission,compact,commit,signal,isHealthy=()=>true,isInputHealthy=isHealthy,measurePhase=(_phase,run)=>run(),onError=()=>{},onAdopted=()=>{},outputReserveTokens,getInitialPromptTokens=()=>0}) {
  let generation=0,candidate,adopting,closed=false,timer,lastAttempt,preflight,initialPromptTokens=0
  const running=new Set()
  const fingerprint=()=>JSON.stringify({leaf:store.manager.getLeafId(),count:store.manager.getEntries().length,revision:store.snapshot().revision,model:session.model,thinking:session.thinkingLevel,tools:session.getActiveToolNames(),prompt:session.systemPrompt,settings:session.settingsManager?.getSettings()})
@@ -74,14 +74,18 @@ export function createBackgroundCompaction({session,store,admission,compact,comm
   const current=()=>candidate===attempt&&generation===attempt.generation&&!attempt.controller.signal.aborted&&idle()&&fingerprint()===attempt.key
   let ownAdoption
   try{
+   const begin=performance.now()
    const result=await measurePhase('background-compaction',()=>compact({signal:attempt.controller.signal}))
+   const elapsedMs=performance.now()-begin
    if(!current())return
    // The fence and append have no asynchronous gap. New ingress waits only
    // for the short durability barrier, never for background summarization.
    if(typeof result?.summary!=='string'||!store.manager.getBranch().some(entry=>entry.id===result.firstKeptEntryId))throw new Error('PI_BACKGROUND_COMPACTION_RESULT_INVALID')
-   store.manager.appendCompaction(result.summary,result.firstKeptEntryId,result.tokensBefore,result.details,false,result.usage)
+   const entryId=store.manager.appendCompaction(result.summary,result.firstKeptEntryId,result.tokensBefore,result.details,false,result.usage)
    candidate=undefined
-   ownAdoption=adopting=(async()=>{await commit();session.refreshContext();report('background-compaction-adopted')})()
+   ownAdoption=adopting=(async()=>{await commit();session.refreshContext();report('background-compaction-adopted')
+    if(typeof entryId==='string')try{onAdopted(entryId,elapsedMs)}catch(error){onError(error)}
+   })()
    await ownAdoption
   }catch(error){if(!attempt.controller.signal.aborted)onError(error)}
   finally{if(candidate===attempt)candidate=undefined;if(adopting===ownAdoption)adopting=undefined}

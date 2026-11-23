@@ -16,7 +16,10 @@ export function TaskInputComposer({taskId, sessionId, draft, drafts}: {
   };
   const accept = (receipt: InputReceipt, value: TaskInputAttempt) => {
     if (receipt?.status !== 'accepted' || receipt.taskId !== taskId || receipt.sessionId !== value.sessionId || receipt.requestId !== value.requestId) return false;
-    settle(value, () => ({text: '', files: [], accepted: value.requestId}));
+    settle(value, previous => ({text: '', files: [], accepted: value.requestId, previews: [...(previous.previews ?? []), {
+      requestId: value.requestId, sessionId: value.sessionId, text: value.text, createdAt: value.createdAt,
+      attachments: value.files.map(file => ({name: file.name, mediaType: file.type, bytes: file.size})),
+    }]}));
     return true;
   };
   const edit = (patch: {text?: string; files?: File[]}) => drafts.update(taskId, previous => previous.attempt || !sessionId
@@ -31,7 +34,7 @@ export function TaskInputComposer({taskId, sessionId, draft, drafts}: {
       return;
     }
     const value: TaskInputAttempt = retry ? {...retry, state: 'sending'} : {
-      requestId: newComposerRequestId(), sessionId, text: current.text, files: current.files, state: 'sending',
+      requestId: newComposerRequestId(), sessionId, text: current.text, files: current.files, createdAt: new Date().toISOString(), state: 'sending',
     };
     drafts.update(taskId, previous => ({...previous, attempt: value, error: undefined, accepted: undefined}));
     const version = getSessionVersion();
@@ -78,7 +81,7 @@ export function TaskInputComposer({taskId, sessionId, draft, drafts}: {
     }
   };
 
-  if (!sessionId && !draft.text && !draft.files.length && !draft.attempt && !draft.accepted) return null;
+  if (!sessionId && !draft.text && !draft.files.length && !draft.attempt) return null;
   return <div className="composer-dock task-input-dock"><div>
     <Composer value={draft.text} onChange={text => edit({text})} onSend={() => send()}
       files={draft.files} onFilesChange={files => edit({files})} disabled={!sessionId || !!draft.attempt}
@@ -88,6 +91,5 @@ export function TaskInputComposer({taskId, sessionId, draft, drafts}: {
       <Button variant="secondary" disabled={draft.checking} busy={draft.checking} onClick={() => void check()}>核对发送状态</Button>
       {draft.attempt.state === 'missing' && draft.attempt.sessionId === sessionId && <Button variant="secondary" disabled={draft.checking} onClick={() => void send(draft.attempt)}>重试这条消息</Button>}
     </div>}
-    <p className="task-input-status" role="status">{draft.accepted ? '消息已提交给当前任务。' : ''}</p>
   </div></div>;
 }

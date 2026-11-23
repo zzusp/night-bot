@@ -1,0 +1,23 @@
+import {test,expect} from '@playwright/test';
+import {FIXTURE_TOKEN} from './preview.mjs';
+test('execution search locates loaded records, handles keyboard, clears and hides after revoked reads', async({page})=>{
+ await page.goto('/#/tasks/task-research');
+ await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+ await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+ await page.getByRole('button',{name:'搜索执行记录',exact:true}).click();
+ const search=page.getByRole('region',{name:'搜索执行记录'}), input=search.getByRole('searchbox');
+ await expect(search).toContainText('仅已载入正文');
+ await input.fill('已读取 3 份资料'); await input.press('Enter');
+ await expect(search.getByRole('status')).toContainText('1 /');
+ await expect(page.locator('.pi-tool-frame').filter({hasText:'已读取 3 份资料'}).first()).toBeInViewport();
+ await search.getByRole('button',{name:'清除记录搜索'}).click();
+ await expect(input).toHaveValue(''); await expect(input).toBeFocused();
+ await input.fill('not-a-real-fixture-result'); await expect(search).toContainText('无匹配');
+ await expect(search.getByRole('button',{name:'下一个搜索结果'})).toBeDisabled();
+ await input.press('Escape'); await expect(search).toHaveCount(0);
+ await page.getByRole('button',{name:'搜索执行记录',exact:true}).click();
+ await expect(input).toHaveValue(''); await input.fill('资料');
+ await page.route('**/api/tasks/task-research/session?*',route=>route.fulfill({status:403,json:{error:'RESOURCE_FORBIDDEN'}}));
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await expect(search).toHaveCount(0);
+});
