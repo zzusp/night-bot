@@ -28,13 +28,17 @@ function sampleTasks() {
     ['task-summary', '汇总团队讨论的行动项', 'completed', '从讨论记录中提取行动项、负责人和时间约定。', 90],
     ['task-review', '审阅新版入门说明', 'cancelled', '检查安装流程是否完整，标记含糊或缺失的步骤。', 140],
     ['task-inventory', '整理资料目录', 'completed', '按主题归纳已有资料，输出便于查找的目录。', 180],
-    ...Array.from({length: 17}, (_, i) => [`task-history-${i + 1}`, `历史资料核对 · 第 ${i + 1} 批`, i === 0 ? 'cancelled' : 'completed', '已完成这一批样例资料的整理与核对。', 240 + i * 30]),
+    ['task-history-1', '历史资料核对 · 第 1 批', 'cancelled', '核对这一批样例资料。', 240],
+    ['task-history-2', '准备资料目录复核', 'queued', '已安排复核目录。', 270],
+    ['task-history-3', '整理暂停的参考资料', 'paused', '暂时保留原整理记录。', 300],
+    ['task-history-4', '归类待处理的样例索引', 'inactive', '当前没有在途执行。', 330],
+    ...Array.from({length: 13}, (_, i) => [`task-history-${i + 5}`, `历史资料核对 · 第 ${i + 5} 批`, 'completed', '已完成这一批样例资料的整理与核对。', 360 + i * 30]),
   ]
   return samples.map(([taskId, title, state, objective, age]) => ({
-    taskId, title, state, objective, controlState: state === 'completed' ? 'completed' : 'active',
+    taskId, title, state, objective, controlState: state === 'completed' || state === 'paused' ? state : 'active',
     ...(taskId === 'task-review' ? {cancellationReason:'已改为审阅合并后的说明。'} : {}),
     groupId: 'room-product', createdAt: at(Number(age) + 45), updatedAt: at(Number(age)),
-    session: {role: 'execution', sessionId: `fixture-pi-${taskId}`, status: ['completed','cancelled'].includes(state) ? 'idle' : state === 'interrupted' ? 'failed' : state},
+    session: {role: 'execution', sessionId: `fixture-pi-${taskId}`, status: state === 'running' ? 'running' : state === 'interrupted' ? 'failed' : 'idle'},
     result: state === 'completed' ? {summary: '已整理完成，结果可在执行记录中查看。此数据为本地验收样例。'} : undefined,
     blockers: {executions: [], operations: state === 'interrupted' ? [
       {operationId: 'fixture-block', state: 'unknown', definition: {toolName: 'pwsh', input: {private: 'SECRET_OPERATION_INPUT_FIXTURE'}}},
@@ -190,7 +194,10 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
         if (query.kind === 'router.get') return recordConversations.includes(query.conversationId) ? {id:query.conversationId,activeSessionId:`fixture-router-${query.conversationId}`,generation:1,phase:'active'} : null
         if (query.kind === 'router.rotations') return []
       }},
-      async boardTasks(query) {return pageOf(tasks.filter(task => (!query.groupId || task.groupId === query.groupId) && (!query.state || task.state === query.state)), query)},
+      async boardTasks(query) {
+        return pageOf(tasks.filter(task => (!query.groupId || task.groupId === query.groupId) && (!query.state
+          || (query.state === 'not-running' ? ['inactive', 'queued', 'paused', 'interrupted'].includes(task.state) : task.state === query.state))), query)
+      },
       listObserverGroups() {return rooms},
       async taskDetail(id) {return tasks.find(task => task.taskId === id)},
       async taskDialogue(id) {return {taskId: id, sessionId: `fixture-pi-${id}`, writable: false, messages: [

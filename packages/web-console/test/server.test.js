@@ -1187,6 +1187,8 @@ test('task list HTTP defaults to ten rows and preserves explicit page limits',as
  assert.equal(calls[0].limit,10)
  assert.equal((await f.fetchApi('/api/tasks?offset=20&limit=25')).status,200)
  assert.equal(calls[1].limit,25);assert.equal(calls[1].offset,20)
+ assert.equal((await f.fetchApi('/api/tasks?state=not-running&offset=10')).status,200)
+ assert.equal(calls[2].state,'not-running');assert.equal(calls[2].offset,10)
  assert.equal((await f.fetchApi('/api/tasks?limit=101')).status,400)
 })
 
