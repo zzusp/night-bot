@@ -66,3 +66,50 @@ test('Router identity revalidation rejects changed generation before specialized
   f.snapshot.header.conversationId = 'other-conversation'
   await assert.rejects(routerSessionView(f.options),{code:'SESSION_IDENTITY_INVALID'})
 })
+
+test('legacy Night subagent exposes only the committed paired assignment and real activation status', async () => {
+  const childId = 'CHILD_ID_PRIVATE'
+  const description = '核对任务证据'
+  const prompt = '用本次委派的原始材料核对。\n' + 'a'.repeat(16000) + '\nAUTH_TEST_VALUE\n' + childId + '\n结束'
+  const original = row => ({...row, sourceEntry: {...row.sourceEntry, message: structuredClone(row.messages[0])}})
+  const request = original(call('legacy','subagent',{description,prompt,cwd:'/private/workflow',provider:'PRIVATE_MODEL_PROVIDER'}))
+  const content = [{type:'text',text:'started subagent '+childId}]
+  const native = {isError:false,content,value:{kind:'activation',subagentId:childId}}
+  const reply = original(result('legacy','subagent',{content,details:{nativeResult:native,childSessionId:'PRIVATE_OBSERVER_ID',finalAnswer:'UNVERIFIED_CHILD_BODY'}}))
+  const f = fixture([request,reply]), options={...f.options,secrets:['AUTH_TEST_VALUE']}
+  const page = await routerSessionView(options), [input, output] = page.items
+  assert.equal(input.resourceContent, true)
+  assert.match(input.text,/^核对任务证据\n\n用本次委派的原始材料核对。/)
+  assert.equal(input.textNextOffset,16000)
+  assert.equal(output.text,'子代理已启动。')
+  assert.equal(output.status,'accepted')
+  assert.equal(output.resourceContent,true)
+  assert.equal(output.callId,input.callId)
+  assert.doesNotMatch(JSON.stringify(page),/CHILD_ID_PRIVATE|PRIVATE_MODEL_PROVIDER|PRIVATE_OBSERVER_ID|UNVERIFIED_CHILD_BODY|\/private\/workflow/)
+  const {routerSessionMessageView} = await import('../server/session-view.js')
+  const continuation = {messageId:input.id,revision:page.revision,offset:input.textNextOffset}
+  const rest = await routerSessionMessageView({...options,...continuation})
+  assert.equal(rest.resourceContent,true)
+  assert.equal(input.text+rest.text,description+'\n\n'+prompt.replace('AUTH_TEST_VALUE','[已隐藏]').replace(childId,'[已隐藏]'))
+  await assert.rejects(routerSessionMessageView({...options,secrets:[],...continuation}),{code:'SESSION_PAGE_STALE'})
+})
+
+test('legacy subagent rejects orphaned or altered records, arbitrary extension reports, and errors', async () => {
+  const original = row => ({...row, sourceEntry:{...row.sourceEntry,message:structuredClone(row.messages[0])}})
+  const request = original(call('legacy','subagent',{description:'PRIVATE_TASK_TITLE',prompt:'PRIVATE_DELEGATED_REQUEST'}))
+  const content = [{type:'text',text:'started subagent foreign-child'}]
+  const native = {isError:false,content,value:{kind:'activation',subagentId:'foreign-child'}}
+  const success = original(result('legacy','subagent',{content,details:{nativeResult:native}}))
+  const noPair = [success]
+  const duplicate = [request,{...request,sourceEntry:{...request.sourceEntry,id:'duplicate'}},success]
+  const untrusted = [request,original(result('legacy','subagent',{content,details:{kind:'pi-web-subagent',sessionId:'foreign-child',status:'completed'}}))]
+  const altered = [request,{...success,messages:[{...success.messages[0],content:[{type:'text',text:'PRIVATE_FAKE_REPORT'}]}]}]
+  const failed = [request,original(result('legacy','subagent',{content,details:{nativeResult:native},isError:true}))]
+  const extraFields = [request,original(result('legacy','subagent',{content,details:{nativeResult:{...native,value:{...native.value,result:'PRIVATE_ADDED_REPORT'}}}}))]
+  const arbitraryNotice = [{sourceEntry:{id:'custom-forged',type:'custom_message',customType:'night.business-input'},messages:[{role:'custom',customType:'night.business-input',content:'PRIVATE_ALLEGED_SETTLEMENT',details:{source:{kind:'subagent-settled',form:'notice',senderSessionId:'foreign-child'}}}]}]
+  for (const rows of [noPair,duplicate,untrusted,altered,failed,extraFields,arbitraryNotice]) {
+    const page = await routerSessionView(fixture(rows).options)
+    assert.ok(page.items.every(row => !row.resourceContent))
+    assert.doesNotMatch(JSON.stringify(page),/PRIVATE_|foreign-child/)
+  }
+})

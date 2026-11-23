@@ -146,3 +146,19 @@ test('资源续页变更后不再回显旧正文，重新取记录才恢复', as
   await memory.locator('summary').click();
   await expect(memory.locator('.specialized-tool-text')).toHaveCount(0);
 });
+
+test('已核验的历史子代理工具内容直接展示，不新增子会话入口', async ({page}) => {
+  const requestText = '对照发布清单与部署记录。';
+  const receiptText = '子代理已启动。';
+  const rows = [
+    ...pair('verified-child', 'subagent', requestText, receiptText),
+    ...pair('lookup', 'resident_task_lookup_async', '{"taskCount":1}', '{"status":"pending","readOnly":true}'),
+  ].map(row => row.id === 'result-verified-child' ? {...row, status:'accepted', resourceContent:true} : row);
+  await page.route(endpoint + '?*', route => route.fulfill({json:response(rows)}));
+  const history = await open(page);
+  const child = history.locator('[data-message-id="call-verified-child"]');
+  await expect(child.getByText(requestText,{exact:true})).toBeVisible();
+  await expect(child.getByText(receiptText,{exact:true})).toBeVisible();
+  await expect(child.getByRole('link')).toHaveCount(0);
+  await expect(child).not.toContainText('已完成查询');
+});

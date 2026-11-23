@@ -1,5 +1,6 @@
 import {nativeTokenUsage} from './token-usage.js'
 import {randomUUID} from 'node:crypto'
+import {isDeepStrictEqual} from 'node:util'
 import {setImmediate as yieldToIO} from 'node:timers/promises'
 import {digest, fail} from './security.js'
 import {specializedToolInput, specializedToolOutput} from './specialized-tool-activity.js'
@@ -195,6 +196,22 @@ function toolFailure(call, message) {
   return reason ? {reason, code: info.code} : fallback
 }
 
+// Night Bot's retired native subagent tool returned an activation, not a report.
+// Only a true, matched legacy wire receipt can disclose its original assignment.
+// An SDK extension's arbitrary details or a child ID are never an access grant.
+function committedSubagentActivation(message, entry) {
+  const original = entry.type === 'message' && entry.message
+  if (!original || original.role !== 'toolResult' || original.toolName !== 'subagent'
+    || original.toolCallId !== message.toolCallId || original.isError !== false || message.isError !== false) return null
+  const receipt = original.details?.nativeResult, value = receipt?.value
+  if (receipt?.isError !== false || !value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).length !== 2 || value.kind !== 'activation'
+    || typeof value.subagentId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9:_-]{0,199}$/.test(value.subagentId)) return null
+  const content = [{type: 'text', text: 'started subagent ' + value.subagentId}]
+  return isDeepStrictEqual(original.content, content) && isDeepStrictEqual(message.content, content)
+    && isDeepStrictEqual(receipt.content, content) ? value.subagentId : null
+}
+
 function toolOutput(call, message, identity) {
   if (message.isError === true) {
     const failure = toolFailure(call, message)
@@ -356,7 +373,7 @@ function compactionSummaryVisible(entry, entries, secrets) {
 }
 async function projectEntries(snapshot, identity, secrets, calls = new Map(), resultMessages = true, taskInputs = [], executionActivity = false, executionTiming, resourceCandidates) {
   const {taskId, sessionId, conversationId, generation} = identity
-  const items = [], sources = new Set(), operatorReplies = new Set(), seenTaskInputs = new Set()
+  const items = [], sources = new Set(), operatorReplies = new Set(), seenTaskInputs = new Set(), subagentCalls = new Map()
   const inputsById = new Map(taskInputs.map(row => [row.inputId, row]))
   const inputsBySource = new Map(taskInputs.map(row => [row.sourceId, row]))
   let processed = 0
@@ -404,6 +421,12 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           const resultText = businessResultText(block.name, selected.text)
           if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(executionActivity?{entryId:entry.id}:{}), ...(resourceCandidates&&isResourceTool(block.name)?{resourceArgs:block.arguments}:{}), ...(block.name==='resident_operator_reply'&&typeof block.arguments?.eventId==='string'?{operatorEventKey:opaque('operator-reply',block.arguments.eventId)}:{}), ...(resultText ? {resultText} : {})})
           add(entry, 'call-' + index + '-' + blockIndex, 'tool', selected.text, {kind: 'tool-call', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), callId, status: 'result-unrecorded'}, message)
+          if (resultMessages && block.name === 'subagent' && entry.type === 'message' && entry.message?.role === 'assistant'
+            && isDeepStrictEqual(entry.message.content?.[blockIndex], block)
+            && typeof block.arguments?.description === 'string' && block.arguments.description.trim()
+            && typeof block.arguments?.prompt === 'string' && block.arguments.prompt.trim()) {
+            subagentCalls.set(callId, {row: items.at(-1), description: block.arguments.description, prompt: block.arguments.prompt})
+          }
         }
         const timing = timingFields(executionTiming?.assistant(entry.id))
         if (timing&&items.length>firstRow) items[firstRow].timing={...items[firstRow].timing,...timing}
@@ -412,9 +435,17 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
         const call = pending?.name === message.toolName ? pending : undefined
         const callId = call?.id ?? opaque(entry.id, 'orphan-result', index)
         calls.delete(nativeId)
-        const selected = toolOutput(call, message, identity)
+        const assignment = call?.name === 'subagent' && subagentCalls.get(call.id)
+        const childId = assignment && committedSubagentActivation(message, entry)
+        if (assignment) subagentCalls.delete(call.id)
+        if (childId) {
+          const text = [...new Set([assignment.description, assignment.prompt])].join('\n\n')
+          const visible = visibleText(text, [...secrets, childId], {maxLength: Infinity})
+          Object.assign(assignment.row, visible, {redacted:true, resourceContent:true})
+        }
+        const selected = childId ? {toolName: 'subagent', text: '子代理已启动。', redacted: true, resourceContent: true} : toolOutput(call, message, identity)
         const timing = typeof nativeId === 'string' && call?.entryId ? timingFields({durationMs:executionTiming?.tool(call.entryId,nativeId)}) : undefined
-        add(entry, 'result-' + index, 'tool', selected.text, {kind: 'tool-result', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), ...(selected.failure ? {failure: selected.failure} : {}), ...(timing?{timing}:{}), callId, isError: message.isError === true, status: message.isError ? 'error' : 'completed'}, message)
+        add(entry, 'result-' + index, 'tool', selected.text, {kind: 'tool-result', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), ...(selected.resourceContent ? {resourceContent: true} : {}), ...(selected.failure ? {failure: selected.failure} : {}), ...(timing?{timing}:{}), callId, isError: message.isError === true, status: message.isError ? 'error' : childId ? 'accepted' : 'completed'}, message)
         if (resourceCandidates && call?.resourceArgs) {
           let candidate
           try {candidate = resourceReadCandidate(call.name, call.resourceArgs, message, entry)} catch { /* Invalid receipt proves no body. */ }
@@ -630,11 +661,10 @@ async function projection({base, identity, persistence, validIdentity, notStarte
   const live = persistence.readLive ? await projectLive(snapshot, identity, secrets, await persistence.readLive(sessionId), calls, executionActivity) : undefined
   const granted = resourceCandidates?.length ? await readResourceContents(resourceCandidates) : undefined
   const resources = []
-  if (granted?.size) for (const row of items) {
-    const body = granted.get(row.id)
-    if (typeof body !== 'string') continue
-    Object.assign(row, visibleText(body, secrets, {maxLength: Infinity}), {resourceContent: true})
-    resources.push([row.id, digest(row.text), row.redacted])
+  if (granted?.size || items.some(row => row.resourceContent)) for (const row of items) {
+    const body = granted?.get(row.id)
+    if (typeof body === 'string') Object.assign(row, visibleText(body, secrets, {maxLength: Infinity}), {resourceContent: true})
+    if (row.resourceContent) resources.push([row.id, digest(row.text), row.redacted])
   }
   // A continuation or a stream prefix cannot reuse prior authorization when a
   // resource changes independently of the physical session journal.
