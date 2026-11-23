@@ -185,9 +185,13 @@ test('任务列表筛选、分页、详情与执行记录', async ({page}) => {
   await page.getByRole('button', {name: '上一页', exact: true}).click()
   await expect(page.locator('.task-table tbody tr')).toHaveCount(10)
   await page.getByRole('button', {name: '上一页', exact: true}).click()
-  await page.getByRole('navigation', {name: '任务状态'}).getByRole('link', {name: '排队中', exact: true}).click()
-  await expect(page.getByRole('heading', {name: '暂无任务', exact: true})).toBeVisible()
-  await page.getByRole('navigation', {name: '任务状态'}).getByRole('link', {name: '全部', exact: true}).click()
+  const filters = page.getByRole('navigation', {name: '任务状态'})
+  await expect(filters.getByRole('link')).toHaveText(['全部', '未在执行', '执行中', '已完成', '已取消'])
+  await expect(page.locator('.task-table .task-status .board-badge')).toContainText(['执行中', '执行中', '未在执行', '已完成', '已取消', '已完成', '已取消', '未在执行', '未在执行', '未在执行'])
+  await filters.getByRole('link', {name: '未在执行', exact: true}).click()
+  await expect(page.locator('.task-table .task-status .board-badge')).toHaveText(Array(4).fill('未在执行'))
+  await expect(page.getByRole('navigation', {name: '分页'})).toContainText('共 4 条')
+  await filters.getByRole('link', {name: '全部', exact: true}).click()
   const search = page.getByRole('searchbox', {name: '筛选当前页', exact: true})
   await search.fill('无匹配验收关键词')
   await expect(page.getByRole('heading', {name: '这一页没有匹配的任务', exact: true})).toBeVisible()
@@ -205,8 +209,23 @@ test('任务列表筛选、分页、详情与执行记录', async ({page}) => {
   await expect(page.locator('.thinking-message')).toHaveCount(1)
   await expect(page.locator('.task-dialogue')).not.toContainText('SECRET_SIGNATURE_FIXTURE')
   await expect(page.locator('.task-dialogue')).not.toContainText('SECRET_ARGUMENT_FIXTURE')
-  expect(await page.getByLabel('消息内容', {exact: true}).count()).toBe(0)
+  await expect(page.locator('.task-input-dock').getByRole('textbox', {name: '消息内容', exact: true})).toBeEnabled()
   await screenshot(page, 'execution-context')
+})
+
+test('旧排队链接归入未在执行，任务详情保留具体状态', async ({page}) => {
+  await login(page)
+  for (const [title, status] of [
+    ['准备下周的会议安排', '中断待核实'],
+    ['准备资料目录复核', '待调度'],
+    ['整理暂停的参考资料', '已暂停'],
+    ['归类待处理的样例索引', '未在执行'],
+  ]) {
+    await page.goto('/#/tasks?state=queued')
+    await expect(page.getByRole('link', {name: '未在执行', exact: true})).toHaveAttribute('aria-current', 'page')
+    await page.locator('.task-table').getByRole('link', {name: title, exact: true}).click()
+    await expect(page.locator('.task-summary-status')).toHaveText(status)
+  }
 })
 
 test('已完成和已取消分别筛选，取消原因按真实记录展示', async ({page}) => {
@@ -218,7 +237,9 @@ test('已完成和已取消分别筛选，取消原因按真实记录展示', as
     await expect(states.getByRole('link', {name: '全部', exact: true})).toHaveAttribute('aria-current', 'page')
     await expect(table.locator('tbody tr')).toHaveCount(10)
   }
-  await expect(states.getByRole('link')).toHaveText(['全部', '执行中', '排队中', '已完成', '已取消'])
+  await expect(states.getByRole('link')).toHaveText(['全部', '未在执行', '执行中', '已完成', '已取消'])
+  await states.getByRole('link', {name: '执行中', exact: true}).click()
+  await expect(table.locator('.task-status .board-badge')).toHaveText(['执行中', '执行中'])
   await states.getByRole('link', {name: '已完成', exact: true}).click()
   await expect(table.getByText('已完成', {exact: true}).first()).toBeVisible()
   await expect(table.getByText('已取消', {exact: true})).toHaveCount(0)
@@ -262,7 +283,7 @@ test('中断任务保留白名单阻断项，不泄露操作输入', async ({pag
   expect(detail.blockers).toEqual([{kind: 'operation', id: expect.stringMatching(/^[a-f0-9]{64}$/), title: '待核实操作：pwsh', status: 'unknown', toolName: 'pwsh'}])
   expect(JSON.stringify(detail)).not.toContain('SECRET_OPERATION_INPUT_FIXTURE')
   expect(detail.state).toBe('interrupted')
-  await expect(page.getByRole('complementary', {name: '任务详情'}).getByText('执行中断', {exact: true})).toBeVisible()
+  await expect(page.locator('.task-summary-status')).toHaveText('中断待核实')
   await expect(page.locator('main')).not.toContainText('SECRET_OPERATION_INPUT_FIXTURE')
 })
 
@@ -456,11 +477,13 @@ test('请求失败保留已读内容并可恢复，失效登录后保留未发�
   await page.goto('/#/tasks')
   await expect(page.locator('.task-table tbody tr')).toHaveCount(10)
   await page.route('**/api/tasks?**', route => route.abort('failed'))
-  await expect(page.locator('.tasks-page .notice')).toContainText('当前显示上次获取的数据', {timeout: 15_000})
+  const readErrors = page.getByRole('alert', {name: '读取状态汇总'})
+  await expect(readErrors.getByRole('heading', {name: '部分内容未更新', exact: true})).toBeVisible({timeout: 15_000})
+  await expect(readErrors).toContainText('任务暂未更新。')
   await expect(page.locator('.task-table tbody tr')).toHaveCount(10)
   await page.unroute('**/api/tasks?**')
-  await page.locator('.tasks-page').getByRole('button', {name: '重新获取', exact: true}).click()
-  await expect(page.locator('.tasks-page .notice')).toHaveCount(0)
+  await readErrors.getByRole('button', {name: '重试', exact: true}).click()
+  await expect(readErrors).toHaveCount(0)
   await page.goto('/#/chat')
   await page.getByLabel('消息内容', {exact: true}).fill('尚未发送的草稿要保留')
   await page.context().clearCookies()
@@ -524,17 +547,24 @@ test('深色聊天、任务、执行上下文与渠道通过 axe WCAG AA', async
   }
 })
 
-test('初次读取失败与真实空数据分开显示，恢复路径只有一个重试入口', async ({page}) => {
+test('任务列表初次读取失败不冒充空数据，恢复只有一个重试入口', async ({page}) => {
   await login(page)
   await page.route('**/api/tasks?**', route => route.fulfill({status: 503, json: {error: 'FIXTURE_UNAVAILABLE'}}))
   await page.goto('/#/tasks')
-  await expect(page.getByRole('heading', {name: '任务列表暂不可读', exact: true})).toBeVisible()
+  const readErrors = page.getByRole('alert', {name: '读取状态汇总'})
+  await expect(readErrors.getByRole('heading', {name: '内容暂不可用', exact: true})).toBeVisible()
+  await expect(readErrors).toContainText('任务暂时无法读取。')
   await expect(page.getByRole('heading', {name: '暂无任务', exact: true})).toHaveCount(0)
-  await expect(page.locator('.tasks-page').getByRole('button', {name: '重新获取', exact: true})).toHaveCount(1)
+  const retry = readErrors.getByRole('button', {name: '重试', exact: true})
+  await expect(retry).toHaveCount(1)
   await page.unroute('**/api/tasks?**')
-  await page.locator('.tasks-page').getByRole('button', {name: '重新获取', exact: true}).click()
+  await retry.click()
   await expect(page.locator('.task-table tbody tr')).toHaveCount(10)
+  await expect(readErrors).toHaveCount(0)
+})
 
+test('渠道和执行记录初次读取失败与真实空数据分开显示', async ({page}) => {
+  await login(page)
   await page.route('**/api/channels', route => route.fulfill({status: 503, json: {error: 'FIXTURE_UNAVAILABLE'}}))
   await page.route('**/api/conversations', route => route.fulfill({status: 503, json: {error: 'FIXTURE_UNAVAILABLE'}}))
   await page.goto('/#/channels')

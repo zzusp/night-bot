@@ -119,7 +119,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
   const page = query => ({offset: pageNumber(query, 'offset', 0), limit: pageNumber(query, 'limit', 30, 100)})
   const taskOptions = query => {
     const state = query.get('state') || undefined
-    if (state && !['queued', 'running', 'interrupted', 'completed', 'cancelled'].includes(state)) fail('TASK_FILTER_INVALID')
+    if (state && !['not-running', 'running', 'completed', 'cancelled', 'queued', 'interrupted'].includes(state)) fail('TASK_FILTER_INVALID')
     return {...page(query), limit: pageNumber(query, 'limit', 10, 100), state, archived: query.get('archived') === 'all' ? 'all' : query.get('archived') === 'true',
       ...(query.get('revision') ? {revision: query.get('revision')} : {}), ...(query.get('groupId') ? {groupId: query.get('groupId')} : {})}
   }

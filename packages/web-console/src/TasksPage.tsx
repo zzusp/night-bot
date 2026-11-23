@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import { RiArrowRightLine, RiCheckboxCircleLine, RiTimeLine, RiPulseLine, RiLayoutRightLine } from '@remixicon/react';
 import { ApiError, type Page, type Task } from './api';
 import { dateTime, navigate, textOf, useResource } from './hooks';
-import { Button, EmptyState, IconButton } from './components/BoardPrimitives';
-import { Loading, Notice, Pagination, Search, Status } from './components/Shared';
+import { Badge, Button, EmptyState, IconButton } from './components/BoardPrimitives';
+import { Loading, Notice, Pagination, Search } from './components/Shared';
 import { ConversationFrame } from './components/ConversationFrame';
 import { ExecutionHistory } from './components/ExecutionHistory';
 import { TaskLearningSummary } from './components/TaskLearningSummary';
@@ -13,9 +13,17 @@ import { TaskOverview } from './components/TaskOverview';
 import { TaskInputComposer } from './components/TaskInputComposer';
 import type {TaskInputDrafts} from './task-input-drafts';
 
+const taskListStates = {
+  'not-running': {label: '未在执行', tone: 'neutral'},
+  running: {label: '执行中', tone: 'info'},
+  completed: {label: '已完成', tone: 'success'},
+  cancelled: {label: '已取消', tone: 'neutral'},
+} as const;
+const taskListFilters = [['', '全部'], ...Object.entries(taskListStates).map(([state, {label}]) => [state, label])];
+
 export function TaskList({ route }: { route: URL }) {
   const requestedState = route.searchParams.get('state') || '';
-  const state = ['waiting', 'interrupted'].includes(requestedState) ? '' : requestedState;
+  const state = requestedState === 'queued' ? 'not-running' : Object.hasOwn(taskListStates, requestedState) ? requestedState : '';
   const offset = Math.max(0, Number(route.searchParams.get('offset')) || 0);
   const [search, setSearch] = useState(route.searchParams.get('q') || '');
   const query = useResource<Page<Task>>(`/tasks?offset=${offset}&limit=10${state ? `&state=${encodeURIComponent(state)}` : ''}`, 5000);
@@ -32,14 +40,18 @@ export function TaskList({ route }: { route: URL }) {
   const changePage = (next: number) => navigate(`/tasks?state=${encodeURIComponent(state)}&offset=${next}${search ? `&q=${encodeURIComponent(search)}` : ''}`);
   const items = (query.data?.items || []).filter(task => `${task.title || ''} ${task.objective || ''}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   return <div className="page-content tasks-page">
-    <div className="list-toolbar"><nav className="filter-tabs" aria-label="任务状态">{[['', '全部'], ['running', '执行中'], ['queued', '排队中'], ['completed', '已完成'], ['cancelled', '已取消']].map(([value, label]) =>
+    <div className="list-toolbar"><nav className="filter-tabs" aria-label="任务状态">{taskListFilters.map(([value, label]) =>
       <a key={value} href={`#/tasks${value ? `?state=${value}` : ''}`} aria-current={state === value ? 'page' : undefined}>{label}</a>)}</nav>
       <Search value={search} onChange={value => { setSearch(value); const url = new URL(route); value ? url.searchParams.set('q', value) : url.searchParams.delete('q'); history.replaceState(null, '', '#' + url.pathname + url.search); }} />
     </div>
     {query.error && <Notice error={query.error} stale={!!query.data} onRetry={query.refresh} />}
     <div className="task-table-wrap" tabIndex={0} role="region" aria-label="任务列表，可横向滚动">{!query.data && query.loading ? <Loading /> : !query.data && query.error ? null : !items.length ? <EmptyState title={search ? '这一页没有匹配的任务' : '暂无任务'} action={search ? <Button variant="secondary" onClick={() => { setSearch(''); navigate(`/tasks?state=${state}&offset=${offset}`); }}>清除筛选</Button> : <a className="text-link" href="#/chat">与 Bot 对话 <RiArrowRightLine size={16} /></a>} /> :
       <table className="task-table"><caption className="sr-only">任务与最近进度</caption><thead><tr><th scope="col">任务</th><th scope="col" className="task-status">状态</th><th scope="col" className="task-duration">总时长</th><th scope="col" className="task-duration">执行时长</th><th scope="col" className="task-updated">最近更新</th><th scope="col" className="task-action"><span className="sr-only">查看</span></th></tr></thead>
-        <tbody>{items.map(task => <tr key={task.taskId}><td><div className="task-name"><span className={`task-glyph ${task.state}`} aria-hidden="true">{task.state === 'completed' ? <RiCheckboxCircleLine size={19} /> : task.state === 'running' ? <RiPulseLine size={19} /> : <RiTimeLine size={19} />}</span><div><a href={`#/tasks/${encodeURIComponent(task.taskId)}`}>{task.title || task.objective || '未命名任务'}</a>{(task.objective && task.objective !== task.title || textOf(task.result)) && <p>{task.objective && task.objective !== task.title ? task.objective : textOf(task.result)}</p>}</div></div></td><td className="task-status"><Status value={task.state} /></td><td className="task-duration">{taskDurationText(task.durations?.total, task.durations?.observedAt, elapsed)}</td><td className="task-duration">{taskDurationText(task.durations?.execution, task.durations?.observedAt, elapsed)}</td><td className="task-updated"><time dateTime={task.updatedAt}>{dateTime(task.updatedAt || task.createdAt)}</time></td><td className="task-action"><a className="row-link" aria-label={`查看任务：${task.title || '未命名任务'}`} href={`#/tasks/${encodeURIComponent(task.taskId)}`}><RiArrowRightLine size={18} /></a></td></tr>)}</tbody></table>}
+        <tbody>{items.map(task => {
+          const state = task.state === 'running' || task.state === 'completed' || task.state === 'cancelled' ? task.state : 'not-running';
+          const {label, tone} = taskListStates[state];
+          return <tr key={task.taskId}><td><div className="task-name"><span className={`task-glyph ${state}`} aria-hidden="true">{state === 'completed' ? <RiCheckboxCircleLine size={19} /> : state === 'running' ? <RiPulseLine size={19} /> : <RiTimeLine size={19} />}</span><div><a href={`#/tasks/${encodeURIComponent(task.taskId)}`}>{task.title || task.objective || '未命名任务'}</a>{(task.objective && task.objective !== task.title || textOf(task.result)) && <p>{task.objective && task.objective !== task.title ? task.objective : textOf(task.result)}</p>}</div></div></td><td className="task-status"><Badge tone={tone}>{label}</Badge></td><td className="task-duration">{taskDurationText(task.durations?.total, task.durations?.observedAt, elapsed)}</td><td className="task-duration">{taskDurationText(task.durations?.execution, task.durations?.observedAt, elapsed)}</td><td className="task-updated"><time dateTime={task.updatedAt}>{dateTime(task.updatedAt || task.createdAt)}</time></td><td className="task-action"><a className="row-link" aria-label={`查看任务：${task.title || '未命名任务'}`} href={`#/tasks/${encodeURIComponent(task.taskId)}`}><RiArrowRightLine size={18} /></a></td></tr>;
+        })}</tbody></table>}
     </div>
     {query.data && <Pagination offset={offset} total={query.data.total} pageSize={10} nextOffset={query.data.nextOffset} onPage={changePage} loading={query.loading} />}
   </div>;

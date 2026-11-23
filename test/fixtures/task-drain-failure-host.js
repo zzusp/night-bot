@@ -35,6 +35,8 @@ try{
  assert.equal(login.status,200)
  const cookie=login.headers.get('set-cookie').split(';')[0],api=async path=>{const response=await fetch(web.origin+path,{headers:{origin:web.origin,cookie}});assert.equal(response.status,200);return response.json()}
  const detail=await api('/api/tasks/'+created.taskId),interrupted=await api('/api/tasks?state=interrupted'),running=await api('/api/tasks?state=running')
+ const notRunning=await api('/api/tasks?state=not-running')
+ assert.equal(notRunning.items.find(t=>t.taskId===created.taskId)?.state,'interrupted')
  assert.equal(detail.state,'interrupted');assert.equal(detail.session.status,'failed')
  assert.equal(detail.blockers.find(b=>b.kind==='session').status,'failed');assert.match(detail.blockers[0].title,/排空失败/)
  assert.doesNotMatch(JSON.stringify(detail),/PRIVATE_FAULT_DETAILS|fixture-unresolved-job/)

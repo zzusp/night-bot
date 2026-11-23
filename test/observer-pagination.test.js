@@ -504,6 +504,29 @@ test('current interruption or inspection overrides a claimed wake, but stale and
  }
 })
 
+test('未在执行先合并状态再计数分页，详情状态及会话范围保持不变', t => {
+ const {put,page}=fixture(t)
+ const base={groupId:'g',status:'active',control:'active',drained:true}
+ const states={running:{drained:false},queued:{},completed:{status:'completed'},paused:{control:'paused'},
+  cancelled:{status:'cancelled'},interrupted:{sessionFailure:{code:'TASK_SESSION_DRAIN_FAILED'}},inactive:{}}
+ for(const [index,[taskId,overrides]] of Object.entries(states).entries()){
+  put('tasks',taskId,{...base,...overrides,taskId,updatedAt:`2026-01-0${8-index}`})
+ }
+ put('wakes','next-round',{taskId:'queued',state:'pending'})
+ put('tasks','other-group',{...base,taskId:'other-group',groupId:'other',updatedAt:'2026-01-09'})
+ put('tasks','archived',{...base,taskId:'archived',archivedAt:'2026-01-10',updatedAt:'2026-01-09'})
+ const query={collection:'tasks',groupId:'g',state:'not-running',limit:2}
+ const summary=result=>({states:result.items.map(row=>row.state),total:result.total,nextOffset:result.nextOffset})
+ const first=page(query)
+ assert.deepEqual(summary(first),{states:['queued','paused'],total:4,nextOffset:2})
+ assert.deepEqual(summary(page({...query,offset:first.nextOffset,revision:first.revision})),{states:['interrupted','inactive'],total:4,nextOffset:null})
+ assert.equal(page({...query,groupId:undefined}).total,5)
+ assert.equal(page({...query,archived:'all'}).total,5)
+ for(const state of ['interrupted','running','completed','cancelled']){
+  assert.deepEqual(page({...query,state}).items.map(row=>row.taskId),[state])
+ }
+})
+
 test('exact task timing page never includes another task or excludes archived identity', t => {
  const {put,page}=fixture(t,{archives:true});
  put('tasks','new',{taskId:'new',status:'active',control:'active',drained:true,updatedAt:'2026-01-02T00:00:00Z'});
