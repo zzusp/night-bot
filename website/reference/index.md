@@ -15,6 +15,7 @@
 ## 使用与扩展
 
 - [Web 使用手册](https://github.com/zzusp/night-bot/blob/main/docs/manual/web-console.md)
+- [报错反馈手册](https://github.com/zzusp/night-bot/blob/main/docs/manual/error-feedback.md)
 - [任务模型](https://github.com/zzusp/night-bot/blob/main/docs/SINGLE-TASK.md)
 - [长期记忆](https://github.com/zzusp/night-bot/blob/main/docs/MEMORY.md)
 - [自进化](https://github.com/zzusp/night-bot/blob/main/docs/SELF-EVOLUTION.md)

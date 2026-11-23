@@ -16,7 +16,7 @@ node bin/night-bot-settings.js data/config/config.json channel-list --live
 
 ## 模型路由与角色
 
-一个 provider 路由可以包含多个模型。路由保存 API 地址、协议和凭据；模型目录保存可选模型。分诊、Router、任务执行可分别选择模型，不需要为每个模型重复创建路由。
+一个 API 路由可以包含多个模型，共用 API 地址、协议和凭据。打开控制台右上角「设置 → 模型分工」，可分别选择 Router 和任务执行的模型。旧分诊配置只保留作历史兼容，不再使用。
 
 在 Bot 停止时，可先校验角色模型，再保存：
 
@@ -25,9 +25,18 @@ node bin/night-bot-config.js data/config/config.json role-model --role task --pr
 node bin/night-bot-config.js data/config/config.json role-model --role task --provider YOUR_PROVIDER --model YOUR_MODEL
 ```
 
-`--role` 支持 `triage`、`router`、`task`。将占位值替换成已配置的路由与模型，按返回的 `restartRequired` 正常重启。API 和模型目录保存后不热切换已有执行会话。
+`--role` 支持 `router`、`task`。将占位值替换成已配置的路由与模型，按返回的 `restartRequired` 正常重启。API 和模型目录保存后不热切换已有执行会话。
 
 Web「模型与 API」可管理路由及模型列表。正在被默认配置、角色或任务引用的模型受到删除保护；命令不会自动向服务商发现模型或验证模型可用性。
+
+## 工作原则
+
+打开右上角「设置 → 工作原则」。上面是 **Router 工作原则**，下面是 **执行会话工作原则**，各有自己的「保存」按钮。
+
+- **Router**：例如“确认结果后再回复，不把已接纳当作已完成”。保存后下一轮生效，不改变正在跑的这一轮。
+- **执行会话**：例如“修改文件后检查结果，没核实的单独说明”。保存后在执行会话下次刷新上下文时生效。
+
+两份规则互不覆盖，留空不加载，都不需要重启。请勿填写凭据。也可在本机分别维护 `data/config/router/AGENTS.md` 和 `data/config/execution/AGENTS.md`，见[工作原则配置](https://github.com/zzusp/night-bot/blob/main/docs/ops/shared-settings.md#会话工作原则)。
 
 ## 密钥管理
 

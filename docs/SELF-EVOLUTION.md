@@ -71,6 +71,12 @@ skill files, reports, business artifacts and private skill packages are runtime 
 and are ignored; their `scripts`, `references` and `assets` stay beside the skill in
 the private installation directory.
 
+## 查看和更新已有条目
+
+在 Web 控制台左侧打开「自进化」，选择「记忆」或「Skills」，点击条目查看获准读取的内容；有上次版本时可打开「最近差异」。这个页面只读，不提供编辑按钮。
+
+要修改内容，可在与 Router 的对话中指明条目和要改的部分。例如「把『接口发布检查』这条记忆改名为『API 上线前检查』，正文不变」，或「把『排查服务日志』这个学习技能的适用说明改成仅适用于发布后报错」。Router 可以维护 Bot 管理的记忆和学习技能，不会改写你安装的技能。只有收到确认保存的回执，才算更新成功。
+
 ## Router 直接维护 Skill
 
 `resident_skill_query` 读取共享 learned Skill 的版本、来源和适用性；指定 key 时返回步骤和理由。`resident_skill_mutate` 通过 upsert/delete 执行短维护，必须绑定本批完整原话、作者和消息版本，使用稳定 operationId，更新或删除前应提供读回的 expectedRevision。步骤、理由和适用性继续拒绝已知秘密；key 只能是受管名称，不接受路径，也不覆盖用户安装模板。Router 记录的当前认证消息作为独立来源，不要求制造任务/experience；任务复盘产生的 Skill 仍必须有保留的任务经验支持。
@@ -114,9 +120,12 @@ cold restart skips completed reviews; a crash before state publication retries
 idempotent memory writes. Invalid/unknown evidence, oversized/incomplete model
 output, known secrets or model failures produce a maintenance failure record.
 Retries wait at least 30 seconds and stop after three recorded attempts per event;
-the status is visible through `memory_status`. Tool-free review inference has a 30-second deadline; creator drafting follows the
-provider limits and caller/Host cancellation, and shutdown aborts/drains it, and failures never reverse a completed task. This does
-not promise exactly one vendor request across an unrecorded hard crash.
+the status is visible through `memory_status`. The wait is a retry interval, not an
+inference deadline. Tool-free reviews follow Pi's model-route transport and
+stream-idle timeouts. Creator drafting follows provider limits and caller/Host
+cancellation. Host shutdown cancels and drains in-flight calls; learning failures
+never reverse a completed task. This does not promise exactly one vendor request
+across an unrecorded hard crash.
 
 Correcting or forgetting an `experience` entry removes corresponding derived skill
 state and review lesson bodies. If derived cleanup fails after memory committed,
