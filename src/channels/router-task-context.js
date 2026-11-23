@@ -8,7 +8,12 @@ export const completionReplyId=(conversationId,eventId,sourceId,messageVersion)=
 export const blockedReplyId=(conversationId,eventId)=>replyId([conversationId,'continued-blocked-reply',eventId])
 const stoppedExecution=event=>event?.kind==='task.inspection'&&event.reason==='execution-failed'&&event.expected?.drained===true&&(!!event.sessionId||!!event.brief?.technicalFailure)
 export const isTaskOutcome=event=>event?.kind==='task.completed'||event?.kind==='task.blocked'&&event.resultSource==='pi-task-result'||stoppedExecution(event)
-export const suppressChannelOutcome=task=>task.supplements?.some(row=>row.suppressChannelOutcome===true
+export const suppressChannelOutcome=task=>!!task.webTaskOutcome
+ &&task.webTaskOutcome.requirementRevision===task.requirementRevision
+ &&task.webTaskOutcome.controlRevision===task.controlRevision
+ &&(task.webTaskOutcome.contextRevision===(task.contextRevision??0)
+ ||Number.isInteger(task.webTaskOutcome.leaseEpoch)&&task.webTaskOutcome.leaseEpoch===task.leaseEpoch)
+ ||task.supplements?.some(row=>row.suppressChannelOutcome===true
  &&row.contextRevision===task.contextRevision&&row.requirementRevision===task.requirementRevision)===true
 export const outcomeOriginId=task=>task?.metadata?.authorizationSourceId??task?.sourceRefs?.[0]
 export const isOutcomeChannelSource=(source,conversationId)=>source?.groupId===conversationId&&['im','chat','chat-room'].includes(source.channel)&&source.routed===true

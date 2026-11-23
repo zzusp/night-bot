@@ -55,7 +55,15 @@ export function executionContext(input,audit=[]){
  const directInput=input.task?.currentInput
  const directSource=usesHandoff&&directInput&&(input.sources??[]).find(source=>source.channel==='web'&&source.sourceId===directInput.sourceId
    &&source.version===directInput.messageVersion&&source.requestIdentity?.action)
- const directUpdates=directSource&&updates.some(row=>row.id===directInput.id)?[project(directInput,['id','sourceId','messageVersion','text'])]:[]
+ const admittedUpdates=new Set(prior.flatMap(body=>(body.updates??[]).map(row=>row.id)))
+ const directUpdates=usesHandoff?(input.task.supplements??[]).flatMap(row=>{
+   const origin=row.webTaskInput
+   if(!origin||admittedUpdates.has(row.id)||row.requirementRevision!==input.task.requirementRevision||origin.controlRevision!==input.task.controlRevision)return []
+   const source=(input.sources??[]).find(source=>source.channel==='web'&&source.sourceId===origin.sourceId&&source.version===origin.messageVersion
+     &&source.text===row.text&&!source.authorizationRevoked&&!source.archiveRestoreHold&&source.requestIdentity?.kind==='task-input'&&source.requestIdentity.action?.taskId===input.task.taskId)
+   return source?[{id:row.id,text:row.text,sourceId:origin.sourceId,messageVersion:origin.messageVersion}]:[]
+ }):[]
+ if(directSource&&updates.some(row=>row.id===directInput.id)&&!directUpdates.some(row=>row.id===directInput.id))directUpdates.push(project(directInput,['id','sourceId','messageVersion','text']))
  const materials=input.materials?.filter(item=>ids.has(item.sourceId)).map(item=>usesHandoff
    ? {...project(item,['taskId','sourceId','messageId','version','actorId']),
      resources:item.resources?.map(({value,...resource})=>({...resource,...value?.file?{file:value.file}:{}}))}

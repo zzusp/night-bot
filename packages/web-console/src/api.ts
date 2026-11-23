@@ -18,7 +18,7 @@ export interface TimelineTrack { events?: TimelineEvent[]; segments?: TimelineEv
 export interface TaskBlocker { kind: 'execution' | 'operation' | 'legacy' | 'session'; id: string; title: string; status: string | null; toolName?: string; drained?: boolean; recovering?: boolean }
 export interface TaskDuration { milliseconds: number | null; activeSince: string | null; estimated?: boolean }
 export interface Task {
-  taskId: string; title?: string; objective?: string; state: string; controlState?: string;
+  taskId: string; title?: string; objective?: string; state: string; controlState?: string; archivedAt?: string;
   createdAt?: string; updatedAt?: string; result?: unknown; cancellationReason?: string;
   durations?: { total: TaskDuration; execution: TaskDuration; observedAt: string };
   session?: { sessionId?: string; role?: string; status?: string };
@@ -63,6 +63,7 @@ export interface Message {
   transient?: boolean;
   id: string; role: 'user' | 'assistant' | 'tool'; text: string; createdAt?: string;
   status?: string; senderName?: string; requestId?: string; taskIds?: string[];
+  attachments?: { name: string; mediaType: string; bytes: number }[];
   failure?: {reason: string; code?: string};
   kind?: string; toolName?: string; callId?: string; isError?: boolean; redacted?: boolean; truncated?: boolean;
   source?: MessageSource; textTotal?: number; textNextOffset?: number | null;
@@ -133,6 +134,7 @@ export class ApiError extends Error {
 }
 let csrfToken = '';
 let sessionVersion = 0;
+export const getSessionVersion = () => sessionVersion;
 export function setSession(session: Session | null) { csrfToken = session?.csrfToken ?? ''; sessionVersion += 1; }
 
 export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<T> {
@@ -179,6 +181,9 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
 
 export function errorText(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.code === 'CHAT_ATTACHMENTS_INVALID') return '附件无法读取。请移除有问题的文件后再发送。';
+    if (error.code === 'CHAT_ATTACHMENTS_TOO_LARGE') return '附件合计不能超过 8 MiB。请减少附件后再发送。';
+    if (error.code === 'CHAT_ATTACHMENTS_UNAVAILABLE') return '暂时无法保存附件，消息和附件已保留。';
     if(error.code==='ROUTER_OPERATOR_REQUEST_CONFLICT')return '这次请求编号已对应另一条消息。草稿已保留，请重新发送。';
     if (error.code === 'SESSION_PAGE_STALE') return '执行上下文已改变，已暂停续读。重新获取后查看当前记录。';
     if (error.code === 'SESSION_COMMIT_PENDING') return '新记录正在提交，完成后会自动更新。';

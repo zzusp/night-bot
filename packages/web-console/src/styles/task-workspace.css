@@ -100,3 +100,10 @@
 .task-token-values dt { display: flex; align-items: center; gap: 6px; color: var(--board-muted); font-size: 11px; }
 .task-token-values dt i { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
 .task-token-values dd { margin: 5px 0 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* The input is outside the transcript scroller but uses the same centered reading column. */
+.task-input-dock.composer-dock { padding-inline: 0; scrollbar-gutter: stable both-edges; max-height: 55%; }
+.task-input-dock.composer-dock > div { width: 100%; max-width: calc(var(--board-content-width) + 32px); padding-inline: var(--message-inline-inset); }
+.task-input-dock .task-input-actions { padding: 6px 5px 0; }
+.task-input-status { margin: 4px 5px 0; color: var(--board-muted); font-size: 12px; line-height: 20px; }
+.task-input-status:empty { margin: 0; }

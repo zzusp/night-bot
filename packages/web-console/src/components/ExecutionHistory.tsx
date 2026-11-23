@@ -11,7 +11,7 @@ import { Loading, Markdown, MessageList, Notice, Status } from './Shared';
 const unavailableRecord = new ApiError(503, 'SESSION_UNAVAILABLE');
 
 // 聊天与任务共用连续执行流、提交等待和版本冲突处理。
-export function ExecutionHistory({ endpoint, router = false, sessionKind, status, taskTitle, taskState, controlsTarget, conclusion, conclusionDuration, tokenTarget, taskError, taskRetry }: { tokenTarget?: HTMLElement | null; taskError?: Error | null; taskRetry?: () => void; conclusionDuration?: string | null; conclusion?: string | null; taskTitle?: string; taskState?: string; endpoint: string; router?: boolean; sessionKind?: 'router'; status?: string; controlsTarget?: HTMLElement | null }) {
+export function ExecutionHistory({ endpoint, router = false, sessionKind, status, taskTitle, taskState, controlsTarget, conclusion, conclusionDuration, tokenTarget, taskError, taskRetry, refreshAfterInput }: { refreshAfterInput?: string; tokenTarget?: HTMLElement | null; taskError?: Error | null; taskRetry?: () => void; conclusionDuration?: string | null; conclusion?: string | null; taskTitle?: string; taskState?: string; endpoint: string; router?: boolean; sessionKind?: 'router'; status?: string; controlsTarget?: HTMLElement | null }) {
   const query = useExecutionStream(endpoint);
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
@@ -24,6 +24,11 @@ export function ExecutionHistory({ endpoint, router = false, sessionKind, status
   const hasRecords = !blocked && query.data?.status === 'ready' && !!query.data.items.length;
   const readFailed = blocked || !!query.error && !hasRecords || query.data?.status === 'unavailable';
   const latest = query.refresh;
+  const refreshedInput = useRef(refreshAfterInput);
+  useEffect(() => {
+    if (refreshAfterInput && refreshAfterInput !== refreshedInput.current) latest();
+    refreshedInput.current = refreshAfterInput;
+  }, [refreshAfterInput, latest]);
   const [readerEpoch, setReaderEpoch] = useState(0);
   const recoveryRead = useRef<number | null | undefined>(undefined);
   // Reset revoked body-page state only after a new authorized history read.

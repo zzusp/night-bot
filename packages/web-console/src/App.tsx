@@ -8,6 +8,7 @@ import { Loading, Notice } from './components/Shared';
 import { ActivityPanel } from './components/ActivityPanel';
 import ChatPage, { createDrafts, type Drafts } from './ChatPage';
 import { TaskDetail, TaskList } from './TasksPage';
+import {createTaskInputDrafts} from './task-input-drafts';
 import ChannelsPage from './ChannelsPage';
 import PermissionsPanel from './components/PermissionsPanel';
 import EvolutionPage from './EvolutionPage';
@@ -75,8 +76,12 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [historyOffset, setHistoryOffset] = useState(0);
   const [permissionIdentity, resetPermissionIdentity] = useState(() => ({ csrfToken: session.csrfToken, epoch: 0 }));
-  // 重挂权限、渠道表单与自进化快照，使旧回执失效；聊天草稿保留，DOM/key 不含令牌。
-  if (permissionIdentity.csrfToken !== session.csrfToken) resetPermissionIdentity({ csrfToken: session.csrfToken, epoch: permissionIdentity.epoch + 1 });
+  const [taskInputDrafts, replaceTaskInputDrafts] = useState(createTaskInputDrafts);
+  // 重挂权限、渠道表单与自进化快照，清除旧任务输入作用域；聊天草稿保留。
+  if (permissionIdentity.csrfToken !== session.csrfToken) {
+    resetPermissionIdentity({ csrfToken: session.csrfToken, epoch: permissionIdentity.epoch + 1 });
+    replaceTaskInputDrafts(createTaskInputDrafts());
+  }
   const olderChats = useResource<Page<RecentConversation>>(historyOffset ? `/recent-conversations?offset=${historyOffset}&limit=20` : null);
   const drawer = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -117,7 +122,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     <div className="main-frame" inert={settingsOpen} aria-hidden={settingsOpen||undefined}>{workspaceHeader}
       {!!logoutError && <Notice error={logoutError} />}
       <ReadErrorScope key={`${route.pathname}:${permissionIdentity.epoch}`}><div className={`workspace-body${isConversation ? ' conversation-workspace' : ''}`}>{currentChats.error && <Notice read error={currentChats.error} source="/recent-conversations" onRetry={currentChats.refresh}/>}<main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : ''}`}><ReadErrorOutlet/>{isConversation && conversationHeader}<div className={isConversation ? 'conversation-content' : 'page-content-slot'}><PageBoundary resetKey={route.pathname}>
-        {section === 'chat' ? <ChatPage id={id} onResolved={onChatResolved} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} /> : <TaskList route={route} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
+        {section === 'chat' ? <ChatPage id={id} onResolved={onChatResolved} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} drafts={taskInputDrafts} /> : <TaskList route={route} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></div></main>
       {isConversation && rail && <ActivityPanel conversation={{kind: section === 'chat' ? 'chat' : 'conversations', id: id || (resolvedWebChat?.route === route.pathname ? resolvedWebChat.id : undefined)}} data={overview.data ?? undefined} loading={overview.loading} error={overview.error} onRetry={overview.refresh}/>}
       </div></ReadErrorScope>

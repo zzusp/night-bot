@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { RiArrowRightLine, RiCheckboxCircleLine, RiTimeLine, RiPulseLine, RiLayoutRightLine } from '@remixicon/react';
 import { ApiError, type Page, type Task } from './api';
 import { dateTime, navigate, textOf, useResource } from './hooks';
@@ -10,6 +10,8 @@ import { TaskLearningSummary } from './components/TaskLearningSummary';
 import { taskDurationText } from './task-duration';
 import { taskConclusion, taskConclusionDuration } from './task-conclusion';
 import { TaskOverview } from './components/TaskOverview';
+import { TaskInputComposer } from './components/TaskInputComposer';
+import type {TaskInputDrafts} from './task-input-drafts';
 
 export function TaskList({ route }: { route: URL }) {
   const requestedState = route.searchParams.get('state') || '';
@@ -43,7 +45,7 @@ export function TaskList({ route }: { route: URL }) {
   </div>;
 }
 
-export function TaskDetail({ id, header }: { id: string; header?: ReactNode }) {
+export function TaskDetail({ id, header, drafts }: { id: string; header?: ReactNode; drafts: TaskInputDrafts }) {
   const query = useResource<Task>(`/tasks/${encodeURIComponent(id)}`, 4000);
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
@@ -52,13 +54,24 @@ export function TaskDetail({ id, header }: { id: string; header?: ReactNode }) {
   useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
   useEffect(() => { if (!query.error) setDenied(false); }, [query.updatedAt]);
   const task = forbidden || denied ? undefined : query.data;
+  const draft = useSyncExternalStore(drafts.subscribe, () => drafts.get(id));
+  const accepted = useRef(draft.accepted);
+  useEffect(() => {
+    if (draft.accepted && draft.accepted !== accepted.current) query.refresh();
+    accepted.current = draft.accepted;
+  }, [draft.accepted, query.refresh]);
+  const writableSession = !query.error && task?.taskId === id && task.session?.sessionId
+    && (!task.session.role || task.session.role === 'execution') && !task.archivedAt && !['archived', 'cancelled', 'paused'].includes(task.state)
+    && (!task.controlState || ['active', 'completed'].includes(task.controlState)) ? task.session.sessionId : undefined;
   return <div className={`task-workspace${rail ? '' : ' task-rail-hidden'}`}>
     <ConversationFrame label="任务执行记录">
       {header}
       <div className="conversation-tools task-panel-tools"><div className="topbar-actions"><IconButton label={rail ? '隐藏任务面板' : '显示任务面板'} aria-expanded={rail} aria-controls="task-info-panel" onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>
       {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
       {!task ? query.loading ? <Loading>正在读取任务…</Loading> : query.error ? null : <EmptyState title="无法读取任务" /> :
-        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={null} tokenTarget={tokenTarget} taskError={query.error} taskRetry={query.refresh} conclusion={!query.error ? taskConclusion(task) : null} conclusionDuration={taskConclusionDuration(task)} /></div>}
+        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={null} tokenTarget={tokenTarget} taskError={query.error} taskRetry={query.refresh} conclusion={!query.error ? taskConclusion(task) : null} conclusionDuration={taskConclusionDuration(task)} refreshAfterInput={draft.accepted} />
+          <TaskInputComposer taskId={id} sessionId={writableSession} draft={draft} drafts={drafts} />
+        </div>}
     </ConversationFrame>
     <aside id="task-info-panel" hidden={!rail} className="task-info-rail" aria-label="任务详情">
       <div className="task-info-content">

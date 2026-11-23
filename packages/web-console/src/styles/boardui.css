@@ -161,6 +161,19 @@ a:hover { color: var(--board-info); }
 .board-composer textarea { display: block; flex: 1; width: 100%; min-width: 0; min-height: 34px; max-height: 160px; margin: 0; padding: 7px 0; resize: none; overflow-y: auto; border: 0; outline: none; color: var(--board-text); background: transparent; font-size: 14px; line-height: 20px; scrollbar-gutter: stable; }
 .board-composer textarea::placeholder { color: var(--board-subtle); }
 .board-composer textarea:disabled { opacity: .65; }
+.board-composer-form:has(.board-composer-attach) { padding-left: 8px; }
+.board-composer-attach, .board-composer-files button { display: grid; place-items: center; border: 0; padding: 0; background: transparent; color: var(--board-muted); border-radius: var(--board-radius-pill); }
+.board-composer-attach { flex: 0 0 34px; width: 34px; height: 34px; }
+.board-composer-attach svg { width: 18px; height: 18px; }
+.board-composer-attach:enabled:hover, .board-composer-files button:enabled:hover { background: var(--board-hover); color: var(--board-text); }
+.board-composer-attach:disabled, .board-composer-files button:disabled { opacity: .45; }
+.board-composer-files { display: flex; flex-wrap: wrap; align-items: start; gap: 6px; list-style: none; padding: 0; margin: 0 0 6px; }
+.board-composer-files li { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: min(100%, 16rem); padding: 2px 4px 2px 8px; border: 1px solid var(--board-border); border-radius: var(--board-radius-pill); color: var(--board-text); background: var(--board-surface); font-size: 12px; }
+.board-composer-files li>span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-composer-files li>svg, .board-composer-files button svg { width: 14px; height: 14px; flex-shrink: 0; }
+.board-composer-files button { width: 24px; height: 24px; flex-shrink: 0; }
+.message-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
+.message-attachments li { min-width: 0; max-width: 100%; overflow-wrap: anywhere; padding: 2px 8px; border: 1px solid var(--board-border); border-radius: var(--board-radius-pill); font-size: 12px; }
 .board-composer-send { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; padding: 0; border: 0; border-radius: var(--board-radius-pill); color: var(--board-on-primary); background: var(--board-primary-gradient); transition: background var(--board-transition), opacity var(--board-transition); }
 .board-composer-send svg { width: 20px; height: 20px; }
 .board-composer-send:not(:disabled):hover { background: var(--board-primary-hover); }
