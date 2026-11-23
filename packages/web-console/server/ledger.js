@@ -1,7 +1,9 @@
 import {DatabaseSync} from 'node:sqlite'
 import {lstat} from 'node:fs/promises'
 import {join} from 'node:path'
+import {isDeepStrictEqual} from 'node:util'
 import {digest, fail} from './security.js'
+import {readWebChatAttachment} from './chat-attachments.js'
 
 export async function openWebLedger(directory, scope) {
   const file = join(directory, 'delivery.sqlite')
@@ -40,8 +42,20 @@ export async function openWebLedger(directory, scope) {
     const row = db.prepare('SELECT * FROM requests WHERE id=?').get(id)
     return row && {requestId: row.id, conversationId: row.conversation, groupId: row.group_id, status: row.status}
   }
+  const duplicate = ({requestId,conversationId,groupId,text,senderId,channelId,attachments=[]}) => {
+    const old=db.prepare('SELECT payload FROM requests WHERE id=?').get(requestId)
+    if(!old)return null
+    const saved=JSON.parse(old.payload)
+    const signature=rows=>rows.map(({name,mediaType,submittedSha256,hash})=>[name,mediaType,submittedSha256??hash])
+    if(!isDeepStrictEqual(saved.slice(0,5),[conversationId,groupId,text,senderId,channelId])||!isDeepStrictEqual(signature(saved[5]??[]),signature(attachments)))fail('CHAT_REQUEST_CONFLICT',409)
+    return {...request(requestId),duplicate:true}
+  }
   const messages = conversation => [
-    ...db.prepare('SELECT rowid AS sequence,* FROM requests WHERE conversation=? ORDER BY created_at DESC,rowid DESC LIMIT 501').all(conversation).map(row => ({sequence: row.sequence, id: row.id, requestId: row.id, role: 'user', text: row.text, createdAt: row.created_at, status: row.status})),
+    ...db.prepare('SELECT rowid AS sequence,* FROM requests WHERE conversation=? ORDER BY created_at DESC,rowid DESC LIMIT 501').all(conversation).map(row => {
+      const attachments=JSON.parse(row.payload)[5]
+      return {sequence: row.sequence, id: row.id, requestId: row.id, role: 'user', text: row.text, createdAt: row.created_at, status: row.status,
+        ...(attachments?.length?{attachments:attachments.map(({name,mediaType,attachment})=>({name,mediaType,bytes:attachment.bytes}))}:{})}
+    }),
     ...db.prepare('SELECT rowid AS sequence,* FROM replies WHERE conversation=? ORDER BY created_at DESC,rowid DESC LIMIT 501').all(conversation).map(row => ({sequence: row.sequence, id: row.message_id, role: 'assistant', text: row.text, createdAt: row.created_at, status: 'delivered'})),
   // 相同时间先显示用户消息，再显示回复；各表内保留真实插入顺序，不把随机 ID 当作时间。
   ].sort((left, right) => left.createdAt.localeCompare(right.createdAt)
@@ -56,13 +70,11 @@ export async function openWebLedger(directory, scope) {
       return user?{role:'user',messageId:user.id,messageVersion:1,text:user.text}:{role:'assistant',notificationId:replies[0].id}
     },
     hasChat: conversationId => !!db.prepare('SELECT 1 FROM requests WHERE conversation=? LIMIT 1').get(conversationId),
-    reserve({requestId, conversationId, groupId, text, senderId, channelId}) {
-      const payload = JSON.stringify([conversationId, groupId, text, senderId, channelId])
-      const old = db.prepare('SELECT payload FROM requests WHERE id=?').get(requestId)
-      if (old) {
-        if (old.payload !== payload) fail('CHAT_REQUEST_CONFLICT', 409)
-        return {...request(requestId), duplicate: true}
-      }
+    duplicate,
+    reserve({requestId, conversationId, groupId, text, senderId, channelId, attachments}) {
+      const old=duplicate({requestId,conversationId,groupId,text,senderId,channelId,attachments})
+      if(old)return old
+      const payload = JSON.stringify([conversationId, groupId, text, senderId, channelId, ...(attachments?.length?[attachments]:[])])
       if (scope && (channelId !== scope.channelId || senderId !== scope.senderId || canonical(conversationId) !== conversationId)) fail('WEB_CHAT_SINGLETON', 409)
       db.prepare('INSERT INTO requests VALUES (?,?,?,?,?,?,?)').run(requestId, conversationId, groupId, payload, text, 'pending', new Date().toISOString())
       return {...request(requestId), duplicate: false}
@@ -90,7 +102,13 @@ export async function openWebLedger(directory, scope) {
       const latest = db.prepare('SELECT status FROM requests WHERE conversation=? ORDER BY rowid DESC LIMIT 1').get(conversationId)
       return {conversationId, ...(scope ? {canonicalConversationId} : {}), messages: rows.slice(-500), truncated: rows.length > 500, status: latest.status === 'accepted' ? 'ready' : latest.status}
     },
-    transport(channelId, senderId) {
+    transport(channelId, senderId, getAttachments) {
+      const readSource = envelope => {
+        if (envelope.type !== 'chat' || envelope.channelId !== channelId) fail('WEB_DELIVERY_SCOPE_INVALID', 403)
+        const row = db.prepare("SELECT * FROM requests WHERE id=? AND conversation=? AND json_extract(payload, '$[3]')=? AND json_extract(payload, '$[4]')=?").get(envelope.messageId, envelope.conversationId, senderId, channelId)
+        if (!row) fail('WEB_MESSAGE_NOT_FOUND', 404)
+        return row
+      }
       const validate = envelope => {
         if (envelope.type !== 'chat' || envelope.channelId !== channelId || envelope.senderId !== senderId
           || typeof envelope.deliveryKey !== 'string' || typeof envelope.text !== 'string'
@@ -116,10 +134,14 @@ export async function openWebLedger(directory, scope) {
         },
         readback,
         async readMessage(envelope) {
-          if (envelope.type !== 'chat' || envelope.channelId !== channelId) fail('WEB_DELIVERY_SCOPE_INVALID', 403)
-          const row = db.prepare("SELECT * FROM requests WHERE id=? AND conversation=? AND json_extract(payload, '$[3]')=? AND json_extract(payload, '$[4]')=?").get(envelope.messageId, envelope.conversationId, senderId, channelId)
-          if (!row) fail('WEB_MESSAGE_NOT_FOUND', 404)
-          return {messageId: row.id, conversationId: row.conversation, senderId, text: row.text, occurredAt: row.created_at}
+          const row=readSource(envelope), resources=JSON.parse(row.payload)[5]
+          return {messageId: row.id, conversationId: row.conversation, senderId, text: row.text, occurredAt: row.created_at, ...(resources?.length?{resources}:{})}
+        },
+        async readResource(envelope) {
+          const row=readSource(envelope), resources=JSON.parse(row.payload)[5]
+          const resource=row.status!=='rejected'&&resources?.find(item=>isDeepStrictEqual(item,envelope.resource))
+          if(!resource)fail('WEB_ATTACHMENT_SCOPE_INVALID',403)
+          return readWebChatAttachment(getAttachments?.(),resource)
         },
       }
     },

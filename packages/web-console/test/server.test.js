@@ -1253,3 +1253,24 @@ test('channel activity scopes every count and page before querying, rejects fore
  const board=f.app.tasks.boardTasks;f.app.tasks.boardTasks=async q=>{if(q.state==='running')throw Error('PRIVATE_ERROR');return board(q)}
  const partial=(await f.fetchApi('/api/conversations/room-one/activity')).body;assert.equal(partial.running,null);assert.equal(partial.interrupted.total,1);assert.equal(partial.sectionErrors.running,'SECTION_UNAVAILABLE');assert.ok(!JSON.stringify(partial).includes('PRIVATE_ERROR'))
 })
+
+test('direct task input endpoint requires authenticated exact session and scopes receipts to the task',async t=>{
+ const f=await fixture(t),path='/api/tasks/task-one/input',calls=[]
+ const body={sessionId:'pi-one',requestId:'new-direct-1',text:'直接补充执行事项'}
+ let recorded
+ f.app.tasks.sendTaskInput=async args=>{calls.push(args);if(args.text!=='直接补充执行事项')throw Object.assign(new Error('private details'),{code:'DYNAMIC_COMMAND_ID_CONFLICT'});return recorded={taskId:args.taskId,sessionId:args.sessionId,requestId:args.requestId,status:'accepted'}}
+ f.app.tasks.taskInputReceipt=async({taskId,requestId})=>recorded?.taskId===taskId&&recorded?.requestId===requestId?recorded:null
+ const post=(input,headers)=>f.fetchApi(path,{method:'POST',body:input,headers})
+ assert.equal((await post(body)).status,401)
+ assert.equal((await f.fetchApi(path+'/'+body.requestId)).status,401)
+ await f.login()
+ assert.equal((await post(body,{'x-csrf-token':'forged'})).status,403)
+ assert.equal((await post({...body,sessionId:'pi-other'})).status,409)
+ assert.equal((await post({...body,actorId:'forged'})).status,400)
+ assert.equal(calls.length,0)
+ assert.equal((await post(body)).status,202)
+ assert.deepEqual((await f.fetchApi(path+'/'+body.requestId)).body,recorded)
+ assert.equal((await f.fetchApi('/api/tasks/unrelated/input/'+body.requestId)).status,404)
+ assert.deepEqual((await post({...body,text:'changed'})).body,{error:'DYNAMIC_COMMAND_ID_CONFLICT'})
+ assert.equal(f.received.length,0,'operator action does not use channel receive')
+})

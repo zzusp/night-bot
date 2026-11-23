@@ -100,6 +100,7 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
     {query.error && <Notice read error={query.error} stale={!!page} onRetry={reset} />}
     {offset && !page ? query.loading ? <Loading>正在读取正文…</Loading> : query.error ? null : <p className="message-scope">这一段正文暂不可读，可回到首段重新获取。</p>
       : plain && formatText ? formatText(text || '', offset) : plain ? <pre className="tool-content" tabIndex={0}><code>{text || '此记录没有可展示的文字。'}</code></pre> : message.role === 'user' ? <ThreeLineMessage key={offset} text={text || ''} collapsedLabel={message.kind === 'scheduled-trigger' ? '显示更多' : undefined}><Markdown text={text || ''} /></ThreeLineMessage> : <Markdown text={text || ''} />}
+    {!offset && !!message.attachments?.length && <ul className="message-attachments" aria-label="附件">{message.attachments.map((attachment, index) => <li key={index}>{attachment.name}</li>)}</ul>}
     {((nextOffset != null && history) || offset > 0) && <nav className="body-pagination" aria-label="正文分页">
       <span>{text !== undefined ? `正文 ${text.length ? offset + 1 : offset}–${offset + text.length}${total !== undefined ? ` / ${total}` : ''}` : '正文读取中'}</span><div>
         <Button variant="ghost" disabled={!offset} onClick={() => setCursor(previous => ({ ...previous, offsets: previous.offsets.slice(0, -1) }))}>上一段</Button>

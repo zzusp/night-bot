@@ -17,6 +17,7 @@ import {fileURLToPath} from 'node:url'
 import {resolve, join, relative, isAbsolute, sep} from 'node:path'
 import {accessCredential, browserSessions, controlledDirectory, digest, fail, jsonBody, requireLocalRequest, webListenOptions} from './security.js'
 import {openWebLedger} from './ledger.js'
+import {admitWebChatAttachments, parseWebChatAttachments, saveParsedWebChatAttachments, WEB_CHAT_BODY_BYTES} from './chat-attachments.js'
 import {configuredChannels, conversationMessages, conversations, recentConversations, permissionsView, taskDialogueView, taskView, taskSummaryView} from './views.js'
 import {visibleText,taskSessionView,taskSessionMessageView,routerSessionView,routerSessionMessageView} from './session-view.js'
 
@@ -74,7 +75,7 @@ async function staticResponse(pathname, request, response, dist) {
 }
 
 // 仅作为可选适配器：不导入核心实现，不扩展领域 schema，也不引入模型调用或任务调度。
-export async function createWebConsole({channels, paths, config, getApplication, getAgents = () => undefined, getRedactionSecrets = () => [], getFeedback = () => undefined, getSchedule = () => undefined, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, getDeploymentInventory = () => undefined, dist = defaultDist, listen = true}) {
+export async function createWebConsole({channels, paths, config, getApplication, getAttachments = () => undefined, getAgents = () => undefined, getRedactionSecrets = () => [], getFeedback = () => undefined, getSchedule = () => undefined, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, getDeploymentInventory = () => undefined, dist = defaultDist, listen = true}) {
   const channelId = identifier(config.channelId ?? 'web-console')
   const senderId = identifier(config.senderId)
   const operatorName = (typeof config.operatorName === 'string' ? config.operatorName.trim().slice(0, 256).trim() : '') || '本机操作者'
@@ -437,6 +438,31 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if (!value) fail('TASK_NOT_FOUND', 404)
       return send(response, 200, await taskSessionMessageView({...bodyOptions(url.searchParams), ...await sessionGuards(async()=>{if(taskIdentity(await sessionTask(decodeURIComponent(taskBody[1])))!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)}), task: value, persistence: getSessionPersistence(), messageId: decodeURIComponent(taskBody[2])}))
     }
+    const taskInput = /^\/api\/tasks\/([^/]+)\/input(?:\/([^/]+))?$/.exec(path)
+    if(taskInput&&((request.method==='POST'&&!taskInput[2])||(request.method==='GET'&&taskInput[2]))){
+      const taskId=identifier(decodeURIComponent(taskInput[1])),tasks=application().tasks
+      if(!tasks.sendTaskInput||!tasks.taskInputReceipt)fail('TASK_INPUT_UNAVAILABLE',503)
+      try{
+        if(request.method==='GET'){
+          const receipt=await tasks.taskInputReceipt({taskId,requestId:identifier(decodeURIComponent(taskInput[2]))})
+          if(!receipt)fail('TASK_INPUT_NOT_FOUND',404)
+          return send(response,200,receipt)
+        }
+        const body=await jsonBody(request,['sessionId','requestId','text','attachments'],WEB_CHAT_BODY_BYTES)
+        const requestId=identifier(body.requestId),sessionId=identifier(body.sessionId)
+        if(typeof body.text!=='string'||body.text.length>10000||!body.text.trim()&&!body.attachments?.length)fail('TASK_INPUT_INVALID',400)
+        const target=await sessionTask(taskId)
+        if(!target)fail('TASK_NOT_FOUND',404)
+        if((target.session?.sessionId??target.sessionId)!==sessionId)fail('TASK_INPUT_SESSION_STALE',409)
+        const attachments=await admitWebChatAttachments(getAttachments(),body.attachments)
+        return send(response,202,await tasks.sendTaskInput({taskId,sessionId,requestId,text:body.text,attachments}))
+      }catch(error){
+        const status={TASK_SESSION_NOT_FOUND:404,TASK_SESSION_WEB_ACTOR_REQUIRED:403,TASK_INPUT_SESSION_STALE:409,TASK_INPUT_UNAVAILABLE:409,
+          DYNAMIC_COMMAND_ID_CONFLICT:409,DYNAMIC_TASK_REVISION_STALE:409,DYNAMIC_TASK_NOT_ACTIVE:409,DYNAMIC_TASK_NOT_QUIESCENT:409,TASK_INPUT_INVALID:400}[error.code]
+        if(status)fail(error.code,status)
+        throw error
+      }
+    }
     const task = /^\/api\/tasks\/([^/]+)(?:\/(dialogue|executions|session))?$/.exec(path)
     if (request.method === 'GET' && task) {
       const id = decodeURIComponent(task[1]), app = application()
@@ -580,7 +606,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
     }
     if (request.method === 'POST' && path === '/api/chat') {
       application()
-      const body = await jsonBody(request, ['conversationId', 'requestId', 'text'])
+      const body = await jsonBody(request, ['conversationId', 'requestId', 'text', 'attachments'], WEB_CHAT_BODY_BYTES)
       const requestId = identifier(body.requestId), previous = ledger.request(requestId)
       let conversationId = identifier(body.conversationId ?? previous?.conversationId ?? ledger.canonical())
       // Historical URLs remain normal entry points; new messages continue the one
@@ -589,11 +615,20 @@ export async function createWebConsole({channels, paths, config, getApplication,
         const existing = ledger.hasChat(conversationId) ? ledger.chat(conversationId) : null
         if (existing) conversationId = existing.canonicalConversationId
       }
-      if (typeof body.text !== 'string' || !body.text.trim() || body.text.length > 32000) fail('CHAT_TEXT_INVALID')
-      const envelope = {type: 'chat', channelId, senderId, senderName: operatorName, conversationId, messageId: requestId, text: body.text}
+      if (typeof body.text !== 'string' || body.text.length > 32000 || !body.text.trim() && !(Array.isArray(body.attachments) && body.attachments.length)) fail('CHAT_TEXT_INVALID')
+      const text=body.text.trim()?body.text:'[附件]'
+      const envelope = {type: 'chat', channelId, senderId, senderName: operatorName, conversationId, messageId: requestId, text}
       const groupId = channels.identity(envelope).sessionId
-      const reservation = ledger.reserve({requestId, conversationId, groupId, text: body.text, senderId, channelId})
-      if (reservation.duplicate) return send(response, reservation.status === 'unknown' ? 409 : reservation.status === 'rejected' ? 422 : 202, {...reservation, accepted: reservation.status === 'accepted'})
+      const identity={requestId, conversationId, groupId, text, senderId, channelId}
+      const parsed=parseWebChatAttachments(body.attachments)
+      const replay = reservation => send(response, reservation.status === 'unknown' ? 409 : reservation.status === 'rejected' ? 422 : 202, {...reservation, accepted: reservation.status === 'accepted'})
+      const prior=previous&&ledger.duplicate({...identity,attachments:parsed})
+      if(prior)return replay(prior)
+      if(parsed.length&&ledger.canonical(conversationId)!==conversationId)fail('WEB_CHAT_SINGLETON',409)
+      const attachments=parsed.length?await saveParsedWebChatAttachments(getAttachments(),parsed):[]
+      if(attachments.length)envelope.resourceRefs=attachments
+      const reservation = ledger.reserve({...identity,attachments})
+      if (reservation.duplicate) return replay(reservation)
       try {
         // 浏览器断开没有取消已接纳业务的权限。
         const result = await channels.receive(envelope)
@@ -618,7 +653,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
   server.headersTimeout = 10_000
   server.keepAliveTimeout = 5_000
   server.maxConnections = 64
-  const transport = ledger.transport(channelId, senderId)
+  const transport = ledger.transport(channelId, senderId, getAttachments)
   let unregisterTransport, unregisterPlugin
   const start = () => {
     if (stopped) fail('WEB_STOPPING', 503)
@@ -655,7 +690,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
 export async function apply(ctx, config) {
   if (config.enabled !== true) return
   let application, stopping
-  const prepared = createWebConsole({channels: ctx.channels, paths: ctx.runtimePaths, config, getApplication: () => application,
+  const prepared = createWebConsole({channels: ctx.channels, paths: ctx.runtimePaths, config, getApplication: () => application, getAttachments: () => ctx.get('attachments'),
     getRedactionSecrets: async () => {
       const credentials = ctx.get('credentials')
       if (typeof credentials?.redactionValues !== 'function') throw new Error('Credentials unavailable')

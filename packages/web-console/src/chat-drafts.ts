@@ -1,5 +1,5 @@
-export interface Attempt { conversationId: string; requestId: string; text: string; createdAt: string; state: 'sending' | 'pending' | 'unknown' | 'missing' }
-export interface Draft { text: string; attempt?: Attempt; error?: string; checking?: boolean }
+export interface Attempt { conversationId: string; requestId: string; text: string; files?: File[]; createdAt: string; state: 'sending' | 'pending' | 'unknown' | 'missing' }
+export interface Draft { text: string; files?: File[]; attempt?: Attempt; error?: string; checking?: boolean }
 export const emptyDraft: Draft = { text: '' };
 // 请求归属于对话，不能归属于可能随切页卸载的组件；退出时替换整个内存容器。
 export function createDrafts() {

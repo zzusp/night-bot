@@ -669,9 +669,21 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       } catch (error) { if (error.code !== 'ENOENT') throw error }
       const resources = []
       for (const resource of source.resources ?? []) {
-        if (!readResource) { resources.push({ resource, status: 'unavailable', reason: 'resource_reader_not_configured' }); continue }
+        const operatorFile=source.channel==='web'&&source.actorId===config.webActorId&&source.requestIdentity?.kind==='task-input'&&source.requestIdentity?.action?.taskId===taskId
+        if (!operatorFile&&!readResource) { resources.push({ resource, status: 'unavailable', reason: 'resource_reader_not_configured' }); continue }
         try {
-          const value = await readResource(source.groupId, source.messageId, resource)
+          let value
+          if(operatorFile){
+            const attachments=ctx.get('attachments'),ref=resource.attachment
+            if(resource.type==='image'){
+              const image=await attachments.readImage(ref)
+              value={image:{...image.ref,data:image.data,name:resource.name},complete:true}
+            }else{
+              const chunks=[];let size=0
+              for await(const chunk of attachments.readFileStream(ref)){size+=chunk.byteLength;if(size>8*1024*1024)fail('RESOURCE_READ_TOO_LARGE');chunks.push(chunk)}
+              value={file:{name:resource.name,mediaType:resource.mediaType,data:Buffer.concat(chunks)},complete:true}
+            }
+          }else value=await readResource(source.groupId, source.messageId, resource)
           const text = typeof value?.text === 'string'
           const image = value?.image?.data instanceof Uint8Array && value.image.data.byteLength > 0
           const file = value?.file !== undefined
@@ -1548,18 +1560,22 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const groupId=task.groupId??'task:'+task.taskId
     ctx.get('channels').assertGroupTarget(groupId)
     if(task.groupId&&!residentStore.getGroup(task.groupId))fail('group_not_subscribed')
-    const sourceId='web:'+hash([config.webActorId,groupId,args.requestId]),text=args.context?.trim()||args.objective||args.reason||''
-    const request=clean(args),operationId=residentOperationId(groupId,args.requestId)
+    const isTaskInput=kind==='task-input'
+    const sourceId=isTaskInput?taskInputSourceId(task.taskId,args.requestId):'web:'+hash([config.webActorId,groupId,args.requestId])
+    const text=isTaskInput?(args.text.trim()?args.text:'请查看随附材料。'):args.context?.trim()||args.objective||args.reason||''
+    const request=clean(args),operationId=residentOperationId(groupId,isTaskInput?'task-input:'+hash([task.taskId,args.requestId]):args.requestId)
     await admitTask(task.taskId,async(oldTask,oldExecutions)=>{
       const current=await requireTask(task.taskId),previous=await query('source.get',{sourceId})
       if(previous&&(hash(previous.requestIdentity?.request)!==hash(request)||previous.requestIdentity?.kind!==kind))fail('DYNAMIC_COMMAND_ID_CONFLICT')
-      const directKind=kind==='task-reopen'?'reopen':kind==='task-cancel'?'control':args.progressImpact==='preserve'&&args.authorizationChange!=='changed'?'supplement':'revise'
+      if(isTaskInput&&!previous)assertWebTaskInputTarget(current,args.sessionId)
+      const directKind=isTaskInput?(current.status==='completed'?'reopen':'supplement'):kind==='task-reopen'?'reopen':kind==='task-cancel'?'control':args.progressImpact==='preserve'&&args.authorizationChange!=='changed'?'supplement':'revise'
       const action=previous?.requestIdentity?.action??{kind:'task.'+directKind,taskId:task.taskId,
+        ...isTaskInput?{webTaskInput:{sourceId,actorId:config.webActorId,sessionId:args.sessionId}}:{},
         expectedRequirementRevision:args.expectedRequirementRevision??current.requirementRevision,expectedControlRevision:args.expectedControlRevision??current.controlRevision,
         text,...(directKind==='control'?{control:'cancelled',reason:text}:{}),
-        ...(directKind==='supplement'&&args.suppressChannelOutcome===true?{suppressChannelOutcome:true}:{}),
+        ...(directKind==='supplement'&&(args.suppressChannelOutcome===true||isTaskInput)?{suppressChannelOutcome:true}:{}),
         ...(args.objective?{objective:args.objective}:{}),...(args.title?{title:args.title}:{}),...(args.acceptanceCriteria?{requirements:args.acceptanceCriteria}:{})}
-      const source=previous??(await command('source.record',{sourceId,groupId,messageId:'web:'+args.requestId,actorId:config.webActorId,text,timestamp:'',channel:'web',requestIdentity:{request,kind,action}},'source:'+sourceId)).result.source
+      const source=previous??(await command('source.record',{sourceId,groupId,messageId:isTaskInput?sourceId:'web:'+args.requestId,actorId:config.webActorId,text,timestamp:'',channel:'web',...isTaskInput?{resources:args.attachments??[]}: {},requestIdentity:{request,kind,action}},'source:'+sourceId)).result.source
       // 原请求及版本已冻结；已提交动作直接复用收据，不重算旧 request 或 liveBinding。
       const prior=await query('receipt.get',{id:operationId})
       let receipt
@@ -1579,9 +1595,26 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const sources=(await Promise.all(latest.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean),materials=await Promise.all(sources.map(source=>materializeSource(task.taskId,source)))
         await taskSessions.supplement({task:await taskInputWithDependencies(latest),sources,materials})
       }
-      await command('source.routed',{sourceId,receipt:[{taskId:task.taskId,operationId}]},'web-task-source-routed:'+sourceId)
+      if(!isTaskInput)await command('source.routed',{sourceId,receipt:[{taskId:task.taskId,operationId}]},'web-task-source-routed:'+sourceId)
     },groupId)
     void hostScheduler(()=>schedulePending());return requireTask(task.taskId)
+  }
+  const taskInputSourceId=(taskId,requestId)=>'web-task-input:'+hash([config.webActorId,taskId,requestId])
+  function assertWebTaskInputTarget(task,sessionId){
+    if(task.sessionId!==sessionId)fail('TASK_INPUT_SESSION_STALE')
+    if(task.archivedAt||task.archiveRestore?.reviewRequired||task.control!=='active'||!['active','completed'].includes(task.status)||!taskWorkspaceReady(task)||taskHumanWait(task))fail('TASK_INPUT_UNAVAILABLE')
+  }
+  const taskInputId=value=>typeof value==='string'&&/^[A-Za-z0-9][A-Za-z0-9:_-]{0,199}$/.test(value)
+  async function taskInputReceipt(taskId,requestId){
+    if(!config.webActorId)fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
+    if(!taskInputId(requestId))fail('TASK_INPUT_INVALID')
+    const task=await requireTask(taskId),source=await query('source.get',{sourceId:taskInputSourceId(taskId,requestId)})
+    const origin=source?.requestIdentity
+    if(origin?.kind!=='task-input'||origin.action?.taskId!==taskId||source.actorId!==config.webActorId)return null
+    const operationId=residentOperationId(task.groupId??'task:'+taskId,'task-input:'+hash([taskId,requestId]))
+    const receipt=await query('receipt.get',{id:operationId})
+    if(!receipt)return null
+    return {requestId,taskId,sessionId:origin.request.sessionId,status:'accepted'}
   }
   async function listHumanRequests(options) {
     const page=options?await query('observer.page',{collection:'authorizations',...options}):null
@@ -1985,6 +2018,13 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const receipt=await command('task.create',{taskId,request:args.objective,objective:args.objective,title:args.title??args.objective.slice(0,80),requirements:args.acceptanceCriteria??[],ownerActorId:actorId,...groupId?{groupId,conversationId:groupId}:{},sourceRefs:[...new Set([sourceId,...sources.map(source=>source.sourceId)])],topicRefs:args.topicRefs??[],replyBindings:bindingsForSources(sources),metadata:{channel:channel?channel.envelope.type:'web',authorizationSourceId:sourceId,...channel&&args.context?.trim()?{initialContext:args.context}:{},...channel?{channelType:channel.envelope.type,channelId:channel.envelope.channelId,conversationId:channel.envelope.conversationId,senderId:channel.envelope.senderId}:{}}},id)
       void kickTask(receipt.result.task.taskId);return taskDTO(receipt.result.task)
       },groupId)
+    },
+    async taskInputReceipt({taskId,requestId}) {return taskInputReceipt(taskId,requestId)},
+    async sendTaskInput({taskId,sessionId,requestId,text,attachments=undefined}){
+      if(hostAgents?.currentInitiator?.()!==undefined)fail('TASK_SESSION_HOST_CONTEXT_REQUIRED')
+      if(!taskInputId(requestId)||!taskInputId(sessionId)||typeof text!=='string'||text.length>10000||!text.trim()&&!attachments?.length)fail('TASK_INPUT_INVALID')
+      await webTopicAction({sessionId,requestId,text,...attachments?.length?{attachments}:{}},await requireTask(taskId),'task-input')
+      return taskInputReceipt(taskId,requestId)
     },
     async appendTaskContext(args) { return taskDTO(await webTopicAction(args, await requireTask(args.taskId), 'task-context')) },
     async reopenTask(args) { return taskDTO(await webTopicAction(args, await requireTask(args.taskId), 'task-reopen')) },

@@ -101,6 +101,41 @@ test('聊天经真实服务器接纳、IME不误发、回复与刷新后历史�
   await screenshot(page, 'chat')
 })
 
+test('Web 对话支持粘贴截图、选择文件，发送被拒后保留附件', async ({page}) => {
+  await login(page)
+  const input = page.getByLabel('消息内容', {exact: true})
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jSP8AAAAASUVORK5CYII='
+  await input.evaluate((element, data) => {
+    const clipboard = new DataTransfer()
+    clipboard.items.add(new File([Uint8Array.from(atob(data), c => c.charCodeAt(0))], '截图.png', {type: 'image/png'}))
+    element.dispatchEvent(new ClipboardEvent('paste', {clipboardData: clipboard, bubbles: true, cancelable: true}))
+  }, png)
+  await page.locator('input[type=file]').setInputFiles([{name:'核对.txt', mimeType:'text/plain', buffer:Buffer.from('fixture')}, {name:'移除.txt', mimeType:'text/plain', buffer:Buffer.from('excluded')}])
+  const list = page.getByRole('list', {name:'待发送附件'})
+  await expect(list).toContainText('截图.png')
+  await page.getByRole('button', {name:'移除 移除.txt', exact:true}).click()
+  await expect(list).not.toContainText('移除.txt')
+  await expect(page.getByRole('button', {name:'发送消息', exact:true})).toBeEnabled()
+  let sends = 0
+  await page.route('**/api/chat', async route => {
+    sends++
+    const payload = route.request().postDataJSON()
+    expect(payload.text).toBe('')
+    expect(payload.attachments).toEqual([
+      {name:'截图.png', mediaType:'image/png', data:png},
+      {name:'核对.txt', mediaType:'text/plain', data:Buffer.from('fixture').toString('base64')}
+    ])
+    if (sends === 1) return route.fulfill({status:413,json:{error:'BODY_TOO_LARGE'}})
+    return route.fulfill({status:202,json:{conversationId:payload.conversationId,status:'accepted'}})
+  })
+  await input.press('Enter')
+  await expect(page.locator('.send-notice')).toBeVisible()
+  await expect(list).toContainText('核对.txt')
+  await input.press('Enter')
+  await expect(list).toHaveCount(0)
+  expect(sends).toBe(2)
+})
+
 test('概览请求未完成时聊天仍独立读取、编辑与切换，释放后才显示连接', async ({page}) => {
   let release!: () => void
   const gate = new Promise<void>(resolve => { release = resolve })

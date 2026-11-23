@@ -1,11 +1,12 @@
 import {useAssistantBrand} from './components/AssistantBrand';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { api, ApiError, errorText, type Chat, type Message } from './api';
+import { api, ApiError, errorText, getSessionVersion, type Chat, type Message } from './api';
 import { navigate, useResource, useRoute } from './hooks';
-import { Button, Composer, EmptyState, Logo } from './components/BoardPrimitives';
+import { Button, Composer, Logo } from './components/BoardPrimitives';
 import { Loading, Notice } from './components/Shared';
 import { ConversationFrame } from './components/ConversationFrame';
 import { ConversationMessages } from './components/ConversationMessages';
+import { encodeAttachments, newComposerRequestId } from './compose-attachments';
 
 import {createDrafts, emptyDraft, type Draft, type Attempt, type Drafts} from './chat-drafts';
 export {createDrafts, type Attempt, type Drafts} from './chat-drafts';
@@ -23,13 +24,14 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
   const brand = useAssistantBrand();
   const key = id || 'new';
   const route = useRoute();
-  const { text, attempt, error, checking } = useSyncExternalStore(drafts.subscribe, () => drafts.get(key));
+  const { text, files, attempt, error, checking } = useSyncExternalStore(drafts.subscribe, () => drafts.get(key));
   const mounted = useRef(false);
   const liveKey = useRef(key);
   liveKey.current = key;
   const query = useResource<Chat>(id ? `/chat/${encodeURIComponent(id)}` : null, 2500);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const edit = (value: string) => drafts.update(key, previous => previous.attempt ? previous : { text: value });
+  const edit = (value: string) => drafts.update(key, previous => previous.attempt ? previous : { ...previous, text: value, error: undefined });
+  const editFiles = (next: File[]) => drafts.update(key, previous => previous.attempt ? previous : { ...previous, files: next, error: undefined });
   const settle = (value: Attempt, change: (previous: Draft) => Draft) => drafts.update(key, previous => previous.attempt?.requestId === value.requestId ? change(previous) : previous);
   const applyReceipt = (receipt: Receipt, value: Attempt) => {
     if (drafts.get(key).attempt?.requestId !== value.requestId) return;
@@ -42,7 +44,7 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
       return;
     }
     if (receipt.status === 'rejected') {
-      settle(value, previous => ({ text: previous.text, error: 'Bot 未接纳这条消息，草稿已保留。请核对渠道权限或调整内容后再发送。' }));
+      settle(value, previous => ({ text: previous.text, files: previous.files, error: 'Bot 未接纳这条消息，草稿已保留。请核对渠道权限或调整内容后再发送。' }));
     } else {
       const pending = receipt.status === 'pending';
       settle(value, previous => ({ ...previous, checking: false, attempt: { ...value, state: pending ? 'pending' : 'unknown' }, error: pending ? 'Bot 正在确认接纳这条消息，草稿已保留。请稍后核对发送状态，系统不会重复发送。' : '这条消息的处理结果待核实。请查看会话记录；系统不会自动重新发送。' }));
@@ -60,22 +62,35 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
     }
   };
   const send = async (retry?: Attempt) => {
+    const authVersion = getSessionVersion();
     const current = drafts.get(key);
-    if (current.checking || (!retry && current.attempt) || (retry && (current.attempt?.requestId !== retry.requestId || current.attempt.state !== 'missing')) || !current.text.trim()) return;
+    if (current.checking || (!retry && current.attempt) || (retry && (current.attempt?.requestId !== retry.requestId || current.attempt.state !== 'missing')) || (!current.text.trim() && !current.files?.length)) return;
     if (!retry && (!query.data || query.error)) return;
-    const value: Attempt = { ...(retry ?? { conversationId: query.data?.canonicalConversationId || id || crypto.randomUUID(), requestId: crypto.randomUUID(), text: current.text, createdAt: new Date().toISOString() }), state: 'sending' };
+    const value: Attempt = { ...(retry ?? { conversationId: query.data?.canonicalConversationId || id || newComposerRequestId(), requestId: newComposerRequestId(), text: current.text, files: current.files, createdAt: new Date().toISOString() }), state: 'sending' };
     drafts.update(key, previous => ({ ...previous, attempt: value, error: undefined, checking: false }));
+    let attachments;
     try {
-      const result = await api<Receipt>('/chat', { method: 'POST', body: { conversationId: value.conversationId, requestId: value.requestId, text: value.text } });
+      attachments = value.files?.length ? await encodeAttachments(value.files) : undefined;
+    } catch {
+      settle(value, previous => ({ text: previous.text, files: previous.files, error: '附件无法读取。请移除后重新添加，消息内容已保留。' }));
+      return;
+    }
+    // Encoding is asynchronous: do not send on a different page or auth session.
+    if (attachments && (!mounted.current || liveKey.current !== key || getSessionVersion() !== authVersion)) {
+      settle(value, previous => ({ text: previous.text, files: previous.files }));
+      return;
+    }
+    try {
+      const result = await api<Receipt>('/chat', { method: 'POST', body: { conversationId: value.conversationId, requestId: value.requestId, text: value.text, ...(attachments ? { attachments } : {}) } });
       applyReceipt(result, value);
     } catch (err) {
-      if (err instanceof ApiError && ([400, 401, 403, 413, 429].includes(err.status) || err.code === 'WEB_CHAT_SINGLETON')) settle(value, previous => ({ text: previous.text, error: errorText(err) }));
+      if (err instanceof ApiError && ([400, 401, 403, 413, 429].includes(err.status) || err.code === 'WEB_CHAT_SINGLETON')) settle(value, previous => ({ text: previous.text, files: previous.files, error: errorText(err) }));
       else await reconcile(value);
     }
   };
   const messages = query.data?.messages || [];
   const extra: Message[] = attempt && !messages.some(message => message.requestId === attempt.requestId)
-    ? [{ id: attempt.requestId, role: 'user', text: attempt.text, createdAt: attempt.createdAt, status: ['sending', 'pending'].includes(attempt.state) ? 'pending' : 'unknown' }] : [];
+    ? [{ id: attempt.requestId, role: 'user', text: attempt.text, attachments: attempt.files?.map(file => ({ name: file.name, mediaType: file.type, bytes: file.size })), createdAt: attempt.createdAt, status: ['sending', 'pending'].includes(attempt.state) ? 'pending' : 'unknown' }] : [];
   const busy = attempt?.state === 'sending';
   return <ConversationFrame endpoint={id ? `/chat/${encodeURIComponent(id)}` : undefined}>
     {query.data?.truncated && <div className="history-scope">当前显示最近 500 条消息；更早记录仍保存在 Bot 中。</div>}
@@ -97,7 +112,7 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
         <Button variant="secondary" disabled={checking} busy={checking} onClick={() => void reconcile()}>核对发送状态</Button>
         {attempt.state === 'missing' && <Button variant="secondary" disabled={checking} onClick={() => void send(attempt)}>重试这条消息</Button>}
       </div>}</div>}
-      <Composer key={key} value={text} onChange={edit} onSend={() => send()} busy={busy} disabled={!!attempt || !query.data || !!query.error} placeholder={`给 ${brand.name} 发消息…`} />
+      <Composer key={key} value={text} files={files} onFilesChange={editFiles} onChange={edit} onSend={() => send()} busy={busy} disabled={!!attempt || !query.data || !!query.error} placeholder={`给 ${brand.name} 发消息…`} />
     </div></div>
   </ConversationFrame>;
 }

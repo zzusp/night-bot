@@ -1,7 +1,8 @@
 import {useAssistantBrand, brandGlyph} from './AssistantBrand'
+import { MAX_COMPOSER_FILES, MAX_COMPOSER_FILE_BYTES } from '../compose-attachments'
 // Visual geometry adapted from BoardUI (MIT), revision ec5c5eb.
 // See ../styles/boardui.css and ../../licenses/boardui-MIT.txt.
-import { RiArrowUpLine, RiChatAiLine, RiMoonClearFill } from '@remixicon/react'
+import { RiArrowUpLine, RiAttachment2, RiChatAiLine, RiCloseLine, RiMoonClearFill } from '@remixicon/react'
 import {
   useId,
   useLayoutEffect,
@@ -81,18 +82,34 @@ export interface ComposerProps {
   busy?: boolean
   error?: string | null
   placeholder?: string
+  files?: File[]
+  onFilesChange?: (files: File[]) => void
 }
 
-export function Composer({ value, onChange, onSend, disabled = false, busy = false, error, placeholder }: ComposerProps) {
+export function Composer({ value, onChange, onSend, disabled = false, busy = false, error, placeholder, files = [], onFilesChange }: ComposerProps) {
   const brand=useAssistantBrand();
   const id = useId()
   const textarea = useRef<HTMLTextAreaElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
   const composing = useRef(false)
   const sending = useRef(false)
   const [pending, setPending] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const waiting = busy || pending
   const displayedError = error || localError
+  const hasContent = Boolean(value.trim() || files.length)
+  const locked = disabled || waiting
+
+  function addFiles(incoming: File[]) {
+    if (locked || !onFilesChange || !incoming.length) return
+    const next = [...files, ...incoming]
+    if (next.some(file => !file.size) || next.length > MAX_COMPOSER_FILES || next.reduce((sum, file) => sum + file.size, 0) > MAX_COMPOSER_FILE_BYTES) {
+      setLocalError('最多添加 8 个非空文件，合计不超过 8 MiB。')
+      return
+    }
+    setLocalError(null)
+    onFilesChange(next)
+  }
 
   useLayoutEffect(() => {
     const field = textarea.current
@@ -102,7 +119,7 @@ export function Composer({ value, onChange, onSend, disabled = false, busy = fal
   }, [value])
 
   async function send() {
-    if (disabled || waiting || sending.current || composing.current || !value.trim()) return
+    if (locked || sending.current || composing.current || !hasContent) return
     sending.current = true
     setPending(true)
     setLocalError(null)
@@ -124,7 +141,23 @@ export function Composer({ value, onChange, onSend, disabled = false, busy = fal
 
   return (
     <div className="board-composer">
+      {files.length > 0 && <ul className="board-composer-files" aria-label="待发送附件">{files.map((file, index) => (
+        <li key={index}><RiAttachment2 aria-hidden="true" /><span title={file.name}>{file.name}</span>
+          {onFilesChange && <button type="button" disabled={locked} aria-label={`移除 ${file.name}`} onClick={() => {
+            setLocalError(null)
+            onFilesChange(files.filter((_, position) => index !== position))
+            textarea.current?.focus()
+          }}><RiCloseLine aria-hidden="true" /></button>}</li>
+      ))}</ul>}
       <form noValidate onSubmit={submit} className={classes('board-composer-form', waiting && 'board-composer-form--busy', Boolean(displayedError) && 'board-composer-form--error')}>
+        {onFilesChange && <>
+          <input ref={picker} type="file" aria-label="选择附件" hidden multiple disabled={locked} onChange={event => {
+            addFiles(Array.from(event.currentTarget.files || []))
+            event.currentTarget.value = ''
+            textarea.current?.focus()
+          }} />
+          <button type="button" className="board-composer-attach" disabled={locked} aria-label="添加附件" title="添加附件" onClick={() => picker.current?.click()}><RiAttachment2 aria-hidden="true" /></button>
+        </>}
         <label className="board-sr-only" htmlFor={`${id}-message`}>消息内容</label>
         <textarea
           className="resize-none"
@@ -138,6 +171,14 @@ export function Composer({ value, onChange, onSend, disabled = false, busy = fal
           aria-invalid={displayedError ? true : undefined}
           aria-describedby={`${id}-help${displayedError ? ` ${id}-error` : ''}`}
           onChange={event => { setLocalError(null); onChange(event.target.value) }}
+          onPaste={event => {
+            if (!onFilesChange) return
+            const pasted = Array.from(event.clipboardData.files)
+            if (!pasted.length) return
+            // Preserve a normal text paste when the clipboard contains both.
+            if (!event.clipboardData.getData('text/plain')) event.preventDefault()
+            addFiles(pasted)
+          }}
           onCompositionStart={() => { composing.current = true }}
           onCompositionEnd={() => { composing.current = false }}
           onKeyDown={event => {
@@ -146,12 +187,12 @@ export function Composer({ value, onChange, onSend, disabled = false, busy = fal
             void send()
           }}
         />
-        <button type="submit" className="board-composer-send" disabled={disabled || waiting || !value.trim()} aria-label={waiting ? '正在发送消息' : '发送消息'} title={waiting ? '正在发送消息' : '发送消息'} aria-busy={waiting || undefined}>
+        <button type="submit" className="board-composer-send" disabled={locked || !hasContent} aria-label={waiting ? '正在发送消息' : '发送消息'} title={waiting ? '正在发送消息' : '发送消息'} aria-busy={waiting || undefined}>
           {waiting ? <Spinner /> : <RiArrowUpLine aria-hidden="true" />}
         </button>
       </form>
       <div className="board-composer-meta sr-only">
-        <span id={`${id}-help`} className="sr-only">Enter 发送 · Shift + Enter 换行</span>
+        <span id={`${id}-help`} className="sr-only">Enter 发送 · Shift + Enter 换行{onFilesChange && ' · 可直接粘贴截图'}</span>
         <span role="status" aria-live="polite">{waiting ? '正在处理消息…' : ''}</span>
       </div>
       {displayedError && <p id={`${id}-error`} className="board-composer-error" role="alert">{displayedError}</p>}

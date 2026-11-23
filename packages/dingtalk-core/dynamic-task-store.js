@@ -579,6 +579,16 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         ||notification.id!==parent.id+':file:'+file.artifact.artifactId||p.afterNotificationId!==expectedAfter)fail('DYNAMIC_TASK_DELIVERY_INVALID')
     } else if(p.deliveryId!==notification.id||p.afterNotificationId!==undefined||digest(p.artifactFiles??[])!==digest(selected))fail('DYNAMIC_TASK_DELIVERY_INVALID')
   }
+  function verifyWebTaskInput(task,a){
+    if(!a.webTaskInput)return
+    const ref=a.webTaskInput,source=get('dynamic_sources',ref.sourceId)
+    if(!webActorId||ref.actorId!==webActorId||source.actorId!==webActorId||source.channel!=='web'
+      ||source.requestIdentity?.kind!=='task-input'||source.requestIdentity?.action?.taskId!==task.taskId
+      ||source.groupId!==(task.groupId??'task:'+task.taskId)||a.currentInput?.sourceId!==source.sourceId
+      ||a.currentInput?.text!==source.text||a.currentInput?.messageVersion!==source.version)fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
+    if(ref.sessionId!==task.sessionId)fail('TASK_INPUT_SESSION_STALE')
+    if(task.archivedAt||task.archiveRestore?.reviewRequired||task.control!=='active'||!['active','completed'].includes(task.status)||taskHumanWait(task))fail('TASK_INPUT_UNAVAILABLE')
+  }
   function reduce(kind, a, commandId, {routerScheduling=false}={}) {
     const routerResult = routerLedger.command(kind,a,commandId)
     if(routerResult !== undefined)return routerResult
@@ -688,6 +698,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'task.supplement') {
       const task = get('dynamic_tasks', a.taskId)
+      verifyWebTaskInput(task,a)
       const messageId = text(a.messageId, 'messageId'), message = text(a.text, 'text')
       const prior = task.supplements?.find(item => item.id === messageId)
       if (prior) {
@@ -696,7 +707,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       }
       // A new authenticated Router handoff can retry the current objective.
       // The old lease's effect and job evidence is not altered or replayed.
-      clearDisabledTaskRetry(task,{freshRouterHandoff:routerScheduling&&a.routerInputPolicy==='faithful-handoff-v1'})
+      clearDisabledTaskRetry(task,{freshRouterHandoff:!!a.webTaskInput||routerScheduling&&a.routerInputPolicy==='faithful-handoff-v1'})
       if (task.archivedAt || task.status !== 'active' || task.control !== 'active') fail('DYNAMIC_TASK_NOT_ACTIVE')
       if (a.expectedRequirementRevision !== task.requirementRevision || a.expectedControlRevision !== task.controlRevision) fail('DYNAMIC_TASK_REVISION_STALE')
       const request = task.humanRequests?.findLast(item => item.status === 'waiting-reply' && ['requester', 'topic'].includes(item.audience))
@@ -713,10 +724,12 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         if(task.humanReviewLease===task.leaseEpoch||taskHumanWait(task)||wakes(task.taskId).some(item=>item.state==='claimed'&&item.leaseEpoch===task.leaseEpoch&&item.kind==='task.dialogue'))fail('TASK_LIVE_SUPPLEMENT_FORBIDDEN')
       }
       task.contextRevision = previousContextRevision + 1
+      if(a.webTaskInput)task.webTaskOutcome={requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,contextRevision:task.contextRevision,...a.liveBinding?{leaseEpoch:task.leaseEpoch}:{}}
       for (const field of ['request', 'sourceRefs', 'topicRefs','currentInput']) if (a[field] !== undefined) task[field] = clone(a[field])
       if (a.replyBindings !== undefined) task.replyBindings = topicFacts.bindings(task, a.replyBindings)
       if (a.operationId) task.appliedOperations = [...new Set([...(task.appliedOperations ?? []), a.operationId])]
       ;(task.supplements ??= []).push({ id: messageId, text: message, receivedAt: stamp, contextRevision: task.contextRevision,requirementRevision:task.requirementRevision,
+        ...(a.webTaskInput?{webTaskInput:{sourceId:a.currentInput.sourceId,messageVersion:a.currentInput.messageVersion,controlRevision:task.controlRevision}}:{}),
         ...(a.suppressChannelOutcome===true?{suppressChannelOutcome:true}:{}) })
       // 待答来源先由统筹核对；不能把未经确认的摘要提前反馈给仍在运行的执行。
       for (const execution of execs(task.taskId)) if (!task.humanRequests?.some(item => item.status === 'waiting-reply') && !terminalExecutions.has(execution.status) && executionCurrent(execution)) {
@@ -807,6 +820,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'task.revise' || kind === 'task.reopen' || kind === 'task.control') {
       const task = get('dynamic_tasks', a.taskId)
+      verifyWebTaskInput(task,a)
       if(task.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
       if(task.archivedAt){
         if(!routerScheduling)fail('DYNAMIC_TASK_ARCHIVED_CONFLICT')
@@ -854,6 +868,12 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if(task.status!=='cancelled'&&task.control!=='cancelled'){delete task.cancelledAt;delete task.cancellationReason}
       if(a.currentInput!==undefined)task.currentInput=clone(a.currentInput)
       else if(['task.revise','task.reopen'].includes(kind))delete task.currentInput
+      if(a.webTaskInput){
+        task.webTaskOutcome={requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,contextRevision:task.contextRevision??0}
+        const input=a.currentInput
+        ;(task.supplements??=[]).push({id:input.id,text:input.text,receivedAt:stamp,contextRevision:task.contextRevision??0,requirementRevision:task.requirementRevision,
+          webTaskInput:{sourceId:input.sourceId,messageVersion:input.messageVersion,controlRevision:task.controlRevision}})
+      }
       if (a.sourceRefs !== undefined) task.sourceRefs = clone(array(a.sourceRefs))
       if (a.topicRefs !== undefined) task.topicRefs = clone(array(a.topicRefs))
       if (a.operationId) task.appliedOperations = [...new Set([...(task.appliedOperations ?? []), text(a.operationId, 'operationId')])]
@@ -2036,6 +2056,13 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         // never eligible for channel triage or a task/model wake, even on crash.
         source.routed=true;source.routedAt=stamp;source.routeReceipt=[];source.processingPending=false
       }
+      if(source.requestIdentity?.kind==='task-input'){
+        const identity=source.requestIdentity?.action?.webTaskInput,task=get('dynamic_tasks',source.requestIdentity?.action?.taskId)
+        if(!webActorId||source.actorId!==webActorId||identity?.actorId!==webActorId||source.channel!=='web'||source.groupId!==(task.groupId??'task:'+task.taskId)||identity.sourceId!==source.sourceId)fail('TASK_SESSION_WEB_ACTOR_REQUIRED')
+        if(identity.sessionId!==task.sessionId)fail('TASK_INPUT_SESSION_STALE')
+        // This source belongs only to the exact operator task input, not Router ingress.
+        source.routed=true;source.routedAt=stamp;source.routeReceipt=[];source.processingPending=false
+      }
       if(source.requestIdentity?.effectAuthorization)fail('TASK_EFFECT_NEW_ACTION_RETIRED')
       put('dynamic_sources', source)
       if(explicitHistory&&['im','chat','chat-room'].includes(source.channel)&&!source.routed)return routerLedger.routeSource(source)
@@ -2235,7 +2262,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
           saveTask(task)
           value.result.task = task
         }
-        if(['task.wait','task.revise','task.reopen','task.control','task.supplement'].includes(kind)&&value.result.task?.conversationId)routerLedger.taskEvent({id:`task-changed:${id}`,kind:kind==='task.wait'?(args.action==='blocked'?'task.blocked':'task.waiting'):'task.changed',taskId:value.result.task.taskId,commandId:id,...kind==='task.wait'&&args.action==='blocked'?{result:clone(value.result.task.lastDecision),...(args.resultSource?{resultSource:args.resultSource}:{})}:{}})
+        if(['task.wait','task.revise','task.reopen','task.control','task.supplement'].includes(kind)&&value.result.task?.conversationId&&!args.webTaskInput)routerLedger.taskEvent({id:`task-changed:${id}`,kind:kind==='task.wait'?(args.action==='blocked'?'task.blocked':'task.waiting'):'task.changed',taskId:value.result.task.taskId,commandId:id,...kind==='task.wait'&&args.action==='blocked'?{result:clone(value.result.task.lastDecision),...(args.resultSource?{resultSource:args.resultSource}:{})}:{}})
         if(reassessStart) {
           // 未授许可的父件等待可按原 ID 重评估；保留热/冷收据序号，授过许可后永不重发。
           const table=db.prepare('SELECT 1 FROM dynamic_archived_receipts WHERE id=?').get(id)?'dynamic_archived_receipts':'dynamic_receipts'
