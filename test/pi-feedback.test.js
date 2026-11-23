@@ -158,6 +158,7 @@ test('whole-diagnosis deadline logs one failure; cancellation and shutdown do no
  const cancelled=await start();await cancelled.f.service.cancel('owner',cancelled.r.id);assert.deepEqual(cancelled.failures,[]);await cancelled.f.service.close()
  const shut=await start();await shut.f.service.close();assert.deepEqual(shut.failures,[])
  const expired=await start();deadline.abort(new DOMException('diagnostic deadline','TimeoutError'));await new Promise(setImmediate)
- assert.equal(expired.f.service.read('owner',expired.r.id).state,'failed');assert.equal(expired.failures.length,1)
+ const {state,error}=expired.f.service.read('owner',expired.r.id)
+ assert.equal(state,'failed');assert.equal(error,'FEEDBACK_DIAGNOSIS_DEADLINE');assert.equal(expired.failures.length,1)
  assert.equal(expired.failures[0].stage,'diagnose');assert.equal(expired.failures[0].code,'FEEDBACK_DIAGNOSIS_DEADLINE');await expired.f.service.close()
 })

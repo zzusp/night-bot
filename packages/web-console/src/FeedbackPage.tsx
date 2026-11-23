@@ -7,6 +7,16 @@ import './styles/feedback.css';
 
 type Feedback = { id: string; state: 'collecting' | 'editing' | 'ready' | 'failed' | 'submitting' | 'submitted' | 'unknown'; title: string; body: string; target: string; error?: string; url?: string };
 type Destination = { target: string; model: string | null; revision?: string; endpoint?: string };
+const diagnosisErrors: Record<string, string> = {
+  FEEDBACK_MODEL_TIMEOUT: '模型请求超时，未生成诊断。',
+  FEEDBACK_DIAGNOSIS_DEADLINE: '本次诊断达到 15 分钟时限，已停止。',
+  FEEDBACK_STAGE_TIMEOUT: '诊断的一步等待超时，未生成诊断。',
+  FEEDBACK_MODEL_CHANGED: '诊断期间任务模型配置发生变更，请重新开始。',
+  FEEDBACK_CONTEXT_WINDOW_INVALID: '任务模型的上下文窗口配置无效。',
+  FEEDBACK_MODEL_FAILED: '模型请求失败，未生成诊断。',
+  FEEDBACK_MODEL_ABORTED: '模型请求已中断，未生成诊断。',
+  FEEDBACK_MODEL_EMPTY: '模型未返回可用的诊断。',
+};
 
 export const feedbackImageNotice = '图片在 GitHub 页面中手动粘贴或拖入，不会由 Night Bot 读取、上传或发送给 Pi。图片可能包含隐私，无法保证自动脱敏，请先遮盖敏感信息。发布前请在 GitHub 核对正文和图片，最终提交后可能公开可见。';
 
@@ -26,6 +36,13 @@ export default function FeedbackPage() {
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => { if (polling.data && polling.data.id === record?.id) { setRecord(polling.data); setConfirm(false); } }, [polling.data, record?.id]);
   const collecting = record?.state === 'collecting';
+  const diagnosisMissing = collecting && polling.error instanceof ApiError && polling.error.status === 404 && polling.error.code === 'FEEDBACK_NOT_FOUND';
+  useEffect(() => {
+    if (!diagnosisMissing || busy) return;
+    requestLock.current = false;
+    setRecord(null);
+    setError('本次诊断已不再可用，问题内容已保留。可以重新开始，或选择「不收集」生成预览。');
+  }, [diagnosisMissing, busy]);
   const collect = async () => {
     if (requestLock.current || !destination.data || record || (collectEvidence && (!destination.data.model || !destination.data.revision))) return;
     if (!title.trim() || !description.trim()) { setError('请填写标题与问题详情。'); titleInput.current?.focus(); return; }
@@ -113,13 +130,13 @@ export default function FeedbackPage() {
       </fieldset>}
       {!record && <><div><Button variant="primary" type="submit" busy={busy} disabled={!destination.data || requestLock.current || (collectEvidence && (!destination.data.model || !destination.data.revision))}>{collectEvidence ? '开始诊断' : '生成预览'}</Button></div></>}
     </form></section>
-    {collecting && <section className="settings-card feedback-diagnosis" aria-label="AI 排查">
-      <div className="feedback-diagnosis-status" role="status"><span className="feedback-diagnosis-icon"><Spinner /></span><strong>AI 正在诊断</strong></div>
+    {collecting && !diagnosisMissing && <section className="settings-card feedback-diagnosis" aria-label="AI 排查">
+      <div className="feedback-diagnosis-status" role="status">{!polling.error && <span className="feedback-diagnosis-icon"><Spinner /></span>}<strong>{polling.error ? '暂时无法确认诊断状态' : 'AI 正在诊断'}</strong></div>
       <Button variant="ghost" disabled={busy} busy={busy && revokeLock.current} onClick={() => void revoke()}>停止并清除</Button>
     </section>}
     {record?.state === 'failed' && !submitAttempted && <div className="feedback-actions"><Button disabled={busy} onClick={() => void revoke()}>清除暂存</Button></div>}
-    {polling.error && record?.state !== 'failed' && <Notice read error={polling.error} onRetry={polling.refresh} />}
-    {record?.state === 'failed' && <Notice error={new Error()} message="本次诊断失败，未提交 GitHub。问题内容已保留。" />}
+    {polling.error && collecting && !diagnosisMissing && <Notice read error={polling.error} onRetry={polling.refresh} />}
+    {record?.state === 'failed' && <Notice error={new Error()} message={`${record.error && diagnosisErrors[record.error] || '本次诊断失败。'} 未提交 GitHub，问题内容已保留。诊断编号：${record.id}`} />}
     {record && ['ready', 'editing', 'submitting', 'submitted', 'unknown'].includes(record.state) && <section className="settings-card feedback-preview" aria-label="提交内容预览"><div className="settings-card-heading"><h2>提交内容</h2>{!submitAttempted && <Button variant="ghost" disabled={busy} onClick={() => void revoke()}>清除暂存</Button>}</div><dl><dt>目标仓库</dt><dd>{record.target}</dd></dl>
       {!url && record.state === 'ready' ? <div className="feedback-preview-fields">
         <label htmlFor="feedback-issue-title">提交标题</label><input id="feedback-issue-title" maxLength={160} value={editDraft?.title ?? record.title} disabled={busy || submitAttempted} onChange={event => { setEditDraft({title: event.target.value, body: editDraft?.body ?? record.body}); setConfirm(false); }} />

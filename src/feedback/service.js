@@ -64,8 +64,8 @@ export function createFeedbackService({model,modelConsent=()=>({revision:'defaul
     r.body=prefix+limitDiagnosticText(redactFeedback(result,secrets,{maxLength:Infinity}),reportCharacters,'诊断草稿');r.state='ready'
    }catch(error){
     if(r.state==='cancelled')return
-    r.state='failed';r.error='FEEDBACK_COLLECTION_FAILED'
-    if(!controller.signal.aborted)onCollectionFailure({reportId:r.id,stage,code:collectionFailureCode(error,deadline),elapsedMs:Math.round(performance.now()-started)})
+    r.state='failed';r.error=collectionFailureCode(error,deadline)
+    if(!controller.signal.aborted)onCollectionFailure({reportId:r.id,stage,code:r.error,elapsedMs:Math.round(performance.now()-started)})
    }})()
    return view(r)
   },
