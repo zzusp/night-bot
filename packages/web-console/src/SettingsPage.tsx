@@ -8,7 +8,7 @@ import {Button,IconButton} from './components/BoardPrimitives';
 import {Loading, Notice} from './components/Shared';
 import {Confirm} from './components/ConfirmDialog';
 import {WorkLogEditor} from './components/WorkLogEditor';
-import {ExecutionPrinciplesEditor} from './components/ExecutionPrinciplesEditor';
+import {WorkPrinciplesEditor} from './components/WorkPrinciplesEditor';
 import {RoleModelEditor} from './components/RoleModelEditor';
 import {ModelCatalogEditor} from './components/ModelCatalogEditor';
 import {SecretEditor} from './components/SecretEditor';
@@ -88,7 +88,8 @@ export default function SettingsPage({onClose,registerClose}:{onClose?:()=>void;
       <div className="settings-role-stack">{query.data.roleModels?.roles.map(role=><RoleModelEditor key={`${role.role}-${refreshKey}`} state={role} onStateChange={onRoleState} catalog={query.data!.roleModels.catalog} version={query.data!.version} onSaved={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/>)}</div></ReadErrorVisibility>
      </div>
      <div role="tabpanel" id="settings-panel-principles" aria-labelledby="settings-tab-principles" hidden={section!=='principles'} tabIndex={0}><ReadErrorVisibility active={section==='principles'}>
-      <ExecutionPrinciplesEditor active={section==='principles'} onStateChange={onRoleState}/>
+      <WorkPrinciplesEditor role="router" active={section==='principles'} onStateChange={onRoleState}/>
+      <WorkPrinciplesEditor role="execution" active={section==='principles'} onStateChange={onRoleState}/>
      </ReadErrorVisibility></div>
      <div role="tabpanel" id="settings-panel-appearance" aria-labelledby="settings-tab-appearance" hidden={section!=='appearance'} tabIndex={0}><ReadErrorVisibility active={section==='appearance'}>
       <Configuration onStateChange={onRoleState} key={refreshKey} data={query.data} refresh={query.refresh} onReload={reload} reloading={query.loading||busyRoles}/>

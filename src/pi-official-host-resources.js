@@ -5,7 +5,7 @@ import {isDeepStrictEqual} from 'node:util'
 import {isAbsolute,join,dirname,resolve} from 'node:path'
 import {lstat,realpath} from 'node:fs/promises'
 import {officialInstructionFiles} from './native-agent-instructions.js'
-import {readExecutionPrinciples} from './settings/execution-principles.js'
+import {readExecutionPrinciples,readRouterPrinciples} from './settings/execution-principles.js'
 import {officialSkillResources} from './native-tool-skill.js'
 import {memoryWriteAuthorization} from './memory/tools.js'
 import {scopeOf} from './native-scope.js'
@@ -159,6 +159,11 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
      const {text}=await readExecutionPrinciples(paths);if(text.trim())result.push({path:'night-bot://execution/AGENTS.md',content:text})
     }
     assertCurrent();return result},
+   ...paths.mode==='portable'&&header.runtimeOwner==='conversation-router'?{runInstructions:async current=>{
+    if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent()
+    const {text}=await readRouterPrinciples(paths);assertCurrent()
+    return text.trim()?[{path:'night-bot://router/AGENTS.md',content:text}]:[]
+   }}:{},
    skills:skillResources,
    ...memory?{memory:memory.official({authorizeWrite:memoryWriteAuthorization(actorCtx),isLive:current=>current===actor&&isLive(actor),resolveExtractionModel:async(current,{signal:extractionSignal}={})=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();return provider.resolve({...extraction,...extractionSignal?{signal:extractionSignal}:{}},{credentials})}})}:{},
   }
