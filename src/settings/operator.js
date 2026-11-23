@@ -8,7 +8,7 @@ import {savePermissionConfiguration} from './configuration.js'
 import {piAuthentication} from '../pi-provider-auth.js'
 import {discoverChannelPlugins} from '../channels/loader.js'
 import {failure} from '../runtime/files.js'
-import {readExecutionPrinciples,saveExecutionPrinciples} from './execution-principles.js'
+import {readExecutionPrinciples,saveExecutionPrinciples,readRouterPrinciples,saveRouterPrinciples} from './execution-principles.js'
 
 const hash=configVersion
 const id=value=>typeof value==='string'&&/^[a-z][a-z0-9-]{0,63}$/.test(value)
@@ -69,6 +69,8 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
   return {configured:value.configured===true,writable:slot.kind==='record'||!value.configured||value.source==='file',source:value.source==='file'?'saved':value.source?'environment':value.configured?'saved':'none'}
  }
  return {
+  routerPrinciples:()=>run(()=>readRouterPrinciples(paths)),
+  saveRouterPrinciples:body=>run(()=>saveRouterPrinciples(paths,body)),
   executionPrinciples:()=>run(()=>readExecutionPrinciples(paths)),
   saveExecutionPrinciples:body=>run(()=>saveExecutionPrinciples(paths,body)),
   modelCatalog:()=>run(async()=>{const config=await read(),view=modelCatalogView(config,getEnvironment(),getFallbackRoleModels(config));

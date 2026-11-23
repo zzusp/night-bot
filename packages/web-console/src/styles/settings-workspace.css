@@ -163,7 +163,12 @@
  .settings-modal .model-catalog-search {flex-basis:100%;}
 }
 
-.settings-modal .settings-card form > label[for="execution-principles-text"],
-.settings-modal #execution-principles-text {grid-column:1 / -1;}
-.settings-modal #execution-principles-text {width:100%;min-width:0;margin:8px 0;resize:vertical;padding:10px;border:1px solid var(--board-border);border-radius:var(--board-radius-control);background:var(--board-surface);color:var(--board-text);font:inherit;}
-.settings-modal #execution-principles-text:focus-visible {outline:2px solid currentColor;outline-offset:2px;}
+/* The two role-specific Markdown editors use the same form and status styles. */
+.settings-workspace .settings-principles-card h2 {margin:0 0 6px;}
+.settings-principles-help {margin:0 0 14px;color:var(--board-muted);font-size:12px;line-height:1.7;}
+.settings-modal .settings-principles-card form:not(.settings-confirm form) {grid-template-columns:minmax(0,1fr);gap:8px;padding:12px 14px 4px;}
+.settings-modal .settings-principles-card form > label {grid-column:1 / -1;min-height:0;padding:0;border:0;}
+.settings-principles-card textarea {grid-column:1 / -1;box-sizing:border-box;width:100%;min-width:0;resize:none;padding:10px;border:1px solid var(--board-border);border-radius:var(--board-radius-control);background:var(--board-surface);color:var(--board-text);font:inherit;line-height:1.55;}
+.settings-principles-card textarea:focus-visible {outline:2px solid currentColor;outline-offset:2px;}
+.settings-principles-card textarea:disabled {opacity:.65;cursor:not-allowed;}
+.settings-principles-loading {min-height:190px;display:grid;place-items:center;}

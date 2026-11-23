@@ -81,18 +81,41 @@ for(const width of [1440,390,320])test(`设置入口位于全局工具组并紧�
  await trigger.focus();await page.keyboard.press('Enter');await expect(page.getByRole('dialog',{name:'设置',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(trigger).toBeFocused();
 });
 
-test('工作原则在移动设置中保存，冲突保留草稿直至明确重新读取',async({page,browser})=>{
+test('工作原则：移动端 Router 在执行会话上方，两份可独立保存和处理冲突',async({page,browser})=>{
  const f=await startPreview({port:0});const other=await browser.newPage();
  try{
   await page.setViewportSize({width:390,height:900});
   for(const tab of [page,other]){await login(tab,'/chat/sample-plan',f.origin);await open(tab);await tab.getByRole('tab',{name:'工作原则',exact:true}).click()}
-  const field=(tab:Page)=>tab.getByLabel('AGENTS.md 正文（Markdown）',{exact:true});
-  const save=(tab:Page)=>tab.getByRole('button',{name:'保存工作原则',exact:true});
-  await expect(field(page)).toHaveValue('');await expect(field(other)).toHaveValue('');
-  await field(other).fill('旧版本草稿');
-  await field(page).fill('# 工作原则\n先核验实际终态。');await save(page).click();await expect(page.getByText('已保存。执行会话下次刷新上下文时读取，无需重启。',{exact:true})).toBeVisible();
-  await save(other).click();await expect(other.getByRole('alert')).toContainText('未覆盖新版本');await expect(field(other)).toHaveValue('旧版本草稿');await expect(save(other)).toBeDisabled();
-  await other.getByRole('button',{name:'重新读取并替换草稿'}).click();await expect(field(other)).toHaveValue('# 工作原则\n先核验实际终态。');
+  const router='Router 工作原则',execution='执行会话工作原则';
+  const panel=(tab:Page)=>tab.getByRole('tabpanel',{name:'工作原则',exact:true});
+  const card=(tab:Page,role:string)=>panel(tab).getByRole('region',{name:role,exact:true});
+  const field=(tab:Page,role:string)=>card(tab,role).getByLabel('AGENTS.md 正文（Markdown）',{exact:true});
+  const save=(tab:Page,role:string)=>card(tab,role).getByRole('button',{name:'保存',exact:true});
+  await expect(panel(page).getByRole('heading')).toHaveText([router,execution]);
+  for(const tab of [page,other])for(const role of [router,execution])await expect(field(tab,role)).toHaveValue('');
+  await field(other,router).fill('旧版本路由草稿');
+  await field(other,execution).fill('保留的执行草稿');
+  await field(page,router).fill('# 路由\n有结果再回复。');await save(page,router).click();
+  await expect(card(page,router).getByRole('status')).toContainText('Router 下一轮生效');
+  await expect(field(page,execution)).toHaveValue('');
+  await save(other,router).click();
+  await expect(card(other,router).getByRole('alert')).toContainText('未覆盖新版本');
+  await expect(field(other,router)).toHaveValue('旧版本路由草稿');await expect(save(other,router)).toBeDisabled();
+  await card(other,router).getByRole('button',{name:'重新读取并替换草稿'}).click();
+  await expect(field(other,router)).toHaveValue('# 路由\n有结果再回复。');
+  await expect(field(other,execution)).toHaveValue('保留的执行草稿');
+  await save(other,execution).click();
+  await expect(card(other,execution).getByRole('status')).toContainText('执行会话下次刷新上下文时生效');
+  await expect(field(other,router)).toHaveValue('# 路由\n有结果再回复。');
+  await page.getByRole('button',{name:'关闭设置',exact:true}).click();await open(page);
+  await page.getByRole('tab',{name:'工作原则',exact:true}).click();
+  await expect(field(page,execution)).toHaveValue('保留的执行草稿');
+  await expect(field(page,router)).toHaveValue('# 路由\n有结果再回复。');
   expect(await page.locator('.settings-panels').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+  expect((await new AxeBuilder({page}).include('.settings-principles-card').withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([]);
+  await page.screenshot({path:test.info().outputPath('work-principles-mobile.png')});
+  await page.setViewportSize({width:1440,height:960});
+  await expect(card(page,router)).toBeVisible();await expect(card(page,execution)).toBeVisible();
+  await page.screenshot({path:test.info().outputPath('work-principles-desktop.png')});
  }finally{await other.close();await page.goto('about:blank');await f.close()}
 });

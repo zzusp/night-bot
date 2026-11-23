@@ -1276,3 +1276,32 @@ test('direct task input endpoint requires authenticated exact session and scopes
  assert.deepEqual((await post({...body,text:'changed'})).body,{error:'DYNAMIC_COMMAND_ID_CONFLICT'})
  assert.equal(f.received.length,0,'operator action does not use channel receive')
 })
+
+test('Router principles HTTP uses an independent authenticated file and version',async t=>{
+ const settings={},f=await fixture(t,{settings}),paths=runtimePaths({installRoot:f.root,dataDir:'data'})
+ await prepareRuntimePaths(paths);Object.assign(settings,createOperatorSettings({paths,getCredentials:()=>undefined}))
+ const router='/api/settings/router-principles',execution='/api/settings/execution-principles'
+ const get=path=>f.fetchApi(path)
+ const put=(path,text,expectedVersion,headers,extra)=>f.fetchApi(path,{method:'PUT',body:{text,expectedVersion,...extra},headers})
+ assert.equal((await get(router)).status,401)
+ assert.equal((await put(router,'private','0'.repeat(64))).status,401)
+ await f.login()
+ const prior=(await get(router)).body,beforeExecution=(await get(execution)).body
+ assert.equal(prior.text,'')
+ assert.notEqual(prior.version,beforeExecution.version)
+ assert.equal((await put(router,'private',beforeExecution.version)).status,409)
+ assert.equal((await put(router,'private',prior.version,{'x-csrf-token':'forged'})).status,403)
+ assert.equal((await put(router,'private',prior.version,{origin:'https://untrusted.invalid'})).status,403)
+ assert.equal((await put(router,'private',prior.version,undefined,{path:'execution/AGENTS.md'})).status,400)
+ const attempts=await Promise.all([put(router,'# Router work',prior.version),put(router,'# other tab',prior.version)])
+ assert.deepEqual(attempts.map(row=>row.status).sort(),[200,409])
+ const saved=attempts.find(row=>row.status===200).body
+ assert.deepEqual((await get(router)).body,saved)
+ assert.equal(await readFile(join(paths.config,'router','AGENTS.md'),'utf8'),saved.text)
+ assert.deepEqual((await get(execution)).body,beforeExecution)
+ const executionEdit=await put(execution,'# Execution work',beforeExecution.version)
+ assert.equal(executionEdit.status,200)
+ assert.deepEqual((await get(router)).body,saved)
+ assert.equal((await put(router,'',saved.version)).body.text,'')
+ assert.deepEqual((await get(execution)).body,executionEdit.body)
+})
