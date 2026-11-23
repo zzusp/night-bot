@@ -21,18 +21,26 @@ async function login(page: import('@playwright/test').Page) {
   await expect(page.getByLabel('消息内容',{exact:true})).toBeVisible();
 }
 
-test('activity rail prioritizes real active/interrupted pages and stays a separate reading column', async ({page})=>{
+test('activity rail keeps the running list without count or interrupted cards', async ({page}, testInfo)=>{
   await page.route('**/api/overview', route=>route.fulfill({json:overview}));
   await login(page);
   const rail=page.getByRole('complementary',{name:'任务动态'});
   await expect(rail).toBeVisible();
   await expect(rail.getByRole('region',{name:'正在执行'})).toContainText(tasks[0].title);
-  await expect(rail.getByRole('region',{name:'中断的任务'}).getByRole('link',{name:new RegExp(tasks[1].title)})).toHaveAttribute('href','#/tasks/sidebar-interrupted');
-  await expect(rail.locator('.activity-counts strong')).toHaveText(['1']);
+  await expect(rail.getByRole('region',{name:'中断的任务'})).toHaveCount(0);
+  await expect(rail.locator('.activity-counts, .count-dot')).toHaveCount(0);
+  await expect(rail).not.toContainText(tasks[1].title);
+  await expect(rail.getByRole('link',{name:'全部任务',exact:true})).toHaveAttribute('href','#/tasks');
+  await expect(rail.getByRole('region',{name:'上下文窗口',exact:true})).toBeVisible();
+  await expect(rail.getByRole('region',{name:'路由耗时',exact:true})).toBeVisible();
   await expect(rail.locator('a[href="#/tasks?state=interrupted"]')).toHaveCount(0);
   await expect(rail).not.toContainText('已配置渠道');
   await expect(rail.getByRole('link',{name:'查看正在执行任务'})).toHaveAttribute('href','#/tasks?state=running');
   await expect(rail.locator('.rail-task').first()).toHaveAttribute('href','#/tasks/sidebar-running');
+  await page.keyboard.press('Tab');
+  await rail.locator('.rail-task').first().focus();
+  await expect(rail.locator('.rail-task').first()).toBeFocused();
+  await expect(rail.locator('.rail-task').first()).toHaveCSS('outline-style','solid');
   const boxes=await page.evaluate(()=>({rail:document.querySelector('.activity-rail')!.getBoundingClientRect().toJSON(),main:document.querySelector('.chat-panel')!.getBoundingClientRect().toJSON(),overflow:document.documentElement.scrollWidth>innerWidth}));
   expect(boxes.rail.left).toBeGreaterThanOrEqual(boxes.main.right); expect(boxes.overflow).toBe(false);
   await page.getByLabel('消息内容',{exact:true}).fill('保留草稿');
@@ -40,33 +48,39 @@ test('activity rail prioritizes real active/interrupted pages and stays a separa
   await page.getByRole('button',{name:'显示活动面板'}).click();
   await expect(page.getByLabel('消息内容',{exact:true})).toHaveValue('保留草稿');
   expect((await new AxeBuilder({page}).include('#activity-panel').analyze()).violations).toEqual([]);
+  await page.screenshot({path:testInfo.outputPath('activity-simplified-light.png'),fullPage:true});
   await page.getByRole('button',{name:'切换深色外观'}).click();
   expect((await new AxeBuilder({page}).include('#activity-panel').analyze()).violations).toEqual([]);
+  await page.screenshot({path:testInfo.outputPath('activity-simplified-dark.png'),fullPage:true});
 });
 
 test('empty and unavailable states remain distinct',async({page})=>{
   await page.route('**/api/overview',route=>route.fulfill({json:{...overview,running:null,interrupted:pageOf([]),sectionErrors:{running:'UNAVAILABLE'}}}));
   await login(page);const rail=page.locator('#activity-panel');
-  await expect(rail.locator('.activity-counts a').first()).toContainText('—');
   await expect(rail.getByRole('region',{name:'正在执行'})).toContainText('—');
-  await expect(rail.getByRole('region',{name:'中断的任务'})).toContainText('暂无中断的任务');
+  await expect(rail.getByRole('region',{name:'中断的任务'})).toHaveCount(0);
+  await expect(page.getByRole('alert',{name:'读取状态汇总'})).toBeVisible();
   await expect(rail.getByRole('region',{name:'最近任务'})).toHaveCount(0);
 });
 
-test('narrow panel toggles below content without resetting the composer',async({page})=>{
+test('narrow panel toggles below content without resetting the composer',async({page},testInfo)=>{
   await page.setViewportSize({width:390,height:844});
   await page.route('**/api/overview',route=>route.fulfill({json:overview}));
   await login(page); await expect(page.locator('#activity-panel')).toHaveCount(0);
   await page.getByRole('button',{name:'显示活动面板'}).click();
   await expect(page.locator('#activity-panel')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await expect(page.locator('#activity-panel .activity-counts')).toHaveCount(0);
+  await expect(page.getByRole('region',{name:'中断的任务'})).toHaveCount(0);
+  await page.screenshot({path:testInfo.outputPath('activity-simplified-mobile.png'),fullPage:true});
   await page.getByRole('button',{name:'隐藏活动面板'}).click();
   await expect(page.getByLabel('消息内容',{exact:true})).toBeVisible();
 });
 
 for (const scenario of [
   {name:'confirmed idle',running:pageOf([]),interrupted:pageOf([]),showRecent:true},
-  {name:'interrupted unavailable',running:pageOf([]),interrupted:null,showRecent:false},
+  {name:'interrupted unavailable',running:pageOf([]),interrupted:null,sectionErrors:{interrupted:'UNAVAILABLE'},showRecent:false},
+  {name:'interrupted tasks remain',running:pageOf([]),interrupted:pageOf(tasks.slice(1)),showRecent:false},
   {name:'nonempty total with empty page',running:{...pageOf([]),total:1},interrupted:pageOf([]),showRecent:false},
   {name:'running section error',running:pageOf([]),interrupted:pageOf([]),sectionErrors:{running:'UNAVAILABLE'},showRecent:false},
 ]) {
@@ -75,18 +89,18 @@ for (const scenario of [
     await login(page);
     const rail = page.locator('#activity-panel');
     await expect(rail.getByRole('region',{name:'最近任务'})).toHaveCount(scenario.showRecent ? 1 : 0);
+    await expect(rail.locator('.activity-counts')).toHaveCount(0);
+    await expect(rail.getByRole('region',{name:'中断的任务'})).toHaveCount(0);
     if (scenario.name === 'nonempty total with empty page') {
-      await expect(rail.locator('.activity-counts a').first()).toContainText('1');
       await expect(rail.getByRole('region',{name:'正在执行'})).toContainText('—');
       await expect(rail.getByRole('region',{name:'正在执行'})).not.toContainText('暂无执行中的任务');
     }
     if (scenario.name === 'running section error') {
-      await expect(rail.locator('.activity-counts a').first()).toContainText('—');
       await expect(rail.getByRole('region',{name:'正在执行'})).toContainText('—');
     }
     if (scenario.name === 'interrupted unavailable') {
-      await expect(rail.locator('.activity-counts strong')).toHaveText(['0']);
-      await expect(rail.getByRole('region',{name:'中断的任务'})).toContainText('—');
+      await expect(rail.getByRole('region',{name:'正在执行'})).toContainText('暂无执行中的任务');
+      await expect(page.getByRole('alert',{name:'读取状态汇总'})).toHaveCount(0);
     }
   });
 }
@@ -97,7 +111,7 @@ test('recent stage charts preserve gaps and expose equivalent point labels',asyn
   const card=page.getByRole('group',{name:'最近处理耗时',exact:true});
   await expect(card).toContainText('本会话 · 8 条消息');
   await expect(card.getByRole('region',{name:'路由耗时',exact:true})).toBeVisible();
-  expect(await page.evaluate(()=>document.querySelector('.stage-timing-charts')!.getBoundingClientRect().bottom <= document.querySelector('.activity-counts')!.getBoundingClientRect().top)).toBe(true);
+  expect(await page.evaluate(()=>document.querySelector('.stage-timing-charts')!.getBoundingClientRect().bottom <= document.querySelector('.rail-section-running')!.getBoundingClientRect().top)).toBe(true);
   await expect(card.locator('.stage-line').first()).toHaveAttribute('d',/ C /);
   await expect(card.locator('circle')).toHaveCount(0);
   await expect(card.locator('.stage-plot-router [data-stage-sample=measured]')).toHaveCount(7);
@@ -122,4 +136,30 @@ test('single stage sample has a value but does not invent a trend or point',asyn
   await expect(card.locator('circle, .stage-line')).toHaveCount(0);
   await card.locator('[data-stage-sample]').focus();
   await expect(card.locator('.stage-plot-heading')).toContainText('所选消息');
+});
+
+for (const idle of [false,true]) {
+  test(`recent section errors only surface when its list is displayed: ${idle}`,async({page})=>{
+    await page.route('**/api/overview',route=>route.fulfill({json:{...overview,running:pageOf(idle ? [] : tasks.slice(0,1)),interrupted:pageOf([]),tasks:null,sectionErrors:{tasks:'UNAVAILABLE'}}}));
+    await login(page);
+    await expect(page.getByRole('alert',{name:'读取状态汇总'})).toHaveCount(idle ? 1 : 0);
+    await expect(page.getByRole('region',{name:'最近任务'})).toHaveCount(idle ? 1 : 0);
+    if(idle) await expect(page.getByRole('region',{name:'最近任务'})).toContainText('—');
+  });
+}
+
+test('loading does not recreate removed cards and keeps context and timing visible',async({page})=>{
+  let release!:()=>void;
+  const gate=new Promise<void>(resolve=>release=resolve);
+  await page.route('**/api/overview',async route=>{await gate;await route.fulfill({json:overview})});
+  try {
+    await login(page);
+    const rail=page.locator('#activity-panel');
+    await expect(rail.getByRole('status')).toContainText('正在获取');
+    await expect(rail.locator('.activity-counts')).toHaveCount(0);
+    await expect(rail.getByRole('region',{name:'中断的任务'})).toHaveCount(0);
+    await expect(rail.getByRole('region',{name:'上下文窗口',exact:true})).toBeVisible();
+    await expect(rail.getByRole('region',{name:'路由耗时',exact:true})).toBeVisible();
+  } finally { release(); }
+  await expect(page.getByRole('region',{name:'正在执行'})).toContainText(tasks[0].title);
 });

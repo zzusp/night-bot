@@ -4,13 +4,6 @@
 .rail-heading h2 { font-size: 14px; font-weight: 600; line-height: 24px; }
 .rail-heading > a, .rail-section-title > a { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; color: var(--board-muted); font-size: 11px; min-height: 28px; border-radius: 6px; }
 .rail-heading > a:hover, .rail-section-title > a:hover { color: var(--board-info); }
-.activity-counts { background: var(--board-surface); border: 1px solid var(--board-border); border-radius: var(--board-radius-card); padding: 14px 0; }
-.activity-counts > :is(a, div) { display: flex; flex-direction: column; gap: 10px; color: var(--board-text); padding: 2px 18px; border-radius: 6px; }
-.activity-counts a:hover { background: var(--board-hover); }
-.activity-counts > :is(a, div) > span { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--board-muted); }
-.activity-counts strong { font-size: 28px; font-weight: 500; line-height: 32px; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
-.count-dot { display: inline-block; width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; }
-.count-dot.info { background: var(--board-info); }
 .rail-section { background: var(--board-surface); border: 1px solid var(--board-border); border-radius: var(--board-radius-card); overflow: hidden; flex-shrink: 0; }
 .rail-section-title { padding: 12px 14px 10px; }
 .rail-section-title h3 { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; line-height: 20px; }
@@ -29,7 +22,7 @@
 .rail-warning { padding: 0; }
 .activity-rail a:focus-visible { outline: 2px solid var(--board-focus); outline-offset: -2px; }
 @media (min-width: 1600px) { .activity-rail { width: 320px; padding: 20px 16px; } }
-@media (forced-colors: active) { .activity-rail, .rail-section, .activity-counts { border: 1px solid CanvasText; } }
+@media (forced-colors: active) { .activity-rail, .rail-section { border: 1px solid CanvasText; } }
 
 .stage-timing-card .rail-section-title { padding-bottom: 8px; }
 .stage-scope { font-size: 10px; color: var(--board-muted); white-space: nowrap; }
