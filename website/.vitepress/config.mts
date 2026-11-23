@@ -3,7 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   lang: 'zh-CN',
   title: 'Night Bot',
-  description: '基于 Pi 的个人助理 Agent 初始化套件。部署自己的 Bot，让任务、记忆、技能和定时工作持续衔接。',
+  description: 'Night Bot 是可以装在自己电脑或服务器上的开源 AI 助手，支持任务对话、记忆、技能和定时任务。',
   base: '/night-bot/',
   srcExclude: ['README.md', 'node_modules/**', 'test-results/**', 'tests/**', 'scripts/**'],
   cleanUrls: false,
@@ -54,6 +54,6 @@ export default defineConfig({
     darkModeSwitchLabel: '外观', lightModeSwitchTitle: '切换为浅色', darkModeSwitchTitle: '切换为深色',
     sidebarMenuLabel: '文档目录', returnToTopLabel: '返回顶部', skipToContentLabel: '跳转到内容',
     notFound: { code: '404', title: '页面不存在', quote: '这个地址没有对应文档。你可以返回首页，或使用搜索查找。', linkLabel: '返回首页', linkText: '返回首页' },
-    footer: { message: '官网仅提供介绍和文档，不连接你的 Bot 或运行数据。', copyright: 'Night Bot · <a href="/night-bot/third-party-notices.txt">网站依赖许可</a> · <a href="https://github.com/zzusp/night-bot/blob/main/THIRD_PARTY.md">来源与许可</a>' }
+    footer: { message: '这里是介绍和文档。要使用 Night Bot，请打开你自己安装的控制台。', copyright: 'Night Bot · <a href="/night-bot/third-party-notices.txt">网站依赖许可</a> · <a href="https://github.com/zzusp/night-bot/blob/main/THIRD_PARTY.md">来源与许可</a>' }
   }
 })
