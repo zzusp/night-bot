@@ -51,6 +51,17 @@ test('homepage is accessible, responsive and links to the real quick start', asy
   expect(errors).toEqual([])
 })
 
+test('homepage explains the two working principles and links to the business example', async ({page})=>{
+  await page.goto('./')
+  await page.getByText('能让 Bot 按我的业务习惯做事吗？', {exact:true}).click()
+  const answer=page.locator('details[open]').filter({hasText:'Router 工作原则'})
+  await expect(answer).toContainText('执行会话工作原则')
+  await answer.getByRole('link',{name:'看工作原则的配置示例'}).click()
+  await expect(page).toHaveURL(/configuration\.html#(?:工作原则|%E5)/)
+  await expect(page.getByText('以排查线上报错为例', {exact:false})).toBeVisible()
+  await noOverflow(page)
+})
+
 test('local search handles results, no results, and dismissal', async ({ page }) => {
   await page.goto('./')
   await page.getByRole('button', { name: '搜索文档' }).click()
