@@ -1,4 +1,5 @@
 import {mkdtemp,rm} from 'node:fs/promises'
+import {createHash} from 'node:crypto'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {Context} from '@deepseek-ai/cordis'
@@ -12,6 +13,7 @@ import {investigationBudget} from '../src/feedback/investigation-budget.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createChainEvidence} from '../src/feedback/chain-evidence.js'
+import {decodePiJournal} from '../src/runtime/pi-journal.js'
 const at=n=>new Date(1700000000000+n).toISOString()
 function fixture({duplicate=false,missing=false,persistence}={}){
  const source={sourceId:'private-source',groupId:'private-room',messageId:'private-message',version:2,text:'原消息首答很慢',timestamp:at(-100),receivedAt:at(0),stages:[{stage:'router',startedAt:at(100),completedAt:at(900),shared:true}]}
@@ -141,6 +143,43 @@ test('skill first page relates late repeated successes, changes, failures and no
  const tail=await collect('journal',undefined,{...args,offset:evidence.nextOffset})
  assert.equal(tail.skillSummary,undefined);assert.ok(tail.items.every(item=>!item.skill||item.skill===row.skill))
  assert.doesNotMatch(JSON.stringify([evidence,tail]),/PRIVATE_|private-(?:entry|call|session)|[a-f0-9]{64}/)
+})
+
+test('committed Pi context distinguishes a retained refresh prompt from a replacement, removed result or unrelated prose',async t=>{
+ const section='night_'+Buffer.from('dingtalk:skill-refresh').toString('hex')
+ const sessionId='private-session',name='PRIVATE_SKILL',header={type:'session',version:3,id:sessionId}
+ const change=JSON.stringify([{key:'PRIVATE_KEY',name,path:'PRIVATE_REFERENCE',version:'PRIVATE_VERSION'},{key:'OTHER',name:'OTHER',version:'PRIVATE_VERSION'}])
+ const text=`本会话已读技能或引用有变化：${change}。\n历史成功技能调用尚无可核对版本记录：["${name}"]。`
+ for(const scenario of ['retained','edited-result','new-checkpoint','unrelated-prose','custom-notice'])await t.test(scenario,async()=>{
+  const entries=[]
+  const append=data=>{const n=entries.length,row={id:`private-entry-${n}`,parentId:entries.at(-1)?.id??null,timestamp:at(n),...data};entries.push(row);return row}
+  append({type:'custom',customType:'night.header',data:{header:{id:sessionId},storage:{engine:'pi-native',version:1}}})
+  append({type:'custom',customType:'night.audit',data:{domain:'task',kind:'identity',version:1,payload:{taskId:'private-task',sessionId}}})
+  const notice=append({type:'custom_message',customType:'night.skill-version-notice',display:false,details:{kind:'skill-version-change'},content:text})
+  const kept=append({type:'message',message:{role:'user',content:[{type:'text',text:'PRIVATE_INPUT'}]}})
+  const compact=firstKeptEntryId=>append({type:'compaction',firstKeptEntryId,tokensBefore:1000,summary:text,systemMessage:{role:'system',content:'PRIVATE_SYSTEM',sections:scenario==='unrelated-prose'?{}:{[section]:text}}})
+  const checkpoint=scenario==='custom-notice'?null:compact(kept.id)
+  const skill=()=>{
+   const id=`private-call-${entries.length}`
+   append({type:'message',message:{role:'assistant',content:[{type:'toolCall',id,name:'skill',arguments:{name}}]}})
+   return append({type:'message',message:{role:'toolResult',toolCallId:id,toolName:'skill',isError:false,content:[{type:'text',text:'PRIVATE_BODY'}],details:{nativeResult:{isError:false,value:{name,provider:'PRIVATE_PROVIDER',content:'PRIVATE_BODY'}}}}})
+  }
+  const first=skill()
+  if(scenario==='edited-result')append({type:'context_edit',targetId:first.id,replacement:null})
+  if(scenario==='new-checkpoint')compact(kept.id)
+  const second=skill()
+  const entriesHash=createHash('sha256').update(JSON.stringify(header)+'\n'+entries.map(row=>JSON.stringify(row)).join('\n')).digest('hex')
+  append({type:'custom',customType:'night.commit',data:{version:2,entryCount:entries.length,auditCount:1,previousCommit:null,entriesHash}})
+  const bytes=Buffer.from([header,...entries].map(row=>JSON.stringify(row)).join('\n')+'\n')
+  const {collect}=fixture({persistence:{readNative:async(id,options)=>{assert.equal(options.requireComplete,true);return decodePiJournal(bytes,id,options)}}})
+  const found=await collect('discover'),msg=await collect('message',undefined,{alias:found.candidates[0].alias}),task=await collect('task',undefined,{alias:msg.tasks[0]})
+  const report=await collect('journal',undefined,{alias:task.session,view:'skills'}),repeat=report.skillSummary.skills[0].latestSameWithoutNotice
+  assert.equal(repeat.previousResultAt,first.timestamp);assert.equal(repeat.resultAt,second.timestamp);assert.equal(repeat.noticesBetweenResults,0)
+  const expected=['unrelated-prose','new-checkpoint'].includes(scenario)?undefined:{retainedPrompt:{carrier:checkpoint?'compaction-checkpoint':'custom-notice',at:(checkpoint??notice).timestamp,kinds:['reference-change','missing-version-receipt']},priorSuccessInContext:scenario!=='edited-result'}
+  assert.deepEqual(repeat.refreshContext,expected)
+  assert.deepEqual(report.items.at(-1).comparison.refreshContext,expected)
+  assert.doesNotMatch(JSON.stringify(report),/PRIVATE_|private-(?:entry|call|session)|[a-f0-9]{64}/)
+ })
 })
 
 test('narrowed discoveries reuse cached pages and can continue beyond three scans',async()=>{

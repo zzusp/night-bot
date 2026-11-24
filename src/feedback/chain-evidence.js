@@ -1,5 +1,7 @@
 import {investigationBudget} from './investigation-budget.js'
 import {createHash,randomUUID} from 'node:crypto'
+import {isDeepStrictEqual} from 'node:util'
+import {buildSessionProjection} from '@earendil-works/pi-coding-agent'
 import {diagnosticQueryFailure,journalViews,retryEvidenceRead} from './diagnostic-contract.js'
 import {skillObservationAuditKinds} from '../../packages/dingtalk-core/session-skill-refresh.js'
 import {AGENT_PHASES} from '../runtime/pi-agent-observation.js'
@@ -14,15 +16,66 @@ const pickNumbers=(value,keys)=>Object.fromEntries(keys.map(key=>[key,number(val
 const normalize=value=>String(value??'').normalize('NFKC').toLowerCase().replace(/\s+/g,' ').trim()
 const phases=new Set([...AGENT_PHASES,'ingress','queue','turn','host','send','readback','triage','router','source-read','resource-read','image-save','resident-store','source-record','task-commit','old-drain','materialize'])
 const fail=(code='FEEDBACK_EVIDENCE_SCOPE')=>{throw Object.assign(new Error(code),{code})}
+const skillRefreshSection='night_'+Buffer.from('dingtalk:skill-refresh').toString('hex')
+const refreshPrefixes=[['本会话已读技能或引用有变化：',false],['历史成功技能调用尚无可核对版本记录：',true]]
+function refreshKinds(text,name){
+ const kinds=new Set()
+ for(const line of text.split('\n'))for(const [prefix,legacy] of refreshPrefixes){
+  if(!line.startsWith(prefix))continue
+  const end=line.lastIndexOf(']。')
+  if(end<prefix.length)continue
+  let rows
+  try{rows=JSON.parse(line.slice(prefix.length,end+1))}catch{continue}
+  if(!Array.isArray(rows))continue
+  for(const row of rows){
+   if(legacy&&row===name)kinds.add('missing-version-receipt')
+   if(!legacy&&row?.name===name&&typeof row.key==='string'&&typeof row.version==='string')kinds.add(typeof row.path==='string'?'reference-change':'skill-change')
+  }
+ }
+ return [...kinds]
+}
+// Check the SDK's persisted projection at both call boundaries. A prompt may
+// still be present in a compaction checkpoint after its custom notice is gone.
+function createRefreshContext(entries,byId,signal){
+ const projections=new Map()
+ const project=call=>{
+  signal?.throwIfAborted()
+  if(call.parentId==null)return []
+  if(!projections.has(call.parentId))projections.set(call.parentId,buildSessionProjection(entries,call.parentId,byId).entries)
+  return projections.get(call.parentId)
+ }
+ const prompts=function*(rows){
+  for(const {sourceEntry,messages} of rows)for(const message of messages){
+   const system=message.role==='system'?message.sections?.[skillRefreshSection]:null
+   const notice=sourceEntry.type==='custom_message'&&message.role==='custom'&&message.customType==='night.skill-version-notice'&&sourceEntry.details?.kind==='skill-version-change'?message.content:null
+   if(typeof system==='string'&&system)yield {sourceEntry,carrier:sourceEntry.type==='compaction'?'compaction-checkpoint':'system-prompt',text:system}
+   if(typeof notice==='string'&&notice)yield {sourceEntry,carrier:'custom-notice',text:notice}
+  }
+ }
+ return (previousCall,previousResult,call,name)=>{
+  if(previousCall.id===call.id)return null
+  const current=project(call),previous=[...prompts(project(previousCall))]
+  let retainedPrompt
+  for(const {sourceEntry,carrier,text} of prompts(current)){
+   const kinds=refreshKinds(text,name)
+   if(kinds.length&&previous.some(row=>row.sourceEntry.id===sourceEntry.id&&row.carrier===carrier&&row.text===text))retainedPrompt={carrier,at:stamp(sourceEntry.timestamp),kinds}
+  }
+  if(!retainedPrompt)return null
+  const priorSuccessInContext=current.some(({sourceEntry,messages})=>sourceEntry.id===previousResult.id&&messages.some(message=>message.role==='toolResult'&&message.isError===false&&isDeepStrictEqual(message.content,previousResult.message.content)))
+  return {retainedPrompt,priorSuccessInContext}
+ }
+}
 // Compare only the last committed branch of a task. Journal pages may also
 // contain abandoned branches; conversation windows are not a continuous history.
-function taskSkillHistory(entries,leaf){
+function taskSkillHistory(entries,leaf,refreshContext){
  const branch=new Set(),seenCalls=new Set(),skills=new Map()
  for(let entry=leaf;entry;entry=entries.get(entry.parentId))branch.add(entry.id)
  let notices=0,lastNoticeAt=null
+ const describe=({value,context})=>{const proof=context?.();return proof?{...value,refreshContext:proof}:value}
  return {
   notice(entry){if(branch.has(entry.id)){notices++;lastNoticeAt=stamp(entry.timestamp)}},
-  record(entry,callId,skill,native,isError){
+  describe,
+  record(entry,call,callId,skill,name,native,isError){
    if(!branch.has(entry.id)||seenCalls.has(callId))return
    seenCalls.add(callId)
    let row=skills.get(skill)
@@ -33,20 +86,26 @@ function taskSkillHistory(entries,leaf){
    row.successful++
    let comparison
    if(row.previous){
-    const payload=!digest||!row.previous.digest?'unknown':digest===row.previous.digest?'same':'changed'
-    comparison={previousResultAt:row.previous.at,resultAt:at,payload,noticesBetweenResults:notices-row.previous.notices,failedCallsBetweenResults:row.failed-row.previous.failed,precedingNoticeAt:lastNoticeAt}
+    const previous=row.previous
+    const payload=!digest||!previous.digest?'unknown':digest===previous.digest?'same':'changed'
+    const value={previousResultAt:previous.at,resultAt:at,payload,noticesBetweenResults:notices-previous.notices,failedCallsBetweenResults:row.failed-previous.failed,precedingNoticeAt:lastNoticeAt}
+    comparison={value}
     if(payload==='same'){
      row.samePayload++
-     if(!comparison.noticesBetweenResults){row.sameWithoutNotice++;row.latestSameWithoutNotice=comparison}
-    }else if(payload==='changed'){row.changedPayload++;row.latestChanged=comparison}
+     if(!value.noticesBetweenResults){
+      comparison.context=()=>refreshContext(previous.call,previous.result,call,name)
+      row.sameWithoutNotice++;row.latestSameWithoutNotice=comparison
+     }
+    }else if(payload==='changed'){row.changedPayload++;row.latestChanged=value}
     else row.unknownComparisons++
    }
-   row.previous={at,digest,notices,failed:row.failed}
+   row.previous={at,digest,notices,failed:row.failed,call,result:entry}
    return comparison
   },
   summary(){
-   const comparisons=[...skills.values()].map(({previous,...row})=>row).sort((a,b)=>b.sameWithoutNotice-a.sameWithoutNotice||b.successful-a.successful||b.failed-a.failed)
-   return {scope:'last-committed-task-branch',notices,skillCount:comparisons.length,skills:comparisons.slice(0,5)}
+   const comparisons=[...skills.values()].sort((a,b)=>b.sameWithoutNotice-a.sameWithoutNotice||b.successful-a.successful||b.failed-a.failed)
+   const top=comparisons.slice(0,5).map(({previous,latestSameWithoutNotice,...row})=>latestSameWithoutNotice?{...row,latestSameWithoutNotice:describe(latestSameWithoutNotice)}:row)
+   return {scope:'last-committed-task-branch',notices,skillCount:comparisons.length,skills:top}
   },
  }
 }
@@ -215,7 +274,7 @@ export function createChainEvidence({application,title='',description,secrets=[]
    if(!validTask&&!validConversation)return unavailable('native-journal-owner-unproven')
    const toolNames=new Set(['bash','pwsh','read','read_window','write','edit','find','grep','web_fetch','web_search','job_output','job_list','job_kill','resident_task_action','resident_task_plan','resident_router_reply','resident_router_settle','task_result','memory_read','memory_remember','skill'])
    const items=[],pending=new Set(),entries=new Map(snapshot.entries.map(entry=>[entry.id,entry])),receipts=new Map()
-   const skillHistory=view==='skills'&&validTask?taskSkillHistory(entries,snapshot.entries.at(-1)):null
+   const skillHistory=view==='skills'&&validTask?taskSkillHistory(entries,snapshot.entries.at(-1),createRefreshContext(snapshot.entries,entries,signal)):null
    let total=0
    const add=project=>{if(total++>=offset&&items.length<5)items.push(project())}
    const inScope=(start,end)=>validTask||ref.windows?.some(([a,b])=>Number.isFinite(start)&&Number.isFinite(end)&&start<=b&&end>=a)
@@ -250,13 +309,13 @@ export function createChainEvidence({application,title='',description,secrets=[]
     const name=args?.name,native=message.details?.nativeResult
     const skill=view==='skills'&&tool==='skill'&&typeof name==='string'&&name?identity('skill',ref.sessionId+':'+name):null
     const nativeValue=native?.isError===false&&native.value?.name===name?native.value:null
-    const comparison=skill&&typeof message.isError==='boolean'?skillHistory?.record(entry,message.toolCallId,skill,nativeValue,isError):null
+    const comparison=skill&&typeof message.isError==='boolean'?skillHistory?.record(entry,call.entry,message.toolCallId,skill,name,nativeValue,isError):null
     add(()=>{
      const row={call:identity('call',message.toolCallId),tool,startedAt:stamp(call.entry.timestamp),endedAt:stamp(entry.timestamp),isError,...skillEvent?{skillEvent}:{}}
      if(view==='skills'){
       // Match only the native loader's failure envelope, not text in a returned document.
       if(skill)row.skill=skill
-      if(comparison)row.comparison=comparison
+      if(comparison)row.comparison=skillHistory.describe(comparison)
       const error=native?.error?.message
       if(isError&&tool==='skill'&&native?.isError===true&&typeof name==='string'){
        if(error===`invalid skill name "${name}"`)row.skillFailure='invalid-name'
