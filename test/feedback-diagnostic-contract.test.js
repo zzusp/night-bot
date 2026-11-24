@@ -4,7 +4,8 @@ import {diagnosticPrompt,diagnosticToolDescription,diagnosticSections,diagnostic
 test('diagnostic capability allows iterative correlation without arbitrary paths or commands',()=>{
  assert.deepEqual(diagnosticSections,['runtime','channels','errors','discover','message','trace','task','schedule','journal','code_search','code_read','logs','evidence'])
  const p=diagnosticToolParameters();assert.equal(p.additionalProperties,false)
- assert.deepEqual(Object.keys(p.properties),['section','alias','query','target','offset','characterOffset','cursor'])
+ assert.deepEqual(Object.keys(p.properties),['section','alias','query','target','view','offset','characterOffset','cursor'])
+ assert.deepEqual(p.properties.view.enum,['tools','errors','skills'])
  assert.ok(diagnosticPrompt.length<500,'system prompt remains concise');assert.match(diagnosticPrompt,/反证/)
  assert.match(diagnosticPrompt,/确认提交/);assert.match(diagnosticPrompt,/不授予权限/)
  assert.doesNotMatch(diagnosticPrompt,/discover|continuations|Router|TTFT|逐段核对/,'no fixed investigation route or tool manual in system prompt')

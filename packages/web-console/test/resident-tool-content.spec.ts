@@ -43,7 +43,7 @@ test('Router plan reads once with real dependencies, and failures or changed rec
   await expect(plan.locator('summary')).toContainText('安排任务');
   await expect(plan.locator('summary .pi-web-tool-duration')).toHaveText('2.1s');
   await expect(plan.locator('details')).not.toHaveAttribute('open');
-  await expect(record.locator('.execution-thought summary')).toContainText('思考 1.2s');
+  await expect(record.locator('.execution-thought summary .execution-timing-meta')).toHaveText('用时 1.2s');
   await expect(record).not.toContainText(/首段|12[.]1s|4[.]7s/);
   await plan.locator('summary').focus();
   await page.keyboard.press('Enter');
