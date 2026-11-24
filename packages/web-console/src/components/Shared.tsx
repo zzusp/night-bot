@@ -440,7 +440,7 @@ function TurnProcess({turn, children}: {turn: ExecutionTurn; children: ReactNode
     const value = event.currentTarget.open;
     if (value !== open) {setChoice(value); setOpen(value);}
   }}>
-    <summary><PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /><span>处理详情</span>{!!turn.toolCount && <span className="execution-turn-count">{turn.toolCount} 次工具调用</span>}{duration && <span className="execution-turn-time">用时 {duration}</span>}</summary>
+    <summary><span className="execution-turn-process-label">处理详情</span>{!!turn.toolCount && <span className="execution-turn-count">{turn.toolCount} 次工具调用</span>}{duration && <span className="execution-turn-time">用时 {duration}</span>}<PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /></summary>
     <div className="execution-turn-items">{children}</div>
   </details>;
 }
