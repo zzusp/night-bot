@@ -202,11 +202,11 @@ export async function createWebConsole({channels, paths, config, getApplication,
     const sessionGuards = async (revalidate = async () => {}) => {
       const secrets = await historySecrets(), secretKey = digest(JSON.stringify(secrets))
       let resourceBinding
-      const readResourceContents = async candidates => {
+      const readResourceContents = async (candidates, measure) => {
         try {
           const binding = authorizedEvolutionReader(), memory = getMemory()
           if (!memory?.store?.root) return new Map()
-          const value = await readResourceToolContents(candidates, {memory, reflection: getReflection() ?? memory.host?.get?.('reflection'), binding})
+          const value = await readResourceToolContents(candidates, {memory, reflection: getReflection() ?? memory.host?.get?.('reflection'), binding, measure})
           if (value.size) resourceBinding = binding
           return value
         } catch {return new Map()} // Independent resource unreadability does not block other history.

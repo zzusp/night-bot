@@ -40,9 +40,21 @@ test('directory lease handoff preserves a live cross-process owner, reaps a dead
   const script='import {acquireLock} from '+JSON.stringify(new URL('../src/runtime/files.js',import.meta.url).href)+';await acquireLock('+JSON.stringify(path)+');process.on("message",()=>{});process.send("LOCK_HELD");'
   child=spawn(process.execPath,['--input-type=module','-e',script],{stdio:['ignore','pipe','pipe','ipc']});child.stdout.resume();child.stderr.on('data',chunk=>output+=chunk);closed=once(child,'close')
   const [message]=await Promise.race([once(child,'message',{signal:t.signal}),closed.then(result=>assert.fail(JSON.stringify(result)+output))])
-  assert.equal(message,'LOCK_HELD');await assert.rejects(acquireLock(path,{timeoutMs:0}),{code:'NIGHT_DATA_IN_USE'})
+  const phases=[]
+  assert.equal(message,'LOCK_HELD');await assert.rejects(acquireLock(path,{timeoutMs:0,onTiming:(phase,ms)=>phases.push([phase,ms])}),{code:'NIGHT_DATA_IN_USE'})
+  assert.deepEqual(phases.map(([phase])=>phase),['retry'])
+  assert.ok(phases[0][1]>0)
   child.kill('SIGTERM');await closed
   const release=await acquireLock(path);await release();await release()
+  const entered=Promise.withResolvers(),open=Promise.withResolvers()
+  const holding=withLock(path,async()=>{entered.resolve();await open.promise})
+  await Promise.race([entered.promise,holding])
+  const queued=[]
+  const waiting=withLock(path,()=>true,{onTiming:(phase,ms)=>queued.push([phase,ms])})
+  open.resolve()
+  assert.deepEqual(await Promise.all([holding,waiting]),[undefined,true])
+  assert.deepEqual(queued.map(([phase])=>phase),['queue','write','release'])
+  assert.ok(queued.every(([,ms])=>ms>0))
   await atomicWrite(counter,'0')
   const rejected=new Error('transaction work rejected')
   await assert.rejects(withLock(path,async()=>{throw rejected}),error=>error===rejected)

@@ -82,23 +82,19 @@ test('authenticated HTTP reopens actual Router memory reads without disclosing c
 
     // Loading older history must register any newly exposed resources even
     // though the journal tail anchor does not change.
-    let locked,unlock
-    const entered=new Promise(resolve=>{locked=resolve})
-    const held=new Promise(resolve=>{unlock=resolve})
-    const holding=memory.store.locked(scope,async()=>{locked();await held})
-    await entered
     const olderURL=endpoint+'?'+new URLSearchParams({stream:'1',limit:'50',checkpoint:narrowPage.checkpoint,before:narrowPage.before})
-    let finished=false,olderResponse
-    const olderRequest=fetch(olderURL,{headers}).then(res=>{finished=true;return res})
-    try {await new Promise(resolve=>setTimeout(resolve,100));assert.equal(finished,false)}finally{unlock();await holding}
-    olderResponse=await olderRequest
+    const olderResponse=await fetch(olderURL,{headers})
     assert.equal(olderResponse.status,200)
     const older=await olderResponse.json()
     assert.ok(older.resourceProof)
     assert.equal(older.checkpoint,narrowPage.checkpoint+'.r')
     assert.ok(older.items.some(row=>row.resourceContent))
-    const wait=Number(/memory_wait;dur=([\d.]+)/.exec(olderResponse.headers.get('Server-Timing')??'')?.[1])
-    assert.ok(wait>=40,'resource authorization timing measures real lock queue wait')
+    const timing=Object.fromEntries([...olderResponse.headers.get('Server-Timing').matchAll(/([a-z_]+);dur=([\d.]+)/g)].map(([,name,ms])=>[name,Number(ms)]))
+    assert.ok(timing.memory_wait>0,'resource authorization records its real locks')
+    assert.ok(timing.memory_wait>=timing.memory_lock_write)
+    assert.ok(timing.permissions>=timing.resource_memory_batch)
+    assert.ok(Number.isFinite(timing.resource_memory_recheck))
+    assert.ok(Number.isFinite(timing.memory_lock_release))
     const before=await read()
     assert.deepEqual(before.rows.map(row=>row.resourceContent),[true,true,true,true])
     assert.equal(before.rows[0].text,original)

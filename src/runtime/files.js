@@ -56,44 +56,58 @@ async function alive(owner){
   return true
 }
 /** Cross-process lease; a live owner is never evicted by a timeout. */
-export async function acquireLock(path,{timeoutMs=5000}={}){
+export async function acquireLock(path,{timeoutMs=5000,onTiming}={}){
   await privateDirectory(dirname(path));const until=Date.now()+timeoutMs,token=randomUUID()
   for(;;){
     try{
       await mkdir(path,{mode:0o700})
-      try{await atomicWrite(join(path,'owner.json'),JSON.stringify({pid:process.pid,token,identity:await processIdentity(process.pid)}))}
+      try{
+        const owner=JSON.stringify({pid:process.pid,token,identity:await processIdentity(process.pid)}),started=onTiming&&performance.now()
+        try{await atomicWrite(join(path,'owner.json'),owner)}finally{if(onTiming)onTiming('write',performance.now()-started)}
+      }
       catch(error){await rm(path,{recursive:true,force:true});throw error}
       let released=false
       return async()=>{if(released)return;const current=JSON.parse(await readRegular(join(path,'owner.json'))??'null');if(current?.token!==token)throw failure('NIGHT_LOCK_OWNERSHIP_LOST');await rm(path,{recursive:true});released=true}
     }catch(error){
       if(error.code!=='EEXIST')throw error
-      const info=await lstat(path).catch(e=>{if(e.code!=='ENOENT')throw e});if(!info)continue
-      if(!info.isDirectory()||info.isSymbolicLink())throw failure('NIGHT_PATH_UNSAFE')
-      const text=await readRegular(join(path,'owner.json')).catch(e=>{if(!['ENOENT','NIGHT_PATH_CHANGED'].includes(e.code))throw e})
-      if(text){let owner;try{owner=JSON.parse(text)}catch{throw failure('NIGHT_LOCK_UNCERTAIN')}
-        if(!await alive(owner)){
-          const guard=path+'.reap';let owned=false
-          try{await mkdir(guard,{mode:0o700});owned=true;const again=JSON.parse(await readRegular(join(path,'owner.json'))??'null');if(again?.token===owner.token&&!await alive(again))await rm(path,{recursive:true})}
-          catch(e){if(e.code!=='EEXIST')throw e}finally{if(owned)await rm(guard,{recursive:true})}
-          continue
+      const started=onTiming&&performance.now()
+      try{
+        const info=await lstat(path).catch(e=>{if(e.code!=='ENOENT')throw e});if(!info)continue
+        if(!info.isDirectory()||info.isSymbolicLink())throw failure('NIGHT_PATH_UNSAFE')
+        const text=await readRegular(join(path,'owner.json')).catch(e=>{if(!['ENOENT','NIGHT_PATH_CHANGED'].includes(e.code))throw e})
+        if(text){let owner;try{owner=JSON.parse(text)}catch{throw failure('NIGHT_LOCK_UNCERTAIN')}
+          if(!await alive(owner)){
+            const guard=path+'.reap';let owned=false
+            try{await mkdir(guard,{mode:0o700});owned=true;const again=JSON.parse(await readRegular(join(path,'owner.json'))??'null');if(again?.token===owner.token&&!await alive(again))await rm(path,{recursive:true})}
+            catch(e){if(e.code!=='EEXIST')throw e}finally{if(owned)await rm(guard,{recursive:true})}
+            continue
+          }
         }
-      }
-      if(Date.now()>=until)throw failure(text?'NIGHT_DATA_IN_USE':'NIGHT_LOCK_UNCERTAIN')
-      await new Promise(r=>setTimeout(r,15))
+        if(Date.now()>=until)throw failure(text?'NIGHT_DATA_IN_USE':'NIGHT_LOCK_UNCERTAIN')
+        await new Promise(r=>setTimeout(r,15))
+      }finally{if(onTiming)onTiming('retry',performance.now()-started)}
     }
   }
 }
 const transactionTails=new Map()
-export async function withLocalFileQueue(path,work){
+export async function withLocalFileQueue(path,work,onTiming){
   const key=resolve(path),previous=transactionTails.get(key),idle=Promise.withResolvers()
   transactionTails.set(key,idle.promise)
-  try{await previous;return await work()}
+  const started=onTiming&&previous&&performance.now()
+  try{
+    await previous
+    if(onTiming&&previous)onTiming('queue',performance.now()-started)
+    return await work()
+  }
   finally{idle.resolve();if(transactionTails.get(key)===idle.promise)transactionTails.delete(key)}
 }
 export function withLock(path,work,options){
   // 同一 Host 先排队，避免 Windows 并发事务争删租约目录。
   return withLocalFileQueue(path,async()=>{
     const release=await acquireLock(path,options)
-    try{return await work()}finally{await release()}
-  })
+    try{return await work()}finally{
+      const started=options?.onTiming&&performance.now()
+      try{await release()}finally{if(options?.onTiming)options.onTiming('release',performance.now()-started)}
+    }
+  },options?.onTiming)
 }

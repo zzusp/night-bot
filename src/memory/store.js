@@ -88,7 +88,7 @@ export class MarkdownMemoryStore {
   async close(){this.closed=true;await Promise.allSettled([...this.pending])}
   async locked(scope,work){
     if(this.closed)throw failure('MEMORY_STORE_CLOSED')
-    const operation=(async()=>{const dir=this.directory(scope);await safeAncestors(join(dir,'.lock'));await privateDirectory(dir);return measuredMemoryLock(acquire=>withLock(join(dir,'.lock'),async()=>{
+    const operation=(async()=>{const dir=this.directory(scope);await safeAncestors(join(dir,'.lock'));await privateDirectory(dir);return measuredMemoryLock((acquire,onTiming)=>withLock(join(dir,'.lock'),async()=>{
       acquire()
       if(await this.file(dir,'layout-migration.pending.json'))throw failure('MEMORY_LAYOUT_MIGRATION_PENDING')
       await this.recover(dir)
@@ -98,7 +98,7 @@ export class MarkdownMemoryStore {
         if(raw||oldIndex||oldTopics.length||await this.file(dir,'candidates.md'))throw failure('MEMORY_LAYOUT_MIGRATION_REQUIRED')
       }
       return work(dir,meta)
-    }))})()
+    },{onTiming}))})()
     this.pending.add(operation);try{return await operation}finally{this.pending.delete(operation)}
   }
   async recover(dir){

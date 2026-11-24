@@ -894,9 +894,9 @@ async function authorizeHistory(value,options,selected){
   const selectedIds=new Set(selected.map(row=>row.id))
   const ids=[...new Set([...selectedIds,...loaded.keys()])]
   const candidates=ids.flatMap(id=>context.candidates.has(id)?[{id,candidate:context.candidates.get(id)}]:[])
-  const granted=candidates.length&&readResourceContents?await measure(requestTiming,'permissions',()=>requestTiming?observeMemoryLock(ms=>{
-    requestTiming.memory_wait=(requestTiming.memory_wait??0)+ms
-  },()=>readResourceContents(candidates)):readResourceContents(candidates)):new Map()
+  const granted=candidates.length&&readResourceContents?await measure(requestTiming,'permissions',()=>requestTiming?observeMemoryLock((name,ms)=>{
+    requestTiming[name]=(requestTiming[name]??0)+ms
+  },()=>readResourceContents(candidates,(name,work)=>measure(requestTiming,name,work))):readResourceContents(candidates)):new Map()
   const current=new Map()
   const items=selected.map(row=>{
     const body=granted.get(row.id)

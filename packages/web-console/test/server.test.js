@@ -1084,9 +1084,15 @@ test('execution reads refresh Host secret values and fail closed when the provid
   let body = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
   assert.equal(body.status,200);assert.doesNotMatch(JSON.stringify(body.body),/opaque-vendor-value-one/)
   secret='opaque-vendor-value-two'
-  body = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
+  const stale = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
+  assert.equal(stale.status,409)
+  assert.deepEqual(stale.body,{error:'SESSION_PAGE_STALE'})
+  const fresh = await f.fetchApi('/api/tasks/task-one/session')
+  assert.equal(fresh.status,200)
+  assert.notEqual(fresh.body.revision,page.body.revision)
+  body = await f.fetchApi(`/api/tasks/task-one/session/messages/${fresh.body.items[0].id}?offset=16000&revision=${fresh.body.revision}`)
   assert.equal(body.status,200);assert.doesNotMatch(JSON.stringify(body.body),/opaque-vendor-value-two/)
-  assert.equal(calls,6, 'each response refreshes secrets before projection and at its final guard')
+  assert.equal(calls,9, 'successful responses check secrets twice; the stale request fails during projection')
   unavailable=true
   const denied = await f.fetchApi('/api/tasks/task-one/session')
   assert.equal(denied.status,503)
@@ -1411,4 +1417,91 @@ test('execution HTTP independently authorizes exact resource bodies and revokes 
   assert.ok(after.body.items.every(row=>!row.resourceContent&&row.skillName===undefined))
   assert.doesNotMatch(JSON.stringify(after.body),/Authoritative memory body|continue here/)
   assert.equal((await f.fetchApi(continuation(rows[0],0))).status,409)
+})
+
+test('task zero-new polls time six facts, six learned and two file skills separately', async t => {
+  const {Context}=await import('@deepseek-ai/cordis')
+  const {default:PiPersistence}=await import('../../../src/pi-session-persistence.js')
+  const Authority=await import('../../../src/pi-authority.js')
+  const {default:Reflection}=await import('../../../src/memory/reflection.js')
+  const {renderSkillContent}=await import('../../../src/native-skill-protocol.js')
+  const root=await mkdtemp(join(tmpdir(),'night-web-poll-stages-')),ctx=new Context()
+  t.after(async()=>{await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
+  await ctx.plugin(Authority)
+  const paths=runtimePaths({installRoot:root,dataDir:'data'})
+  await prepareRuntimePaths(paths)
+  const store=new MarkdownMemoryStore(paths.memory),scope=memoryScope({actorId:'fixture-writer'})
+  const reflection=Object.assign(Object.create(Reflection.prototype),{host:{memory:{store}}})
+  const persistence=new PiPersistence(ctx,{root:join(root,'journals')})
+  const writer=await persistence.createNative({version:4,id:'pi-one',createdAt:Date.now(),isSeeded:false,cwd:root},{auditKinds:{'task/identity':()=>true}})
+  writer.appendAudit({version:1,domain:'task',kind:'identity',payload:{taskId:'task-one',sessionId:'pi-one'}})
+  const source=key=>({sessionId:'fixture-source',messageId:key})
+  const append=(id,name,args,value,text)=>{
+    writer.manager.appendMessage({role:'assistant',content:[{type:'toolCall',id,name,arguments:args}],timestamp:Date.now()})
+    const content=[{type:'text',text}]
+    writer.manager.appendMessage({role:'toolResult',toolName:name,toolCallId:id,isError:false,content,timestamp:Date.now(),details:{nativeResult:{value,content,isError:false}}})
+  }
+  const pad=i=>writer.manager.appendMessage({role:'user',content:[{type:'text',text:`Fixture row ${i}`}],timestamp:Date.now()})
+  for(let i=0;i<187;i++)pad(i)
+  await store.remember(scope,{topic:'experience',key:'verified-support',text:'Verified evidence supporting the fixture skills.',source:source('support')})
+  const skills={}
+  for(let i=0;i<6;i++){
+    const key=`fact-${i}`,args={topic:'facts',key}
+    await store.remember(scope,{...args,text:`Independently verified fact ${i}.`,source:source(key)})
+    const result={kind:'night-memory-result',scopeToken:`bot/${scope.id}`,...await store.read(scope,{...args,includeSources:false})}
+    append(key,'memory_read',args,result,JSON.stringify(result))
+    const skillKey=`verified-${i}`,name=`learned-${skillKey}`
+    skills[skillKey]={revision:1,active:true,origin:'task-reflection',applicability:'Check evidence',body:`Approved steps ${i}.`,supports:[{memoryKey:'verified-support'}]}
+    const skill={name,provider:'learned',content:reflection.renderSkill(scope,skillKey,skills[skillKey])}
+    append(name,'skill',{name},skill,renderSkillContent(skill))
+  }
+  await mkdir(reflection.directory(scope),{recursive:true})
+  await writeFile(join(reflection.directory(scope),'state.json'),JSON.stringify({skills}))
+  for(let i=0;i<2;i++){
+    const name=`ordinary-${i}`,path=join(paths.skills,name),content=`Current ordinary skill ${i}.`
+    await mkdir(path,{recursive:true})
+    await writeFile(join(path,'SKILL.md'),`---\nname: ${name}\ndescription: Fixture skill\n---\n\n${content}\n`)
+    const skill={name,provider:'filesystem',resourceBase:{kind:'directory',path},content}
+    append(name,'skill',{name},skill,renderSkillContent(skill))
+  }
+  pad(187)
+  await writer.close()
+  const f=await fixture(t,{persistence,memory:{store,host:{runtimePaths:paths,get:key=>key==='reflection'?reflection:undefined}}})
+  const endpoint='/api/tasks/task-one/session?stream=1'
+  const denied=await f.fetchApi(endpoint)
+  assert.equal(denied.status,401)
+  assert.equal(denied.response.headers.get('server-timing'),null)
+  await f.login()
+  const wide=await f.fetchApi(endpoint+'&limit=200'),narrow=await f.fetchApi(endpoint+'&limit=1')
+  assert.equal(wide.status,200);assert.equal(narrow.status,200)
+  assert.equal(wide.body.total,216);assert.equal(wide.body.items.length,200)
+  const rows=wide.body.items.filter(row=>row.resourceContent)
+  assert.equal(rows.filter(row=>row.toolName==='memory_read').length,6)
+  assert.equal(rows.filter(row=>row.skillName?.startsWith('learned-')).length,6)
+  assert.equal(rows.filter(row=>row.skillName?.startsWith('ordinary-')).length,2)
+  assert.equal(wide.body.checkpoint,narrow.body.checkpoint+'.r')
+  assert.ok(wide.body.resourceProof);assert.equal(narrow.body.resourceProof,undefined)
+  const poll=async (page,loaded)=>{
+    const response=await f.fetchApi(endpoint+'&'+new URLSearchParams({limit:'1',checkpoint:page.checkpoint,...(loaded?{resources:page.resourceProof}:{})}))
+    assert.equal(response.status,200)
+    assert.equal(response.body.sessionId,wide.body.sessionId);assert.equal(response.body.total,216)
+    assert.equal(response.body.checkpoint,page.checkpoint);assert.deepEqual(response.body.items,[])
+    assert.equal(Boolean(response.body.resourceProof),loaded)
+    const header=response.response.headers.get('server-timing')
+    assert.match(header,/^[a-z_]+;dur=\d+\.\d(?:, [a-z_]+;dur=\d+\.\d)*$/)
+    return {page:response.body,timing:Object.fromEntries([...header.matchAll(/([a-z_]+);dur=([\d.]+)/g)].map(([,key,ms])=>[key,Number(ms)]))}
+  }
+  const expected=['resource_skill_scan','resource_memory_batch','resource_learned_batch','resource_memory_recheck','memory_wait','memory_lock_write','memory_lock_release']
+  const readings=[]
+  let page=wide.body
+  for(let i=0;i<4;i++){
+    const empty=await poll(narrow.body,false)
+    assert.equal(empty.timing.permissions,undefined)
+    assert.ok(expected.every(key=>empty.timing[key]===undefined))
+    const full=await poll(page,true);page=full.page
+    assert.ok(expected.every(key=>Number.isFinite(full.timing[key])))
+    assert.ok(full.timing.permissions>=full.timing.memory_wait)
+    readings.push({withoutProof:empty.timing.request,...Object.fromEntries(['request','permissions',...expected].map(key=>[key,full.timing[key]]))})
+  }
+  t.diagnostic(JSON.stringify(readings))
 })
