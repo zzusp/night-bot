@@ -180,6 +180,22 @@ export class MarkdownMemoryStore {
       return result
     })
   }
+  // One locked view of the index and exact, already-disclosed record versions.
+  async readHistoryBatch(scope, selectors){
+    return this.locked(scope,async(dir,meta)=>{
+      const root=await this.rootIndex(dir,scope,meta),now=this.now()
+      const entries=root.entries.filter(row=>active(row,now)),facts=new Map(),loaded=new Map()
+      const byPath=new Map(entries.map(row=>[row.path,row]))
+      for(const [id,{row,path,topic}] of selectors){
+        const descriptor=byPath.get(path??entryPath(topic,row.key))
+        if(!descriptor||descriptor.id!==row.id||descriptor.key!==row.key||descriptor.revision!==row.revision)continue
+        if(!loaded.has(descriptor.path))loaded.set(descriptor.path,await this.entry(dir,scope,descriptor,{includeSources:false}).catch(()=>null))
+        const fact=loaded.get(descriptor.path)
+        if(fact)facts.set(id,{descriptor,text:fact.text})
+      }
+      return {revision:root.revision,entries,facts}
+    })
+  }
   async read(scope,{topic,key,candidates=false,includeSources=true,includePrevious=false}={}){
     if(key!==undefined&&!label(key))throw failure('MEMORY_RECORD_INVALID')
     if(scope.kind!=='bot')return this.transaction(scope,s=>({revision:s.meta.revision,entries:(candidates?s.candidates:s.topics.get(topic)?.entries??[]).filter(e=>(!key||e.key===key)&&active(e,this.now())).slice(0,50).map(e=>includePrevious?e:withoutPrevious(e))}))
