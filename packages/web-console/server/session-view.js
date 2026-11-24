@@ -4,6 +4,9 @@ import {isDeepStrictEqual} from 'node:util'
 import {setImmediate as yieldToIO} from 'node:timers/promises'
 import {digest, fail} from './security.js'
 import {specializedToolInput, specializedToolOutput} from './specialized-tool-activity.js'
+import {residentTaskToolInput, residentTaskToolOutput} from './resident-task-activity.js'
+import {residentMemoryToolInput, residentMemoryToolOutput} from './resident-memory-tool-activity.js'
+import {isResidentRouterActivity, residentRouterActivityInput, residentRouterActivityOutput} from './resident-router-tool-activity.js'
 import {isResourceTool, resourceReadCandidate} from './resource-tool-content.js'
 import {parsePiEditDiff} from '../src/edit-diff.ts'
 
@@ -146,6 +149,9 @@ const toolOutputs = {
 }
 
 function toolInput(name, args, identity) {
+  const resident = residentRouterActivityInput(name,args,identity) ?? residentMemoryToolInput(name,args,identity) ?? residentTaskToolInput(name,args,identity)
+  if (resident) return resident
+  if (isResidentRouterActivity(name)) return {toolName:name,text:'此调用缺少可核对的参数；未展示私有内容。',redacted:true}
   const specialized=specializedToolInput(name,args,identity)
   if(specialized)return specialized
   if (!Object.hasOwn(toolInputs, name)) return {toolName: name, text: '此工具尚未声明可展示的输入字段；调用名称与状态保留。', redacted: true}
@@ -162,7 +168,9 @@ function toolInput(name, args, identity) {
 // this text becomes a message; raw journal arguments are never used here.
 function businessResultText(name, input) {
   if (name !== 'task_result' && name !== 'resident_router_reply' && name !== 'resident_operator_reply') return null
-  const value = JSON.parse(input)
+  let value
+  try {value = JSON.parse(input)} catch {return null}
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   if (name === 'resident_router_reply' || name === 'resident_operator_reply') return value.text?.trim() || null
   const decision = value.decision
   if (!decision || !['complete', 'wait', 'blocked'].includes(decision.action) || !decision.summary?.trim()) return null
@@ -246,7 +254,7 @@ function toolOutput(call, message, identity) {
   // 孤立、重复 ID 或名称冲突的结果保留事件，但不借 result.toolName 猜测公开权限。
   if (!call || call.name !== message.toolName) return hidden
   const name = call.name, state = {hidden: false}
-  const summary = {toolName: name, text: /^(?:memory_|skill$)/.test(name)
+  const summary = {toolName: name, text: /^(?:memory_|skill$|resident_(?:memory|skill)_)/.test(name)
     ? '此工具涉及独立的记忆或技能读取权限，请通过记忆与技能入口查看获权正文。'
     : '此工具尚未声明可展示的结果字段；调用名称与状态保留。', redacted: true}
   const content = message.content
@@ -262,9 +270,37 @@ function toolOutput(call, message, identity) {
     const specialized=specializedToolOutput(name,raw,identity)
     if(specialized)return specialized
   }
-  if (!Object.hasOwn(toolOutputs, name)) return summary
+  if (isResidentRouterActivity(name)) {
+    let raw
+    if (text.length <= 1048576 && !state.hidden) try {raw = JSON.parse(text)} catch {}
+    let input
+    if (call.publicInput) try {input=JSON.parse(call.publicInput)} catch {}
+    const activity = residentRouterActivityOutput(name,raw,identity,input)
+    if (activity) return activity
+    // Old journals can lack a full payload. Retain the historical reply event,
+    // without treating it as fresh notification state or leaking a raw ID.
+    if (!identity.taskId && name==='resident_router_reply' && raw?.notification?.payload===undefined
+      && typeof raw?.notification?.id==='string') return {toolName:name,text:'{"accepted":true}',redacted:true}
+    return {toolName:name,text:'此结果缺少可核对的回执；未展示私有内容。',redacted:true}
+  }
+  if (name === 'resident_web_attachment' && Array.isArray(content) && content.length >= 1 && content.length <= 2
+    && content[0]?.type === 'text' && typeof content[0].text === 'string' && content[0].text.length <= 1048576
+    && (content.length === 1 || content[1]?.type === 'image')) {
+    // The native renderer emits one metadata/body JSON block and an optional
+    // image. Project only the fixed metadata; never consume the image or body.
+    let attachment
+    try {attachment = JSON.parse(content[0].text)} catch {}
+    const projected = residentTaskToolOutput(name,attachment,identity)
+    if (projected) return projected
+  }
+  if (!Object.hasOwn(toolOutputs, name) && !/^resident_(?:memory|skill)_/.test(name)) return summary
   let raw
-  try {raw = JSON.parse(text)} catch {return summary}
+  if (text.length <= 1048576) try {raw = JSON.parse(text)} catch {return summary}
+  if (!state.hidden) {
+    const resident = residentMemoryToolOutput(name,raw,identity) ?? residentTaskToolOutput(name,raw,identity)
+    if (resident) return resident
+  }
+  if (!Object.hasOwn(toolOutputs, name)) return summary
   const value = toolObject(toolOutputs[name])(raw, state)
   if (!value || !Object.keys(value).length) return summary
   return {toolName: name, text: JSON.stringify(value, null, 2), redacted: state.hidden}
@@ -464,7 +500,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           // 厂商 ID 可跨轮重用；未配对的重复 ID 不能猜测归属。
           const selected = toolInput(block.name, block.arguments, identity)
           const resultText = businessResultText(block.name, selected.text)
-          if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(executionActivity?{entryId:entry.id}:{}), ...(resourceCandidates&&isResourceTool(block.name)?{resourceArgs:block.arguments}:{}), ...(block.name==='resident_operator_reply'&&typeof block.arguments?.eventId==='string'?{operatorEventKey:opaque('operator-reply',block.arguments.eventId)}:{}), ...(resultText ? {resultText} : {})})
+          if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(executionActivity?{entryId:entry.id}:{}), ...(block.name==='resident_router_settle'?{publicInput:selected.text}:{}), ...(resourceCandidates&&isResourceTool(block.name)?{resourceArgs:block.arguments}:{}), ...(block.name==='resident_operator_reply'&&typeof block.arguments?.eventId==='string'?{operatorEventKey:opaque('operator-reply',block.arguments.eventId)}:{}), ...(resultText ? {resultText} : {})})
           add(entry, 'call-' + index + '-' + blockIndex, 'tool', selected.text, {kind: 'tool-call', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), callId, status: 'result-unrecorded'}, message)
           const args = block.arguments
           if (editReceipts && block.name === 'edit' && entry.type === 'message' && entry.message?.role === 'assistant'
@@ -513,7 +549,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           const taskResult = taskId && call.name === 'task_result' && receipt?.received === true && receipt.accepted !== false
           const operatorReply = !taskId && call.name === 'resident_operator_reply' && receipt?.result?.accepted === true && receipt.result.webOnly === true && !operatorReplies.has(call.operatorEventKey)
           if(operatorReply)operatorReplies.add(call.operatorEventKey)
-          const routerReply = !taskId && call.name === 'resident_router_reply' && receipt?.accepted !== false
+          const routerReply = !taskId && call.name === 'resident_router_reply' && receipt?.accepted === true
           if (taskResult || routerReply || operatorReply) add(entry, 'business-result-' + index, 'assistant', operatorReply?receipt.result.text:call.resultText, {kind: taskResult ? 'task-result' : 'router-reply', callId}, message)
         }
       } else if (executionActivity && message.role === 'compactionSummary' && entry.type === 'compaction' && typeof message.summary === 'string') {

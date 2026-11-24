@@ -27,6 +27,13 @@ test('真实 Host 直入 Router 的实际回复、未知投递与静默，经HTT
   const login=await fetch(web.origin+'/api/login',{method:'POST',headers:{origin:web.origin,'content-type':'application/json'},body:JSON.stringify({token:(await readFile(web.credentialPath,'utf8')).trim()})});assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0]
   const api=async path=>{const r=await fetch(web.origin+path,{headers:{origin:web.origin,cookie}});return {status:r.status,body:await r.json()}}
   const id=h.host.ctx.channels.identity(input).sessionId,endpoint='/api/conversations/'+id+'/response-times'
+  const transcript=await api('/api/conversations/'+id+'/session')
+  assert.equal(transcript.status,200)
+  const settledRow=transcript.body.items.find(item=>item.kind==='tool-result'&&item.toolName==='resident_router_settle')
+  assert.deepEqual(JSON.parse(settledRow?.text),{settled:true,requestedEventCount:1,dispositions:{'handled-inline':1}})
+  const replyRow=transcript.body.items.find(item=>item.kind==='tool-result'&&item.toolName==='resident_router_reply')
+  assert.equal(JSON.parse(replyRow?.text).state,'prepared','submission receipt is not the eventual send confirmation')
+  assert.doesNotMatch(settledRow.text,/FIRST_ONE|operationId|Synthetic direct Router decision/)
   await Promise.all([h.receive(channelMessage('batch-one',{text:'BATCH_TOPIC_ONE'})),h.receive(channelMessage('batch-two',{text:'BATCH_TOPIC_TWO'}))]);await h.service.whenIdle()
   for(const [messageId,text] of [['reply-two','FIRST_TWO'],['reply-direct','DIRECT'],['reply-unknown','UNKNOWN'],['reply-silent','SILENT'],['reply-wait','WAIT']]){await h.receive(channelMessage(messageId,{text}));await h.service.whenIdle().catch(error=>{if(!text.includes('WAIT'))throw error;assert.equal(error.code,'ROUTER_BATCH_UNSETTLED')})}
   const result=await api(endpoint);assert.equal(result.status,200,JSON.stringify(result.body));const row=id=>result.body.items.find(row=>row.messageId===id)

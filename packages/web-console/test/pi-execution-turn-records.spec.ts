@@ -17,7 +17,8 @@ const snapshot = (resultKind: string, phase: 'compaction' | 'text' | 'done' = 'd
     {id:'thought', role:'assistant', kind:'thinking', text:thoughtBody, timing:{durationMs:605, modelWaitMs:12100}, source:source('thought')},
     call('read', 'read'), output('read', 'read'),
     call('skill', 'skill'), output('skill', 'skill'),
-    {id: 'result-first', role: 'assistant', kind: resultKind, text: '第一份清单已核对。', createdAt: '2026-11-23T12:00:03.200Z', source: source('result-first')},
+    {id:'ordinary',role:'assistant',kind:'message',text:'核对过程的普通输出。',status:'toolUse',source:source('ordinary')},
+    {id: 'result-first', role: 'assistant', kind: resultKind, text: '第一份清单已核对。', timing:{modelWaitMs:8800}, createdAt: '2026-11-23T12:00:03.200Z', source: source('result-first')},
     ...(resultKind==='router-reply' ? [{id:'internal-packet',role:'assistant',kind:'router-packet-boundary',text:'',createdAt:'2026-11-23T12:00:08.400Z',source:source('internal-packet')}] : []),
     {id:'thought-wait-only', role:'assistant', kind:'thinking', text:'已公开但未记录思考时长。', timing:{modelWaitMs:4800}, source:source('thought-wait-only')},
     {...call('memory', 'memory_read'), timing:{modelWaitMs:2400}}, output('memory', 'memory_read'),
@@ -96,27 +97,68 @@ for (const [name, view, width] of [['任务', task, 1440], ['路由', router, 39
     await summary.focus()
     await page.keyboard.press('Enter')
     await expect(history.first()).toHaveAttribute('open')
+    const ordinary = record.locator('[data-message-id="ordinary"]')
+    await expect(ordinary).toBeVisible()
+    for (const [verifyWidth,theme] of [[1440,'light'],[390,'dark']] as const) {
+      await page.setViewportSize({width:verifyWidth,height:940})
+      await page.evaluate(theme => document.documentElement.dataset.theme=theme, theme)
+      const geometry = await record.evaluate(el => {
+        const selectionTextStart=(selector:string)=>{const line=el.querySelector(selector)!;const range=document.createRange();range.selectNodeContents(line);return range.getBoundingClientRect().left}
+        const rect=(selector:string)=>el.querySelector(selector)!.getBoundingClientRect()
+        const bodyStyle=(id:string)=>{const style=getComputedStyle(el.querySelector('[data-message-id="'+id+'"] > .message-body')!);return {background:style.backgroundColor,border:style.borderInlineStartWidth,shadow:style.boxShadow}}
+        return {
+          label:selectionTextStart('.execution-turn-process-label'),
+          ordinary:selectionTextStart('[data-message-id="ordinary"] .markdown p'),
+          first:selectionTextStart('[data-message-id="result-first"] .markdown p'),
+          second:selectionTextStart('[data-message-id="result-second"] .markdown p'),
+          user:bodyStyle('incoming'),bodies:['ordinary','result-first','result-second'].map(bodyStyle),
+          foldToText:rect('[data-message-id="result-first"] .markdown p').top-rect('.execution-turn-process').bottom,
+          textToTime:rect('[data-message-id="result-first"] > time').top-rect('[data-message-id="result-first"] .markdown p').bottom,
+          timeToNext:rect('.execution-turn-process ~ .execution-turn-process > summary').top-rect('[data-message-id="result-first"] > time').bottom,
+        }
+      })
+      for (const start of [geometry.ordinary,geometry.first,geometry.second]) expect(Math.abs(start-geometry.label)).toBeLessThanOrEqual(.5)
+      for (const body of geometry.bodies) expect(body).toEqual({background:'rgba(0, 0, 0, 0)',border:'0px',shadow:'none'})
+      expect(geometry.user.background).not.toBe('rgba(0, 0, 0, 0)')
+      expect(geometry.foldToText).toBeGreaterThanOrEqual(4)
+      expect(geometry.foldToText).toBeLessThanOrEqual(12)
+      expect(geometry.textToTime).toBeGreaterThanOrEqual(2)
+      expect(geometry.textToTime).toBeLessThanOrEqual(6)
+      expect(geometry.timeToNext).toBeGreaterThanOrEqual(6)
+      expect(geometry.timeToNext).toBeLessThanOrEqual(16)
+      await expect(record.locator('[data-message-id="result-first"] > time')).toBeVisible()
+      await expect(record.locator('[data-message-id="result-second"] > time')).toBeVisible()
+      if (verifyWidth === width) {
+        await summary.evaluate(el => (el as HTMLElement).blur())
+        await history.first().scrollIntoViewIfNeeded()
+        const from=(await history.first().boundingBox())!,to=(await record.locator('[data-message-id="result-first"]').boundingBox())!
+        await page.screenshot({path:test.info().outputPath(`unboxed-${view === task ? 'task' : 'router'}-${width}.png`),clip:{
+          x:Math.max(0,Math.floor(from.x)-5),y:Math.max(0,Math.floor(from.y)-5),width:Math.min(verifyWidth,Math.ceil(from.width)+10),height:Math.ceil(to.y+to.height-from.y)+10,
+        }})
+      }
+    }
+    await page.setViewportSize({width,height:940})
     await expect(history.first().locator(':scope > summary')).toContainText(/2 次工具调用.*用时 3.2s/)
     await expect(history.first().getByText('skill', {exact: true})).toBeVisible()
     const thought = history.first().locator('.execution-thought')
     const thoughtTiming = thought.locator('summary .execution-timing-meta')
-    await expect(thoughtTiming.locator('span')).toHaveText(['首段 12.1s', '思考 605ms'])
-    await expect(record.locator('.execution-model-wait')).toHaveCount(0)
+    await expect(thoughtTiming.locator('span')).toHaveText(['思考 605ms'])
+    await expect(record).not.toContainText(/首段|12[.]1s|8[.]8s/)
     const timingInset = await thoughtTiming.evaluate(el => el.parentElement!.getBoundingClientRect().right - el.getBoundingClientRect().right)
     expect(timingInset).toBeLessThanOrEqual(1)
     await expect(thought.locator('summary')).not.toContainText('公开思考最后一段')
     await thought.locator('summary').focus()
     await page.keyboard.press('Enter')
     await expect(thought.locator('.markdown')).toContainText(thoughtBody.trim().split('\n').at(-1)!)
-    await expect(thoughtTiming.locator('span')).toHaveText(['首段 12.1s', '思考 605ms'])
+    await expect(thoughtTiming.locator('span')).toHaveText(['思考 605ms'])
     await expect(history.first().locator('[data-message-id="read"] .pi-web-tool-duration')).toHaveText('1.4s')
     await expect(first).toBeVisible()
     await expect(second).toBeVisible()
     await expect(history.nth(1)).not.toHaveAttribute('open')
     await expect(history.nth(1).locator(':scope > summary')).toContainText(view === router ? '用时 1.3s' : '用时 6.5s')
     await history.nth(1).locator(':scope > summary').click()
-    await expect(history.nth(1).locator('.execution-thought summary .execution-timing-meta > span')).toHaveText(['首段 4.8s'])
-    await expect(history.nth(1).locator('[data-message-id="memory"] .pi-web-tool-summary-meta .execution-first-output-time')).toHaveText('首段 2.4s')
+    await expect(history.nth(1).locator('.execution-thought summary .execution-timing-meta')).toHaveCount(0)
+    await expect(history.nth(1)).not.toContainText(/首段|4[.]8s|2[.]4s/)
     const failed = history.nth(1).locator('.pi-tool-step').last()
     await expect(failed.locator('summary')).toContainText('失败')
     await expect(failed.locator('summary')).not.toContainText('TOOL_TIMEOUT')

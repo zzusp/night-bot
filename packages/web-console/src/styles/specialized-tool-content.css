@@ -6,3 +6,14 @@
 .specialized-tool-fields dt { color: var(--board-muted); }
 .specialized-tool-fields dd { margin: 0; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .specialized-tool-content .specialized-tool-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.specialized-tool-fields dd > .specialized-tool-fields + .specialized-tool-fields { border-top: 1px solid var(--board-border); margin-top: 6px; padding-top: 6px; }
+.resident-plan { min-width: 0; color: var(--board-text); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.resident-plan-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0 0 4px; font-weight: 600; }
+.resident-plan-heading span, .resident-plan-note { color: var(--board-muted); font-weight: 400; }
+.resident-plan-tasks { padding: 0; margin: 0; list-style: none; }
+.resident-plan-tasks > li, .resident-plan-dependencies { padding: 6px 0; border-top: 1px solid var(--board-border); }
+.resident-plan-task-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.resident-plan-task-heading > span { flex-shrink: 0; color: var(--board-muted); font-size: 11px; }
+.resident-plan p:not(.resident-plan-heading) { margin: 4px 0; white-space: pre-wrap; }
+.resident-plan ul { margin: 3px 0 0; padding-inline-start: 1.4em; }

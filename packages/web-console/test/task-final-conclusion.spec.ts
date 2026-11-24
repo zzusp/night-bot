@@ -1,14 +1,19 @@
 import {test, expect} from '@playwright/test';
 import {FIXTURE_TOKEN} from './preview.mjs';
 
-test('停止结论在记录底部消息框展示，恢复运行及撤权时隐藏', async ({page}) => {
- let mode = 'waiting';
+test('停止结论在记录底部以普通正文展示，恢复运行及撤权时隐藏', async ({page}) => {
+ let mode = 'completed';
  await page.route('**/api/tasks/task-research', async route => {
   if (mode === 'error') return route.fulfill({status:503,json:{error:'REQUEST_FAILED'}});
   if (mode === 'denied') return route.fulfill({status:403,json:{error:'RESOURCE_FORBIDDEN'}});
   const data = await (await route.fetch()).json();
   return route.fulfill({json:{...data,title:'隔离模拟：资料核对任务',state:mode,durations:{execution:{milliseconds:8301000,activeSince:null}},session:{...data.session,status:mode==='running'?'running':'idle'},result:mode==='empty'?null:{summary:'资料核对已完成。\n\n当前等待发布时间，尚未部署。',question:'是否安排下一轮核验？',evidence:['隔离样例已完成资料核对','保留原始来源记录'],limitations:['外部投递仍待核验','尚未验证线上状态']}}});
  });
+ await page.route('**/api/tasks/task-research/session?*',route=>route.fulfill({json:{
+  status:'ready',scope:'current-session-context',revision:'legacy-final-fixture',total:2,
+  items:[{id:'legacy-input',role:'user',kind:'source',text:'请核对资料。'},{id:'legacy-thinking',role:'assistant',kind:'thinking',text:'已公开的核对说明。'}],
+  live:{active:mode==='running',items:[]},
+ }}));
  await page.goto('/#/tasks/task-research');
  await page.getByLabel('访问令牌', {exact:true}).fill(FIXTURE_TOKEN);
  const taskResponse=page.waitForResponse(response=>response.url().endsWith('/api/tasks/task-research')&&response.status()===200);
@@ -20,15 +25,13 @@ test('停止结论在记录底部消息框展示，恢复运行及撤权时隐�
  const geometry = async () => {
   const gap = await bubble.evaluate(el => el.getBoundingClientRect().top - el.previousElementSibling!.getBoundingClientRect().bottom);
   expect(gap).toBeGreaterThanOrEqual(7.5); expect(gap).toBeLessThanOrEqual(8.5);
-  const label = await page.locator('.task-conclusion-label').boundingBox();
-  const thinking = await page.locator('.thinking-message > summary').first().boundingBox();
-  expect(Math.abs(label!.x + 17 - thinking!.x)).toBeLessThanOrEqual(1);
-  const textX=await page.evaluate(()=>{
-    const x=(selector:string)=>{const el=document.querySelector(selector)!;const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let node;while(node=walker.nextNode()){if(node.textContent?.trim()){const range=document.createRange();range.selectNodeContents(node);return range.getBoundingClientRect().x;}}return NaN;};
-    return [x('.task-conclusion-label'),x('.thinking-message > summary')];
+  const reading = await bubble.evaluate(el=>{
+    const start=(selector:string)=>{const range=document.createRange();range.selectNodeContents(el.querySelector(selector)!);return range.getBoundingClientRect().x;};
+    const style=getComputedStyle(el.querySelector('.message-body')!);
+    return {label:start('.task-conclusion-label'),text:start('.message-body p'),background:style.backgroundColor,border:style.borderInlineStartWidth,shadow:style.boxShadow};
   });
-  expect(Math.abs(textX[0]-textX[1])).toBeLessThanOrEqual(1);
-  console.log(JSON.stringify({conclusionGeometry:{width:page.viewportSize()!.width,theme:await page.evaluate(()=>document.documentElement.dataset.theme),gap,textX}}));
+  expect(Math.abs(reading.label-reading.text)).toBeLessThanOrEqual(.5);
+  expect({background:reading.background,border:reading.border,shadow:reading.shadow}).toEqual({background:'rgba(0, 0, 0, 0)',border:'0px',shadow:'none'});
  };
  await geometry();
  await expect(bubble).toContainText('是否安排下一轮核验？');
@@ -52,7 +55,7 @@ test('停止结论在记录底部消息框展示，恢复运行及撤权时隐�
  }
  mode='running'; await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await expect(bubble).toHaveCount(0);
- mode='waiting'; await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ mode='completed'; await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await expect(bubble).toBeVisible();
  mode='error'; await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(bubble).toHaveCount(0);
  mode='empty'; await page.evaluate(()=>window.dispatchEvent(new Event('online')));

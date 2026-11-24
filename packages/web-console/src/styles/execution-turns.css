@@ -21,7 +21,8 @@
   width: fit-content;
   max-width: 100%;
   flex-wrap: wrap;
-  padding: 5px 8px;
+  padding-block: 5px;
+  padding-inline: 0 8px;
   border-radius: 5px;
   color: var(--board-muted);
   font-size: 12px;
@@ -88,7 +89,6 @@
 .execution-transcript .execution-thought .markdown {
   max-height: min(52vh, 440px); overflow: auto; overflow-wrap: anywhere;
 }
-.execution-model-wait { align-self: stretch; text-align: end; }
 .execution-transcript .pi-live-message:not(:has(.thinking-message)) > .message-body::after {
   content: none;
 }
@@ -111,9 +111,3 @@
 .execution-turn-process > summary > .pi-tool-chevron,
 .execution-compaction > summary > .pi-tool-chevron,
 .execution-thought > summary > .pi-tool-chevron { margin-inline-start: 0; }
-
-/* Pi Web leaves ordinary generated prose unboxed. Night Bot's explicit
-   business-result/legacy conclusion remain the existing message cards. */
-.execution-transcript .message-assistant:not(.execution-result, .task-final-conclusion):not(:has(.thinking-message)) > .message-body {
-  padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent;
-}
