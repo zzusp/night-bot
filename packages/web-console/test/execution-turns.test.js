@@ -38,3 +38,14 @@ test('unsupported metrics are absent and same-text replies remain distinct', () 
   assert.equal(rows[1].durationMs,undefined);
   assert.deepEqual(rows.slice(-2).map(item=>item.row.message.id),['r1','r2']);
 });
+
+test('an ordinary stop immediately before an internal Router boundary still closes its own process', () => {
+ const time = seconds => ({createdAt:'2026-11-23T00:00:'+seconds+'.000Z',source:{sessionId:'router'}})
+ const rows=executionTurns([
+   row('source','user','source',time('01')),call('one'),result('one'),
+   row('stopped','assistant','message',{...time('03'),status:'stop'}),
+   row('internal','assistant','router-packet-boundary',time('10')),call('two'),result('two'),
+   row('reply','assistant','router-reply',time('14')),
+ ]);
+ assert.deepEqual(rows.map(item=>item.kind==='turn'?item.durationMs:item.row.message.id),['source',2000,'stopped',4000,'reply']);
+});

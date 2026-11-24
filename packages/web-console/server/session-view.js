@@ -5,6 +5,7 @@ import {setImmediate as yieldToIO} from 'node:timers/promises'
 import {digest, fail} from './security.js'
 import {specializedToolInput, specializedToolOutput} from './specialized-tool-activity.js'
 import {isResourceTool, resourceReadCandidate} from './resource-tool-content.js'
+import {parsePiEditDiff} from '../src/edit-diff.ts'
 
 // Names cover environment variables, JSON fields and HTTP headers. A configured
 // installation token alone is not a registry of credentials used by task tools.
@@ -212,6 +213,30 @@ function committedSubagentActivation(message, entry) {
     && isDeepStrictEqual(receipt.content, content) ? value.subagentId : null
 }
 
+// UI proof for the registered Pi file tool only. The display diff contains
+// neighboring file lines: never republish the native receipt, path headers,
+// patch, other details, or a redacted/partial change under an applied label.
+function committedEditDiff(message, entry, expectedText, secrets) {
+  const original = entry.type === 'message' && entry.message
+  if (!original || original.role !== 'toolResult' || original.toolName !== 'edit'
+    || original.toolCallId !== message.toolCallId || original.isError !== false || message.isError !== false) return null
+  const native = original.details?.nativeResult, value = native?.value, details = value?.details
+  if (native?.isError !== false || value?.text !== expectedText || !Array.isArray(value.images) || value.images.length !== 0
+    || !details || Object.keys(details).length !== 3 || typeof details.patch !== 'string'
+    || details.patch.length > 16000 || !details.patch.includes('\n@@ -')
+    || !Number.isSafeInteger(details.firstChangedLine) || details.firstChangedLine < 1) return null
+  const content = [{type: 'text', text: expectedText}]
+  if (!isDeepStrictEqual(original.content, content) || !isDeepStrictEqual(message.content, content)
+    || !isDeepStrictEqual(native.content, content)) return null
+  const rows = parsePiEditDiff(details.diff)
+  if (!rows || rows.find(row => row.kind === 'added' || row.kind === 'removed')?.line !== details.firstChangedLine) return null
+  // Check the formatted representation and both underlying sides. The line
+  // gutter and interleaved changes must not shield a multiline credential.
+  const unsafe = text => visibleText(text, secrets, {maxLength:Infinity, preservePaths:true}).redacted
+  return unsafe(details.diff) || unsafe(details.patch) || ['added','removed'].some(skip =>
+    unsafe(rows.filter(row => row.kind !== skip).map(row => row.text).join('\n'))) ? null : details.diff
+}
+
 function toolOutput(call, message, identity) {
   if (message.isError === true) {
     const failure = toolFailure(call, message)
@@ -376,13 +401,33 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
   const items = [], sources = new Set(), operatorReplies = new Set(), seenTaskInputs = new Set(), subagentCalls = new Map()
   const inputsById = new Map(taskInputs.map(row => [row.inputId, row]))
   const inputsBySource = new Map(taskInputs.map(row => [row.sourceId, row]))
-  let processed = 0
+  let routerPacketProof, processed = 0
+  function isOriginalRouterPacket(entry, message) {
+    const packetId = entry.details?.packetId
+    if (entry.type !== 'custom_message' || entry.customType !== 'night.business-input' || typeof packetId !== 'string' || !packetId
+      || !isDeepStrictEqual(entry.details, message.details) || !isDeepStrictEqual(entry.content, message.content)) return false
+    if (!routerPacketProof) {
+      const packets = new Map(), admitted = new Map()
+      const unique = (map, id, value) => map.set(id, map.has(id) ? null : value)
+      for (const receipt of snapshot.audit ?? []) {
+        const payload = receipt.payload
+        if (receipt.domain !== 'admission' || receipt.version !== 1 || typeof payload?.id !== 'string') continue
+        if (receipt.kind === 'enqueued' || receipt.kind === 'enqueued-internal') unique(packets, payload.id, payload)
+        if (receipt.kind === 'admitted') unique(admitted, payload.id, payload.entryId)
+      }
+      routerPacketProof = {packets, admitted}
+    }
+    const packet = routerPacketProof.packets.get(packetId)
+    return !!packet && routerPacketProof.admitted.get(packetId) === entry.id
+      && isDeepStrictEqual(packet.source, entry.details.source) && isDeepStrictEqual(packet.content, entry.content)
+  }
   const opaque = (...parts) => digest(JSON.stringify([sessionId, ...parts]))
+  const editReceipts = executionActivity && identity.taskId ? new Map() : undefined
   const nativeEntries=executionActivity&&snapshot.context.projection.entries.some(row=>row.sourceEntry?.type==='compaction')?new Map(snapshot.entries.map((entry,index)=>[entry.id,{entry,index}])):undefined
   const timeline=nativeEntries?new WeakMap():undefined
   const add = (entry, suffix, role, value, extra = {}, message) => {
     const visible = visibleText(value, secrets, {maxLength: Infinity, preservePaths:extra.kind!=='compaction'})
-    if (!visible.text && !extra.toolName && extra.kind!=='compaction') return
+    if (!visible.text && !extra.toolName && !['compaction','router-packet-boundary'].includes(extra.kind)) return
     const row={id: opaque(entry.id, suffix), role, createdAt: stamp(message, entry), ...visible, ...extra,
       source: {sessionId, entryId: opaque(entry.id), ...(extra.callId ? {callId: extra.callId} : {})}}
     items.push(row)
@@ -421,6 +466,12 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           const resultText = businessResultText(block.name, selected.text)
           if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(executionActivity?{entryId:entry.id}:{}), ...(resourceCandidates&&isResourceTool(block.name)?{resourceArgs:block.arguments}:{}), ...(block.name==='resident_operator_reply'&&typeof block.arguments?.eventId==='string'?{operatorEventKey:opaque('operator-reply',block.arguments.eventId)}:{}), ...(resultText ? {resultText} : {})})
           add(entry, 'call-' + index + '-' + blockIndex, 'tool', selected.text, {kind: 'tool-call', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), callId, status: 'result-unrecorded'}, message)
+          const args = block.arguments
+          if (editReceipts && block.name === 'edit' && entry.type === 'message' && entry.message?.role === 'assistant'
+            && isDeepStrictEqual(entry.message.content?.[blockIndex], block)
+            && typeof args?.path === 'string' && args.path.length <= 4096 && Array.isArray(args.edits) && args.edits.length)
+            editReceipts.set(callId, `Successfully replaced ${args.edits.length} block(s) in ${args.path}.`)
+
           if (resultMessages && block.name === 'subagent' && entry.type === 'message' && entry.message?.role === 'assistant'
             && isDeepStrictEqual(entry.message.content?.[blockIndex], block)
             && typeof block.arguments?.description === 'string' && block.arguments.description.trim()
@@ -443,9 +494,12 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           const visible = visibleText(text, [...secrets, childId], {maxLength: Infinity})
           Object.assign(assignment.row, visible, {redacted:true, resourceContent:true})
         }
+        const expectedEdit = editReceipts?.get(call?.id)
+        if (expectedEdit) editReceipts.delete(call.id)
+        const editDiff = expectedEdit && committedEditDiff(message, entry, expectedEdit, secrets)
         const selected = childId ? {toolName: 'subagent', text: '子代理已启动。', redacted: true, resourceContent: true} : toolOutput(call, message, identity)
         const timing = typeof nativeId === 'string' && call?.entryId ? timingFields({durationMs:executionTiming?.tool(call.entryId,nativeId)}) : undefined
-        add(entry, 'result-' + index, 'tool', selected.text, {kind: 'tool-result', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), ...(selected.resourceContent ? {resourceContent: true} : {}), ...(selected.failure ? {failure: selected.failure} : {}), ...(timing?{timing}:{}), callId, isError: message.isError === true, status: message.isError ? 'error' : childId ? 'accepted' : 'completed'}, message)
+        add(entry, 'result-' + index, 'tool', editDiff || selected.text, {kind: 'tool-result', toolName: selected.toolName, ...(editDiff ? {editDiff:true} : {}), ...(selected.redacted ? {redacted: true} : {}), ...(selected.resourceContent ? {resourceContent: true} : {}), ...(selected.failure ? {failure: selected.failure} : {}), ...(timing?{timing}:{}), callId, isError: message.isError === true, status: message.isError ? 'error' : childId ? 'accepted' : 'completed'}, message)
         if (resourceCandidates && call?.resourceArgs) {
           let candidate
           try {candidate = resourceReadCandidate(call.name, call.resourceArgs, message, entry)} catch { /* Invalid receipt proves no body. */ }
@@ -499,6 +553,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           let input
           try {if (!content.startsWith(prefix)) throw new Error(); input = JSON.parse(content.slice(prefix.length))} catch {fail('SESSION_SOURCE_INVALID', 503)}
           if (input.conversationId !== conversationId || input.generation !== generation || !Array.isArray(input.events)) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
+          const firstRow = items.length
           input.events.forEach((event, n) => {
             if(event.kind==='operator.message'){if(event.operator?.destination!=='web')fail('SESSION_SOURCE_IDENTITY_INVALID',503);sourceText(entry,'router-operator-'+index+'-'+n,{sourceId:event.id,version:1,text:event.operator.text});return}
             if (!event.source) return
@@ -506,6 +561,11 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
             if ((row.conversationId ?? row.groupId) !== conversationId) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
             sourceText(entry, 'router-source-' + index + '-' + n, row)
           })
+          // An internal or deduplicated packet still starts its own *admitted*
+          // Router process. Carry only that boundary; never publish the packet.
+          if (executionActivity && items.length === firstRow && stamp(undefined, entry) && isOriginalRouterPacket(entry, message)) {
+            add(entry, 'router-packet-boundary', 'assistant', '', {kind:'router-packet-boundary'})
+          }
         }
       }
     }
@@ -663,8 +723,13 @@ async function projection({base, identity, persistence, validIdentity, notStarte
   const resources = []
   if (granted?.size || items.some(row => row.resourceContent)) for (const row of items) {
     const body = granted?.get(row.id)
-    if (typeof body === 'string') Object.assign(row, visibleText(body, secrets, {maxLength: Infinity}), {resourceContent: true})
-    if (row.resourceContent) resources.push([row.id, digest(row.text), row.redacted])
+    if (body) {
+      Object.assign(row, visibleText(body.text, secrets, {maxLength: Infinity}), {resourceContent: true})
+      // Do not recover names from call parameters or Markdown. This canonical
+      // name is known only after the same authorization as the exact body.
+      if (row.toolName === 'skill' && typeof body.skillName === 'string' && !visibleText(body.skillName, secrets).redacted) row.skillName = body.skillName
+    }
+    if (row.resourceContent) resources.push([row.id, digest(row.text), row.redacted, ...(row.skillName ? [row.skillName] : [])])
   }
   // A continuation or a stream prefix cannot reuse prior authorization when a
   // resource changes independently of the physical session journal.
@@ -743,7 +808,7 @@ function messagePage(value, {messageId, offset = 0, limit = 16000, revision}) {
     || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 16000) fail('PAGE_INVALID')
   if (value.status !== 'ready') fail(value.reason, 503)
   const row = value.items.find(item => item.id === messageId)
-  if (!row || row.compaction?.summaryHidden) fail('SESSION_MESSAGE_NOT_FOUND', 404)
+  if (!row || row.compaction?.summaryHidden || row.kind === 'router-packet-boundary') fail('SESSION_MESSAGE_NOT_FOUND', 404)
   if (offset > row.text.length) fail('PAGE_INVALID')
   const end = Math.min(row.text.length, offset + limit)
   return {messageId, text: row.text.slice(offset, end), offset, nextOffset: end < row.text.length ? end : null, total: row.text.length, revision: value.revision, source: row.source, redacted: row.redacted, ...(row.resourceContent ? {resourceContent: true} : {})}
@@ -766,7 +831,7 @@ async function routerProjection({conversationId, readRouter, readRotations, ...o
     validIdentity: snapshot => snapshot.header.runtimeOwner === 'conversation-router' && snapshot.header.conversationId === conversationId && snapshot.header.generation === router.generation})
   // Idle rotation starts a fresh context containing only private handoff data.
   // Select only a published, same-conversation predecessor; never expose handoff.
-  if (!options.liveProof && value.status === 'ready' && !value.items.length && readRotations) {
+  if (!options.liveProof && value.status === 'ready' && !value.items.some(row => row.kind !== 'router-packet-boundary') && readRotations) {
     const rotations = await readRotations()
     const previous = rotations.filter(row => row.state === 'published' && row.conversationId === conversationId
       && Number.isSafeInteger(row.oldGeneration) && row.oldGeneration > 0 && row.oldGeneration < router.generation

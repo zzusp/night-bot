@@ -89,6 +89,7 @@ COPY skills ./skills
 COPY packages/dingtalk-core ./packages/dingtalk-core
 COPY packages/web-console/night-channel.json packages/web-console/package.json ./packages/web-console/
 COPY packages/web-console/server ./packages/web-console/server
+COPY packages/web-console/src/edit-diff.ts ./packages/web-console/src/edit-diff.ts
 COPY packages/web-console/licenses ./packages/web-console/licenses
 COPY --from=build /opt/night-bot/packages/web-console/dist ./packages/web-console/dist
 COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
