@@ -149,6 +149,7 @@ test('native model phases show without body; short deltas update one bubble and 
  thinking=true;body='检查已公开的步骤';
  await expect(page.locator('.thinking-message')).toHaveAttribute('open');
  const thought = page.locator('.thinking-message.execution-thought');
+ await expect(thought.locator('summary .execution-thought-label')).toHaveText('思考中');
  await expect(page.locator('.pi-live-phase-label')).toHaveCount(0);
  await expect(thought.locator('.execution-timing-meta .pi-live-elapsed')).toContainText('思考');
  await expect(thought.getByText('检查已公开的步骤', {exact:true}).last()).toBeVisible();

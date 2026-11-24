@@ -141,6 +141,7 @@ for (const [name, view, width] of [['任务', task, 1440], ['路由', router, 39
     await expect(history.first().locator(':scope > summary')).toContainText(/2 次工具调用.*用时 3.2s/)
     await expect(history.first().getByText('skill', {exact: true})).toBeVisible()
     const thought = history.first().locator('.execution-thought')
+    await expect(thought.locator('summary .execution-thought-label')).toHaveText('思考')
     const thoughtTiming = thought.locator('summary .execution-timing-meta')
     await expect(thoughtTiming.locator('span')).toHaveText(['思考 605ms'])
     await expect(record).not.toContainText(/首段|12[.]1s|8[.]8s/)
