@@ -57,3 +57,43 @@ test('Router search sits immediately before the activity button at wide and narr
  await expect(trigger).toHaveCount(0);
  await expect(rail).toBeVisible();
 });
+
+test('Task search shares the right toolbar before panel, without overlapping progress or duplicating the control',async({page},info)=>{
+ await page.goto('/#/tasks/task-research');
+ await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+ await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+ const toolbar=page.locator('.task-panel-tools');
+ const trigger=toolbar.getByRole('button',{name:'搜索执行记录',exact:true});
+ const rail=toolbar.getByRole('button',{name:/任务面板/});
+ const progress=page.getByRole('region',{name:'任务待办'}).locator('summary');
+ for (const width of [1440,390]) {
+   await page.setViewportSize({width,height:880});
+   await expect(trigger).toBeVisible();
+   await expect(progress).toBeVisible();
+   await expect(page.getByRole('button',{name:'搜索执行记录',exact:true})).toHaveCount(1);
+   await expect(page.locator('.execution-search-owner').getByRole('button',{name:'搜索执行记录',exact:true})).toHaveCount(0);
+   const [search,toggle,todo]=await Promise.all([trigger.boundingBox(),rail.boundingBox(),progress.boundingBox()]);
+   expect(search!.x+search!.width).toBeLessThanOrEqual(toggle!.x);
+   expect(Math.abs((search!.y+search!.height/2)-(toggle!.y+toggle!.height/2))).toBeLessThan(1);
+   expect(todo!.x+todo!.width).toBeLessThanOrEqual(search!.x);
+   const canvas=(await page.getByRole('region',{name:'任务执行记录',exact:true}).boundingBox())!;
+   expect(canvas.x+canvas.width-toggle!.x-toggle!.width).toBeLessThanOrEqual(16.5);
+   const x=Math.max(0,Math.floor(todo!.x)-6);
+   await trigger.evaluate(el=>(el as HTMLElement).blur()); await page.mouse.move(0,0);
+   await page.screenshot({path:info.outputPath(`task-search-toolbar-${width}.png`),clip:{
+     x,y:Math.max(0,Math.floor(search!.y)-5),width:Math.min(width-x,Math.ceil(canvas.x+canvas.width-x)),height:44,
+   }});
+   await trigger.focus();await page.keyboard.press('Enter');
+   const panel=page.getByRole('region',{name:'搜索执行记录'});
+   const input=panel.getByRole('searchbox');
+   await expect(input).toBeFocused();
+   const formBox=(await panel.boundingBox())!;
+   expect(formBox.y).toBeGreaterThanOrEqual(toggle!.y+toggle!.height-.5);
+   await input.press('Escape');
+   await expect(trigger).toBeFocused();
+   await expect(trigger).toHaveAttribute('aria-expanded','false');
+ }
+ await rail.click();
+ await expect(rail).toHaveAttribute('aria-expanded','false');
+ await expect(trigger).toBeVisible();
+});
