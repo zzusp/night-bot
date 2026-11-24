@@ -70,6 +70,79 @@ test('journal requires associated owner and pairs only ancestor calls; withholds
  snapshot.audit=[];assert.equal((await collect('journal',undefined,{alias:task.session})).reason,'native-journal-owner-unproven')
  await assert.rejects(collect('journal',undefined,{alias:'private-session'}),/ALIAS_INVALID/)
 })
+test('focused journal pages find late skill evidence without publishing private fields',async()=>{
+ const snapshot={header:{id:'private-session'},audit:[{domain:'task',kind:'identity',version:1,payload:{taskId:'private-task',sessionId:'private-session'}}],entries:[]}
+ const name='PRIVATE_SKILL',path='C:/PRIVATE_DIRECTORY/SKILL.md'
+ const append=(tool,args={},isError=false,details)=>{
+  const i=snapshot.entries.length,id='private-result-'+i,callId='private-call-'+i,parentId='private-assistant-'+i
+  snapshot.entries.push({id:parentId,parentId:snapshot.entries.at(-1)?.id??null,type:'message',timestamp:at(i),message:{role:'assistant',content:[{type:'toolCall',id:callId,name:tool,arguments:args}]}},
+   {id,parentId,type:'message',timestamp:at(i+1),message:{role:'toolResult',toolName:tool,toolCallId:callId,isError,details,content:[{type:'text',text:'PRIVATE_OUTPUT ETIMEDOUT HTTP 500'}]}})
+  return {resultEntryId:id,callId}
+ }
+ const receipt=(result,kind,fields={})=>snapshot.audit.push({domain:'skill-observation',kind:'read',version:1,payload:{...result,record:{kind,key:'PRIVATE_KEY',name,version:'PRIVATE_VERSION',...fields}}})
+ for(let i=0;i<205;i++)append('read',{path:'C:/PRIVATE_ORDINARY/file.txt'})
+ append('bash',{},true)
+ append('read',{path})
+ receipt(append('skill',{name}),'skill')
+ receipt(append('read_window',{path:'C:/PRIVATE_DIRECTORY/reference.md'}),'reference',{path:'C:/PRIVATE_DIRECTORY/reference.md'})
+ const bad=append('skill',{name});receipt({...bad,callId:'private-unrelated'},'skill')
+ const ambiguous=append('skill',{name});receipt(ambiguous,'skill');receipt(ambiguous,'skill')
+ const failure=append('skill',{name},true,{nativeResult:{isError:true,error:{message:`skill "${name}" is unknown or no longer available`}}});receipt(failure,'skill')
+ snapshot.entries.push({id:'private-notice',parentId:failure.resultEntryId,type:'custom_message',timestamp:at(500),customType:'night.skill-version-notice',content:'PRIVATE_NOTICE',details:{kind:'skill-version-change'}})
+ const {collect}=fixture({persistence:{readNative:async()=>snapshot}})
+ const found=await collect('discover'),message=await collect('message',undefined,{alias:found.candidates[0].alias}),task=await collect('task',undefined,{alias:message.tasks[0]})
+ const args={alias:task.session}
+ const beforeCutoff=await collect('journal',undefined,{...args,offset:180});assert.equal(beforeCutoff.nextOffset,185)
+ assert.equal((await collect('journal',undefined,{...args,offset:185})).items.length,5)
+ const normal=await collect('journal',undefined,args);assert.deepEqual(normal.items[0].diagnostic.errorCodes,[])
+ const errors=await collect('journal',undefined,{...args,view:'errors'});assert.deepEqual(errors.items.map(row=>row.tool),['bash','skill'])
+ const skills=await collect('journal',undefined,{...args,view:'skills'});assert.equal(skills.total,7);assert.equal(skills.nextOffset,5)
+ assert.deepEqual(skills.items.map(row=>row.skillEvent),['skill-document-read','skill-read-receipt','reference-read-receipt','skill-call','skill-call'])
+ const tail=await collect('journal',undefined,{...args,view:'skills',offset:skills.nextOffset});assert.equal(tail.nextOffset,null)
+ assert.equal(tail.items[0].isError,true);assert.equal(tail.items[0].skillFailure,'unknown-or-unavailable');assert.equal(tail.items[1].skillEvent,'version-notice')
+ assert.doesNotMatch(JSON.stringify([skills,tail,errors]),/PRIVATE_|private-(?:result|call|session)|SKILL\.md/)
+ await assert.rejects(collect('journal',undefined,{...args,view:'raw'}),/SCOPE/)
+})
+
+test('skill first page relates late repeated successes, changes, failures and notices without mixing branches',async()=>{
+ const sessionId='private-session',name='PRIVATE_SKILL',snapshot={header:{id:sessionId},audit:[{domain:'task',kind:'identity',version:1,payload:{taskId:'private-task',sessionId}}],entries:[]}
+ const append=(entry,parentId=snapshot.entries.at(-1)?.id??null)=>{
+  const index=snapshot.entries.length,row={id:'private-entry-'+index,parentId,timestamp:at(index),...entry}
+  snapshot.entries.push(row);return row
+ }
+ const call=(tool,args,isError=false,value,parentId)=>{
+  const id='private-call-'+snapshot.entries.length
+  append({type:'message',message:{role:'assistant',content:[{type:'toolCall',id,name:tool,arguments:args}]}},parentId)
+  return append({type:'message',message:{role:'toolResult',toolName:tool,toolCallId:id,isError,details:{nativeResult:{isError,value}},content:[]}})
+ }
+ const skill=(content,base='PRIVATE_PATH',parentId)=>call('skill',{name},false,content===null?undefined:{name,provider:'PRIVATE_PROVIDER',content,resourceBase:{kind:'directory',path:base}},parentId)
+ const notice=()=>append({type:'custom_message',customType:'night.skill-version-notice',details:{kind:'skill-version-change'},content:'PRIVATE_NOTICE'})
+ skill('PRIVATE_EARLY')
+ for(let i=0;i<205;i++)call('read',{path:'PRIVATE_DIRECTORY/file.txt'})
+ const precedingNotice=notice(),first=skill('PRIVATE_BODY'),second=skill('PRIVATE_BODY')
+ notice();skill('PRIVATE_OTHER');notice()
+ const resumed=skill('PRIVATE_BODY','PRIVATE_PATH',second.id)
+ const refreshed=notice(),changed=skill('PRIVATE_BODY','PRIVATE_CHANGED_PATH')
+ call('skill',{name},true)
+ const retried=skill('PRIVATE_BODY','PRIVATE_CHANGED_PATH')
+ skill(null)
+ append({type:'custom',customType:'night.commit'})
+ const {collect}=fixture({persistence:{readNative:async()=>snapshot}}),found=await collect('discover'),msg=await collect('message',undefined,{alias:found.candidates[0].alias}),task=await collect('task',undefined,{alias:msg.tasks[0]})
+ const args={alias:task.session,view:'skills'},evidence=await collect('journal',undefined,args),summary=evidence.skillSummary
+ assert.equal(summary.notices,2);assert.equal(summary.skillCount,1)
+ const [row]=summary.skills
+ assert.equal(row.skill,evidence.items[0].skill)
+ assert.deepEqual({success:row.successful,failed:row.failed,same:row.samePayload,changed:row.changedPayload,unknown:row.unknownComparisons,withoutNotice:row.sameWithoutNotice},{success:7,failed:1,same:3,changed:2,unknown:1,withoutNotice:3})
+ assert.deepEqual(row.latestChanged,{previousResultAt:resumed.timestamp,resultAt:changed.timestamp,payload:'changed',noticesBetweenResults:1,failedCallsBetweenResults:0,precedingNoticeAt:refreshed.timestamp})
+ assert.deepEqual(row.latestSameWithoutNotice,{previousResultAt:changed.timestamp,resultAt:retried.timestamp,payload:'same',noticesBetweenResults:0,failedCallsBetweenResults:1,precedingNoticeAt:refreshed.timestamp})
+ const repeat=evidence.items.find(item=>item.endedAt===second.timestamp)
+ assert.deepEqual(repeat.comparison,{previousResultAt:first.timestamp,resultAt:second.timestamp,payload:'same',noticesBetweenResults:0,failedCallsBetweenResults:0,precedingNoticeAt:precedingNotice.timestamp})
+ assert.equal(evidence.items.find(item=>item.endedAt===second.timestamp).skill,row.skill)
+ const tail=await collect('journal',undefined,{...args,offset:evidence.nextOffset})
+ assert.equal(tail.skillSummary,undefined);assert.ok(tail.items.every(item=>!item.skill||item.skill===row.skill))
+ assert.doesNotMatch(JSON.stringify([evidence,tail]),/PRIVATE_|private-(?:entry|call|session)|[a-f0-9]{64}/)
+})
+
 test('narrowed discoveries reuse cached pages and can continue beyond three scans',async()=>{
  const {collect,tasks}=fixture();let reads=0;const original=tasks.observerGroupPage;tasks.observerGroupPage=async(...args)=>{reads++;return original(...args)}
  await collect('discover');assert.equal((await collect('discover',undefined,{query:'原消息首答'})).candidates.length,1)

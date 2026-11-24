@@ -10,7 +10,7 @@ import {investigationBudget} from '../src/feedback/investigation-budget.js'
 const input={title:'页面异常',description:'重现步骤',model:'test/model',revision:'default'}
 function fixture(overrides={}){
  let collected=0,sent=0,body
- const service=createFeedbackService({model:()=>({provider:'test',model:'model'}),resolveModel:async()=>({}),getToken:async()=>'secret',getSecrets:async()=>['PRIVATE_SECRET'],diagnose:async()=>{collected++;return '分析 PRIVATE_SECRET'},fetchImpl:async(_url,options)=>{sent++;body=JSON.parse(options.body);return {ok:true,json:async()=>({html_url:'https://github.com/zzusp/night-bot/issues/123'})}},...overrides})
+ const service=createFeedbackService({model:()=>({provider:'test',model:'model'}),resolveModel:async()=>({}),getToken:async()=>'secret',getSecrets:async()=>['PRIVATE_SECRET'],diagnose:async()=>{collected++;return {body:'分析 PRIVATE_SECRET',evidence:'LOCAL_ONLY PRIVATE_SECRET'}},fetchImpl:async(_url,options)=>{sent++;body=JSON.parse(options.body);return {ok:true,json:async()=>({html_url:'https://github.com/zzusp/night-bot/issues/123'})}},...overrides})
  return {service,get collected(){return collected},get sent(){return sent},get body(){return body}}
 }
 async function ready(f){const r=f.service.collect('owner',input);for(let i=0;i<50;i++){const view=f.service.read('owner',r.id);if(view.state!=='collecting')return view;await new Promise(r=>setTimeout(r,2))}assert.fail('not ready')}
@@ -44,7 +44,7 @@ test('cancellation aborts collection and removes previews; expiry and capacity a
  let now=0;const g=fixture({now:()=>now}),r2=await ready(g);now=31*60*1000;assert.throws(()=>g.service.read('owner',r2.id),{code:'FEEDBACK_NOT_FOUND'})
 })
 test('fresh secret redaction invalidates an approved preview before publishing',async()=>{
- let secrets=[];const f=fixture({getSecrets:async()=>secrets,diagnose:async()=>'future-secret'}),r=await ready(f);secrets=['future-secret']
+ let secrets=[];const f=fixture({getSecrets:async()=>secrets,diagnose:async()=>({body:'future-secret'})}),r=await ready(f);secrets=['future-secret']
  await assert.rejects(f.service.submit('owner',r.id,{confirm:true,title:r.title,body:r.body}),{code:'FEEDBACK_PREVIEW_CHANGED'})
  assert.equal(f.sent,0);assert.ok(!f.service.read('owner',r.id).body.includes('future-secret'))
 })
@@ -122,7 +122,7 @@ test('registered feedback secrets are redacted before the output length limit cu
 })
 test('scoped evidence factory starts only after explicit collection and isolates report capabilities',async()=>{
  let factories=0,diagnoses=0
- const f=fixture({createEvidence:({title,description,secrets})=>{assert.equal(title,input.title);factories++;assert.equal(description,input.description);assert.ok(secrets.includes('PRIVATE_SECRET'));const local=factories;return async()=>({local})},diagnose:async({evidence})=>{diagnoses++;return JSON.stringify(await evidence('discover'))}})
+ const f=fixture({createEvidence:({title,description,secrets})=>{assert.equal(title,input.title);factories++;assert.equal(description,input.description);assert.ok(secrets.includes('PRIVATE_SECRET'));const local=factories;return async()=>({local})},diagnose:async({evidence})=>{diagnoses++;return {body:JSON.stringify(await evidence('discover'))}}})
  f.service.metadata();f.service.draft('owner',{title:'manual',description:'manual'})
  assert.equal(factories,0)
  assert.equal(factories,0)
@@ -133,7 +133,7 @@ test('scoped evidence factory starts only after explicit collection and isolates
 })
 test('final preview reserves the full user description and explicitly marks oversized model output',async()=>{
  let budget
- const f=fixture({diagnose:async({reportCharacters})=>{budget=reportCharacters;return '```text\n'+'x'.repeat(46000)+'\n```\nEND_OF_DIAGNOSIS'}})
+ const f=fixture({diagnose:async({reportCharacters})=>{budget=reportCharacters;return {body:'```text\n'+'x'.repeat(46000)+'\n```\nEND_OF_DIAGNOSIS'}}})
  const description='说明'.repeat(3000),draft=f.service.collect('owner',{...input,description})
  let result
  for(let i=0;i<50;i++){result=f.service.read('owner',draft.id);if(result.state!=='collecting')break;await new Promise(resolve=>setTimeout(resolve,2))}

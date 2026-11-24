@@ -1032,8 +1032,8 @@ test('evolution HTTP defaults to ten records and serves disjoint current pages f
 })
 
 test('feedback HTTP starts explicit diagnosis and preserves publish consent, exact preview, owner and CSRF boundaries',async t=>{
- let collected=0,sent=0
- const feedback=createFeedbackService({model:()=>({provider:'test',model:'model'}),resolveModel:async()=>({}),getToken:async()=>'fake',diagnose:async()=>{collected++;return '诊断摘要'},fetchImpl:async()=>{sent++;return{ok:true,json:async()=>({html_url:'https://github.com/zzusp/night-bot/issues/123'})}}})
+ let collected=0,sent=0,payload
+ const feedback=createFeedbackService({model:()=>({provider:'test',model:'model'}),resolveModel:async()=>({}),getToken:async()=>'fake',diagnose:async()=>{collected++;return {body:'诊断摘要',evidence:'仅本地展开的合成证据'}},fetchImpl:async(_url,options)=>{payload=JSON.parse(options.body);sent++;return{ok:true,json:async()=>({html_url:'https://github.com/zzusp/night-bot/issues/123'})}}})
  t.after(()=>feedback.close());const f=await fixture(t,{feedback})
  const input={title:'异常',description:'操作步骤',model:'test/model',revision:'default'}
  assert.equal((await f.fetchApi('/api/feedback')).status,401);await f.login()
@@ -1044,10 +1044,17 @@ test('feedback HTTP starts explicit diagnosis and preserves publish consent, exa
  const path='/api/feedback/'+created.body.id;let r
  for(let i=0;i<20;i++){r=await f.fetchApi(path);if(r.body.state==='ready')break;await new Promise(r=>setTimeout(r,2))}
  assert.equal(r.body.state,'ready');assert.equal(collected,1)
+ assert.equal(r.body.evidence,'仅本地展开的合成证据');assert.doesNotMatch(r.body.body,/合成证据/)
+ assert.equal(r.body.body,`## AI 诊断
+诊断摘要
+
+## 问题描述
+操作步骤`)
  assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{title:r.body.title,body:r.body.body}})).status,403)
  const edited=await f.fetchApi(path,{method:'PATCH',body:{title:'修改标题',body:'用户调整'}});assert.equal(edited.status,200)
  assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{confirm:true,title:r.body.title,body:r.body.body}})).status,409)
  assert.equal((await f.fetchApi(path+'/submit',{method:'POST',body:{confirm:true,title:edited.body.title,body:edited.body.body}})).status,200);assert.equal(sent,1)
+ assert.equal(edited.body.evidence,r.body.evidence);assert.deepEqual(payload,{title:'修改标题',body:'用户调整'})
  await f.login();assert.equal((await f.fetchApi(path)).status,404)
 })
 test('feedback HTTP manual path needs no model or local data and still requires publish consent',async t=>{

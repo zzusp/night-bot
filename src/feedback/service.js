@@ -27,7 +27,7 @@ export function createFeedbackService({model,modelConsent=()=>({revision:'defaul
  const metadata=()=>{try{return {target,model:model().provider+'/'+model().model,...modelConsent()}}catch{return {target,model:null,revision:null,endpoint:null}}}
  const clean=()=>{for(const[id,r]of reports)if(r.expires<=now()){r.controller.abort();clearTimeout(r.timer);reports.delete(id)}}
  const get=(owner,id)=>{if(closed)fail('FEEDBACK_CLOSED',503);clean();const r=reports.get(id);if(!r||r.owner!==owner)fail('FEEDBACK_NOT_FOUND',404);return r}
- const view=r=>({id:r.id,state:r.state,title:r.title,body:r.body??'',target,error:r.error??null,...r.url?{url:r.url}:{}})
+ const view=r=>({id:r.id,state:r.state,title:r.title,body:r.body??'',target,error:r.error??null,...r.evidence?{evidence:r.evidence}:{},...r.url?{url:r.url}:{}})
  return {
   metadata,
   draft(owner,input,{secrets:additionalSecrets=[]}={}){
@@ -57,11 +57,13 @@ export function createFeedbackService({model,modelConsent=()=>({revision:'defaul
     const resolved=await resolveModel({...selection,signal});signal.throwIfAborted();if(input.revision!==modelConsent().revision)fail('FEEDBACK_MODEL_CHANGED',409)
     stage='prepare-evidence'
     const scopedEvidence=createEvidence?createEvidence({title:input.title,description:input.description,secrets}):evidence
-    const prefix=`## 问题描述\n${description}\n\n## AI 诊断\n`,reportCharacters=Math.min(investigationBudget.reportCharacters,48000-prefix.length)
+    const heading='## AI 诊断\n',original=`\n\n## 问题描述\n${description}`,reportCharacters=Math.min(investigationBudget.reportCharacters,48000-heading.length-original.length)
     stage='diagnose'
     const result=await diagnose({resolved,paths,title:r.title,description,evidence:scopedEvidence,signal,secrets,reportCharacters});signal.throwIfAborted()
     stage='format-preview'
-    r.body=prefix+limitDiagnosticText(redactFeedback(result,secrets,{maxLength:Infinity}),reportCharacters,'诊断草稿');r.state='ready'
+    r.body=heading+limitDiagnosticText(redactFeedback(result.body,secrets,{maxLength:Infinity}),reportCharacters,'诊断草稿')+original
+    if(result.evidence)r.evidence=redactFeedback(result.evidence,secrets,{maxLength:Infinity})
+    r.state='ready'
    }catch(error){
     if(r.state==='cancelled')return
     r.state='failed';r.error=collectionFailureCode(error,deadline)

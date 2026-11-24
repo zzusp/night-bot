@@ -10,6 +10,8 @@
 @media (max-width: 520px) { .feedback-page dl { grid-template-columns: 1fr; gap: 4px; } .feedback-page dd { margin-bottom: 8px; } }
 .feedback-preview-fields { display: grid; gap: 10px; margin-top: 16px; min-width: 0; }
 .feedback-preview-fields textarea { font: 12px/1.7 var(--board-mono); }
+.feedback-evidence summary { cursor: pointer; line-height: 1.6; padding-block: 4px; }
+.feedback-evidence summary:focus-visible { outline: 2px solid var(--board-primary); outline-offset: 2px; }
 
 .feedback-mode { border: 0; padding: 0; margin: 8px 0 0; min-width: 0; }
 .feedback-mode legend { font-weight: 500; }

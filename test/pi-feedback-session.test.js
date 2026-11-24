@@ -23,7 +23,7 @@ test('real official Pi diagnostic session has only scoped tool, no home context 
   queueMicrotask(()=>{stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream
  }})
  const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model,requestOptions:{maxTokens:100,maxRetries:0}},paths:{installRoot:root,runtime:join(root,'runtime')},title:'故障',description:'secretvalue',secrets:['secretvalue'],signal:AbortSignal.timeout(10000),evidence:async section=>{evidenceCalls++;assert.equal(section,'runtime');return{node:'v24'}}})
- assert.match(result,/分析完成/);assert.match(result,/已采集证据/);assert.match(result,/v24/);assert.equal(evidenceCalls,1);assert.equal(calls,2)
+ assert.match(result.body,/分析完成/);assert.match(result.evidence,/已采集证据/);assert.match(result.evidence,/v24/);assert.equal(evidenceCalls,1);assert.equal(calls,2)
  assert.ok(!JSON.stringify(requests).includes('secretvalue'))
  assert.ok(JSON.stringify(requests).includes('diagnosis_evidence'));assert.ok(!JSON.stringify(requests).includes('Execute a bash command'))
  assert.ok(!JSON.stringify(requests).includes(root),'private working path not sent to model')
@@ -39,7 +39,7 @@ test('investigation budget stops repeated tools and preserves a partial editable
   queueMicrotask(()=>{stream.push({type:'done',reason:'toolUse',message});stream.end(message)});return stream
  }})
  const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model},paths:{installRoot:root,runtime:join(root,'runtime')},title:'故障',description:'排查',signal:AbortSignal.timeout(10000),evidence:async()=>{reads++;return{node:'v24'}}})
- assert.equal(reads,investigationBudget.calls);assert.ok(calls<=investigationBudget.calls+3);assert.match(result,/调查未完成/);assert.ok(result.length<48000)
+ assert.equal(reads,investigationBudget.calls);assert.ok(calls<=investigationBudget.calls+3);assert.match(result.body,/调查未完成/);assert.ok((result.body.length+result.evidence.length)<48000)
 })
 
 test('real Pi can recover from an invalid task alias and inspect a schedule without message matches',async t=>{
@@ -60,7 +60,7 @@ test('real Pi can recover from an invalid task alias and inspect a schedule with
   queueMicrotask(()=>{stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream
  }})
  const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model},paths:{installRoot:root,runtime:join(root,'runtime')},title:'核对测试事项',description:'预期循环，停止条件待核实',signal:AbortSignal.timeout(10000),evidence:collect})
- assert.equal(calls,4);assert.doesNotMatch(result,/FEEDBACK_ALIAS_INVALID/);assert.match(result,/每小时循环/);assert.match(result,/"everySeconds":3600/)
+ assert.equal(calls,4);assert.doesNotMatch(result.evidence,/FEEDBACK_ALIAS_INVALID/);assert.match(result.body,/每小时循环/);assert.match(result.evidence,/"everySeconds":3600/)
  assert.doesNotMatch(JSON.stringify(requests),/PRIVATE_SCHEDULE|PRIVATE_SESSION|PRIVATE_PROMPT/)
 })
 
@@ -68,10 +68,10 @@ test('diagnostic context uses real window with sufficient output reserve',()=>{
  for(const contextWindow of [1000,4096,8192,32000,128000,500000]){const model={contextWindow,maxTokens:32768},settings=diagnosticCompactionSettings(model);assert.equal(settings.enabled,true);assert.ok(settings.reserveTokens>=diagnosticOutputTokens(model));assert.ok(settings.keepRecentTokens< contextWindow-settings.reserveTokens)}
  assert.throws(()=>diagnosticCompactionSettings({contextWindow:0}),/CONTEXT_WINDOW_INVALID/)
 })
-test('published report contains only cited evidence and stays within preview size',()=>{
+test('cited evidence is retained whole in the preview, outside the Issue body',()=>{
  const rows=Array.from({length:80},(_,i)=>({ref:'E'+(i+1),section:'runtime',text:'value '+i+' '+ 'x'.repeat(5000)}))
  const output=formatDiagnosticReport('结论引用 E2。',rows)
- assert.match(output,/### E2 ·/);assert.doesNotMatch(output,/### E1 ·/);assert.ok(output.includes('x'.repeat(5000)));assert.ok(output.length<46000)
+ assert.equal(output.body,'结论引用 E2。');assert.match(output.evidence,/### E2 ·/);assert.doesNotMatch(output.evidence,/### E1 ·/);assert.ok(output.evidence.includes('x'.repeat(5000)));assert.ok(output.evidence.length<46000)
 })
 
 test('real Pi investigation can exceed former evidence cap and reread retained evidence',async t=>{
@@ -86,7 +86,7 @@ test('real Pi investigation can exceed former evidence cap and reread retained e
   queueMicrotask(()=>{stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream
  }})
  const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model},paths:{installRoot:root,runtime:join(root,'runtime')},title:'故障',description:'排查',signal:AbortSignal.timeout(10000),evidence:async()=>({page:'page-'+(++reads),data:'x'.repeat(9000)})})
- assert.equal(reads,5);assert.equal(calls,7);assert.match(result,/核对完成/);assert.doesNotMatch(result,/调查未完成/);assert.match(result,/### E5/)
+ assert.equal(reads,5);assert.equal(calls,7);assert.match(result.body,/核对完成/);assert.doesNotMatch(result.body,/调查未完成/);assert.match(result.evidence,/### E5/)
 })
 
 test('native Pi compaction runs using model window and preserves final diagnosis',async t=>{
@@ -104,7 +104,7 @@ test('native Pi compaction runs using model window and preserves final diagnosis
   queueMicrotask(()=>{stream.push({type:'done',reason:message.stopReason,message});stream.end(message)});return stream
  }})
  const result=await diagnoseWithPi({resolved:{modelRuntime:runtime,model},paths:{installRoot:root,runtime:join(root,'runtime')},title:'故障',description:'排查',signal:AbortSignal.timeout(10000),evidence:async()=>({page:'page-'+(++reads),data:'x'.repeat(9000)})})
- assert.ok(compactedDuringInvestigation,'native Pi compacts before the next tool investigation response');assert.ok(compactions>0,'native Pi compaction called model');assert.equal(reads,5);assert.equal(calls,7);assert.match(result,/核对完成/);assert.doesNotMatch(result,/调查未完成/);assert.match(result,/### E5/)
+ assert.ok(compactedDuringInvestigation,'native Pi compacts before the next tool investigation response');assert.ok(compactions>0,'native Pi compaction called model');assert.equal(reads,5);assert.equal(calls,7);assert.match(result.body,/核对完成/);assert.doesNotMatch(result.body,/调查未完成/);assert.match(result.evidence,/### E5/)
 })
 
 async function scriptedDiagnosis(t,reply,{contextWindow=4096}={}){
@@ -122,18 +122,18 @@ async function scriptedDiagnosis(t,reply,{contextWindow=4096}={}){
 const runtimeCall=step=>({stopReason:'toolUse',content:[{type:'toolCall',id:'fixture-'+step,name:'diagnosis_evidence',arguments:{section:'runtime'}}]})
 test('a 4096-window diagnostic runs and an output-token terminal is explicitly partial',async t=>{
  const {result,reads}=await scriptedDiagnosis(t,step=>step===0?runtimeCall(step):{stopReason:'length',content:[{type:'text',text:'部分分析，证据 E1。'}]})
- assert.equal(reads,1);assert.match(result,/模型输出达到 token 上限/);assert.match(result,/RETAINED_EVIDENCE/)
+ assert.equal(reads,1);assert.match(result.body,/模型输出达到 token 上限/);assert.match(result.evidence,/RETAINED_EVIDENCE/)
 })
 test('summary failure after the investigation budget retains collected evidence',async t=>{
  const {result,reads}=await scriptedDiagnosis(t,step=>step<=investigationBudget.calls?runtimeCall(step):{stopReason:'error',errorMessage:'fixture-network-failure',content:[]},{contextWindow:128000})
- assert.equal(reads,investigationBudget.calls);assert.match(result,/调查未完成/);assert.match(result,/未能生成部分诊断/);assert.match(result,/RETAINED_EVIDENCE/);assert.match(result,/### E1 ·/);assert.ok(result.length<=investigationBudget.reportCharacters)
+ assert.equal(reads,investigationBudget.calls);assert.match(result.body,/调查未完成/);assert.match(result.body,/未能生成部分诊断/);assert.match(result.evidence,/RETAINED_EVIDENCE/);assert.match(result.evidence,/### E1 ·/);assert.ok((result.body.length+result.evidence.length)<=investigationBudget.reportCharacters)
 })
 test('evidence tails are preserved and every dropped or unknown citation is explicitly accounted for',()=>{
  const observations=Array.from({length:12},(_,i)=>({ref:'E'+(i+1),section:'trace',text:'x'.repeat(3000)+' DECISIVE_TAIL_'+(i+1)}))
  const text='结论引用 '+observations.map(row=>row.ref).join('、')+'、E999。',result=formatDiagnosticReport(text,observations,[],{maxCharacters:30000})
- assert.match(result,/DECISIVE_TAIL_1/);assert.match(result,/## 未附证据/);assert.ok(result.length<=30000)
- const missing=result.split('## 未附证据')[1]
- for(const row of observations)assert.ok(result.includes('### '+row.ref+' ·')||missing.includes(row.ref),'citation must be attached or listed missing: '+row.ref)
+ assert.match(result.evidence,/DECISIVE_TAIL_1/);assert.match(result.evidence,/## 未附证据/);assert.ok((result.body.length+result.evidence.length)<=30000)
+ const missing=result.evidence.split('## 未附证据')[1]
+ for(const row of observations)assert.ok(result.evidence.includes('### '+row.ref+' ·')||missing.includes(row.ref),'citation must be attached or listed missing: '+row.ref)
  assert.match(missing,/E999/)
 })
 async function hostDiagnosis(t,reply){
@@ -163,7 +163,7 @@ test('real Pi recovers consecutive timeouts in one diagnosis without replaying i
   if(step===5)return {stopReason:'stop',content:[{type:'text',text:'恢复完成，证据 E1。'}]}
   return timedOut
  })
- assert.equal(attempts,6);assert.equal(view.state,'ready');assert.match(view.body,/恢复完成/);assert.match(view.body,/### E1 ·/)
+ assert.equal(attempts,6);assert.equal(view.state,'ready');assert.match(view.body,/恢复完成/);assert.match(view.evidence,/### E1 ·/)
  assert.ok(requests.every(row=>row.maxRetries===0),'no nested provider retry budget')
  assert.deepEqual(requests.map(row=>row.messages.filter(role=>role==='toolResult').length),[0,0,0,1,1,1])
  assert.ok(requests.every(row=>row.messages.filter(role=>role==='user').length===1),'no new prompt or session per retry')
@@ -181,13 +181,13 @@ test('three consecutive model timeouts fail collection and leave one safe Host w
 test('model timeout after collection retains the actual evidence in an editable partial preview',async t=>{
  const {view,attempts,tokenReads}=await hostDiagnosis(t,step=>step===0?runtimeCall(step):timedOut)
  assert.equal(attempts,4);assert.equal(view.state,'ready');assert.match(view.body,/调查未完成.*FEEDBACK_MODEL_TIMEOUT/)
- assert.match(view.body,/尚不能判断根因/);assert.match(view.body,/### E1 · runtime/);assert.match(view.body,/"node":"v24/)
+ assert.match(view.body,/尚不能判断根因/);assert.match(view.evidence,/### E1 · runtime/);assert.match(view.evidence,/"node":"v24/)
  assert.doesNotMatch(view.body,/PRIVATE_INPUT|Request timed out/);assert.equal(tokenReads(),0)
 })
 test('a diagnosis without verifiable citations is marked and keeps the already collected pages',async t=>{
  const {result}=await scriptedDiagnosis(t,step=>step===0?runtimeCall(step):{stopReason:'stop',content:[{type:'text',text:'我认为这是服务故障，参考 E999。'}]})
- assert.match(result,/分析未附可核对的证据引用/);assert.match(result,/E999/)
- assert.match(result,/### E1 · runtime/);assert.match(result,/RETAINED_EVIDENCE/)
+ assert.match(result.body,/分析未附可核对的证据引用/);assert.match(result.body,/E999/)
+ assert.match(result.evidence,/### E1 · runtime/);assert.match(result.evidence,/RETAINED_EVIDENCE/)
 })
 test('permanent model error is not retried and its raw response is not logged',async t=>{
  const {view,warnings,attempts}=await hostDiagnosis(t,()=>({stopReason:'error',errorMessage:'Unauthorized: PRIVATE_VENDOR_RESPONSE',content:[]}))
