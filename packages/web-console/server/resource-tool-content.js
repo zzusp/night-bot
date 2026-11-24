@@ -39,7 +39,7 @@ export function resourceReadCandidate(name, args, message, sourceEntry) {
     return {kind: value.provider, value}
   }
   if (value.kind !== 'night-memory-result' || value.revoked || typeof value.scopeToken !== 'string'
-    || !Number.isSafeInteger(value.revision) || !Array.isArray(value.entries) || args.candidates !== undefined) return null
+    || !Number.isSafeInteger(value.revision) || value.revision < 0 || !Array.isArray(value.entries) || args.candidates !== undefined) return null
   if (args.key === undefined && args.path === undefined) {
     if (value.stage !== (args.topic === undefined ? 'root-index' : 'filtered-index') || value.topic !== args.topic
       || (args.topic !== undefined && !label(args.topic)) || value.markdown !== rendered
@@ -112,8 +112,10 @@ export async function readResourceToolContents(candidates, {memory, reflection, 
         const scope = scopes.get(value.scopeToken)
         if (!scope) continue
         const current = await index(scope)
-        // Mirror model replay's whole-scope revocation on correction/forget.
-        if (!current || current.revision !== value.revision) continue
+        // This is a fresh Web read, not replay of private model context. A
+        // scope revision may advance for unrelated records, but the exact entry
+        // (or every public index descriptor) must still agree with the receipt.
+        if (!Number.isSafeInteger(current?.revision) || current.revision < value.revision) continue
         if (kind === 'memory-index') {
           const rows = current.entries.filter(row => candidate.topic === undefined || row.topic === candidate.topic).map(noEvidence)
           if (!isDeepStrictEqual(rows, value.entries.map(noEvidence))) continue
@@ -128,14 +130,15 @@ export async function readResourceToolContents(candidates, {memory, reflection, 
           const cacheKey = JSON.stringify([scope.id, descriptor.topic, descriptor.key])
           if (!facts.has(cacheKey)) facts.set(cacheKey, memory.store.read(scope, {topic: descriptor.topic, key: descriptor.key, includeSources: false}))
           const fact = await facts.get(cacheKey), saved = fact.entries[0]
-          if (fact.revision !== value.revision || fact.entries.length !== 1 || saved?.id !== row.id || saved.revision !== row.revision || saved.text !== row.text) continue
+          if (fact.revision !== current.revision || fact.entries.length !== 1 || saved?.id !== row.id || saved.revision !== row.revision || saved.text !== row.text) continue
           text = saved.text
           memoryGrant = {scope, revision: current.revision, descriptor: noEvidence(descriptor)}
         }
       }
     } catch { /* Unavailable/changed/malformed resources retain the notice. */ }
     if (visibleBody(text)) {
-      allowed.set(id, text)
+      const skill = candidate.kind === 'filesystem' || candidate.kind === 'learned'
+      allowed.set(id, {text, ...(skill ? {skillName: candidate.value.name} : {})})
       if (memoryGrant) memoryGrants.set(id, memoryGrant)
     }
   }

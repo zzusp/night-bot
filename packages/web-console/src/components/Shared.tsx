@@ -14,6 +14,8 @@ import { executionTurns, type ExecutionTurn } from '../execution-turns';
 import '../styles/execution-turns.css';
 import { PiIcon } from './PiIcon';
 import { codeLanguage, highlightedLines } from './PiPresentation';
+import {EditDiff} from './EditDiff';
+import {parsePiEditDiff, requestedEditRows} from '../edit-diff';
 import '../styles/execution-groups.css';
 import '../styles/pi-web-tools.css';
 import SpecializedToolContent, {hasSpecializedToolContent, specializedToolLabel, specializedToolSummary} from './SpecializedToolContent';
@@ -140,6 +142,9 @@ function MessageBody({ message, history, plain = false, showSource = true, discl
 // See licenses/pi-web-MIT.txt. Only the authorized public DTO is rendered here.
 function toolObject(item: ToolItem): string {
   const name = (item.call || item.results[0]).toolName || '';
+  const result = item.results.at(-1);
+  if (name === 'skill' && result?.toolName === 'skill' && result.resourceContent === true && result.skillName
+    && result.status === 'completed' && !result.isError) return result.skillName;
   if (hasSpecializedToolContent(name)) return specializedToolLabel(name) || '';
   if (!item.call || item.call.truncated || item.call.textNextOffset != null) return '';
   try {
@@ -205,10 +210,11 @@ function toolInputPresentation(name: string, text: string, complete: boolean): R
       && keys.every(key => ['path', 'edits'].includes(key)) && args.edits.every((edit: unknown) => edit && typeof edit === 'object'
         && Object.keys(edit).every(key => ['oldText', 'newText'].includes(key)) && typeof (edit as {oldText?: unknown}).oldText === 'string' && typeof (edit as {newText?: unknown}).newText === 'string')) {
       return <><div className="pi-read-path"><code>{args.path}</code><small>请求修改</small></div>
-        <div className="pi-web-edit-list">{args.edits.map((edit: {oldText: string; newText: string}, index: number) => <div className="pi-web-edit" key={index}>
-          <section className="pi-web-edit-before"><p className="pi-web-edit-label">修改前{args.edits.length > 1 ? ` · ${index + 1}` : ''}</p>{plainOutputPresentation(edit.oldText)}</section>
-          <section className="pi-web-edit-after"><p className="pi-web-edit-label">修改后{args.edits.length > 1 ? ` · ${index + 1}` : ''}</p>{plainOutputPresentation(edit.newText)}</section>
-        </div>)}</div></>;
+        <div className="pi-web-edit-list">{args.edits.map((edit: {oldText: string; newText: string}, index: number) => {
+          const rows = requestedEditRows(edit.oldText, edit.newText);
+          return <div key={index}>{args.edits.length > 1 && <p className="pi-web-edit-label">第 {index + 1} 处</p>}
+            {rows?.length ? <EditDiff rows={rows} path={args.path} applied={false} /> : toolFieldsPresentation(edit)}</div>;
+        })}</div></>;
     }
     return keys.length ? toolFieldsPresentation(args) : <pre className="tool-content"><code>{text}</code></pre>;
   } catch { return plainOutputPresentation(text); }
@@ -225,25 +231,34 @@ function readOutputPresentation(text: string, offset: number, input?: string): R
   const lines = highlightedLines(text, language);
   return <pre className="tool-content pi-read-output" tabIndex={0}><code>{lines.map((line, index) => <span className="pi-code-line" key={index}>{offset === 0 && <span className="pi-line-number" data-line={start + index} aria-hidden="true" />}<span>{line}{index < lines.length - 1 ? '\n' : ''}</span></span>)}</code></pre>;
 }
+function isAppliedEditResult(output: Message) {
+  return output.editDiff === true && output.toolName === 'edit' && output.status === 'completed' && !output.isError
+    && !output.transient && !output.truncated && output.textNextOffset == null;
+}
+
 function toolOutputPresentation(name: string, text: string, offset: number, output: Message, input?: string): ReactNode {
   if (hasSpecializedToolContent(name)) return <SpecializedToolContent toolName={name} phase="output" text={text} offset={offset} status={output.status} isError={output.isError} />;
   if (!output.isError && !['error', 'failed'].includes(output.status || '') && ['read', 'read_window'].includes(name)) return readOutputPresentation(text, offset, input);
-  // Highlight only actual unified diff text. Request edits never imply success.
-  if (!output.isError && name === 'edit' && /^--- .+\n\+\+\+ .+\n@@/m.test(text)) {
-    const lines = text.split('\n');
-    return <pre className="tool-content pi-web-patch" tabIndex={0}><code>{lines.map((line, index) => <span className={`pi-code-line${line.startsWith('+') ? ' is-added' : line.startsWith('-') ? ' is-removed' : ''}`} key={index}>{line}{index < lines.length - 1 ? '\n' : ''}</span>)}</code></pre>;
+  if (name === 'edit' && offset === 0 && isAppliedEditResult(output)) {
+    const rows = parsePiEditDiff(text);
+    if (rows) {
+      let path: string | undefined;
+      try {const candidate = JSON.parse(input || '{}')?.path; if (typeof candidate === 'string') path = candidate;} catch { /* no approved source path */ }
+      return <EditDiff rows={rows} path={path} applied />;
+    }
   }
   return plainOutputPresentation(text);
 }
 
 const shellToolNames = ['bash', 'pwsh'];
 const showsResourceContent = (item: ToolItem) => item.results.some(result => result.resourceContent === true && !result.isError && !!result.text.trim());
-const defaultToolOpen = (item: ToolItem, disclosures?: Map<string, boolean>) => disclosures?.get(item.id) ?? showsResourceContent(item);
+const foldedResourceTools = new Set(['skill', 'memory_read']);
+const defaultToolOpen = (item: ToolItem, disclosures?: Map<string, boolean>) => disclosures?.get(item.id)
+  ?? (!foldedResourceTools.has((item.call || item.results[0]).toolName ?? '') && showsResourceContent(item));
 
 function ToolActivity({ item, history, compact = false, disclosures, onRecordUnavailable }: { item: ToolItem; history?: HistoryReader; compact?: boolean; disclosures?: Map<string, boolean>; onRecordUnavailable?: (id: string) => void }) {
   const [manualOpen, setOpen] = useState(() => disclosures?.get(item.id));
-  const directResource = showsResourceContent(item);
-  const open = manualOpen ?? directResource;
+  const open = manualOpen ?? defaultToolOpen(item);
   const [opened, setOpened] = useState(open);
   const [summaryHidden, setSummaryHidden] = useState(false);
   const frame = useRef<HTMLElement>(null);
@@ -277,10 +292,11 @@ function ToolActivity({ item, history, compact = false, disclosures, onRecordUna
       duplicateReadPath = args?.path === object && Object.keys(args).length === 1;
     } catch { /* Non-structured or incomplete input stays visible. */ }
   }
-  const duplicateResourceAction = directResource && name === 'skill' && !item.call?.truncated
+  const duplicateResourceAction = name === 'skill' && showsResourceContent(item) && !item.call?.truncated
     && item.call?.textNextOffset == null && /^\{\s*"action"\s*:\s*"加载技能"\s*\}$/.test(item.call?.text.trim() || '');
-  const inputVisible = !duplicateResourceAction && !duplicateReadPath && !!item.call && (!!item.call.truncated || item.call.textNextOffset != null || !!item.call.text.trim() && item.call.text.trim() !== '{}');
   const outputs = item.results.filter(output => !!output.text.trim() || output.truncated || output.textNextOffset != null);
+  const appliedEdit = name === 'edit' && outputs.some(output => isAppliedEditResult(output) && parsePiEditDiff(output.text));
+  const inputVisible = !appliedEdit && !duplicateResourceAction && !duplicateReadPath && !!item.call && (!!item.call.truncated || item.call.textNextOffset != null || !!item.call.text.trim() && item.call.text.trim() !== '{}');
   const hasDetails = inputVisible || outputs.length > 0 || !!item.inputElsewhere || !!item.resultStatus;
   const Card = hasDetails ? 'details' : 'div';
   const Header = hasDetails ? 'summary' : 'div';
@@ -299,8 +315,10 @@ function ToolActivity({ item, history, compact = false, disclosures, onRecordUna
     }}>
       <Header className={`pi-web-tool-summary${running ? ' pi-tool-shimmer' : ''}`}>
         <span key={state} className={`pi-web-tool-glyph${running || failed ? ` ${statusClass}` : ''}${completionCue ? ' pi-motion-cue' : ''}`} aria-hidden="true"><PiIcon path={(running || failed) && statusIcon ? statusIcon : headerIcon} size={14} /></span>
-        <span className="pi-tool-title">{(!shell || !object) && <strong className="pi-web-tool-name">{shell ? 'Shell' : name}</strong>}{object && <> <span className="pi-web-tool-object">{object}</span></>}</span>
-        <span className="pi-web-tool-summary-meta"><span className="pi-tool-state">{label}</span><ToolElapsed item={item} running={running} /></span>
+        <span className="pi-web-tool-labels">
+          <span className="pi-tool-title">{(!shell || !object) && <strong className="pi-web-tool-name">{shell ? 'Shell' : name}</strong>}{object && <> <span className="pi-web-tool-object" title={name === 'skill' ? object : undefined}>{object}</span></>}</span>
+          <span className="pi-web-tool-summary-meta">{compact && <FirstOutputWait duration={recordedDuration(item.call?.timing?.modelWaitMs)} />}<span className="pi-tool-state">{label}</span><ToolElapsed item={item} running={running} /></span>
+        </span>
         {hasDetails && <PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} />}
       </Header>
       {(opened || open) && hasDetails && <div className="pi-tool-body pi-specialized-tool">
@@ -342,17 +360,21 @@ function ToolActivityGroup({ tools, history, compact = false, anchorId, disclosu
   </details>;
 }
 type OlderHistory = {hasMore: boolean; loading: boolean; error: Error | null; disabled: boolean; onLoad: () => void};
-function LiveElapsed({startedAt}: {startedAt?: string}) {
+function LiveElapsed({startedAt, label}: {startedAt?: string; label?: string}) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => { if (!startedAt) return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [startedAt]);
   const start = Date.parse(startedAt || '');
-  return Number.isFinite(start) ? <span className="pi-live-elapsed">{Math.max(0, Math.floor((now - start) / 1000))}s</span> : null;
+  return Number.isFinite(start) ? <span className="pi-live-elapsed">{label && `${label} `}{Math.max(0, Math.floor((now - start) / 1000))}s</span> : null;
 }
 function recordedDuration(ms?: number) {
   if (ms === undefined || !Number.isFinite(ms) || ms < 0) return undefined;
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = ms / 1000;
   return seconds < 60 ? `${Number(seconds.toFixed(1))}s` : `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)}s`;
+}
+
+function FirstOutputWait({duration}: {duration?: string}) {
+  return duration === undefined ? null : <span className="execution-turn-time execution-first-output-time" title="模型请求到首段输出的等待时间">首段 {duration}</span>;
 }
 
 function LivePhase({live}: {live?: ExecutionLive}) {
@@ -366,7 +388,10 @@ function LivePhase({live}: {live?: ExecutionLive}) {
   }
   if (!live.active || !live.phase) return null;
   const labels = {preparing: '准备执行', waiting: '等待模型响应', thinking: '思考中', text: '生成中', tool: '工具执行中', compaction: '正在压缩上下文', retry: '正在重试'};
-  return <div className={`pi-live-phase phase-${live.phase}`} role="status"><PiIcon path={mdiLoading} className="pi-live-spinner" size={14} /><span>{labels[live.phase]}</span><LiveElapsed startedAt={live.phaseStartedAt} /></div>;
+  return <div className={`pi-live-phase is-active phase-${live.phase}`} role="status">
+    <PiIcon path={mdiLoading} className="pi-live-spinner" size={14} />
+    <span className="pi-live-phase-content"><span className="pi-live-phase-label">{labels[live.phase]}</span>{' '}<LiveElapsed startedAt={live.phaseStartedAt} /></span>
+  </div>;
 }
 
 function ThinkingMessage({message, history, compact, live, onUnavailable}: {message: Message; history?: HistoryReader; compact: boolean; live?: ExecutionLive; onUnavailable?: () => void}) {
@@ -376,8 +401,14 @@ function ThinkingMessage({message, history, compact, live, onUnavailable}: {mess
   const isThinking = !!message.transient && live?.active && live.phase === 'thinking';
   const preview = restricted ? '' : message.text.trim().split(/\r?\n/, 1)[0]?.slice(0, 128);
   const duration = recordedDuration(message.timing?.durationMs);
+  const firstOutputWait = compact && !message.transient ? recordedDuration(message.timing?.modelWaitMs) : undefined;
   return <details className="thinking-message execution-thought" open={open} onToggle={event => {if(event.target === event.currentTarget){setOpen(event.currentTarget.open); if(event.currentTarget.open)setOpened(true);}}}>
-    <summary><PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /><span>{isThinking ? '思考中' : '模型思考'}</span><span className="execution-thought-preview">{preview}</span>{isThinking ? <LiveElapsed startedAt={live?.phaseStartedAt} /> : duration && <span className="execution-turn-time">{duration}</span>}</summary>
+    <summary><PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /><span className="execution-thought-label">{isThinking ? '思考中' : '模型思考'}</span><span className="execution-thought-preview">{preview}</span>
+      {(isThinking || firstOutputWait !== undefined || duration !== undefined) && <span className="execution-timing-meta">
+        <FirstOutputWait duration={firstOutputWait} />
+        {isThinking ? <LiveElapsed startedAt={live?.phaseStartedAt} label="思考" /> : duration !== undefined && <span className="execution-turn-time">{compact ? `思考 ${duration}` : duration}</span>}
+      </span>}
+    </summary>
     {opened && <MessageBody message={message} history={history} showSource={!compact} onUnavailable={() => {setRestricted(true); onUnavailable?.();}} />}
   </details>;
 }
@@ -389,10 +420,11 @@ function CompactionRecord({message, history, onUnavailable}: {message: Message; 
   const details = message.compaction;
   const tokens = details?.tokensBefore;
   const after = details?.tokensAfter;
-  const heading = <><strong>上下文压缩</strong>{details?.mode && <span>{details.mode === 'background' ? '后台' : '前台'}</span>}{ms && <span>{ms}</span>}{message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}</>;
-  if (details?.summaryHidden) return <div className="execution-compaction" data-message-id={message.id}><div className="execution-compaction-heading">{heading}<span>摘要未公开</span></div></div>;
+  const heading = <><strong>上下文压缩</strong>{details?.mode && <span>{details.mode === 'background' ? '后台' : '前台'}</span>}
+    <span className="execution-timing-meta execution-turn-time">{ms === undefined ? '耗时未记录' : `用时 ${ms}`}</span></>;
+  if (details?.summaryHidden) return <div className="execution-compaction" data-message-id={message.id}><div className="execution-compaction-heading">{heading}</div></div>;
   return <details className="execution-compaction" data-message-id={message.id} open={open} onToggle={event => {if(event.target === event.currentTarget){setOpen(event.currentTarget.open); if(event.currentTarget.open)setOpened(true);}}}>
-    <summary><PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} />{heading}</summary>
+    <summary className="execution-compaction-heading"><PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} />{heading}</summary>
     {opened && <div className="execution-compaction-content">
       {tokens !== undefined && <p className="muted">{after !== undefined ? `${tokens.toLocaleString()} → ${after.toLocaleString()} Tokens` : `压缩前 ${tokens.toLocaleString()} Tokens`}</p>}
       <MessageBody message={message} history={history} showSource={false} onUnavailable={onUnavailable} />
@@ -577,7 +609,9 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
         if (item.kind === 'tool-group') return <ToolActivityGroup key={key} anchorId={key} tools={item.tools} history={history} compact={compact} disclosures={disclosures} onRecordUnavailable={onRecordUnavailable} />;
         if (item.kind === 'tool') return <ToolActivity key={item.id} item={item} history={history} compact={compact} disclosures={disclosures} onRecordUnavailable={onRecordUnavailable} />;
         const message = item.message;
+        if (message.kind === 'router-packet-boundary') return null;
         if (compact && message.kind === 'compaction') return <CompactionRecord key={key} message={message} history={history} onUnavailable={() => onRecordUnavailable?.(message.id)} />;
+        const firstOutputWait = compact && !message.transient && message.kind !== 'thinking' ? recordedDuration(message.timing?.modelWaitMs) : undefined;
         return <article data-message-id={message.id} className={`message message-${message.role}${message.kind === 'scheduled-trigger' ? ' message-scheduled' : message.kind === 'task-result' || message.kind === 'router-reply' ? ' execution-result' : ''}${message.transient ? ' pi-live-message' : ''}${message.transient && live?.active && ((message.kind === 'thinking' && live.phase === 'thinking') || (message.kind !== 'thinking' && live.phase === 'text')) ? ' pi-model-streaming' : ''}${onInspect ? ' message-inspectable' : ''}`} key={key} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
           // The visually hidden native button makes the bubble keyboard accessible without adding a separate action label.
@@ -592,20 +626,21 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>}
           {message.kind === 'scheduled-trigger' && <div className="scheduled-message-origin" aria-label="定时触发"><RiTimeLine size={12} aria-hidden="true" /><span>由已安排任务发送</span></div>}
-          {compact && !message.transient && message.timing?.modelWaitMs !== undefined && <div className="execution-message-time execution-model-wait">等待模型首段 {recordedDuration(message.timing.modelWaitMs)}</div>}
+          {firstOutputWait !== undefined && <div className="execution-message-time execution-model-wait"><FirstOutputWait duration={firstOutputWait} /></div>}
           <div className="message-body">{message.kind === 'context-summary' && <div className="message-origin-label">上下文摘要</div>}{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <ThinkingMessage message={message} history={history} compact={compact} live={live} onUnavailable={() => onRecordUnavailable?.(message.id)} /> : <MessageBody key={message.id} message={message} history={history} showSource={!compact} onUnavailable={() => onRecordUnavailable?.(message.id)} />}</div>
           {compact && message.createdAt && ['source','instruction','task-result','router-reply'].includes(message.kind || '') && <time className="execution-message-time" dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
         </article>;
   };
+  const hasDisplayMessages = messages.some(message => message.kind !== 'router-packet-boundary');
   return <div className={`transcript-wrap${compact ? ' execution-transcript' : ''}`}><div className="transcript" ref={ref} onWheel={cancelRestore} onTouchStart={cancelRestore} onPointerDown={cancelRestore} onKeyDown={cancelRestore} onScroll={() => {
     if (restoring.current) return;
     const el = ref.current!; following.current = el.scrollHeight - el.scrollTop - el.clientHeight < (compact ? 60 : 90); setShowLatest(!following.current);
     captureAnchor();
     if (el.scrollTop < 160) loadOlder();
   }} role="region" aria-label="消息记录" tabIndex={0}>
-    <div className={`message-column${messages.length || live?.active || footer ? '' : ' is-empty'}`}>
-      {older && messages.length > 0 && <div className="execution-history-start" role="status">{older.error ? <Notice error={older.error} onRetry={older.onLoad} /> : older.loading ? '正在载入更早记录…' : older.hasMore ? '向上滚动载入更早记录' : '已到当前上下文的开始'}</div>}
-      {!messages.length ? (live?.active || live?.notice ? null : empty ?? <EmptyState title="暂无消息" />) : (compact ? turns.map(turn => turn.kind === 'standalone'
+    <div className={`message-column${hasDisplayMessages || live?.active || footer ? '' : ' is-empty'}`}>
+      {older && hasDisplayMessages && <div className="execution-history-start" role="status">{older.error ? <Notice error={older.error} onRetry={older.onLoad} /> : older.loading ? '正在载入更早记录…' : older.hasMore ? '向上滚动载入更早记录' : '已到当前上下文的开始'}</div>}
+      {!hasDisplayMessages ? (live?.active || live?.notice ? null : empty ?? <EmptyState title="暂无消息" />) : (compact ? turns.map(turn => turn.kind === 'standalone'
         ? renderItem(turn.row, turn.row.kind === 'message' ? turn.row.message.id : turn.row.id)
         : <TurnProcess key={turn.id} turn={turn}>{turn.rows.map(row => renderItem(row, row.kind === 'message' ? row.message.id : row.id))}</TurnProcess>)
         : keyedItems.map(({item, key}) => renderItem(item, key)))}

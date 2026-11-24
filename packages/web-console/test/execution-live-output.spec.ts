@@ -139,6 +139,9 @@ test('native model phases show without body; short deltas update one bubble and 
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
  await expect(page.locator('.pi-live-phase')).toContainText('等待模型响应');
+ const waiting = page.locator('.pi-live-phase.phase-waiting');
+ await expect(waiting.locator('.pi-live-phase-content > .pi-live-elapsed')).toHaveText(/^\d+s$/);
+ await expect(waiting.locator('.pi-live-phase-label')).toHaveCSS('animation-name','pi-live-label-sweep');
  await expect(page.locator('.execution-transcript')).not.toContainText('暂无可展示');
  phase='thinking';
  await expect(page.locator('.pi-live-phase')).toContainText('思考中');
@@ -146,6 +149,8 @@ test('native model phases show without body; short deltas update one bubble and 
  thinking=true;body='检查已公开的步骤';
  await expect(page.locator('.thinking-message')).toHaveAttribute('open');
  const thought = page.locator('.thinking-message.execution-thought');
+ await expect(page.locator('.pi-live-phase-label')).toHaveCount(0);
+ await expect(thought.locator('.execution-timing-meta .pi-live-elapsed')).toContainText('思考');
  await expect(thought.getByText('检查已公开的步骤', {exact:true}).last()).toBeVisible();
  expect(await thought.evaluate(el => {
   const summary = el.querySelector('summary')!.getBoundingClientRect();
@@ -189,4 +194,54 @@ test('active output polls the light lane and catches up history without duplicat
  await expect(page.locator('.pi-live-message')).toHaveCount(0);
  await expect(page.locator('.execution-transcript .message-assistant')).toHaveCount(1);
  expect(full).toBeGreaterThanOrEqual(2);
+});
+
+test('live model waiting keeps the tool left grid, inline timer and moving label on desktop and mobile',async({page},testInfo)=>{
+ const call={id:'wait-after-todo',role:'tool',kind:'tool-call',toolName:'todo_write',callId:'todo',text:'{"todos":[{"content":"核对发布清单","status":"completed"}]}'};
+ const result={id:'todo-recorded',role:'tool',kind:'tool-result',toolName:'todo_write',callId:'todo',text:'已保存待办。',status:'completed',timing:{durationMs:350}};
+ const live={active:true,phase:'waiting',phaseStartedAt:new Date(Date.now()-7100).toISOString(),items:[]};
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await page.route('**/api/tasks/task-research/session?*',r=>r.fulfill({json:{status:'ready',scope:'current-context',items:[call,result],total:2,revision:'waiting-after-todo',live}}));
+ await page.goto('/#/tasks/task-research');
+ await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+ await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+ const record=page.locator('.execution-transcript');
+ const tool=record.locator('[data-message-id="wait-after-todo"] .pi-web-tool-summary');
+ const waiting=record.getByRole('status').filter({hasText:'等待模型响应'});
+ await expect(tool).toBeVisible();
+ await expect(waiting.locator('.pi-live-elapsed')).toHaveText(/^\d+s$/);
+ for(const [width,theme] of [[1440,'light'],[390,'dark']] as const){
+  await page.setViewportSize({width,height:900});
+  await page.emulateMedia({reducedMotion:'reduce',forcedColors:'none'});
+  await page.evaluate(theme=>{document.documentElement.dataset.theme=theme},theme);
+  const layout=await record.evaluate(el=>{
+   const rect=(selector:string)=>el.querySelector(selector)!.getBoundingClientRect();
+   const glyph=rect('.pi-web-tool-summary .pi-web-tool-glyph'), spinner=rect('.phase-waiting .pi-live-spinner');
+   const label=rect('.pi-web-tool-summary .pi-web-tool-name'), waitLabel=rect('.phase-waiting .pi-live-phase-label');
+   const duration=rect('.pi-web-tool-duration'), elapsed=rect('.phase-waiting .pi-live-elapsed');
+   return {icon:spinner.left-glyph.left,label:waitLabel.left-label.left,timer:elapsed.left-waitLabel.right,fromHistorical:duration.right-elapsed.right,vertical:spinner.top-glyph.bottom};
+  });
+  expect(layout.vertical).toBeGreaterThan(0);
+  expect.soft(layout,`actual alignment at ${width}px`).toMatchObject({icon:0,label:0,timer:6});
+  expect(layout.fromHistorical).toBeGreaterThan(100);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  const label=waiting.locator('.pi-live-phase-label');
+  await expect(label).toHaveCSS('animation-name','none');
+  await expect(label).not.toHaveCSS('color','rgba(0, 0, 0, 0)');
+  await page.emulateMedia({reducedMotion:'no-preference',forcedColors:'none'});
+  await expect(label).toHaveCSS('animation-name','pi-live-label-sweep');
+  const initial=await label.evaluate(el=>getComputedStyle(el).backgroundPositionX);
+  await expect.poll(()=>label.evaluate(el=>getComputedStyle(el).backgroundPositionX)).not.toBe(initial);
+  await expect(tool.locator('.pi-web-tool-name')).toHaveCSS('animation-name','none');
+  await label.evaluate(el=>{const animation=el.getAnimations()[0]!;animation.pause();animation.currentTime=900});
+  await waiting.scrollIntoViewIfNeeded();
+  const row=(await waiting.boundingBox())!,fold=(await record.locator('.execution-turn-process > summary').boundingBox())!;
+  await page.screenshot({path:testInfo.outputPath(`waiting-after-tool-${width}.png`),clip:{
+   x:Math.max(0,Math.floor(row.x)-4), y:Math.max(0,Math.floor(fold.y)-4), width:Math.min(width,Math.ceil(row.width)+8),
+   height:Math.ceil(row.y+row.height-fold.y)+8,
+  }});
+  await page.emulateMedia({reducedMotion:'no-preference',forcedColors:'active'});
+  await expect(label).toHaveCSS('animation-name','none');
+  await expect(label).not.toHaveCSS('color','rgba(0, 0, 0, 0)');
+ }
 });

@@ -1357,9 +1357,9 @@ test('execution HTTP independently authorizes exact resource bodies and revokes 
   append('orphan-skill','skill',{name:skill.name},skill,renderSkillContent(skill),{orphan:true})
   await writer.close()
 
-  let actorId='operator'
+  let actorId='operator', redactionSecrets=['ROTATINGPRIVATEVALUE']
   const memory={store,host:{runtimePaths:paths, get:()=>undefined}}
-  const f=await fixture(t,{persistence,memory,identityBinding:()=>({actorId}),redactionSecrets:async()=>['ROTATINGPRIVATEVALUE']})
+  const f=await fixture(t,{persistence,memory,identityBinding:()=>({actorId}),redactionSecrets:async()=>redactionSecrets})
   const endpoint='/api/tasks/task-one/session'
   assert.equal((await f.fetchApi(endpoint)).status,401)
   await f.login()
@@ -1374,11 +1374,23 @@ test('execution HTTP independently authorizes exact resource bodies and revokes 
   assert.doesNotMatch(rows[2].text,/仅供参考/)
   assert.ok(rows[5].redacted)
   assert.equal(rows[5].textNextOffset,16000)
+  assert.deepEqual(rows.map(row=>row.skillName),[undefined,undefined,undefined,undefined,undefined,skill.name,undefined,undefined])
+  assert.ok(page.body.items.filter(row=>row.kind==='tool-call').every(row=>row.skillName===undefined))
   assert.doesNotMatch(JSON.stringify(page.body),/PRIVATE_ORIGIN|PRIVATE_MESSAGE|PRIVATE_SUBJECT|PRIVATE_LOCAL|ROTATINGPRIVATE|resourceBase/)
   const continuation=(row,offset)=>endpoint+'/messages/'+row.id+'?revision='+page.body.revision+'&offset='+offset
   const next=await f.fetchApi(continuation(rows[5],16000))
   assert.equal(next.status,200);assert.equal(next.body.resourceContent,true)
   assert.equal(rows[5].text+next.body.text,body.replace('ROTATINGPRIVATEVALUE','[已隐藏]'))
+  redactionSecrets=[...redactionSecrets,skill.name]
+  const hiddenName=await f.fetchApi(endpoint+'?stream=1')
+  const sameBody=hiddenName.body.items.find(row=>row.id===rows[5].id)
+  assert.equal(sameBody.text,rows[5].text)
+  assert.equal(sameBody.resourceContent,true)
+  assert.equal(sameBody.skillName,undefined)
+  assert.doesNotMatch(JSON.stringify(hiddenName.body),/public-check/)
+  assert.equal((await f.fetchApi(continuation(rows[5],16000))).status,409)
+  assert.equal((await f.fetchApi(endpoint+'?stream=1&checkpoint='+page.body.checkpoint)).status,409)
+  redactionSecrets=['ROTATINGPRIVATEVALUE']
   actorId='different-operator'
   assert.equal((await f.fetchApi(continuation(rows[5],16000))).status,409)
   assert.ok((await f.fetchApi(endpoint+'?stream=1')).body.items.every(row=>!row.resourceContent))
@@ -1389,7 +1401,7 @@ test('execution HTTP independently authorizes exact resource bodies and revokes 
   await store.forget(scope,{topic:'facts',key:'one',source:{sessionId:'writer',messageId:'forget-one'}})
   const after=await f.fetchApi(endpoint+'?stream=1')
   assert.equal(after.status,200)
-  assert.ok(after.body.items.every(row=>!row.resourceContent))
+  assert.ok(after.body.items.every(row=>!row.resourceContent&&row.skillName===undefined))
   assert.doesNotMatch(JSON.stringify(after.body),/Authoritative memory body|continue here/)
   assert.equal((await f.fetchApi(continuation(rows[0],0))).status,409)
 })

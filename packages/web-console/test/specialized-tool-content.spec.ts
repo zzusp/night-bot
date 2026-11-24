@@ -102,33 +102,61 @@ test('专用卡正文仍使用同版分页，撤权后收起重开不恢复旧�
   await expect(card.locator('.specialized-tool-text')).toHaveCount(0);
 });
 
-test('技能和记忆的已授权正文默认展开，可单独收起；未授权仍不展示正文', async ({page}) => {
+test('Skill 和记忆默认收起，展开记忆后能读获权正文', async ({page}) => {
+  const skillName = 'release-readiness-review';
   const skillText = '发布前检查\n\n1. 确认目标环境和版本。\n2. 部署后检查健康探针。\n3. 保留可用的回滚版本。';
   const memoryText = '部署校验与文件交付\n\n写入成功不等于已经送达。回复前以渠道回执或回读为准。';
-  const rows = [
-    ...pair('skill-open', 'skill', '{"action":"加载技能"}', skillText),
+  let revoked = false;
+  const rows = () => [
+    ...pair('skill-open', 'skill', '{"action":"加载技能"}', revoked ? notice : skillText),
     ...pair('memory-open', 'memory_read', '{}', memoryText),
-    ...pair('no-access', 'memory_read', '{}', notice),
+    ...pair('no-access', 'skill', '{"action":"加载技能"}', notice),
     ...pair('lookup', 'resident_task_lookup_async', '{"taskCount":1}', '{"status":"pending","readOnly":true}'),
-  ].map(row => row.kind === 'tool-result' && ['result-skill-open','result-memory-open'].includes(row.id)
-    ? {...row, resourceContent:true,timing:{durationMs:row.id==='result-skill-open'?950:320}} : row);
-  await page.route(endpoint + '?*', route => route.fulfill({json:response(rows)}));
+  ].map(row => row.id === 'result-skill-open' && !revoked ? {...row, resourceContent:true, skillName, timing:{durationMs:1250}}
+    : row.id === 'result-memory-open' ? {...row, resourceContent:true, timing:{durationMs:320}}
+    : row.id === 'result-no-access' ? {...row, skillName:'unapproved-fixture'} : row);
+  await page.route(endpoint + '?*', route => route.fulfill({json:response(rows())}));
   const history = await open(page);
   const skill = history.locator('[data-message-id="call-skill-open"]');
   const memory = history.locator('[data-message-id="call-memory-open"]');
   const limited = history.locator('[data-message-id="call-no-access"]');
-  await expect(skill.getByText('发布前检查', {exact:false})).toBeVisible();
-  await expect(memory.getByText('部署校验与文件交付', {exact:false})).toBeVisible();
+  const summary = skill.locator('.pi-web-tool-summary');
+  await expect(skill.locator('.pi-tool-step')).not.toHaveAttribute('open');
+  await expect(summary.locator('.pi-web-tool-object')).toHaveText(skillName);
+  await expect(summary.locator('.pi-web-tool-duration')).toHaveText('1.3s');
+  await expect(summary).not.toContainText('加载技能');
+  await expect(skill.locator('.specialized-tool-text')).toHaveCount(0);
+  await expect(memory.locator('.pi-tool-step')).not.toHaveAttribute('open');
+  await expect(memory.locator('.specialized-tool-text')).toHaveCount(0);
+  await memory.locator('.pi-web-tool-summary').click();
+  await expect(memory.locator('.specialized-tool-text')).toHaveText(memoryText);
   await expect(limited.locator('.pi-tool-step')).not.toHaveAttribute('open');
-  await expect(skill.locator('.specialized-tool-fields')).toHaveCount(0);
+  await expect(limited.locator('.pi-web-tool-object')).toHaveText('加载技能');
+  await expect(limited).not.toContainText('unapproved-fixture');
   await page.mouse.move(1,1);
-  await history.locator('.execution-turn-process').filter({has:page.locator('[data-message-id="call-skill-open"]')})
-    .screenshot({path:test.info().outputPath('skill-memory-direct.png')});
-  await skill.locator('summary').click();
-  await expect(skill.getByText('发布前检查', {exact:false})).toBeHidden();
+  await skill.screenshot({path:test.info().outputPath('skill-collapsed-name.png')});
+  for (const [width, theme] of [[1440,'light'],[390,'dark']] as const) {
+    await page.setViewportSize({width,height:960});
+    await page.evaluate(theme => {document.documentElement.dataset.theme=theme},theme);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect((await new AxeBuilder({page}).include('[data-message-id="call-skill-open"]').withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([]);
+  }
+  await summary.focus();
+  await page.keyboard.press('Enter');
+  await expect(skill.locator('.specialized-tool-text')).toHaveText(skillText);
+  await expect(skill.locator('.specialized-tool-fields')).toHaveCount(0);
+  await page.keyboard.press('Enter');
+  await expect(skill.locator('.pi-tool-step')).not.toHaveAttribute('open');
+  await expect(skill.locator('.specialized-tool-text')).toBeHidden();
   await expect(memory.getByText('部署校验与文件交付', {exact:false})).toBeVisible();
-  await skill.locator('summary').click();
-  await expect(skill.getByText('发布前检查', {exact:false})).toBeVisible();
+
+  revoked = true;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(summary.locator('.pi-web-tool-object')).toHaveText('加载技能');
+  await expect(skill).not.toContainText(skillName);
+  await summary.click();
+  await expect(skill.locator('.specialized-tool-text')).toHaveText(notice);
+  await expect(skill).not.toContainText('确认目标环境和版本');
 });
 
 test('资源续页变更后不再回显旧正文，重新取记录才恢复', async ({page}) => {
@@ -139,6 +167,8 @@ test('资源续页变更后不再回显旧正文，重新取记录才恢复', as
   await page.route(endpoint + '/messages/result-versioned-memory?*', route => route.fulfill({status:409,json:{error:'SESSION_PAGE_STALE'}}));
   const history = await open(page);
   const memory = history.locator('[data-message-id="call-versioned-memory"]');
+  await expect(memory.locator('.pi-tool-step')).not.toHaveAttribute('open');
+  await memory.locator('.pi-web-tool-summary').click();
   await expect(memory.locator('.specialized-tool-text')).toHaveText(first);
   await memory.getByRole('button',{name:'下一段',exact:true}).click();
   await expect(memory.locator('.specialized-tool-text')).toHaveCount(0);

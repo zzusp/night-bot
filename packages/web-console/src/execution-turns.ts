@@ -7,7 +7,7 @@ export type ExecutionTurn = {
 };
 export type ExecutionTurnRow = ExecutionTurn | { kind: 'standalone'; row: TranscriptItem };
 
-const standalone = (message: Message) => ['task-result', 'router-reply', 'compaction', 'context-summary', 'run-boundary'].includes(message.kind || '');
+const standalone = (message: Message) => ['task-result', 'router-reply', 'compaction', 'context-summary', 'run-boundary', 'router-packet-boundary'].includes(message.kind || '');
 const interruption = (message: Message) => message.role === 'assistant' && ['error', 'failed', 'aborted', 'length'].includes(message.status || '');
 const ordinaryAnswer = (message: Message) => message.role === 'assistant' && !message.transient && (message.kind === 'message' || !message.kind) && message.status === 'stop';
 
@@ -35,6 +35,12 @@ export function executionTurns(messages: Message[], earlierNotLoaded = false): E
     const row = items[i];
     if (row.kind === 'message') {
       const {message} = row;
+      if (message.kind === 'router-packet-boundary') {
+        flush();
+        anchor = message;
+        anchored = true;
+        continue;
+      }
       const boundary = standalone(message);
       const final = ordinaryAnswer(message) && (i === items.length - 1
         || items[i+1].kind === 'message' && ((items[i+1] as { message: Message }).message.role === 'user' || standalone((items[i+1] as { message: Message }).message)));

@@ -7,7 +7,7 @@ export function searchExecutionRecords(messages: Message[], query: string): Exec
   const needle = query.trim().toLocaleLowerCase();
   if (!needle) return [];
   return messages.flatMap(message => {
-    if (message.transient) return [];
+    if (message.transient || message.kind === 'router-packet-boundary') return [];
     const text = message.text || '';
     const label = message.role === 'tool' ? message.toolName || '工具' : message.kind === 'thinking' ? '思考' : message.role === 'user' ? '用户' : '助手';
     const at = text.toLocaleLowerCase().indexOf(needle);

@@ -22,7 +22,7 @@ test('learned skill grant requires current exact content, scope, signature, and 
   const resolve = candidate => readResourceToolContents([{id: 'one', candidate}], {memory: {store: {root: '/test'}}, reflection, binding})
   const candidate = proof(value)
   assert.ok(candidate)
-  assert.deepEqual([...await resolve(candidate)], [['one', '1. Confirm source\n2. Check current facts']])
+  assert.deepEqual([...await resolve(candidate)], [['one', {text:'1. Confirm source\n2. Check current facts', skillName:name}]])
   assert.equal((await resolve(proof({...value, content: value.content + 'FORGED_TAIL'}))).size, 0)
   assert.equal((await resolve(proof({...value, content: value.content.replace(scope.id, 'a'.repeat(64))}))).size, 0)
   assert.equal((await resolve(proof({...value, content: value.content.replace(/;key=.*$/m, '')}))).size, 0)

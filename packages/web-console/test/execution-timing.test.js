@@ -103,3 +103,46 @@ test('compaction cards keep native order, expose only proved metadata and guard 
  const mismatched=executionHistoryTiming({trace:{entries:trace}},{...routerIdentity,generation:1})
  assert.equal(mismatched.compaction('compaction'),undefined)
 })
+
+test('Router uses each admitted source-less or deduplicated packet boundary without exposing it', async()=>{
+ const from=offset=>new Date(Date.parse(iso)+offset).toISOString()
+ const source={sourceId:'INTERNAL_REPEAT_ID',version:1,conversationId,text:'One visible source'}
+ const snap={header:{id:sessionId,runtimeOwner:'conversation-router',conversationId,generation:2}, entries:[], audit:[], context:{projection:{entries:[]}}}
+ const add=(row,...messages)=>{snap.entries.push(row);snap.context.projection.entries.push(project(row,...messages))}
+ const packet=(id,at,events,admit=true)=>{
+  const details={packetId:'PRIVATE_PACKET_'+id,source:{kind:'conversation-router',conversationId,generation:2}}
+  const content=[{type:'text',text:'Router 请求：'+JSON.stringify({conversationId,generation:2,events})}]
+  const row={id,type:'custom_message',customType:'night.business-input',timestamp:from(at),details,content}
+  add(row,{role:'custom',customType:row.customType,timestamp:from(at+500),details,content})
+  snap.audit.push({version:1,domain:'admission',kind:id==='internal-b'?'enqueued-internal':'enqueued',payload:{id:details.packetId,source:details.source,content}})
+  if(admit)snap.audit.push({version:1,domain:'admission',kind:'admitted',payload:{id:details.packetId,entryId:id}})
+ }
+ const report=(id,at)=>{
+  add({...entry(id+'-call',null,{role:'assistant',content:[{type:'thinking',thinking:'Review'},nativeTool(id,'resident_router_reply')].map(block=>block.type==='toolCall'?{...block,arguments:{text:'Report '+id}}:block)}),timestamp:from(at-250)})
+  add({...entry(id+'-result',null,{role:'toolResult',toolName:'resident_router_reply',toolCallId:id,isError:false,content:[{type:'text',text:'{"accepted":true}'}]}),timestamp:from(at)})
+ }
+ packet('source-a',0,[{source}])
+ report('a',250)
+ packet('internal-b',5000,[{kind:'task.event',title:'INTERNAL_TASK_TITLE'}])
+ report('b',6300)
+ packet('repeated-c',10000,[{source}])
+ report('c',12600)
+ packet('open-d',19000,[{kind:'task.event'}])
+ add({...entry('open-tool',null,{role:'assistant',content:[nativeTool('open')]}),timestamp:from(21000)})
+ packet('no-proof',22000,[{kind:'task.event'}],false)
+ const readRouter=async()=>({id:conversationId,activeSessionId:sessionId,generation:2}), persistence={readNative:async()=>snap}
+ const opts={conversationId,readRouter,persistence,stream:true,executionActivity:true}
+ const page=await routerSessionView(opts)
+ const boundaries=page.items.filter(row=>row.kind==='router-packet-boundary')
+ assert.deepEqual(boundaries.map(row=>[row.text,row.createdAt,row.source.sessionId]),[[ '',from(5000),sessionId],['',from(10000),sessionId],['',from(19000),sessionId]])
+ assert.equal(page.items.filter(row=>row.text===source.text).length,1)
+ assert.doesNotMatch(JSON.stringify(page),/PRIVATE_PACKET|INTERNAL_TASK_TITLE|INTERNAL_REPEAT_ID/)
+ assert.deepEqual((await routerSessionView({...opts,checkpoint:page.checkpoint})).items,[])
+ await assert.rejects(routerSessionMessageView({...opts,messageId:boundaries[0].id,revision:page.revision}),{code:'SESSION_MESSAGE_NOT_FOUND'})
+ const {executionTurns}=await import('../src/execution-turns.ts')
+ const turns=executionTurns(page.items)
+ assert.deepEqual(turns.filter(row=>row.kind==='turn').map(turn=>[turn.complete,turn.durationMs]),[[true,250],[true,1300],[true,2600],[false,undefined]])
+ assert.ok(!turns.some(row=>row.kind==='standalone'&&row.row.message.kind==='router-packet-boundary'))
+ const {searchExecutionRecords}=await import('../src/execution-search.ts')
+ assert.ok(!searchExecutionRecords(page.items,'助手').some(row=>boundaries.some(boundary=>boundary.id===row.id)))
+})

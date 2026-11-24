@@ -5,6 +5,7 @@ const task = {path: '/tasks/task-research', endpoint: '**/api/tasks/task-researc
 const router = {path: '/chat/sample-plan', endpoint: '**/api/chat/sample-plan/session?*', resultKind: 'router-reply'}
 const source = (id: string) => ({sessionId: 'pi-web-fixture', entryId: id})
 const call = (id: string, toolName: string) => ({id, role: 'tool', kind: 'tool-call', toolName, callId: id, text: '已脱敏参数', source: source(id)})
+const thoughtBody = '核对可信来源。' + '逐项检查已公开的输入和结果。'.repeat(12) + '\n\n公开思考最后一段。'
 const output = (id: string, toolName: string, error = false) => ({
   ...call(id, toolName), id: id + '-output', kind: 'tool-result', text: error ? '连接暂不可用，请检查网络。\n错误码：TOOL_TIMEOUT' : '已脱敏结果', redacted: true,
   status: error ? 'error' : 'completed', timing: {durationMs: 1350},
@@ -13,13 +14,18 @@ const output = (id: string, toolName: string, error = false) => ({
 const snapshot = (resultKind: string, phase: 'compaction' | 'text' | 'done' = 'done') => {
   const items = [
     {id: 'incoming', role: 'user', kind: 'source', text: '请核对两份发布清单，分开反馈。', createdAt: '2026-11-23T12:00:00.000Z', source: source('incoming')},
+    {id:'thought', role:'assistant', kind:'thinking', text:thoughtBody, timing:{durationMs:605, modelWaitMs:12100}, source:source('thought')},
     call('read', 'read'), output('read', 'read'),
     call('skill', 'skill'), output('skill', 'skill'),
     {id: 'result-first', role: 'assistant', kind: resultKind, text: '第一份清单已核对。', createdAt: '2026-11-23T12:00:03.200Z', source: source('result-first')},
-    call('memory', 'memory_read'), output('memory', 'memory_read'),
+    ...(resultKind==='router-reply' ? [{id:'internal-packet',role:'assistant',kind:'router-packet-boundary',text:'',createdAt:'2026-11-23T12:00:08.400Z',source:source('internal-packet')}] : []),
+    {id:'thought-wait-only', role:'assistant', kind:'thinking', text:'已公开但未记录思考时长。', timing:{modelWaitMs:4800}, source:source('thought-wait-only')},
+    {...call('memory', 'memory_read'), timing:{modelWaitMs:2400}}, output('memory', 'memory_read'),
     call('script', 'bash'), output('script', 'bash', true),
     {id: 'result-second', role: 'assistant', kind: resultKind, text: '第二份清单已核对。', createdAt: '2026-11-23T12:00:09.700Z', source: source('result-second')},
-    {id: 'compact', kind: 'compaction', role: 'assistant', text: '已保留两份清单的核对结论。', compaction: {mode: resultKind === 'router-reply' ? 'background' : 'foreground', tokensBefore: 22432, tokensAfter: 4320}, timing: {durationMs: 3680}},
+    {id: 'compact', kind: 'compaction', role: 'assistant', text: '已保留两份清单的核对结论。', createdAt:'2026-11-23T15:53:00.000Z', compaction: {mode: resultKind === 'router-reply' ? 'background' : 'foreground', tokensBefore: 22432, tokensAfter: 4320}, timing: {durationMs: 3680}},
+    {id:'protected-compact',kind:'compaction',role:'assistant',text:'',createdAt:'2026-11-23T15:54:00.000Z',compaction:{summaryHidden:true},timing:{durationMs:3680}},
+    {id:'old-compact',kind:'compaction',role:'assistant',text:'',createdAt:'2026-11-23T15:55:00.000Z',compaction:{summaryHidden:true}},
     ...(phase !== 'done' ? [{id: 'live-input', role: 'user', text: '继续核对回退方案。'}] : []),
   ]
   return {
@@ -73,8 +79,16 @@ for (const [name, view, width] of [['任务', task, 1440], ['路由', router, 39
     await expect(first.locator('xpath=ancestor::details[contains(@class,"execution-turn-process")]')).toHaveCount(0)
     await expect(second.locator('xpath=ancestor::details[contains(@class,"execution-turn-process")]')).toHaveCount(0)
     const compacted = record.locator('details.execution-compaction')
-    await expect(compacted.locator('summary')).toContainText(new RegExp('上下文压缩.*' + (view === router ? '后台' : '前台') + '.*3[.]7s'))
+    await expect(compacted.locator('summary')).toContainText(new RegExp('上下文压缩.*' + (view === router ? '后台' : '前台') + '.*用时 3[.]7s'))
     await expect(compacted.getByText('已保留两份清单的核对结论。')).toBeHidden()
+    const hidden = record.locator('[data-message-id="protected-compact"]')
+    await expect(hidden.locator('.execution-timing-meta')).toHaveText('用时 3.7s')
+    await expect(hidden.locator('summary, button, [tabindex]')).toHaveCount(0)
+    await expect(record.locator('.execution-compaction time')).toHaveCount(0)
+    await expect(record.locator('.execution-compaction').filter({hasText:'摘要未公开'})).toHaveCount(0)
+    await expect(record.locator('[data-message-id="old-compact"]')).toContainText('耗时未记录')
+    await expect(record.locator('[data-message-id="old-compact"]')).not.toContainText('用时 0')
+    await expect(record.locator('[data-message-id="internal-packet"]')).toHaveCount(0)
     await expect(record.getByText('连接暂不可用，请检查网络。', {exact: true})).toBeHidden()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({path: test.info().outputPath(name === '任务' ? 'task-record-desktop.png' : 'router-record-mobile.png')})
@@ -84,10 +98,25 @@ for (const [name, view, width] of [['任务', task, 1440], ['路由', router, 39
     await expect(history.first()).toHaveAttribute('open')
     await expect(history.first().locator(':scope > summary')).toContainText(/2 次工具调用.*用时 3.2s/)
     await expect(history.first().getByText('skill', {exact: true})).toBeVisible()
+    const thought = history.first().locator('.execution-thought')
+    const thoughtTiming = thought.locator('summary .execution-timing-meta')
+    await expect(thoughtTiming.locator('span')).toHaveText(['首段 12.1s', '思考 605ms'])
+    await expect(record.locator('.execution-model-wait')).toHaveCount(0)
+    const timingInset = await thoughtTiming.evaluate(el => el.parentElement!.getBoundingClientRect().right - el.getBoundingClientRect().right)
+    expect(timingInset).toBeLessThanOrEqual(1)
+    await expect(thought.locator('summary')).not.toContainText('公开思考最后一段')
+    await thought.locator('summary').focus()
+    await page.keyboard.press('Enter')
+    await expect(thought.locator('.markdown')).toContainText(thoughtBody.trim().split('\n').at(-1)!)
+    await expect(thoughtTiming.locator('span')).toHaveText(['首段 12.1s', '思考 605ms'])
+    await expect(history.first().locator('[data-message-id="read"] .pi-web-tool-duration')).toHaveText('1.4s')
     await expect(first).toBeVisible()
     await expect(second).toBeVisible()
     await expect(history.nth(1)).not.toHaveAttribute('open')
+    await expect(history.nth(1).locator(':scope > summary')).toContainText(view === router ? '用时 1.3s' : '用时 6.5s')
     await history.nth(1).locator(':scope > summary').click()
+    await expect(history.nth(1).locator('.execution-thought summary .execution-timing-meta > span')).toHaveText(['首段 4.8s'])
+    await expect(history.nth(1).locator('[data-message-id="memory"] .pi-web-tool-summary-meta .execution-first-output-time')).toHaveText('首段 2.4s')
     const failed = history.nth(1).locator('.pi-tool-step').last()
     await expect(failed.locator('summary')).toContainText('失败')
     await expect(failed.locator('summary')).not.toContainText('TOOL_TIMEOUT')
@@ -98,6 +127,8 @@ for (const [name, view, width] of [['任务', task, 1440], ['路由', router, 39
     await compacted.locator('summary').click()
     await expect(compacted.getByText('已保留两份清单的核对结论。')).toBeVisible()
     await expect(compacted.getByText('22,432 → 4,320 Tokens')).toBeVisible()
+    await expect(compacted.locator('summary .execution-timing-meta')).toHaveText('用时 3.7s')
+    await expect(compacted.locator('time')).toHaveCount(0)
     if (view === task) await page.screenshot({path: test.info().outputPath('task-record-expanded.png')})
   })
 }

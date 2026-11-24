@@ -1,5 +1,6 @@
 /* Compact session detail disclosures, adapted from pi-web's process, thinking
    and compaction panels. Keep Night Bot's canvas and contrast tokens. */
+.execution-transcript { --execution-compact-row-height: 26px; }
 .execution-turn-process, .execution-compaction {
   min-width: 0;
   max-width: 100%;
@@ -36,15 +37,22 @@
 .execution-turn-items { display: grid; gap: 8px; min-width: 0; padding-block: 5px; }
 .execution-compaction {
   color: var(--board-muted);
-  border: 1px solid var(--board-border);
+  outline: 1px solid var(--board-border);
+  outline-offset: -1px;
   border-radius: 8px;
+  margin-block: 3px;
   font-size: 12px;
 }
-.execution-compaction > summary { padding: 8px 10px; flex-wrap: wrap; }
-.execution-compaction summary strong { color: var(--board-text); }
-.execution-compaction time { margin-inline-start: auto; }
+.execution-timing-meta {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: baseline;
+  flex: 0 0 auto;
+  gap: 7px;
+}
 .execution-compaction-content { border-top: 1px solid var(--board-border); padding: 8px 12px; }
 .execution-thought > summary { flex-wrap: nowrap; }
+.execution-thought-label, .pi-live-elapsed { white-space: nowrap; }
 .execution-thought-preview {
   flex: 1;
   min-width: 0;
@@ -61,7 +69,8 @@
 .execution-transcript .markdown table { display: block; width: max-content; }
 
 @media (max-width: 760px) {
-  .execution-turn-process > summary, .execution-compaction > summary { min-height: 44px; }
+  .execution-transcript { --execution-compact-row-height: 44px; }
+  .execution-turn-process > summary { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   :is(.execution-turn-process, .execution-compaction, .execution-thought) .pi-tool-chevron { transition: none; }
@@ -79,13 +88,16 @@
 .execution-transcript .execution-thought .markdown {
   max-height: min(52vh, 440px); overflow: auto; overflow-wrap: anywhere;
 }
-.execution-model-wait { margin: 0 0 3px 9px; }
+.execution-model-wait { align-self: stretch; text-align: end; }
 .execution-transcript .pi-live-message:not(:has(.thinking-message)) > .message-body::after {
   content: none;
 }
 .execution-compaction-heading {
   display: flex; gap: 7px; align-items: center; flex-wrap: wrap;
-  padding: 8px 10px;
+  min-height: var(--execution-compact-row-height);
+  padding: 3px 10px;
+  border-radius: inherit;
+  line-height: 1.5;
 }
 .execution-compaction-heading > strong { color: var(--board-text); }
 .execution-transcript .execution-compaction > summary,

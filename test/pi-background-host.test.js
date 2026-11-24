@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools,eventually} from './fixtures/resident-router-host.js'
 import {routerCompactionTimes} from '../packages/web-console/server/router-compaction-times.js'
+import {routerSessionView} from '../packages/web-console/server/session-view.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 
 test('real resident Router adopts detached native compaction, cold restores it and never replays settled input',{timeout:nativeTestTimeout(120000)},async t=>{
@@ -49,6 +50,13 @@ test('real resident Router adopts detached native compaction, cold restores it a
  assert.match(entry.summary,/prior source events/)
  const stored=await h.host.ctx.sessionPersistence.readNative(sessionId)
  assert.ok(stored.entries.some(e=>e.id===entry.id&&e.type==='compaction'))
+ const history=()=>routerSessionView({conversationId,readRouter:()=>h.query('router.get',{conversationId}),persistence:h.host.ctx.sessionPersistence,
+  executionActivity:true,stream:true,readExecutionTiming:scope=>h.service.executionHistoryTiming(scope)})
+ const completed=await eventually(async()=>(await history()).items.find(row=>row.kind==='compaction'&&row.compaction.mode==='background'),'same committed background compaction duration in history')
+ assert.ok(completed.compaction.summaryHidden)
+ const observed=h.service.executionHistoryTiming({sessionId,conversationId,generation:(await h.query('router.get',{conversationId})).generation}).compaction(entry.id)
+ assert.ok(Number.isFinite(observed?.durationMs)&&observed.durationMs>=0)
+ assert.equal(completed.timing.durationMs,observed.durationMs)
  const originalCount=settles,requests=h.requests.length
  await h.restart()
  await h.receive(prior);await h.service.whenIdle()
@@ -56,6 +64,9 @@ test('real resident Router adopts detached native compaction, cold restores it a
  assert.equal(h.requests.length,requests,'cold duplicate does not re-run Router')
  const cold=await h.host.ctx.sessionPersistence.readNative(sessionId)
  assert.ok(cold.entries.some(e=>e.id===entry.id),'native compaction survives strict journal reopening')
+ const restored=(await history()).items.find(row=>row.id===completed.id)
+ assert.deepEqual(restored?.timing,completed.timing)
+ assert.deepEqual(restored?.compaction,completed.compaction)
  await h.receive(channelMessage('after-background-restart'));await h.service.whenIdle()
  assert.equal((await h.query('router.get',{conversationId})).activeSessionId,sessionId,'same durable Router identity')
  assert.equal(settles,originalCount+1,'new input executes exactly once after restart')
