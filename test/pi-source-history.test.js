@@ -1,11 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {DatabaseSync} from 'node:sqlite'
-import {querySourceHistory,recentSourceBackground} from '../src/channels/source-history.js'
+import {querySourceHistory,recentSourceBackground,sourceHasNewerVersion,sourceHistorySchema} from '../src/channels/source-history.js'
 
 function fixture(t){
  const db=new DatabaseSync(':memory:');t.after(()=>db.close())
- db.exec("CREATE TABLE dynamic_sources(id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE INDEX dynamic_source_history_conversation ON dynamic_sources(json_extract(body,'$.groupId')); CREATE INDEX dynamic_source_history_version ON dynamic_sources(json_extract(body,'$.groupId'),json_extract(body,'$.messageId'),json_extract(body,'$.version'))")
+ db.exec('CREATE TABLE dynamic_sources(id TEXT PRIMARY KEY, body TEXT NOT NULL);'+sourceHistorySchema)
  const put=(id,extra={})=>{const value={id,sourceId:id,groupId:'room',messageId:id,version:1,actorId:'alice',timestamp:'2026-11-01T10:00:00Z',text:'Information '+id,...extra};db.prepare('INSERT INTO dynamic_sources VALUES (?,?)').run(id,JSON.stringify(value));return value}
  return {db,put,query:q=>querySourceHistory(db,{conversationId:'room',...q})}
 }
@@ -70,6 +70,22 @@ test('full source read exposes only task links for the exact current source vers
  assert.equal(queryCurrentSource(db,{conversationId:'room',sourceId:'current'}).taskIds,undefined)
 })
 
+test('notification version check searches the composite index and preserves source-list visibility',t=>{
+ const {db,put}=fixture(t)
+ put('original',{messageId:'m',version:2});put('earlier',{messageId:'m',version:1})
+ put('foreign',{messageId:'m',groupId:'other',version:99});put('unrelated',{version:99})
+ put('restored',{messageId:'m',version:99,archiveRestoreHold:{reason:'restore'}})
+ const keys={groupId:'room',messageId:'m',messageVersion:2}
+ let plan
+ const probe={prepare(sql){plan=db.prepare('EXPLAIN QUERY PLAN '+sql).all(keys.groupId,keys.messageId,keys.messageVersion);return db.prepare(sql)}}
+ assert.equal(sourceHasNewerVersion(probe,keys),false)
+ assert.ok(plan.some(row=>/SEARCH .*dynamic_source_history_version.*<expr>=\? AND <expr>=\? AND <expr>>\?/.test(row.detail)),JSON.stringify(plan))
+ // A newer revoked/held-by-triage version still blocks the older reply; only archive restore is excluded.
+ put('revoked',{messageId:'m',version:3,authorizationRevoked:true,triageHold:true})
+ assert.equal(sourceHasNewerVersion(db,keys),true)
+ assert.equal(sourceHasNewerVersion(db,{...keys,messageVersion:3}),false)
+})
+
 test('recent page uses receipt-order index without full conversation sorting',t=>{
  const {db,put,query}=fixture(t)
  db.exec('BEGIN');for(let i=0;i<10000;i++)put('record-'+i);db.exec('COMMIT')
@@ -106,7 +122,14 @@ test('existing v4 ledger gains derived history indexes only after installation i
  await assert.rejects(openDynamicTaskStore({...config,initialize:false,instanceId:'foreign-installation'}))
  db=new DatabaseSync(config.dbPath);assert.equal(db.prepare("SELECT count(*) n FROM sqlite_master WHERE name LIKE 'dynamic_source_history_%'").get().n,0);db.close()
  store=await openDynamicTaskStore({...config,initialize:false})
- try {assert.equal((await store.query({kind:'router.source-history',conversationId:'room'})).sources[0].sourceId,'prior')}
+ try {
+  assert.equal((await store.query({kind:'router.source-history',conversationId:'room'})).sources[0].sourceId,'prior')
+  const check={kind:'source.has-newer-version',groupId:'room',messageId:'prior',messageVersion:1}
+  assert.equal(await store.query(check),false)
+  await store.command({id:'edit',kind:'source.record',args:{sourceId:'edited',messageId:'prior',version:2,groupId:'room',actorId:'alice',text:'Updated original'}})
+  assert.equal(await store.query(check),true)
+  assert.equal(await store.query({...check,groupId:'foreign'}),false)
+ }
  finally {await store.close()}
  db=new DatabaseSync(config.dbPath);assert.equal(db.prepare("SELECT count(*) n FROM sqlite_master WHERE name LIKE 'dynamic_source_history_%'").get().n,2);db.close()
 })

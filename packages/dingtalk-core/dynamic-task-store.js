@@ -1,6 +1,6 @@
 import {blockedReplyId,completionReplyId,currentOutcomeBinding,suppressChannelOutcome} from '../../src/channels/router-task-context.js'
 import {inspectionVersion,taskInspectionReason,inspectionIsCurrent,inspectionHoldsExecution,taskProviderFailureLabels} from '../../src/tasks/inspection.js'
-import {sourceHistorySchema} from '../../src/channels/source-history.js'
+import {sourceHasNewerVersion,sourceHistorySchema} from '../../src/channels/source-history.js'
 import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables,routerOutcomeInspectionIndex} from '../../src/channels/router-ledger.js'
 import {missingInterruptedTimings,readTaskTimingRows} from '../../src/tasks/observer-durations.js'
 import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
@@ -2416,6 +2416,9 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       else if (q.kind === 'resource.list') value = db.prepare('SELECT resource_key AS resourceKey,holder FROM dynamic_resource_locks ORDER BY resource_key').all()
       else if (q.kind === 'resource.catalog') value = resourceCatalog.snapshot
       else if (q.kind === 'source.get') value = get('dynamic_sources', q.sourceId, true)
+      else if (q.kind === 'source.has-newer-version') value = sourceHasNewerVersion(db, {
+        groupId: text(q.groupId, 'groupId'), messageId: text(q.messageId, 'messageId'), messageVersion: integer(q.messageVersion, 'messageVersion'),
+      })
       else if (q.kind === 'source.list') value = all('dynamic_sources', q.groupId ? "WHERE json_extract(body,'$.groupId')=?" : '', q.groupId ? [q.groupId] : []).filter(item => !item.archiveRestoreHold && (!q.groupId || item.groupId === q.groupId) && (!q.unrouted || !item.routed) && (!q.status || (q.status === 'routed' ? !!item.routed : !item.routed)))
       else if (q.kind === 'group.get') value = get('dynamic_groups', q.groupId, true)
       else if (q.kind === 'group.list') value = all('dynamic_groups')
