@@ -15,6 +15,11 @@ CREATE INDEX IF NOT EXISTS dynamic_source_link_source ON dynamic_source_links(js
 CREATE UNIQUE INDEX IF NOT EXISTS dynamic_router_event ON dynamic_router_inbox(json_extract(body,'$.conversationId'),json_extract(body,'$.eventId'));
 CREATE UNIQUE INDEX IF NOT EXISTS dynamic_dependency_pair ON dynamic_dependencies(json_extract(body,'$.taskId'),json_extract(body,'$.prerequisiteTaskId'));
 `
+// 以派生索引筛出还需要核对的行，不为巡检解码整份 Router 历史。
+const outcomeCandidates = `json_extract(body,'$.trackOutcome')=1 AND json_extract(body,'$.suppressChannelOutcome') IS NOT 1
+ AND (json_extract(body,'$.state')='pending' OR json_extract(body,'$.state')='consumed' AND json_extract(body,'$.outcomeDisposition.kind')='not-reported')`
+export const routerOutcomeInspectionIndex = `CREATE INDEX IF NOT EXISTS dynamic_router_outcome_inspection
+ ON dynamic_router_inbox(json_extract(body,'$.state'),json_extract(body,'$.createdAt')) WHERE ${outcomeCandidates};`
 const fail = code => { throw Object.assign(new Error(code), {code}) }
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const required = value => typeof value === 'string' && value.length ? value : fail('ROUTER_ARGUMENT_INVALID')
@@ -144,8 +149,8 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       return enqueue(task.conversationId,event.id,{kind:event.kind,taskId:task.taskId,taskEventId:event.id,...outcome?{trackOutcome:true}:{},...outcomePolicy})
     }
   }
-  function settleOutcome(row,event){
-    if(row.suppressChannelOutcome===true)return {kind:'channel-delivery-suppressed'}
+  function outcomeDisposition(row,event){
+    if(row.suppressChannelOutcome===true||event?.suppressChannelOutcome===true)return {kind:'channel-delivery-suppressed'}
     const task=read('tasks',row.taskId,true),binding=currentOutcomeBinding(task,event,row.conversationId)
     if(!binding)return {kind:'superseded'}
     const sources=(task.sourceRefs??[]).map(id=>read('sources',id,true)).filter(Boolean)
@@ -158,6 +163,17 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     const origin=sources.find(source=>source.sourceId===outcomeOriginId(task))
     if(!isOutcomeChannelSource(origin,row.conversationId)||origin.actorId!==task.ownerActorId||origin.authorizationRevoked||origin.retracted||origin.triageHold||origin.archiveRestoreHold||!latest(origin))return {kind:'channel-source-unavailable'}
     return {kind:'not-reported'}
+  }
+  function inspectOutcomes(overdueBefore){
+    const candidates=db.prepare(`SELECT body FROM dynamic_router_inbox WHERE ${outcomeCandidates}
+      AND (json_extract(body,'$.state')='consumed' OR json_type(body,'$.deliveryHold')='object'
+        OR json_extract(body,'$.createdAt')<=?)`).all(required(overdueBefore))
+    return candidates.flatMap(({body})=>{
+      const row=JSON.parse(body),event=row.taskEventId&&readEvent(row.taskEventId)
+      if(!event||row.eventId!==event.id||outcomeDisposition(row,event).kind!=='not-reported')return []
+      const code=row.deliveryHold?'ROUTER_OUTCOME_HELD':row.state==='consumed'?'ROUTER_OUTCOME_NOT_REPORTED':'ROUTER_OUTCOME_OVERDUE'
+      return [{id:'router-outcome:'+row.id,code,taskEventId:event.id,conversationId:row.conversationId,taskId:row.taskId,at:row.createdAt}]
+    })
   }
   function taskMutation(kind, task, {sameGoal,previousRequirementRevision}={}) {
     for(const row of rows('dependencies').filter(row=>row.taskId===task.taskId)) {
@@ -394,7 +410,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         if(row.state==='consumed')continue
         if(row.deliveryHold)fail('ROUTER_EVENT_DELIVERY_HELD')
         const event=row.taskEventId?readEvent(row.taskEventId):null
-        if(row.trackOutcome===true)row.outcomeDisposition=settleOutcome(row,event)
+        if(row.trackOutcome===true)row.outcomeDisposition=outcomeDisposition(row,event)
         if(event?.kind==='task.inspection'&&event.reason==='wait-overdue'){
           const task=read('tasks',row.taskId),inspection=task.inspection
           const reviews=(a.inspectionReviews??[]).filter(review=>review.taskId===task.taskId&&review.inspectionKey===event.inspectionKey)
@@ -521,6 +537,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(!Array.isArray(q.eventIds)||!q.eventIds.length||q.eventIds.length>30)fail('ROUTER_ARGUMENT_INVALID')
       return independentSource(pendingInbox(q.conversationId,true),new Set(q.eventIds))?.id??null
     }
+    if(q.kind==='router.outcome-inspection')return inspectOutcomes(q.overdueBefore)
     if(q.kind==='router.delivery-holds')return [...new Set(rows('router_inbox').filter(row=>row.state==='pending'&&row.deliveryHold).map(row=>row.conversationId))]
     if(q.kind==='router.pending-completion')return rows('router_inbox').some(row=>row.conversationId===q.conversationId&&row.state==='pending'&&row.taskEventId&&readEvent(row.taskEventId)?.kind==='task.completed')
     if(q.kind==='router.inbox-count')return pendingInbox(q.conversationId,q.deliverable).length

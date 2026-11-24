@@ -7,7 +7,7 @@ import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store
 import {validateTaskLedger,ledgerDigest} from '../src/tasks/ledger-archive.js'
 import {initializeMemoryTaskWorkspace} from './fixtures/memory-host.js'
 
-async function fixture(t) {
+async function fixture(t,{channel}={}) {
   const root=await mkdtemp(join(tmpdir(),'night-router-ledger-'))
   const config={dbPath:join(root,'tasks.sqlite'),initialize:true,instanceId:'router-ledger',ownerActorId:'operator',webActorId:'operator'}
   let store=await openDynamicTaskStore(config),sequence=0
@@ -15,7 +15,7 @@ async function fixture(t) {
   const command=(kind,args,id='test-'+(++sequence))=>store.command({id,kind,args})
   const query=(kind,args={})=>store.query({kind,...args})
   const conversationId='conversation-a',sourceId='source-a'
-  await command('source.record-direct',{source:{sourceId,groupId:conversationId,messageId:'user-order',actorId:'alice',version:1,
+  await command('source.record-direct',{...channel?{routeDirect:true}:{},source:{sourceId,groupId:conversationId,messageId:'user-order',actorId:'alice',version:1,...channel?{channel}:{},
     text:'First verify A; only after the evidence is accepted, produce B'},conversation:{conversationId}})
   await command('router.ensure',{conversationId,sessionId:'router-generation-one'})
   const state=await query('router.get',{conversationId}),generation=state.generation
@@ -764,4 +764,48 @@ test('an unresolved stopped execution keeps one inspection event rather than dup
  await f.command('task.inspect',{taskId:'a',expected},'inspect-held-final')
  await f.command('task.inspect',{taskId:'a',expected},'inspect-held-final-again')
  assert.equal((await f.query('router.inbox',{conversationId:f.conversationId})).filter(event=>event.kind==='task.inspection').length,1)
+})
+
+test('结果巡检按事件区分排队、未回报和已经失效的结果',async t=>{
+  const f=await fixture(t,{channel:'chat-room'});await f.plan()
+  const {event}=await f.complete()
+  const inspect=overdueBefore=>f.query('router.outcome-inspection',{overdueBefore})
+  const old='2000-01-01T00:00:00.000Z',future='2100-01-01T00:00:00.000Z'
+  assert.deepEqual(await inspect(old),[])
+  assert.deepEqual((await inspect(future)).map(({taskEventId,code})=>({taskEventId,code})),[{taskEventId:event.id,code:'ROUTER_OUTCOME_OVERDUE'}])
+  const inbox=(await f.query('router.inbox',{conversationId:f.conversationId})).find(row=>row.taskEventId===event.id)
+  const beforeTask=await f.query('task.get',{taskId:'a'})
+  await f.command('router.settle',{conversationId:f.conversationId,generation:f.generation,operationId:'settle-without-report',eventIds:[inbox.id]})
+  assert.deepEqual((await inspect(old)).map(row=>row.code),['ROUTER_OUTCOME_NOT_REPORTED'])
+  assert.deepEqual(await f.query('task.get',{taskId:'a'}),beforeTask)
+  assert.deepEqual(await f.query('notification.list'),[])
+  await f.reopen()
+  assert.equal((await inspect(old))[0].taskEventId,event.id)
+  await f.command('source.record-direct',{source:{sourceId:'retracted-result-source',groupId:f.conversationId,messageId:'user-order',actorId:'alice',version:2,text:'撤回',retracted:true}})
+  assert.deepEqual(await inspect(future),[])
+})
+
+test('上轮已冻结但未确认送达的通知，不能抵本轮已隔离的结果',async t=>{
+  const {completionReplyId}=await import('../src/channels/router-task-context.js')
+  const f=await fixture(t,{channel:'chat-room'});await f.plan()
+  const cutoff='2000-01-01T00:00:00.000Z'
+  const inspect=()=>f.query('router.outcome-inspection',{overdueBefore:cutoff})
+  const {event:first}=await f.complete()
+  const notificationId=completionReplyId(f.conversationId,first.id,f.sourceId,1)
+  const binding={eventId:first.id,taskId:'a',commandId:first.commandId,requirementRevision:first.requirementRevision,controlRevision:first.controlRevision}
+  await f.command('notification.prepare',{notificationId,kind:'router-reply',routerGeneration:f.generation,requirementRevision:first.requirementRevision,
+    payload:{conversationId:f.conversationId,sourceId:f.sourceId,sourceVersion:1,sourceRef:{messageId:'user-order',messageVersion:1,actorId:'alice'},text:'First result',completionBinding:binding}})
+  await f.command('notification.start',{notificationId});await f.reopen()
+  const unknown=await f.query('notification.get',{notificationId});assert.equal(unknown.state,'unknown')
+  assert.deepEqual(await f.query('router.outcome-inspection',{overdueBefore:'2100-01-01T00:00:00.000Z'}),[])
+  await f.command('task.reopen',{taskId:'a',expectedRequirementRevision:1,objective:'Verify the updated sample'})
+  const {event:latest}=await f.complete()
+  const fresh=(await f.command('source.record-direct',{routeDirect:true,source:{sourceId:'new-independent',groupId:f.conversationId,messageId:'another-message',actorId:'alice',version:1,channel:'chat-room',text:'Independent question'}})).result.source
+  const rows=await f.query('router.inbox',{conversationId:f.conversationId})
+  const event=rows.find(row=>row.taskEventId===latest.id),unrelated=rows.find(row=>row.sourceId===f.sourceId)
+  await f.command('router.handoff.recover',{conversationId:f.conversationId,sessionId:'router-generation-one',generation:f.generation,handoffId:'result-hold',
+    reason:'ROUTER_BATCH_NO_PROGRESS',unknownEventIds:[event.id,unrelated.id],freshEventId:rows.find(row=>row.sourceId===fresh.sourceId).id})
+  assert.deepEqual((await inspect()).map(({taskEventId,code})=>({taskEventId,code})),[{taskEventId:latest.id,code:'ROUTER_OUTCOME_HELD'}])
+  assert.deepEqual(await f.query('notification.get',{notificationId}),unknown)
+  assert.equal((await f.query('router.batch-events',{conversationId:f.conversationId,eventIds:[event.id]}))[0].state,'pending')
 })

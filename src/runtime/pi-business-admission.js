@@ -21,7 +21,7 @@ const fail=code=>Object.assign(new Error(code),{code})
  * Pi's public sendCustomMessage/steer/followUp own all model scheduling. Recovery
  * restores delivery facts only and never invokes a model or repeats an effect.
  */
-export async function createBusinessAdmission({store,authorize,bindInternal,authorizeSkillCommand,onInput,measurePhase=(_phase,run)=>run()}) {
+export async function createBusinessAdmission({store,authorize,bindInternal,authorizeSkillCommand,measurePhase=(_phase,run)=>run()}) {
  if(store?.kind!=='pi-native'||typeof authorize!=='function')throw new TypeError('Native store and explicit admission authority required')
  const packets=new Map(),admitted=new Map(),inflight=new Set(),internalPackets=new Set(),cancelled=new Set()
  let tail=Promise.resolve(),failure,paused=false,pauseReason,current,closed=false,taskFinished=false
@@ -67,7 +67,6 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
   for(const ack of acknowledgements)admitted.set(ack.id,ack.entryId)
  })
  async function enqueue(input,internal=false){
-   onInput?.()
    const packet=deepFreeze(packetSchema.parse(snapshotJsonValue(input)))
    return serialize(async()=>{
     if(!internal&&await authorize(packet)!==true)throw fail('PI_BUSINESS_ADMISSION_DENIED')

@@ -1,7 +1,7 @@
 import {blockedReplyId,completionReplyId,currentOutcomeBinding,suppressChannelOutcome} from '../../src/channels/router-task-context.js'
 import {inspectionVersion,taskInspectionReason,inspectionIsCurrent,inspectionHoldsExecution,taskProviderFailureLabels} from '../../src/tasks/inspection.js'
 import {sourceHistorySchema} from '../../src/channels/source-history.js'
-import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables} from '../../src/channels/router-ledger.js'
+import {createRouterLedger,routerSchema,routerSchemaVersion,routerTables,routerOutcomeInspectionIndex} from '../../src/channels/router-ledger.js'
 import {missingInterruptedTimings,readTaskTimingRows} from '../../src/tasks/observer-durations.js'
 import {exportTaskLedger,importTaskLedger} from '../../src/tasks/ledger-archive.js'
 import {effectReconciliationAuditKinds,taskEffectBinding,taskEffectCanReconcile,taskEffectDigest,taskEffectReconciliationIdentity} from '../../src/tasks/effect-reconciliation.js'
@@ -481,7 +481,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       db.exec(`CREATE INDEX IF NOT EXISTS dynamic_pending_source_sender
         ON dynamic_sources(json_extract(body,'$.groupId'),json_extract(body,'$.actorId'))
         WHERE coalesce(json_extract(body,'$.routed'),0)=0 AND json_type(body,'$.processingCompleted') IS NULL`)
-      db.exec(sourceHistorySchema) // Derived read indexes, after installation identity and owner checks.
+      db.exec(sourceHistorySchema+routerOutcomeInspectionIndex) // 安装身份和 owner 校验后才维护派生索引。
       // Recovery never authorizes a second send. Tool/process state must first be drained or reconciled.
       installTaskArchive(db, { indexes: !existed || paginationMigrate || migrate })
       installTopicFacts(db)

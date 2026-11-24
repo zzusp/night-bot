@@ -1,5 +1,10 @@
 import {ObserverMemoryPages} from './observer-memory-pages.js'
 import {hasRestartIsolation} from './native-restart-isolation.js'
+const outcomeDetails={
+ ROUTER_OUTCOME_HELD:'Router 结果事件已隔离，未找到对应的回报通知。',
+ ROUTER_OUTCOME_OVERDUE:'Router 结果事件等待超过 10 分钟，未找到对应的回报通知。',
+ ROUTER_OUTCOME_NOT_REPORTED:'Router 已结清结果事件，未找到对应的回报通知。',
+}
 export function createObserverAlertPages({failures,tasks,operations,notifications,groups=()=>[]}){
  const effectHold=item=>item.lastDecision?.limitations?.find(code=>['TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(code))
  const runtimeHold=item=>effectHold(item)||item.sessionFailure?.code||item.technicalFailure?.code||item.providerRecovery||item.lastDecision?.limitations?.includes('TASK_SESSION_NO_SUBMISSION')
@@ -12,7 +17,7 @@ export function createObserverAlertPages({failures,tasks,operations,notification
    const failed=groupFailures.get(group)
    if(failed)add(`coordination:${group.groupId}`,failed.agentDeliveryAt,()=>({alertId:`coordination:${group.groupId}`,fingerprint:`coordination:${group.groupId}`,detail:failed.agentDeliveryError??'群消息归类或协调失败，原消息尚未处理。',status:'active',lastSeenAt:failed.agentDeliveryAt??firstSeen.get(`coordination:${group.groupId}`)}))
   }
-  for(const item of failures.values())add(`failure:${item.id}`,item.at,()=>({alertId:`failure:${item.id}`,taskId:tasks.has(item.id)?item.id:undefined,fingerprint:`task-session:${item.id}`,detail:item.code,status:'active',lastSeenAt:item.at??firstSeen.get(`failure:${item.id}`)}))
+  for(const item of failures.values())add(`failure:${item.id}`,item.at,()=>({alertId:`failure:${item.id}`,taskId:item.taskId??(tasks.has(item.id)?item.id:undefined),...item.taskEventId?{taskEventId:item.taskEventId,conversationId:item.conversationId,code:item.code}:{},fingerprint:`task-session:${item.id}`,detail:outcomeDetails[item.code]??item.code,status:'active',lastSeenAt:item.at??firstSeen.get(`failure:${item.id}`)}))
   for(const item of operations.values())if(item.state==='unknown'&&!hasRestartIsolation(item))add(`operation:${item.id??item.operationId}`,item.updatedAt??item.createdAt,()=>({alertId:`operation:${item.id??item.operationId}`,taskId:item.taskId,fingerprint:`unknown-operation:${item.id??item.operationId}`,detail:'执行效果未知，已阻止后续操作；须核实原始效果。',status:'active',lastSeenAt:item.updatedAt??item.createdAt}))
   for(const item of notifications.values())if(item.state==='unknown')add(`notification:${item.id}`,item.updatedAt,()=>({alertId:`notification:${item.id}`,taskId:item.taskId,fingerprint:`unknown-notification:${item.id}`,detail:'群通知发送结果尚未回读确认。',status:'active',lastSeenAt:item.updatedAt}))
   // 分类只读投影 Host 故障字段；模型正文不能解除未知效果或恢复告警。

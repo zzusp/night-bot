@@ -181,9 +181,9 @@ export function bindPiAgentObservation({actor,emit,onError=()=>{},clock=Date.now
 export function createAgentPhaseTimer({ownerId,emit,onError=()=>{},clock=Date.now,elapsed=()=>performance.now(),runId=()=>'host-lifecycle'}){
  const nesting=new AsyncLocalStorage()
  const report=cause=>{try{const result=onError(cause);if(result?.then)void Promise.resolve(result).catch(()=>{})}catch{}}
- return async(phase,operation)=>{
+ return async(phase,operation,fixedRunId)=>{
   const started=elapsed(),parentSpanId=nesting.getStore(),spanId=createHash('sha256').update(randomUUID()).digest('hex');let outcome='failed',phaseRunId='host-lifecycle'
-  try{phaseRunId=runId()}catch(cause){report(cause)}
+  try{phaseRunId=fixedRunId??runId()}catch(cause){report(cause)}
   try{const result=await nesting.run(spanId,operation);outcome='completed';return result}
   finally{
    try{
