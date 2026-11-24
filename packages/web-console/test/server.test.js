@@ -1084,9 +1084,15 @@ test('execution reads refresh Host secret values and fail closed when the provid
   let body = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
   assert.equal(body.status,200);assert.doesNotMatch(JSON.stringify(body.body),/opaque-vendor-value-one/)
   secret='opaque-vendor-value-two'
-  body = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
+  const stale = await f.fetchApi(`/api/tasks/task-one/session/messages/${page.body.items[0].id}?offset=16000&revision=${page.body.revision}`)
+  assert.equal(stale.status,409)
+  assert.deepEqual(stale.body,{error:'SESSION_PAGE_STALE'})
+  const fresh = await f.fetchApi('/api/tasks/task-one/session')
+  assert.equal(fresh.status,200)
+  assert.notEqual(fresh.body.revision,page.body.revision)
+  body = await f.fetchApi(`/api/tasks/task-one/session/messages/${fresh.body.items[0].id}?offset=16000&revision=${fresh.body.revision}`)
   assert.equal(body.status,200);assert.doesNotMatch(JSON.stringify(body.body),/opaque-vendor-value-two/)
-  assert.equal(calls,6, 'each response refreshes secrets before projection and at its final guard')
+  assert.equal(calls,9, 'successful responses check secrets twice; the stale request fails during projection')
   unavailable=true
   const denied = await f.fetchApi('/api/tasks/task-one/session')
   assert.equal(denied.status,503)
