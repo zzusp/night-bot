@@ -5,6 +5,15 @@ CREATE INDEX IF NOT EXISTS dynamic_source_history_version ON dynamic_sources(jso
 
 const fail=()=>{throw Object.assign(new Error('ROUTER_SOURCE_HISTORY_INVALID'),{code:'ROUTER_SOURCE_HISTORY_INVALID'})}
 const clip=(value,limit)=>typeof value==='string'?value.slice(0,limit):undefined
+
+export function sourceHasNewerVersion(db,{groupId,messageId,messageVersion}){
+  // Match source.list visibility: restore-held rows are not delivery candidates.
+  return db.prepare(`SELECT 1 FROM dynamic_sources INDEXED BY dynamic_source_history_version
+    WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId')=?
+      AND json_extract(body,'$.version')>? AND coalesce(json_extract(body,'$.archiveRestoreHold'),0) IN (0,'')
+    LIMIT 1`).get(groupId,messageId,messageVersion)!==undefined
+}
+
 /** Read-only keyset page over the existing source ledger. No new history store. */
 export function querySourceHistory(db,{conversationId,keyword,before,after,cursor,anchorSourceId,limit=10}) {
   if(typeof conversationId!=='string'||!conversationId||!Number.isSafeInteger(limit)||limit<1||limit>20)fail()

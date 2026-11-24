@@ -166,7 +166,7 @@ Web 受众是安装 token 认证后的单操作者，安装级任务/session API
 
 - `permissions`：本次独立资源复核总耗时。`resource_binding_wait` 是等待记忆绑定就绪；`resource_skill_scan` 是普通 Skill 的目录盘点；`resource_memory_batch`、`resource_memory_recheck` 分别是记忆批读与最后一次版本/有效性核对所用的索引读取；`resource_learned_batch` 是学习生成 Skill 的状态与支撑批查。没有进入的分段不出现，局部解析与正文比对仍计入总耗时。
 - `memory_wait`：累计获取共享记忆锁的耗时，其中 `memory_lock_queue` 是同进程排队，`memory_lock_retry` 是发现租约目录已存在后的检查与重试，`memory_lock_write` 是原子写入锁记录（含文件同步及 Linux 的目录同步）。三项之外仍有父目录检查、建锁目录和进程身份读取等成本。`memory_lock_release` 单独记录释放租约，不属于 `memory_wait`。
-- 锁分段已经包含在相应资源分段及 `permissions` 中，不要重复加总。耗时是实际经过时间，某段变长不单独证明磁盘慢或某项工作持锁。
+- 锁分段已经包含在相应资源分段及 `permissions` 中，不要重复加总。耗时是实际经过时间，某段变长不单独证明磁盘慢或某项工作持锁。通知交付前的来源版本复核复用任务账本的会话、消息和版本索引，不再加载整个会话的来源正文；不改通知授权、顺序、留置或未知发送回读。无需新配置或账本迁移。
 
 ## 自进化历史与缓存
 

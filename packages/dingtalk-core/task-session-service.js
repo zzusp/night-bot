@@ -1318,7 +1318,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if(!parent||parent.kind!==notification.kind||parent.archiveRestoreHold||!source||source.groupId!==p.conversationId||source.actorId!==p.sourceRef?.actorId||source.version!==p.sourceRef?.messageVersion)return false
       if(['unknown','starting'].includes(notification.state))return true
       if(source.authorizationRevoked||source.triageHold||source.archiveRestoreHold)return false
-      return !(await query('source.list',{groupId:source.groupId})).some(row=>row.messageId===source.messageId&&row.version>source.version)
+      return !(await query('source.has-newer-version',{groupId:source.groupId,messageId:source.messageId,messageVersion:source.version}))
     }
     if (notification.kind === 'coordination' || notification.state === 'superseded') return false
     if (notification.kind === 'routing-clarification' && ['prepared', 'failed'].includes(notification.state)) {
