@@ -15,6 +15,7 @@
 - 健康接口 `GET /health` 的 `recoveryIssueCount` 只统计运行恢复异常；新增 `taskAttentionCount` 统计任务待处理项。等待登录身份、用户答复、明确授权或外部服务恢复不直接导致核心 `degraded`。
 - 恢复明细 `GET /state/recovery-issues` 保留真实运行问题：会话/排空/技术失败、未结清作业或效果、未知通知等。已有执行存储与渠道健康判定不变；`ok` 不代表业务任务完成或渠道送达已验证。
 - 告警列表 `GET /state/supervisor/alerts` 仍返回全部告警，每项新增 `type: "runtime" | "task"`；ID、fingerprint、原问题和任务状态不因分类改变。
+- Router 结果巡检使用既有 `runtime` 分类，导出 `conversationId`、`taskEventId`、关联 `taskId` 和错误码 `ROUTER_OUTCOME_HELD`、`ROUTER_OUTCOME_OVERDUE` 或 `ROUTER_OUTCOME_NOT_REPORTED`，不返回结果正文。
 - 分页使用 `GET /state/supervisor/alerts?limit=10&type=task` 或 `type=runtime`，默认 `type=all`。分类变化会使旧分页 revision 失效；历史过滤值仍保留。
 - 分类由 Host 的持久故障、未知效果和任务决定字段投影，不从模型 summary 猜测严重性，不清除记录、自动重试或放宽 no-replay。相同任务可同时保留独立运行故障与待处理项。
 

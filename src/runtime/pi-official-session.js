@@ -88,7 +88,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
      // Ordinary packets refresh at actual before_agent_start; slash skills need
      // a current loader before Pi expands their command.
      if(skillCommand(packet))await measurePhase('resources-deliver',async()=>{await bridge.refreshResources();await bridge.reloadResources()})
-    }})
+    }}).finally(()=>background?.settled())
     if(imageBudget?.failure)throw imageBudget.failure
     if(bridge.policyFailure)throw bridge.policyFailure
     if(durability.failure)throw durability.failure
@@ -99,6 +99,8 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
    async resumeRouterBatch(packet,beforeStart,afterClaim,supplements=[]){
     const content='继续处理未完成的事项'
     const claimContent=''
+    // 显式续办包含单独的 checkpoint 领取，不跨此控制边界采用旧候选。
+    background?.invalidate()
     await background?.beforeInput([...supplements,{content:claimContent},{content}])
     tools.beginTurn()
     await bridge.refreshResources();await bridge.reloadResources()

@@ -63,7 +63,7 @@ for(const action of ['complete','blocked','wait','natural-stop','policy-refusal'
    }
   }
   return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
- })
+ },{config:{inspectionIntervalMs:0}})
  await h.receive(channelMessage('final-only',{text:request}));await h.service.whenIdle()
  assert.equal(executions,1);assert.equal(terminal.size,technical?0:1);assert.equal(h.sent.length,reports?1:0)
  if(reports)assert.equal(h.sent[0].text,replyText)
@@ -93,6 +93,14 @@ for(const action of ['complete','blocked','wait','natural-stop','policy-refusal'
  }
  assert.equal((await h.query('notification.list')).filter(item=>item.kind==='question').length,0)
  const count=h.requests.length,sent=h.sent.length
+ await h.service.recover();await h.service.whenIdle()
+ const alerts=(await h.service.listAlertPage({type:'runtime'})).items.filter(item=>item.taskEventId)
+ if(!reports){
+  const [row]=await h.query('router.batch-events',{conversationId:task.groupId,eventIds:[...terminal]})
+  assert.deepEqual(alerts.map(({code,taskEventId,conversationId})=>({code,taskEventId,conversationId})),[{code:'ROUTER_OUTCOME_NOT_REPORTED',taskEventId:row.taskEventId,conversationId:task.groupId}])
+ }else assert.deepEqual(alerts,[])
+ assert.equal(h.requests.length,count,'巡检没有让模型补跑')
+ assert.equal(h.sent.length,sent,'巡检没有补发')
  await h.restart();await h.service.whenIdle()
  assert.equal(h.requests.length,count);assert.equal(h.sent.length,sent)
 })
@@ -177,6 +185,7 @@ for(const action of ['complete','blocked','runtime-failure'])test('silent Web su
  assert.equal(event.state,'consumed');assert.equal(event.outcomeDisposition.kind,'channel-delivery-suppressed')
  assert.equal((await h.query('notification.list')).length,0)
  await h.restart();await h.service.whenIdle();assert.equal(h.sent.length,0)
+ assert.deepEqual(h.service.listAlerts().filter(item=>item.taskEventId===outcome.taskEventId),[])
 })
 
 test('a fresh blocked result reaches the original recipient without replaying a held source', {timeout:nativeTestTimeout(45000)},async t=>{

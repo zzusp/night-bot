@@ -1438,10 +1438,18 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       failures.set(id,{id,conversationId,code:'ROUTER_EVENT_DELIVERY_HELD'})
     }
   }
-  let nextInspectionAt=0
+  const outcomeOverdueMs=10*60*1000
+  let nextInspectionAt=0,routerOutcomeAlerts=new Set()
   async function inspectTasks({force=false}={}){
-    if(closed||!force&&Date.now()<nextInspectionAt)return
-    nextInspectionAt=Date.now()+(config.inspectionIntervalMs??300000)
+    const now=Date.now()
+    if(closed||!force&&now<nextInspectionAt)return
+    nextInspectionAt=now+(config.inspectionIntervalMs??300000)
+    const outcomes=await query('router.outcome-inspection',{overdueBefore:new Date(now-outcomeOverdueMs).toISOString()})
+    if(closed)return
+    const active=new Set(outcomes.map(item=>item.id))
+    for(const id of routerOutcomeAlerts)if(!active.has(id))failures.delete(id)
+    for(const item of outcomes)failures.set(item.id,item)
+    routerOutcomeAlerts=active
     for(const task of await query('task.list')){
       if(!taskInspectionReason(task,{inflight:inflightTasks.has(task.taskId)}))continue
       try{

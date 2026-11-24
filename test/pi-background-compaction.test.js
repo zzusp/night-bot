@@ -10,7 +10,7 @@ function fixture(t,{tokens=300000,compact,commit,outputReserveTokens,isHealthy,i
  const state={leaf:'leaf',revision:1,entries:[{id:'leaf'}],tokens,paused:false,inputs:[],refreshes:0,commits:0,projection:[],settings:{},foreground:0}
  const signal=new AbortController()
  const session={model:{provider:'fixture',id:'model',contextWindow:1000000},settingsManager:{getSettings:()=>state.settings,getCompactionSettings:model=>SettingsManager.inMemory(state.settings).getCompactionSettings(model),applyOverrides:overrides=>{const manager=SettingsManager.inMemory(state.settings);manager.applyOverrides(overrides);state.settings=manager.getSettings()}},thinkingLevel:'low',systemPrompt:'prompt',isIdle:true,pendingMessageCount:0,isRetrying:false,getActiveToolNames:()=>['read'],getContextUsage:()=>({tokens:state.tokens}),subscribe:listener=>{listeners.add(listener);return()=>listeners.delete(listener)},refreshContext(){state.refreshes++}}
- const store={snapshot:()=>({revision:state.revision}),manager:{getLeafId:()=>state.leaf,getEntries:()=>state.entries,getBranch:()=>state.entries,appendCompaction(...args){appends.push(args);state.leaf='compacted';state.entries.push({id:state.leaf});state.revision++;return state.leaf}}}
+ const store={snapshot:()=>({revision:state.revision}),manager:{getLeafId:()=>state.leaf,getEntryCount:()=>state.entries.length,getEntry:id=>state.entries.find(entry=>entry.id===id),getBranch:()=>state.entries,appendCompaction(...args){appends.push(args);state.leaf='compacted';state.entries.push({id:state.leaf});state.revision++;return state.leaf}}}
  session.sessionManager={buildSessionProjection:()=>({messages:state.projection})};session.compact=async()=>{state.foreground++;state.tokens=10;state.projection=[]}
  const worker=createBackgroundCompaction({session,store,outputReserveTokens,isHealthy,isInputHealthy,signal:signal.signal,admission:{get paused(){return state.paused},pending:()=>state.inputs},compact:args=>{calls.push(args);return compact?compact(args):Promise.resolve(result())},commit:async()=>{state.commits++;await commit?.()},onError:error=>errors.push(error),onAdopted:(id,elapsedMs)=>adopted.push({id,elapsedMs}),measurePhase:async(name,run)=>{phases.push(name);return run()}})
  const emit=type=>{for(const listener of listeners)listener({type})}
@@ -151,4 +151,41 @@ for(const ownerAborted of [false,true])test('SDK cancellation preserves owner re
  f.session.compact=async()=>{if(ownerAborted)f.signal.abort(reason);throw sdkError}
  await assert.rejects(f.worker.beforeInput({content:[{type:'text',text:'next'}]}),error=>error===(ownerAborted?reason:sdkError))
  assert.equal(f.state.commits,0);assert.equal(f.appends.length,0)
+})
+
+const append=(f,type,data={},parentId=f.state.leaf)=>{
+ const id='e-'+f.state.entries.length
+ f.state.entries.push({id,type,parentId,...data});f.state.leaf=id;f.state.revision++
+}
+test('ordinary input and completed tool replies can extend the snapshot without waiting for its summary',async t=>{
+ const gate=deferred(),f=fixture(t,{compact:()=>gate.promise})
+ t.after(()=>gate.resolve(result()))
+ f.worker.settled();await eventually(()=>f.calls.length===1)
+ append(f,'custom',{customType:'night.audit'});append(f,'custom',{customType:'night.commit'})
+ f.state.inputs.push('new');await f.worker.beforeInput({content:'ordinary input'})
+ assert.equal(f.calls[0].signal.aborted,false)
+ f.session.isIdle=false;append(f,'custom_message',{customType:'night.business-input'})
+ append(f,'message',{message:{role:'assistant'}});append(f,'message',{message:{role:'toolResult'}})
+ gate.resolve(result());await delay(10);assert.equal(f.appends.length,0)
+ f.state.inputs=[];f.session.isIdle=true;f.worker.settled();await eventually(()=>f.state.refreshes===1)
+ assert.equal(f.state.foreground,0);assert.equal(f.calls.length,1)
+})
+test('input over the waterline reuses a compatible in-progress summary after the enqueue commit',async t=>{
+ const gate=deferred(),f=fixture(t,{compact:()=>gate.promise})
+ t.after(()=>gate.resolve(result()))
+ f.worker.settled();await eventually(()=>f.calls.length===1)
+ append(f,'custom',{customType:'night.audit'});append(f,'custom',{customType:'night.commit'})
+ f.state.inputs.push('new');f.state.tokens=370000
+ let delivered=false
+ const input=f.worker.beforeInput({content:'x'.repeat(80000)}).then(()=>{delivered=true})
+ await delay(10);assert.equal(delivered,false);assert.equal(f.state.foreground,0)
+ gate.resolve(result());await input
+ assert.equal(f.appends.length,1);assert.equal(f.state.commits,1);assert.equal(f.state.foreground,0)
+})
+test('new branches, context edits and system prompt entries cannot be covered by a candidate',async t=>{
+ for(const change of [f=>append(f,'message',{message:{role:'user'}},null),f=>append(f,'context_edit'),f=>append(f,'message',{message:{role:'system'}})]){
+  const gate=deferred(),f=fixture(t,{compact:()=>gate.promise})
+  f.worker.settled();await eventually(()=>f.calls.length===1);change(f);gate.resolve(result())
+  await eventually(()=>!f.worker.pending);assert.equal(f.appends.length,0)
+ }
 })
