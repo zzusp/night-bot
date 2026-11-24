@@ -1,0 +1,40 @@
+name: Notification source index Linux verification
+
+on:
+  push:
+    branches: [feature/index-notification-source-check-ci]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify exact PR 283 head (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: 73d88fca43770ac63140b22ac145adb249733751
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Verify source and install pinned dependencies
+        run: |
+          test "$(git rev-parse HEAD)" = 73d88fca43770ac63140b22ac145adb249733751
+          test "$(git rev-parse 'HEAD^{tree}')" = 79d5de6242ce004f38fddd855c4cad85b849ebef
+          git log -1 --format='tested_commit=%H tested_tree=%T'
+          npm install --global pnpm@11.25.0
+          pnpm install --frozen-lockfile
+      - name: Source and runtime guards
+        run: pnpm check
+      - name: Source index, notification retry and Router regressions
+        run: >-
+          node --test --test-concurrency=1
+          test/pi-source-history.test.js
+          test/task-notification-retry-native.test.js
+          test/pi-resident-router-flow.test.js
