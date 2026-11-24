@@ -64,10 +64,10 @@ export function resourceReadCandidate(name, args, message, sourceEntry) {
 /** Current shared-resource authorization, independent of task or Router
  * membership. The reader binding comes only from the authenticated Host view.
  * No cache crosses requests, raw private fields never enter the result. */
-export async function readResourceToolContents(candidates, {memory, reflection, binding}) {
+export async function readResourceToolContents(candidates, {memory, reflection, binding, measure = (_name, work) => work()}) {
   const allowed = new Map(), scopes = new Map(readableScopes(binding).map(({scope}) => [tokenFor(scope), scope]))
   if (!memory?.store?.root) return allowed
-  await memory.bindingReady
+  await measure('resource_binding_wait', () => memory.bindingReady)
   const memorySelectors = new Map(), skillMarkers = new Map()
   for (const {id,candidate} of candidates) {
     const {kind,value} = candidate
@@ -85,22 +85,22 @@ export async function readResourceToolContents(candidates, {memory, reflection, 
   }
   const indices = new Map(), learned = new Map(), memoryGrants = new Map()
   const skillBatch = scope => {
-    if (!learned.has(scope.id)) learned.set(scope.id, reflection.readSkillHistoryBatch(scope, skillMarkers.get(scope.id)).catch(() => new Map()))
+    if (!learned.has(scope.id)) learned.set(scope.id, measure('resource_learned_batch', () => reflection.readSkillHistoryBatch(scope, skillMarkers.get(scope.id)).catch(() => new Map())))
     return learned.get(scope.id)
   }
   let installed
   if (candidates.some(({candidate}) => candidate.kind === 'filesystem') && memory.host?.runtimePaths) {
     const matches = new Map(), wanted = new Set(candidates.flatMap(({candidate}) => candidate.kind === 'filesystem' ? [candidate.value.name] : []))
     try {
-      await installedSkills(memory.host.runtimePaths, memory.config?.skillDirs ?? [], {onContent: (item, file) => {
+      await measure('resource_skill_scan', () => installedSkills(memory.host.runtimePaths, memory.config?.skillDirs ?? [], {onContent: (item, file) => {
         if (wanted.has(item.name)) matches.set(item.id, {item, file})
-      }})
+      }}))
       installed = [...matches.values()]
     } catch { /* Missing inventory proves nothing. */ }
   }
   // Finish the fact reads before taking the learned-skill authorization view.
   for (const [id, {scope, selectors}] of memorySelectors) {
-    indices.set(id, await memory.store.readHistoryBatch(scope, selectors).catch(() => null))
+    indices.set(id, await measure('resource_memory_batch', () => memory.store.readHistoryBatch(scope, selectors).catch(() => null)))
   }
   for (const {id, candidate} of candidates) {
     let text, memoryGrant
@@ -155,7 +155,7 @@ export async function readResourceToolContents(candidates, {memory, reflection, 
   if (memoryGrants.size) {
     const rechecked = new Map()
     for (const [id, grant] of memoryGrants) {
-      if (!rechecked.has(grant.scope.id)) rechecked.set(grant.scope.id, await memory.store.index(grant.scope).catch(() => null))
+      if (!rechecked.has(grant.scope.id)) rechecked.set(grant.scope.id, await measure('resource_memory_recheck', () => memory.store.index(grant.scope).catch(() => null)))
       const current = rechecked.get(grant.scope.id)
       if (!current || current.revision !== grant.revision
         || (grant.descriptor ? !current.entries.some(row => isDeepStrictEqual(noEvidence(row), grant.descriptor))

@@ -9,6 +9,6 @@ export async function measuredMemoryLock(acquire){
  if(!observe)return acquire(()=>{})
  const started=performance.now()
  let observed=false
- const report=()=>{if(!observed){observed=true;observe(performance.now()-started)}}
- try{return await acquire(report)}finally{report()}
+ const report=()=>{if(!observed){observed=true;observe('memory_wait',performance.now()-started)}}
+ try{return await acquire(report,(name,ms)=>observe('memory_lock_'+name,ms))}finally{report()}
 }

@@ -160,7 +160,15 @@ Web 受众是安装 token 认证后的单操作者，安装级任务/session API
 
 长正文使用同一授权入口下的 `/session/messages/:messageId`，按该条投影的 opaque ID、`revision` 和脱敏后 UTF-16 offset 分段读取，每段最多 16000；不接受任意路径、URL 或 session ID。页面显示记录来源及当前段范围，复制按钮只复制已展示段。网络恢复只重读服务端历史，不重放接纳或外部效果。
 
-任务详情与 Router 的执行记录会在翻页和空轮询时复核页面持有的资源正文。复核在同一请求内按范围批量读取记忆索引、条目和 learned Skill 状态；正文不进入跨请求缓存，变化或撤销仍使旧页失效。排查时可比较响应 `Server-Timing` 的 `permissions` 与 `memory_wait`；后者包含在前者内，表示累计获取共享记忆锁的时间。
+### 执行记录性能排查
+
+任务详情与 Router 的执行记录会在翻页和空轮询时复核页面持有的资源正文。复核在同一请求内按范围批量读取记忆索引、条目和 learned Skill 状态；正文不进入跨请求缓存，变化或撤销仍使旧页失效。认证历史响应的 `Server-Timing` 只提供固定的计时项和毫秒数，不含资源标识、路径、正文或持锁者信息。排查时用实际会话加载到同一尾游标，并用该页面返回的正文凭证轮询。先确认 `items` 为空、会话与总行数未变，再比较这些项：
+
+- `permissions`：本次独立资源复核总耗时。`resource_binding_wait` 是等待记忆绑定就绪；`resource_skill_scan` 是普通 Skill 的目录盘点；`resource_memory_batch`、`resource_memory_recheck` 分别是记忆批读与最后一次版本/有效性核对所用的索引读取；`resource_learned_batch` 是学习生成 Skill 的状态与支撑批查。没有进入的分段不出现，局部解析与正文比对仍计入总耗时。
+- `memory_wait`：累计获取共享记忆锁的耗时，其中 `memory_lock_queue` 是同进程排队，`memory_lock_retry` 是发现租约目录已存在后的检查与重试，`memory_lock_write` 是原子写入锁记录（含文件同步及 Linux 的目录同步）。三项之外仍有父目录检查、建锁目录和进程身份读取等成本。`memory_lock_release` 单独记录释放租约，不属于 `memory_wait`。
+- 锁分段已经包含在相应资源分段及 `permissions` 中，不要重复加总。耗时是实际经过时间，某段变长不单独证明磁盘慢或某项工作持锁。
+
+## 自进化历史与缓存
 
 自进化列表由可选 Web 服务每五分钟采集完整元数据、从自己的带索引元数据文件缓存提供分页，不再每次进入或切换分类就扫描全量日志。文件位于 `data/cache/web-console-<channel hash>/evolution-<identity hash>.pages`，权限仅限安装账号；内容已脱敏，不含记忆／技能正文、私有匹配路径或凭据，且不写业务账本或 Bot 底座统计。缓存按安装／来源目录、Web 渠道、操作者和令牌指纹隔离。缓存可重建，备份可排除；仅清理停止后的对应 Web 缓存，不删除记忆库或其锁／pending 文件。
 
