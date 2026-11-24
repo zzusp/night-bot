@@ -5,6 +5,7 @@ import {join,dirname,resolve} from 'node:path'
 import {readdir,unlink,lstat} from 'node:fs/promises'
 import {randomUUID} from 'node:crypto'
 import {privateDirectory,atomicWrite,withLock,failure} from '../runtime/files.js'
+import {mapIndependentReads} from '../runtime/parallel-read.js'
 import {measuredMemoryLock} from './lock-observation.js'
 import {hash,label,checkedText,checkedTextWithLimit,encodeTopic,decodeTopic,checkedMemoryContext,memoryContextText,renderRouterMemory,renderMemoryContent} from './format.js'
 import {LAYOUT_VERSION,buildLayeredWrites,decodeRootIndex,decodeLegacyRootIndex,decodeCategoryIndex,renderIndex,decodeEntry,entrySourceReference,categoryPath,entryPath,sourcePath,entrySummary} from './layered-format.js'
@@ -184,12 +185,18 @@ export class MarkdownMemoryStore {
   async readHistoryBatch(scope, selectors){
     return this.locked(scope,async(dir,meta)=>{
       const root=await this.rootIndex(dir,scope,meta),now=this.now()
-      const entries=root.entries.filter(row=>active(row,now)),facts=new Map(),loaded=new Map()
+      const entries=root.entries.filter(row=>active(row,now)),facts=new Map(),selected=[],unique=new Map()
       const byPath=new Map(entries.map(row=>[row.path,row]))
       for(const [id,{row,path,topic}] of selectors){
         const descriptor=byPath.get(path??entryPath(topic,row.key))
         if(!descriptor||descriptor.id!==row.id||descriptor.key!==row.key||descriptor.revision!==row.revision)continue
-        if(!loaded.has(descriptor.path))loaded.set(descriptor.path,await this.entry(dir,scope,descriptor,{includeSources:false}).catch(()=>null))
+        selected.push([id,descriptor]);unique.set(descriptor.path,descriptor)
+      }
+      // Join bounded, independent reads before releasing the scope lease.
+      const loaded=new Map(await mapIndependentReads([...unique.values()],4,async descriptor=>[
+        descriptor.path,await this.entry(dir,scope,descriptor,{includeSources:false}).catch(()=>null)
+      ]))
+      for(const [id,descriptor] of selected){
         const fact=loaded.get(descriptor.path)
         if(fact)facts.set(id,{descriptor,text:fact.text})
       }

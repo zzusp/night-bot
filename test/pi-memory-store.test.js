@@ -71,6 +71,36 @@ test('a failed multi-file commit reports uncertainty and redo recovery completes
   assert.doesNotMatch(await readFile(join(store.directory(scope),'index.md'),'utf8'),/preferences/)
   await assert.rejects(readFile(join(store.directory(scope),'pending.json')),/ENOENT/)
 })
+test('history batch overlaps unique file reads while retaining the scope lease and rejecting changed content',async t=>{
+  const {store}=await fixture(t),records=[]
+  for(let i=0;i<6;i++)records.push((await store.remember(scope,item(String(i),`fact-${i}`,`Verified fact ${i}`))).entry)
+  const changed=entryPath('preferences','fact-3'),file=join(store.directory(scope),changed),original=await readFile(file,'utf8')
+  await writeFile(file,original.replace('Verified fact 3','Modified fact 3'))
+  const selectors=records.map(row=>[row.key,{row,topic:'preferences'}])
+  selectors.push(['same-fact',{row:records[0],path:entryPath('preferences','fact-0')}],
+    ['stale-fact',{row:{...records[1],revision:0},topic:'preferences'}])
+  const read=store.file.bind(store),started=Promise.withResolvers(),release=Promise.withResolvers(),reads=[]
+  let active=0,peak=0
+  store.file=async(dir,name)=>{
+    if(!name.includes('/entries/'))return read(dir,name)
+    reads.push(name);peak=Math.max(peak,++active);started.resolve()
+    try{await release.promise;return await read(dir,name)}finally{active--}
+  }
+  const pending=store.readHistoryBatch(scope,selectors),lease=join(store.directory(scope),'.lock','owner.json')
+  pending.catch(started.reject)
+  try{
+    await started.promise
+    assert.equal(active,4,'four distinct file reads start before any file read returns')
+    assert.equal(JSON.parse(await readFile(lease,'utf8')).pid,process.pid)
+  }finally{release.resolve();await pending}
+  const result=await pending
+  assert.equal(active,0);assert.equal(peak,4);await assert.rejects(readFile(lease),{code:'ENOENT'})
+  assert.deepEqual(reads,records.map(row=>entryPath('preferences',row.key)))
+  assert.deepEqual([...result.facts].map(([id,value])=>[id,value.text]),[
+    ['fact-0','Verified fact 0'],['fact-1','Verified fact 1'],['fact-2','Verified fact 2'],
+    ['fact-4','Verified fact 4'],['fact-5','Verified fact 5'],['same-fact','Verified fact 0']
+  ])
+})
 test('symlinked scope content and modified Markdown checksums are rejected explicitly',async t=>{
   const {root,store}=await fixture(t);await store.remember(scope,item('1','style','original'))
   const path=join(store.directory(scope),entryPath('preferences','style'));await writeFile(path,(await readFile(path,'utf8')).replace('\noriginal\n','\ntampered\n'))
