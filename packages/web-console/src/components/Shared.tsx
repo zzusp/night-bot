@@ -429,7 +429,7 @@ function ThinkingMessage({message, history, compact, live, onUnavailable}: {mess
   return <details className="thinking-message execution-thought" open={open} onToggle={event => {if(event.target === event.currentTarget){setOpen(event.currentTarget.open); if(event.currentTarget.open)setOpened(true);}}}>
     <summary><PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /><span className="execution-thought-label">{isThinking ? '思考中' : '思考'}</span><span className="execution-thought-preview">{preview}</span>
       {(isThinking || duration !== undefined) && <span className="execution-timing-meta">
-        {isThinking ? <LiveElapsed startedAt={live?.phaseStartedAt} label="思考" /> : duration !== undefined && <span className="execution-turn-time">{compact ? `思考 ${duration}` : duration}</span>}
+        {isThinking ? <LiveElapsed startedAt={live?.phaseStartedAt} label="用时" /> : duration !== undefined && <span className="execution-turn-time">用时 {duration}</span>}
       </span>}
     </summary>
     {opened && <MessageBody message={message} history={history} showSource={!compact} onUnavailable={() => {setRestricted(true); onUnavailable?.();}} />}
