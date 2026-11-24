@@ -18,6 +18,7 @@ import {EditDiff} from './EditDiff';
 import {parsePiEditDiff, requestedEditRows} from '../edit-diff';
 import '../styles/execution-groups.css';
 import '../styles/pi-web-tools.css';
+import {mergeResidentPlan, residentInputRemainder, wholeToolMessage, type ResidentPlan} from '../resident-tool-content';
 import SpecializedToolContent, {hasSpecializedToolContent, specializedToolLabel, specializedToolSummary} from './SpecializedToolContent';
 
 const states: Record<string, [string, 'neutral' | 'success' | 'warning' | 'danger' | 'info']> = {
@@ -236,8 +237,8 @@ function isAppliedEditResult(output: Message) {
     && !output.transient && !output.truncated && output.textNextOffset == null;
 }
 
-function toolOutputPresentation(name: string, text: string, offset: number, output: Message, input?: string): ReactNode {
-  if (hasSpecializedToolContent(name)) return <SpecializedToolContent toolName={name} phase="output" text={text} offset={offset} status={output.status} isError={output.isError} />;
+function toolOutputPresentation(name: string, text: string, offset: number, output: Message, input?: string, plan?: ResidentPlan | null): ReactNode {
+  if (hasSpecializedToolContent(name)) return <SpecializedToolContent toolName={name} phase="output" text={text} offset={offset} status={output.status} isError={output.isError || ['error','failed'].includes(output.status || '')} complete={wholeToolMessage(output)} plan={offset === 0 ? plan : undefined} />;
   if (!output.isError && !['error', 'failed'].includes(output.status || '') && ['read', 'read_window'].includes(name)) return readOutputPresentation(text, offset, input);
   if (name === 'edit' && offset === 0 && isAppliedEditResult(output)) {
     const rows = parsePiEditDiff(text);
@@ -296,7 +297,9 @@ function ToolActivity({ item, history, compact = false, disclosures, onRecordUna
     && item.call?.textNextOffset == null && /^\{\s*"action"\s*:\s*"加载技能"\s*\}$/.test(item.call?.text.trim() || '');
   const outputs = item.results.filter(output => !!output.text.trim() || output.truncated || output.textNextOffset != null);
   const appliedEdit = name === 'edit' && outputs.some(output => isAppliedEditResult(output) && parsePiEditDiff(output.text));
-  const inputVisible = !appliedEdit && !duplicateResourceAction && !duplicateReadPath && !!item.call && (!!item.call.truncated || item.call.textNextOffset != null || !!item.call.text.trim() && item.call.text.trim() !== '{}');
+  const mergedPlan = !summaryHidden && name === 'resident_task_plan' && outputs.length === 1 ? mergeResidentPlan(item.call, outputs[0]) : null;
+  const residentInput = !summaryHidden && outputs.length === 1 ? residentInputRemainder(item.call, outputs[0]) : null;
+  const inputVisible = !mergedPlan && residentInput !== '' && !appliedEdit && !duplicateResourceAction && !duplicateReadPath && !!item.call && (!!item.call.truncated || item.call.textNextOffset != null || !!item.call.text.trim() && item.call.text.trim() !== '{}');
   const hasDetails = inputVisible || outputs.length > 0 || !!item.inputElsewhere || !!item.resultStatus;
   const Card = hasDetails ? 'details' : 'div';
   const Header = hasDetails ? 'summary' : 'div';
@@ -317,16 +320,16 @@ function ToolActivity({ item, history, compact = false, disclosures, onRecordUna
         <span key={state} className={`pi-web-tool-glyph${running || failed ? ` ${statusClass}` : ''}${completionCue ? ' pi-motion-cue' : ''}`} aria-hidden="true"><PiIcon path={(running || failed) && statusIcon ? statusIcon : headerIcon} size={14} /></span>
         <span className="pi-web-tool-labels">
           <span className="pi-tool-title">{(!shell || !object) && <strong className="pi-web-tool-name">{shell ? 'Shell' : name}</strong>}{object && <> <span className="pi-web-tool-object" title={name === 'skill' ? object : undefined}>{object}</span></>}</span>
-          <span className="pi-web-tool-summary-meta">{compact && <FirstOutputWait duration={recordedDuration(item.call?.timing?.modelWaitMs)} />}<span className="pi-tool-state">{label}</span><ToolElapsed item={item} running={running} /></span>
+          <span className="pi-web-tool-summary-meta"><span className="pi-tool-state">{label}</span><ToolElapsed item={item} running={running} /></span>
         </span>
         {hasDetails && <PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} />}
       </Header>
       {(opened || open) && hasDetails && <div className="pi-tool-body pi-specialized-tool">
         {shell && <div className="pi-web-tool-body-title">Shell</div>}
         {(inputVisible || item.inputElsewhere) && <section className="tool-part"><p className="sr-only">输入</p>{inputVisible && item.call ? <MessageBody message={item.call} history={history} plain formatText={(text, offset) => hasSpecializedToolContent(name)
-          ? <SpecializedToolContent toolName={name} phase="input" text={text} offset={offset} status={item.call?.status} />
+          ? <SpecializedToolContent toolName={name} phase="input" text={offset === 0 ? residentInput ?? text : text} offset={offset} status={item.call?.status} complete={wholeToolMessage(item.call)} />
           : toolInputPresentation(name, text, offset === 0 && !item.call?.truncated && item.call?.textNextOffset == null)} onUnavailable={() => unavailable(item.call!.id)} /> : <span className="execution-tool-missing">输入见上方调用。</span>}</section>}
-        {outputs.map(output => <section className="tool-part" key={output.id + (output.resourceContent === true ? ":resource" : "")}><p className="sr-only">输出{output.isError || ['error', 'failed'].includes(output.status || '') ? ' · 失败' : ''}</p><MessageBody message={output} history={history} plain formatText={(text, offset) => toolOutputPresentation(name, text, offset, output, item.call?.text)} onUnavailable={() => unavailable(output.id)} /></section>)}
+        {outputs.map(output => <section className="tool-part" key={output.id + (output.resourceContent === true ? ":resource" : "")}><p className="sr-only">输出{output.isError || ['error', 'failed'].includes(output.status || '') ? ' · 失败' : ''}</p><MessageBody message={output} history={history} plain formatText={(text, offset) => toolOutputPresentation(name, text, offset, output, item.call?.text, mergedPlan)} onUnavailable={() => unavailable(output.id)} /></section>)}
         {!result && item.resultStatus && <section className="tool-part"><p className="sr-only">输出</p><span className="execution-tool-missing">见下方结果。</span></section>}
         <div className="pi-web-tool-footer"><span className={statusClass}>{statusIcon && <PiIcon path={statusIcon} size={13} />}<span className="pi-tool-state">{label}</span></span></div>
       </div>}
@@ -373,10 +376,6 @@ function recordedDuration(ms?: number) {
   return seconds < 60 ? `${Number(seconds.toFixed(1))}s` : `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)}s`;
 }
 
-function FirstOutputWait({duration}: {duration?: string}) {
-  return duration === undefined ? null : <span className="execution-turn-time execution-first-output-time" title="模型请求到首段输出的等待时间">首段 {duration}</span>;
-}
-
 function LivePhase({live}: {live?: ExecutionLive}) {
   if (!live) return null;
   if (live.notice) {
@@ -401,11 +400,9 @@ function ThinkingMessage({message, history, compact, live, onUnavailable}: {mess
   const isThinking = !!message.transient && live?.active && live.phase === 'thinking';
   const preview = restricted ? '' : message.text.trim().split(/\r?\n/, 1)[0]?.slice(0, 128);
   const duration = recordedDuration(message.timing?.durationMs);
-  const firstOutputWait = compact && !message.transient ? recordedDuration(message.timing?.modelWaitMs) : undefined;
   return <details className="thinking-message execution-thought" open={open} onToggle={event => {if(event.target === event.currentTarget){setOpen(event.currentTarget.open); if(event.currentTarget.open)setOpened(true);}}}>
     <summary><PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /><span className="execution-thought-label">{isThinking ? '思考中' : '模型思考'}</span><span className="execution-thought-preview">{preview}</span>
-      {(isThinking || firstOutputWait !== undefined || duration !== undefined) && <span className="execution-timing-meta">
-        <FirstOutputWait duration={firstOutputWait} />
+      {(isThinking || duration !== undefined) && <span className="execution-timing-meta">
         {isThinking ? <LiveElapsed startedAt={live?.phaseStartedAt} label="思考" /> : duration !== undefined && <span className="execution-turn-time">{compact ? `思考 ${duration}` : duration}</span>}
       </span>}
     </summary>
@@ -611,7 +608,6 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
         const message = item.message;
         if (message.kind === 'router-packet-boundary') return null;
         if (compact && message.kind === 'compaction') return <CompactionRecord key={key} message={message} history={history} onUnavailable={() => onRecordUnavailable?.(message.id)} />;
-        const firstOutputWait = compact && !message.transient && message.kind !== 'thinking' ? recordedDuration(message.timing?.modelWaitMs) : undefined;
         return <article data-message-id={message.id} className={`message message-${message.role}${message.kind === 'scheduled-trigger' ? ' message-scheduled' : message.kind === 'task-result' || message.kind === 'router-reply' ? ' execution-result' : ''}${message.transient ? ' pi-live-message' : ''}${message.transient && live?.active && ((message.kind === 'thinking' && live.phase === 'thinking') || (message.kind !== 'thinking' && live.phase === 'text')) ? ' pi-model-streaming' : ''}${onInspect ? ' message-inspectable' : ''}`} key={key} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
           // The visually hidden native button makes the bubble keyboard accessible without adding a separate action label.
@@ -626,7 +622,6 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>}
           {message.kind === 'scheduled-trigger' && <div className="scheduled-message-origin" aria-label="定时触发"><RiTimeLine size={12} aria-hidden="true" /><span>由已安排任务发送</span></div>}
-          {firstOutputWait !== undefined && <div className="execution-message-time execution-model-wait"><FirstOutputWait duration={firstOutputWait} /></div>}
           <div className="message-body">{message.kind === 'context-summary' && <div className="message-origin-label">上下文摘要</div>}{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <ThinkingMessage message={message} history={history} compact={compact} live={live} onUnavailable={() => onRecordUnavailable?.(message.id)} /> : <MessageBody key={message.id} message={message} history={history} showSource={!compact} onUnavailable={() => onRecordUnavailable?.(message.id)} />}</div>
           {compact && message.createdAt && ['source','instruction','task-result','router-reply'].includes(message.kind || '') && <time className="execution-message-time" dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
         </article>;

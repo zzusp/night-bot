@@ -33,7 +33,7 @@
 .pi-web-tool-object { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--board-muted); }
 .pi-web-tool-card .pi-tool-state { font-size: 10px; flex: 0 0 auto; }
 .pi-web-tool-card .pi-tool-chevron { flex: 0 0 var(--execution-tool-icon-size, 14px); margin-left: 0; }
-.pi-web-tool-summary-meta > .execution-first-output-time, .pi-web-tool-duration { flex: 0 0 auto; font: 11px/1.5 var(--execution-mono, ui-monospace, Consolas, monospace); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--board-muted); }
+.pi-web-tool-duration { flex: 0 0 auto; font: 11px/1.5 var(--execution-mono, ui-monospace, Consolas, monospace); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--board-muted); }
 .pi-web-tool-card > .pi-tool-body { margin: 0; padding: 0; border: 1px solid var(--tool-rule); border-radius: 11px; box-shadow: none; overflow: hidden; background: var(--tool-surface); color: var(--board-text); --pi-expanded-text: var(--board-text); }
 .pi-web-tool-card .tool-part { min-width: 0; padding: 6px 8px; margin: 0; }
 .pi-web-tool-card .tool-part + .tool-part { margin-top: 0; }

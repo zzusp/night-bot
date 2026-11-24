@@ -88,7 +88,6 @@
 .execution-transcript .execution-thought .markdown {
   max-height: min(52vh, 440px); overflow: auto; overflow-wrap: anywhere;
 }
-.execution-model-wait { align-self: stretch; text-align: end; }
 .execution-transcript .pi-live-message:not(:has(.thinking-message)) > .message-body::after {
   content: none;
 }
