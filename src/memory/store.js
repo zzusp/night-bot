@@ -5,6 +5,7 @@ import {join,dirname,resolve} from 'node:path'
 import {readdir,unlink,lstat} from 'node:fs/promises'
 import {randomUUID} from 'node:crypto'
 import {privateDirectory,atomicWrite,withLock,failure} from '../runtime/files.js'
+import {measuredMemoryLock} from './lock-observation.js'
 import {hash,label,checkedText,checkedTextWithLimit,encodeTopic,decodeTopic,checkedMemoryContext,memoryContextText,renderRouterMemory,renderMemoryContent} from './format.js'
 import {LAYOUT_VERSION,buildLayeredWrites,decodeRootIndex,decodeLegacyRootIndex,decodeCategoryIndex,renderIndex,decodeEntry,entrySourceReference,categoryPath,entryPath,sourcePath,entrySummary} from './layered-format.js'
 
@@ -87,7 +88,8 @@ export class MarkdownMemoryStore {
   async close(){this.closed=true;await Promise.allSettled([...this.pending])}
   async locked(scope,work){
     if(this.closed)throw failure('MEMORY_STORE_CLOSED')
-    const operation=(async()=>{const dir=this.directory(scope);await safeAncestors(join(dir,'.lock'));await privateDirectory(dir);return withLock(join(dir,'.lock'),async()=>{
+    const operation=(async()=>{const dir=this.directory(scope);await safeAncestors(join(dir,'.lock'));await privateDirectory(dir);return measuredMemoryLock(acquire=>withLock(join(dir,'.lock'),async()=>{
+      acquire()
       if(await this.file(dir,'layout-migration.pending.json'))throw failure('MEMORY_LAYOUT_MIGRATION_PENDING')
       await this.recover(dir)
       const raw=await this.file(dir,'scope.json'),meta=metadata(raw)
@@ -96,7 +98,7 @@ export class MarkdownMemoryStore {
         if(raw||oldIndex||oldTopics.length||await this.file(dir,'candidates.md'))throw failure('MEMORY_LAYOUT_MIGRATION_REQUIRED')
       }
       return work(dir,meta)
-    })})()
+    }))})()
     this.pending.add(operation);try{return await operation}finally{this.pending.delete(operation)}
   }
   async recover(dir){

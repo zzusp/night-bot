@@ -2481,3 +2481,19 @@ test('resident stage writes atomically bind exact conversation, message and sour
   assert.deepEqual(saved.stages.map(row => row.stage), ['triage', 'router'])
   assert.ok(saved.stages.every(row => row.quality === 'observed'))
 })
+
+test('transcript titles return only current in-scope live and archived labels',async t=>{
+ const f=await fixture(t)
+ await f.command('task.create',{taskId:'live',groupId:'selected',title:'Public active label',request:'not needed'})
+ await f.command('task.create',{taskId:'archive',groupId:'selected',title:'Public archive label',request:'not needed'})
+ await f.command('task.create',{taskId:'other',groupId:'different',title:'Not in this conversation',request:'not needed'})
+ const owner=(await f.command('task.claim',{taskId:'archive'})).result
+ await f.command('task.complete',{binding:owner.binding,summary:'not part of title read'})
+ await f.command('task.drained',{binding:owner.binding})
+ await f.command('task.archive',{taskId:'archive',actorId:'operator'})
+ assert.deepEqual(await f.query({kind:'task.transcript-titles',groupId:'selected'}),[
+  {taskId:'archive',groupId:'selected',title:'Public archive label'},
+  {taskId:'live',groupId:'selected',title:'Public active label'}
+ ])
+ await assert.rejects(f.query({kind:'task.transcript-titles',groupId:''}),{code:'DYNAMIC_ARGUMENT_INVALID'})
+})

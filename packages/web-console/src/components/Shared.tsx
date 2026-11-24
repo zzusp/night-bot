@@ -455,19 +455,24 @@ function CompactionRecord({message, history, onUnavailable}: {message: Message; 
   </details>;
 }
 
-function TurnProcess({turn, children}: {turn: ExecutionTurn; children: ReactNode}) {
+function TurnProcess({turn, focusId, children}: {turn: ExecutionTurn; focusId?: string; children: () => ReactNode}) {
   const [open, setOpen] = useState(!turn.complete);
+  const [opened, setOpened] = useState(!turn.complete);
   const [choice, setChoice] = useState<boolean>();
   const expected = choice ?? !turn.complete;
-  useLayoutEffect(() => { setOpen(expected); }, [expected]);
+  useLayoutEffect(() => { setOpen(expected); if (expected) setOpened(true); }, [expected]);
+  const targeted = focusId !== undefined && turn.rows.some(row => row.kind === 'message'
+    ? row.message.id === focusId : row.id === focusId || row.results.some(result => result.id === focusId));
   const duration = recordedDuration(turn.durationMs);
   return <details className="execution-turn-process" open={open} data-message-id={`process:${turn.id}`} onToggle={event => {
     if (event.target !== event.currentTarget) return;
     const value = event.currentTarget.open;
-    if (value !== open) {setChoice(value); setOpen(value);}
+    if (value !== open) {setChoice(value); setOpen(value); if (value) setOpened(true);}
   }}>
     <summary><span className="execution-turn-process-label">处理详情</span>{!!turn.toolCount && <span className="execution-turn-count">{turn.toolCount} 次工具调用</span>}{duration && <span className="execution-turn-time">用时 {duration}</span>}<PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} /></summary>
-    <div className="execution-turn-items">{children}</div>
+    {/* Search mounts only the matching fold before the parent locates its row.
+        Once opened, keep nested disclosures and body paging alive. */}
+    {(opened || open || targeted) && <div className="execution-turn-items">{children()}</div>}
   </details>;
 }
 
@@ -663,7 +668,7 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
       {older && hasDisplayMessages && <div className="execution-history-start" role="status">{older.error ? <Notice error={older.error} onRetry={older.onLoad} /> : older.loading ? '正在载入更早记录…' : older.hasMore ? '向上滚动载入更早记录' : '已到当前上下文的开始'}</div>}
       {!hasDisplayMessages ? (live?.active || live?.notice ? null : empty ?? <EmptyState title="暂无消息" />) : (compact ? turns.map(turn => turn.kind === 'standalone'
         ? renderItem(turn.row, turn.row.kind === 'message' ? turn.row.message.id : turn.row.id)
-        : <TurnProcess key={turn.id} turn={turn}>{turn.rows.map(row => renderItem(row, row.kind === 'message' ? row.message.id : row.id))}</TurnProcess>)
+        : <TurnProcess key={turn.id} turn={turn} focusId={focusRecord?.id}>{() => turn.rows.map(row => renderItem(row, row.kind === 'message' ? row.message.id : row.id))}</TurnProcess>)
         : keyedItems.map(({item, key}) => renderItem(item, key)))}
       {(live?.notice || live?.active && !(live.phase === 'thinking' && messages.some(message => message.transient && message.kind === 'thinking') || live.phase === 'tool' && messages.some(message => message.role === 'tool' && message.status === 'running'))) && <LivePhase live={live} />}
       {pending && <div className="thinking" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>Bot 正在处理，完成后会更新回复</div>}

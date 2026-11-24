@@ -57,6 +57,48 @@ test('authenticated HTTP reopens actual Router memory reads without disclosing c
       assert.doesNotMatch(JSON.stringify(page),/private-fixture-origin|private-fixture-message/)
       return {page,rows}
     }
+    // Pending memory authorization behaves like a held lock. An unrelated
+    // one-row page and zero-new poll must not queue behind it.
+    let narrowPage
+    const realIndex=memory.store.index.bind(memory.store)
+    let indexCalls=0
+    let releaseIndex
+    const blockedIndex=new Promise(resolve=>{releaseIndex=resolve})
+    memory.store.index=async (...args)=>{indexCalls++;await blockedIndex;return realIndex(...args)}
+    try {
+      const first=await fetch(endpoint+'?stream=1&limit=1',{headers,signal:AbortSignal.timeout(3000)})
+      const page=narrowPage=await first.json()
+      assert.equal(first.status,200)
+      assert.equal(page.items.length,1)
+      assert.equal(page.resourceProof,undefined)
+      assert.doesNotMatch(first.headers.get('Server-Timing')??'',/permissions/)
+      const noNew=await fetch(endpoint+'?'+new URLSearchParams({stream:'1',limit:'1',checkpoint:page.checkpoint}),{headers,signal:AbortSignal.timeout(3000)})
+      assert.equal(noNew.status,200)
+      assert.deepEqual((await noNew.json()).items,[])
+      assert.equal(indexCalls,0)
+      assert.match(noNew.headers.get('Server-Timing')??'',/journal;dur=/)
+      assert.doesNotMatch(noNew.headers.get('Server-Timing')??'',/projection|permissions/)
+    } finally {releaseIndex();memory.store.index=realIndex}
+
+    // Loading older history must register any newly exposed resources even
+    // though the journal tail anchor does not change.
+    let locked,unlock
+    const entered=new Promise(resolve=>{locked=resolve})
+    const held=new Promise(resolve=>{unlock=resolve})
+    const holding=memory.store.locked(scope,async()=>{locked();await held})
+    await entered
+    const olderURL=endpoint+'?'+new URLSearchParams({stream:'1',limit:'50',checkpoint:narrowPage.checkpoint,before:narrowPage.before})
+    let finished=false,olderResponse
+    const olderRequest=fetch(olderURL,{headers}).then(res=>{finished=true;return res})
+    try {await new Promise(resolve=>setTimeout(resolve,100));assert.equal(finished,false)}finally{unlock();await holding}
+    olderResponse=await olderRequest
+    assert.equal(olderResponse.status,200)
+    const older=await olderResponse.json()
+    assert.ok(older.resourceProof)
+    assert.equal(older.checkpoint,narrowPage.checkpoint+'.r')
+    assert.ok(older.items.some(row=>row.resourceContent))
+    const wait=Number(/memory_wait;dur=([\d.]+)/.exec(olderResponse.headers.get('Server-Timing')??'')?.[1])
+    assert.ok(wait>=40,'resource authorization timing measures real lock queue wait')
     const before=await read()
     assert.deepEqual(before.rows.map(row=>row.resourceContent),[true,true,true,true])
     assert.equal(before.rows[0].text,original)
@@ -70,7 +112,12 @@ test('authenticated HTTP reopens actual Router memory reads without disclosing c
     assert.equal(unrelated.rows[2].text,before.rows[2].text,'unchanged filtered index remains visible')
     assert.equal(unrelated.rows[3].resourceContent,undefined,'changed root index never replaces the historical result')
     assert.doesNotMatch(unrelated.rows[3].text,/release-check|checkpoint/)
-    assert.notEqual(unrelated.page.revision,before.page.revision,'a hidden root index invalidates old continuation without a new Pi message')
+    assert.equal(unrelated.page.revision,before.page.revision,'journal identity does not change with independent grants')
+    assert.ok(before.page.resourceProof)
+    const stalePoll=new URLSearchParams({stream:'1',checkpoint:older.checkpoint,resources:older.resourceProof})
+    assert.equal((await fetch(endpoint+'?'+stalePoll,{headers})).status,409,'an already-disclosed resource must be withdrawn without new journal bytes')
+    stalePoll.delete('resources')
+    assert.equal((await fetch(endpoint+'?'+stalePoll,{headers})).status,409,'a disclosure-bearing checkpoint cannot be used without its proof')
     assert.equal((await fetch(endpoint+'/messages/'+before.rows[3].id+'?revision='+before.page.revision,{headers})).status,409)
     const body=await fetch(endpoint+'/messages/'+unrelated.rows[0].id+'?revision='+unrelated.page.revision,{headers})
     assert.equal(body.status,200)

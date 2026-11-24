@@ -2359,6 +2359,18 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         })
         value = { taskId: q.taskId, decisions, nextBefore: rows.length > limit ? decisions.at(-1).sequence : null }
       }
+      else if (q.kind === 'task.transcript-titles') {
+        if (typeof q.groupId !== 'string' || !q.groupId) fail('DYNAMIC_ARGUMENT_INVALID')
+        const field = body => `json_extract(${body},'$.groupId')`
+        const columns = body => `json_extract(${body},'$.taskId') AS taskId,${field(body)} AS groupId,json_extract(${body},'$.title') AS title`
+        if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='observer_task_index'").get()){
+          const body='coalesce(d.body,a.body)'
+          value=db.prepare(`SELECT ${columns(body)} FROM observer_task_index i LEFT JOIN dynamic_tasks d ON d.id=i.id LEFT JOIN dynamic_archived_tasks a ON a.id=i.id WHERE i.group_id=? AND ${field(body)}=? ORDER BY i.id`).all(q.groupId,q.groupId)
+        }else{
+          const select=table=>`SELECT ${columns('body')} FROM ${table} WHERE ${field('body')}=?`
+          value=db.prepare(select('dynamic_tasks')+' UNION ALL '+select('dynamic_archived_tasks')+' ORDER BY taskId').all(q.groupId,q.groupId)
+        }
+      }
       else if (q.kind === 'task.list') {
         const group = q.groupId ? " AND json_extract(body,'$.groupId')=?" : '', args = q.groupId ? [q.groupId] : []
         const active = "SELECT body FROM dynamic_tasks WHERE coalesce(json_type(body,'$.archivedAt'),'null')='null'" + group
