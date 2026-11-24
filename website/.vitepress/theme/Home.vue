@@ -23,6 +23,7 @@ const comparisons = [
 const faq = [
   { title: '需要先装 Pi CLI 吗？', text: '不用。准备好 Git、Node.js 24 或以上版本、pnpm，再准备一个能用的模型服务就行。', link: guide('installation'), action: '查看安装要求' },
   { title: '能用我自己的模型吗？', text: '可以。用你自己的 API 地址和密钥，不用另外开个 Night Bot 账号。', link: guide('configuration'), action: '怎么配置模型' },
+  { title: '能让 Bot 按我的业务习惯做事吗？', text: '可以。用「Router 工作原则」告诉 Bot 怎么接任务、什么时候回报；用「执行会话工作原则」告诉它先查什么、怎么验结果。', link: guide('configuration') + '#工作原则', action: '看工作原则的配置示例' },
   { title: '聊天记录和文件存在哪？', text: '聊天记录、文件和记忆都存在你装 Night Bot 的电脑或服务器上。用在线模型时，请求会发给你选的模型服务。', link: guide('security'), action: '数据和权限说明' }
 ]
 </script>
