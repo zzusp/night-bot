@@ -5,7 +5,7 @@ import { Button, Spinner } from './components/BoardPrimitives';
 import { Loading, Notice } from './components/Shared';
 import './styles/feedback.css';
 
-type Feedback = { id: string; state: 'collecting' | 'editing' | 'ready' | 'failed' | 'submitting' | 'submitted' | 'unknown'; title: string; body: string; target: string; error?: string; url?: string };
+type Feedback = { id: string; state: 'collecting' | 'editing' | 'ready' | 'failed' | 'submitting' | 'submitted' | 'unknown'; title: string; body: string; evidence?: string; target: string; error?: string; url?: string };
 type Destination = { target: string; model: string | null; revision?: string; endpoint?: string };
 const diagnosisErrors: Record<string, string> = {
   FEEDBACK_MODEL_TIMEOUT: '模型请求超时，未生成诊断。',
@@ -161,6 +161,9 @@ export default function FeedbackPage() {
           {copyStatus && <p role="status">{copyStatus}</p>}
         </div> : <Button variant="primary" disabled={!confirm || submitAttempted || editDraft !== null} busy={busy} onClick={() => void submit()}>确认提交 Issue</Button>}
       </>}
+    </section>}
+    {record?.evidence && <section className="settings-card feedback-preview" aria-label="本次诊断证据">
+      <details key={record.id} className="feedback-evidence"><summary>本次诊断证据（不提交）</summary><pre tabIndex={0} aria-label="诊断证据明细">{record.evidence}</pre></details>
     </section>}
     {submitAttempted && !url && <Button disabled={busy} onClick={() => void verify()}>核对提交状态</Button>}
     {error && <p id="feedback-error" role="alert">{error}</p>}

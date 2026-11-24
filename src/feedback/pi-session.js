@@ -71,7 +71,7 @@ export function limitDiagnosticText(text,maxCharacters,label='分析正文'){
  return (body+note).slice(0,maxCharacters)
 }
 
-/** Cited evidence is attached whole, or explicitly listed as unavailable. */
+/** Keep whole evidence pages in the local preview, never in the Issue body. */
 export function formatDiagnosticReport(text,observations,secrets=[],{maxCharacters=investigationBudget.reportCharacters,status=''}={}){
  maxCharacters=Math.min(maxCharacters,investigationBudget.reportCharacters)
  const clean=value=>redactFeedback(value,secrets,{maxLength:Infinity})
@@ -80,10 +80,11 @@ export function formatDiagnosticReport(text,observations,secrets=[],{maxCharacte
  const missing=[...cited].filter(ref=>!refs.has(ref)),parts=[]
  const missingNote='\n\n## 未附证据\n[以下引用未采集或完整内容超过附录预算，本草稿无法核对；请缩小证据页后重新调查，勿当作完整证据链。]\n'
  const unverified='分析未附可核对的证据引用，不能据此判断根因。'
- const noAnalysis='未能生成部分诊断；已采集证据保留如下，尚不能判断根因。'
+ const noAnalysis='未能生成部分诊断，尚不能判断根因。'
+ const incompleteCitations='部分证据引用无法在本次预览核对，请勿视为完整证据链。'
  const footer=count=>`\n\n[共采集 ${observations.length} 项证据，附上 ${count} 项。${selected.length?'优先保留正文引用项。':'附录仅供人工核对，与分析结论未建立引用关系。'}]`
  const heading='\n\n## 已采集证据\n',empty='（未能附上完整证据页。）'
- const overhead=status.length+unverified.length+noAnalysis.length+heading.length+empty.length+footer(observations.length).length+missingNote.length+[...cited].join('、').length+6
+ const overhead=status.length+unverified.length+noAnalysis.length+incompleteCitations.length+heading.length+empty.length+footer(observations.length).length+missingNote.length+[...cited].join('、').length+6
  const appendixBudget=Math.max(0,Math.min(investigationBudget.appendixCharacters,maxCharacters-body.length-overhead))
  let size=0
  for(const item of selected.length?selected:observations){
@@ -92,5 +93,8 @@ export function formatDiagnosticReport(text,observations,secrets=[],{maxCharacte
   if(size+part.length+1>appendixBudget){if(cited.has(item.ref))missing.push(item.ref);continue}
   parts.push(part);size+=part.length+1
  }
- return [status,body&&(!selected.length||!parts.length)?unverified:'',body||noAnalysis].filter(Boolean).join('\n\n')+heading+(parts.join('\n')||empty)+(missing.length?missingNote+missing.join('、'):'')+footer(parts.length)
+ return {
+  body:[status,body&&(!selected.length||!parts.length)?unverified:'',body||noAnalysis,missing.length?incompleteCitations:''].filter(Boolean).join('\n\n'),
+  evidence:heading.trimStart()+(parts.join('\n')||empty)+(missing.length?missingNote+missing.join('、'):'')+footer(parts.length),
+ }
 }

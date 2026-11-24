@@ -4,12 +4,20 @@ import {FIXTURE_TOKEN} from './preview.mjs'
 test('diagnostic status is compact and aligned, with honest state and cancellation', async ({page}) => {
   let state = 'collecting'
   const writes: string[] = []
-  const record = () => ({id:'diagnosis',state,target:'zzusp/night-bot',title:'渠道消息拉取异常',body:'合成诊断结果'})
+  let submitted: unknown
+  const record = () => ({id:'diagnosis',state,target:'zzusp/night-bot',title:'渠道消息拉取异常',body:'合成诊断结果',...(state==='ready'?{evidence:'合成证据明细'}:{})})
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {value:{writeText: async (text: string) => document.body.setAttribute('data-copied', text)}})
+  })
   await page.route('**/api/feedback**', route => {
     const req = route.request(), path = new URL(req.url()).pathname
     if(req.method() !== 'GET') writes.push(req.method() + ' ' + path)
     if(req.method() === 'DELETE') return route.fulfill({json:{ok:true}})
     if(path === '/api/feedback') return route.fulfill({json:{target:'zzusp/night-bot',model:'fixture/model',revision:'fixture-1'}})
+    if(path.endsWith('/submit')) {
+      submitted = req.postDataJSON()
+      return route.fulfill({json:{url:'https://github.com/zzusp/night-bot/issues/123'}})
+    }
     return route.fulfill({json:record()})
   })
   await page.goto('/#/feedback')
@@ -45,7 +53,24 @@ test('diagnostic status is compact and aligned, with honest state and cancellati
   await expect(page.getByRole('button',{name:'确认提交 Issue',exact:true})).toBeDisabled()
   await expect(page.locator('.feedback-preview .settings-card-heading').getByRole('button',{name:'清除暂存',exact:true})).toBeVisible()
   await page.screenshot({path:test.info().outputPath('diagnosis-ready-1440.png')})
-  expect(writes).toEqual(['POST /api/feedback/collect','DELETE /api/feedback/diagnosis','POST /api/feedback/collect'])
+  const disclosure = page.getByText('本次诊断证据（不提交）', {exact: true})
+  const evidence = page.getByLabel('诊断证据明细', {exact: true})
+  await expect(disclosure).toBeVisible()
+  await expect(evidence).toBeHidden()
+  await disclosure.focus()
+  await disclosure.press('Enter')
+  await expect(evidence).toHaveText('合成证据明细')
+  await expect(evidence).toBeVisible()
+  await expect(page.getByLabel('提交正文', {exact: true})).toHaveValue('合成诊断结果')
+  await page.getByRole('radio', {name: '在 GitHub 添加图片', exact: true}).check()
+  await page.getByRole('button', {name: '复制完整正文', exact: true}).click()
+  await expect(page.locator('body')).toHaveAttribute('data-copied', '合成诊断结果')
+  await page.getByRole('radio', {name: '不添加图片', exact: true}).check()
+  await page.getByRole('checkbox', {name: /同意向.*提交 Issue/}).check()
+  await page.getByRole('button', {name: '确认提交 Issue', exact: true}).click()
+  await expect(page.getByRole('link', {name: '查看 Issue'})).toBeVisible()
+  expect(submitted).toEqual({confirm: true, title: '渠道消息拉取异常', body: '合成诊断结果'})
+  expect(writes).toEqual(['POST /api/feedback/collect','DELETE /api/feedback/diagnosis','POST /api/feedback/collect','POST /api/feedback/diagnosis/submit'])
 })
 
 test('an expired diagnosis unlocks the original form without replay; a new failure explains the timeout', async ({page}) => {

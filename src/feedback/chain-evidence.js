@@ -1,6 +1,7 @@
 import {investigationBudget} from './investigation-budget.js'
-import {randomUUID} from 'node:crypto'
-import {diagnosticQueryFailure,retryEvidenceRead} from './diagnostic-contract.js'
+import {createHash,randomUUID} from 'node:crypto'
+import {diagnosticQueryFailure,journalViews,retryEvidenceRead} from './diagnostic-contract.js'
+import {skillObservationAuditKinds} from '../../packages/dingtalk-core/session-skill-refresh.js'
 import {AGENT_PHASES} from '../runtime/pi-agent-observation.js'
 import {buildTraceLedger} from '../runtime/performance-trace.js'
 import {responseTiming} from '../../packages/web-console/server/response-times.js'
@@ -13,6 +14,42 @@ const pickNumbers=(value,keys)=>Object.fromEntries(keys.map(key=>[key,number(val
 const normalize=value=>String(value??'').normalize('NFKC').toLowerCase().replace(/\s+/g,' ').trim()
 const phases=new Set([...AGENT_PHASES,'ingress','queue','turn','host','send','readback','triage','router','source-read','resource-read','image-save','resident-store','source-record','task-commit','old-drain','materialize'])
 const fail=(code='FEEDBACK_EVIDENCE_SCOPE')=>{throw Object.assign(new Error(code),{code})}
+// Compare only the last committed branch of a task. Journal pages may also
+// contain abandoned branches; conversation windows are not a continuous history.
+function taskSkillHistory(entries,leaf){
+ const branch=new Set(),seenCalls=new Set(),skills=new Map()
+ for(let entry=leaf;entry;entry=entries.get(entry.parentId))branch.add(entry.id)
+ let notices=0,lastNoticeAt=null
+ return {
+  notice(entry){if(branch.has(entry.id)){notices++;lastNoticeAt=stamp(entry.timestamp)}},
+  record(entry,callId,skill,native,isError){
+   if(!branch.has(entry.id)||seenCalls.has(callId))return
+   seenCalls.add(callId)
+   let row=skills.get(skill)
+   if(!row){row={skill,successful:0,failed:0,samePayload:0,changedPayload:0,unknownComparisons:0,sameWithoutNotice:0};skills.set(skill,row)}
+   if(isError){row.failed++;return}
+   const at=stamp(entry.timestamp)
+   const digest=typeof native?.content==='string'&&typeof native.provider==='string'?createHash('sha256').update(JSON.stringify([native.provider,native.resourceBase,native.content])).digest('hex'):null
+   row.successful++
+   let comparison
+   if(row.previous){
+    const payload=!digest||!row.previous.digest?'unknown':digest===row.previous.digest?'same':'changed'
+    comparison={previousResultAt:row.previous.at,resultAt:at,payload,noticesBetweenResults:notices-row.previous.notices,failedCallsBetweenResults:row.failed-row.previous.failed,precedingNoticeAt:lastNoticeAt}
+    if(payload==='same'){
+     row.samePayload++
+     if(!comparison.noticesBetweenResults){row.sameWithoutNotice++;row.latestSameWithoutNotice=comparison}
+    }else if(payload==='changed'){row.changedPayload++;row.latestChanged=comparison}
+    else row.unknownComparisons++
+   }
+   row.previous={at,digest,notices,failed:row.failed}
+   return comparison
+  },
+  summary(){
+   const comparisons=[...skills.values()].map(({previous,...row})=>row).sort((a,b)=>b.sameWithoutNotice-a.sameWithoutNotice||b.successful-a.successful||b.failed-a.failed)
+   return {scope:'last-committed-task-branch',notices,skillCount:comparisons.length,skills:comparisons.slice(0,5)}
+  },
+ }
+}
 /** Consent is enforced by the caller. No filesystem, command, network or mutation
  * capability is exposed. Private bodies are used for local matching only. */
 export function createChainEvidence({application,title='',description,secrets=[],getSessionPersistence,getSchedule}) {
@@ -163,9 +200,10 @@ export function createChainEvidence({application,title='',description,secrets=[]
    // 仅暴露原生合同中的时间参数，不公开指令，也不猜测其中的停止条件。
    result={alias:args.alias,kind,recurring:kind?['every','daily','weekly','cron'].includes(kind):null,state:state(row.status),scheduledAt:stamp(row.scheduledAt),timing:{afterSeconds:number(row.afterSeconds),everySeconds:number(row.everySeconds),time:row.time??null,timeZone:row.timeZone??null,weekdays:row.weekdays??null,expression:row.expression??null},lastDelivery:row.lastDelivery?{deliveredAt:stamp(row.lastDelivery.deliveredAt),scheduledAt:stamp(row.lastDelivery.scheduledAt)}:null,stopCondition:'not-a-structured-schedule-field',complete:false,limitations:['prompt-and-private-identities-not-returned','stop-condition-in-prompt-not-verified','deleted-schedules-not-in-catalog','accepted-delivery-is-not-business-completion']}
   }else if(action==='journal'){
-   const ref=sessions.get(args.alias),offset=args.offset??0
+   const ref=sessions.get(args.alias),offset=args.offset??0,view=args.view??'tools'
    if(!ref)fail('FEEDBACK_ALIAS_INVALID')
-   if(!Number.isSafeInteger(offset)||offset<0||offset>180)fail('FEEDBACK_OFFSET_INVALID')
+   if(!Number.isSafeInteger(offset)||offset<0)fail('FEEDBACK_OFFSET_INVALID')
+   if(!journalViews.includes(view))fail()
    const persistence=getSessionPersistence?.()
    if(!persistence?.readNative)return unavailable('native-journal-unavailable')
    let snapshot
@@ -176,29 +214,67 @@ export function createChainEvidence({application,title='',description,secrets=[]
    const validConversation=!ref.taskId&&snapshot.header.conversationId===ref.groupId&&['conversation-router','channel-triage'].includes(snapshot.header.runtimeOwner)
    if(!validTask&&!validConversation)return unavailable('native-journal-owner-unproven')
    const toolNames=new Set(['bash','pwsh','read','read_window','write','edit','find','grep','web_fetch','web_search','job_output','job_list','job_kill','resident_task_action','resident_task_plan','resident_router_reply','resident_router_settle','task_result','memory_read','memory_remember','skill'])
-   const rows=[],pending=new Map(),entries=new Map(snapshot.entries.map(entry=>[entry.id,entry]))
+   const items=[],pending=new Set(),entries=new Map(snapshot.entries.map(entry=>[entry.id,entry])),receipts=new Map()
+   const skillHistory=view==='skills'&&validTask?taskSkillHistory(entries,snapshot.entries.at(-1)):null
+   let total=0
+   const add=project=>{if(total++>=offset&&items.length<5)items.push(project())}
+   const inScope=(start,end)=>validTask||ref.windows?.some(([a,b])=>Number.isFinite(start)&&Number.isFinite(end)&&start<=b&&end>=a)
+   if(view==='skills')for(const row of snapshot.audit??[]){
+    signal?.throwIfAborted()
+    if(row.domain!=='skill-observation'||row.kind!=='read'||row.version!==1||!skillObservationAuditKinds['skill-observation/read'](row.payload))continue
+    const {resultEntryId}=row.payload
+    receipts.set(resultEntryId,receipts.has(resultEntryId)?null:row.payload)
+   }
    for(const entry of snapshot.entries){
-    signal?.throwIfAborted();if(entry.type!=='message')continue
+    signal?.throwIfAborted()
+    if(view==='skills'&&entry.type==='custom_message'&&entry.customType==='night.skill-version-notice'&&entry.details?.kind==='skill-version-change'){
+     const at=Date.parse(entry.timestamp)
+     if(inScope(at,at)){skillHistory?.notice(entry);add(()=>({skillEvent:'version-notice',at:stamp(entry.timestamp)}))}
+    }
+    if(entry.type!=='message')continue
     const message=entry.message
-    if(message?.role==='assistant')for(const block of Array.isArray(message.content)?message.content:[]){if(block.type==='toolCall'&&typeof block.id==='string')pending.set(block.id,{entry,block})}
+    if(message?.role==='assistant')for(const block of Array.isArray(message.content)?message.content:[]){if(block.type==='toolCall'&&typeof block.id==='string')pending.add(block.id)}
     if(message?.role!=='toolResult'||typeof message.toolCallId!=='string')continue
     let ancestor=entries.get(entry.parentId),call;const visited=new Set()
     while(ancestor&&!visited.has(ancestor.id)){visited.add(ancestor.id);const matches=ancestor.message?.role==='assistant'&&Array.isArray(ancestor.message.content)?ancestor.message.content.filter(block=>block.type==='toolCall'&&block.id===message.toolCallId):[];if(matches.length){if(matches.length===1&&message.toolName===matches[0].name)call={entry:ancestor,block:matches[0]};break}ancestor=entries.get(ancestor.parentId)}
-    if(!call)continue
-    if(!ref.taskId){const start=Date.parse(call.entry.timestamp),end=Date.parse(entry.timestamp);if(!ref.windows?.some(([a,b])=>Number.isFinite(start)&&Number.isFinite(end)&&start<=b&&end>=a))continue}
+    if(!call||!inScope(Date.parse(call.entry.timestamp),Date.parse(entry.timestamp)))continue
     pending.delete(message.toolCallId)
-    const tool=toolNames.has(call.block.name)?call.block.name:'other'
-    const content=Array.isArray(message.content)?message.content.filter(block=>block.type==='text'&&typeof block.text==='string').map(block=>block.text).join('\n'):''
-    // Read/file/search outputs may be private documents. Only diagnostic lines
-    // from execution tools, or explicitly errored tool results, are selected.
-    const knownCodes=new Set(['ENOENT','EACCES','EPERM','ECONNREFUSED','ECONNRESET','ETIMEDOUT','SQLITE_BUSY','SQLITE_LOCKED','MODEL_REQUEST_FAILED','CHANNEL_ADAPTER_ERROR','AUTH_REQUIRED','BOT_NOT_READY'])
-    const errorCodes=[...new Set(content.match(/\b[A-Z][A-Z0-9_]{2,64}\b/g)??[])].filter(code=>knownCodes.has(code)).slice(0,12)
-    const categories=[['timeout',/\b(?:timeout|timed out)\b|超时/i],['permission',/\b(?:permission denied|access denied)\b/i],['not-found',/\b(?:not found|no such file)\b/i],['connection',/\bconnection (?:refused|reset)\b/i]].filter(([,pattern])=>pattern.test(content)).map(([label])=>label)
-    const exitMatch=content.match(/\bexit(?:ed)?(?: with)?(?: code)?[: ]+(-?\d{1,3})\b/i),httpMatch=content.match(/\bHTTP(?:\/\d(?:\.\d)?)?\s+(?:status[: ]+)?([45]\d{2})\b/i)
-    rows.push({call:identity('call',message.toolCallId),tool,startedAt:stamp(call.entry.timestamp),endedAt:stamp(entry.timestamp),isError:message.isError===true,resultCharacters:content.length,diagnostic:{errorCodes,categories,exitCode:exitMatch?Number(exitMatch[1]):null,httpStatus:httpMatch?Number(httpMatch[1]):null,unsharedText:content.length>0},input:{timeoutMs:number(call.block.arguments?.timeoutMs??call.block.arguments?.timeout_ms),runInBackground:typeof call.block.arguments?.run_in_background==='boolean'?call.block.arguments.run_in_background:null},limitation:'structured-error-evidence-only-result-text-not-disclosed'})
+    const tool=toolNames.has(call.block.name)?call.block.name:'other',isError=message.isError===true
+    const args=call.block.arguments,reader=tool==='read'||tool==='read_window'
+    const receipt=receipts.get(entry.id),record=receipt?.record
+    const observed=message.isError===false&&receipt?.callId===message.toolCallId&&
+      (record.kind==='skill'?tool==='skill'&&args?.name===record.name:reader)
+    const skillEvent=observed?(record.kind==='skill'?'skill-read-receipt':'reference-read-receipt'):
+      tool==='skill'?'skill-call':reader&&typeof args?.path==='string'&&/(?:^|[\\/])SKILL\.md$/.test(args.path)?'skill-document-read':null
+    if((view==='skills'&&!skillEvent)||(view==='errors'&&!isError))continue
+    const name=args?.name,native=message.details?.nativeResult
+    const skill=view==='skills'&&tool==='skill'&&typeof name==='string'&&name?identity('skill',ref.sessionId+':'+name):null
+    const nativeValue=native?.isError===false&&native.value?.name===name?native.value:null
+    const comparison=skill&&typeof message.isError==='boolean'?skillHistory?.record(entry,message.toolCallId,skill,nativeValue,isError):null
+    add(()=>{
+     const row={call:identity('call',message.toolCallId),tool,startedAt:stamp(call.entry.timestamp),endedAt:stamp(entry.timestamp),isError,...skillEvent?{skillEvent}:{}}
+     if(view==='skills'){
+      // Match only the native loader's failure envelope, not text in a returned document.
+      if(skill)row.skill=skill
+      if(comparison)row.comparison=comparison
+      const error=native?.error?.message
+      if(isError&&tool==='skill'&&native?.isError===true&&typeof name==='string'){
+       if(error===`invalid skill name "${name}"`)row.skillFailure='invalid-name'
+       else if(error===`skill "${name}" is unknown or no longer available`)row.skillFailure='unknown-or-unavailable'
+       else if(error===`skill "${name}" is not available for model invocation`)row.skillFailure='not-model-invocable'
+      }
+      return row
+     }
+     const content=Array.isArray(message.content)?message.content.filter(block=>block.type==='text'&&typeof block.text==='string').map(block=>block.text).join('\n'):''
+     const text=isError||['bash','pwsh','job_output'].includes(tool)?content:''
+     const knownCodes=new Set(['ENOENT','EACCES','EPERM','ECONNREFUSED','ECONNRESET','ETIMEDOUT','SQLITE_BUSY','SQLITE_LOCKED','MODEL_REQUEST_FAILED','CHANNEL_ADAPTER_ERROR','AUTH_REQUIRED','BOT_NOT_READY'])
+     const errorCodes=[...new Set(text.match(/\b[A-Z][A-Z0-9_]{2,64}\b/g)??[])].filter(code=>knownCodes.has(code)).slice(0,12)
+     const categories=[['timeout',/\b(?:timeout|timed out)\b|超时/i],['permission',/\b(?:permission denied|access denied)\b/i],['not-found',/\b(?:not found|no such file)\b/i],['connection',/\bconnection (?:refused|reset)\b/i]].filter(([,pattern])=>pattern.test(text)).map(([label])=>label)
+     const exitMatch=text.match(/\bexit(?:ed)?(?: with)?(?: code)?[: ]+(-?\d{1,3})\b/i),httpMatch=text.match(/\bHTTP(?:\/\d(?:\.\d)?)?\s+(?:status[: ]+)?([45]\d{2})\b/i)
+     return {...row,resultCharacters:content.length,diagnostic:{errorCodes,categories,exitCode:exitMatch?Number(exitMatch[1]):null,httpStatus:httpMatch?Number(httpMatch[1]):null,unsharedText:content.length>0},input:{timeoutMs:number(args?.timeoutMs??args?.timeout_ms),runInBackground:typeof args?.run_in_background==='boolean'?args.run_in_background:null},limitation:'structured-error-evidence-only-result-text-not-disclosed'}
+    })
    }
-   const items=rows.slice(offset,offset+5)
-   result={alias:args.alias,items,total:rows.length,offset,nextOffset:offset+items.length<rows.length&&offset+items.length<=180?offset+items.length:null,complete:false,unmatchedToolCalls:pending.size,coverage:'committed-associated-session-tool-results',limitations:['source-journal-limited-to-observed-span-windows','no-user-or-assistant-prose','no-arbitrary-tool-arguments','unrecognized-error-details-withheld-not-absence-of-error','manual-preview-required-before-publishing']}
+   result={alias:args.alias,view,items,total,offset,...(skillHistory&&offset===0?{skillSummary:skillHistory.summary()}:{}),nextOffset:offset+items.length<total?offset+items.length:null,complete:false,unmatchedToolCalls:pending.size,coverage:'committed-associated-session-'+(view==='skills'?'skill-evidence':'tool-results'),limitations:[...validTask?[]:['source-journal-limited-to-observed-span-windows'],'no-user-or-assistant-prose','no-arbitrary-tool-arguments','unrecognized-error-details-withheld-not-absence-of-error',...view==='skills'?['notices-and-file-results-do-not-prove-skill-load','read-receipts-record-versions-not-every-read','same-skill-return-does-not-prove-no-reference-or-version-change','notices-between-results-are-not-causal-links']:[],'manual-preview-required-before-publishing']}
   }else fail()
   signal?.throwIfAborted();return result
  }
