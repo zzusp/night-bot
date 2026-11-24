@@ -22,6 +22,7 @@ async function projected(router: boolean) {
       details:{nativeResult:{isError,error:{message:'PRIVATE_EXCEPTION',info}},stack:'PRIVATE_STACK'},
       content:[{type:'text',text:isError?'PRIVATE_BODY /private/path token=PRIVATE_TOKEN':JSON.stringify({tasks:[],total:0,unknown:'PRIVATE_SUCCESS_FIELD'})}]}]});
   });
+  rows.push({sourceEntry:{id:'synthetic-answer'},messages:[{role:'assistant',stopReason:'stop',content:[{type:'text',text:'核对结束。'}]}]});
   const snapshot = {header:{id:sessionId,...router?{runtimeOwner:'conversation-router',conversationId,generation:1}:{}},entries:[{id:'synthetic-commit'}],
     audit:[{domain:'task',kind:'identity',version:1,payload:{taskId:'task-research',sessionId}}],context:{projection:{entries:rows}}};
   const persistence = {readNative:async()=>snapshot};
@@ -41,9 +42,9 @@ for (const router of [true,false]) {
     await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
     if(router)await page.getByRole('tab',{name:'路由',exact:true}).click();
     const history=page.locator('.execution-history').filter({hasText:'工具失败预览 · 合成数据'});
-    const group=history.locator('.execution-tool-group');
+    const group=history.locator('.execution-turn-process');
     await expect(group).not.toHaveAttribute('open');
-    await expect(group.locator(':scope > summary')).toContainText('3 项失败');
+    await expect(group.locator(':scope > summary')).toContainText('5 次工具调用');
     await group.locator(':scope > summary').focus();await page.keyboard.press('Enter');
     const steps=group.locator('.pi-tool-step');
     await expect(steps).toHaveCount(5);

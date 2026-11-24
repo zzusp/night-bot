@@ -46,7 +46,7 @@ export function planReceipt(output?: Message): ResidentPlan | null {
 
 // Suppress only an input that is already fully represented by the paired
 // receipt. The Host may shorten objective/requirements in its receipt.
-function pairedPublicResult(call?: Message, output?: Message) {
+export function pairedPublicResult(call?: Message, output?: Message) {
   return wholeToolMessage(call) && wholeToolMessage(output) && !!call.callId && call.callId === output.callId
     && call.toolName === output.toolName && call.source?.sessionId === output.source?.sessionId
     && !output.isError && output.status === 'completed';
@@ -103,21 +103,27 @@ const fieldLabels: Record<string,string> = {
   dependencyId:'依赖编号', taskId:'任务编号', prerequisiteTaskId:'前置任务编号', runSequence:'运行轮次',
   drained:'已退出执行', dependenciesReady:'依赖就绪', lastDecision:'最近判断', activities:'执行记录',
   requiresFullRead:'需完整读取', dependenciesTruncated:'依赖已截断', coverage:'覆盖范围', verification:'证据来源',
+  timeZone:'时区', timezone:'时区', concurrency:'并发数', day:'日期', prompt:'提醒内容', job_id:'作业编号',
+  scheduleCount:'事项总数', afterSeconds:'延迟（秒）', everySeconds:'间隔（秒）',
+  rule:'调度规则', time:'当地时间', recurring:'定期重复', stopTaskCount:'停止条件任务数', targetSelected:'已指定目标',
+  changesPrompt:'修改提醒内容', deleted:'已删除', updated:'已更新', code:'结果代码',
   toolName:'工具', toolCalls:'工具调用', isError:'失败', resultAvailable:'有结论', at:'时间',
 };
 const values: Record<string,Record<string,string>> = {
+  day:{today:'今天',yesterday:'昨天'},
   mode:{catalog:'索引',topic:'主题',entry:'条目'},
   scope:{'standing-instructions':'长期指令',memory:'记忆',index:'索引',topic:'主题',entry:'条目',inventory:'清单'},
   operation:{remember:'保存',forget:'忘记',keep:'保留',update:'更新',delete:'删除',upsert:'保存或更新',review:'核对',query:'查询'},
   state:{active:'已安排',running:'执行中',pending:'待执行',waiting:'等待中',completed:'已完成',blocked:'受阻',cancelled:'已取消',
     prepared:'已冻结',sending:'发送中',unknown:'状态未知',held:'暂停发送',failed:'失败',delivered:'已送达',
-    superseded:'已被替代','awaiting-readback':'等待回查',current:'当前',retracted:'已撤回'},
+    superseded:'已被替代','awaiting-readback':'等待回查',current:'当前',retracted:'已撤回',
+    scheduled:'已安排',overdue:'已逾期',triggered:'已触发',expired:'已过期'},
   quoteStatus:{current:'当前',unverified:'未核验',superseded:'已被替代',unavailable:'不可用'},
   by:{source:'来源',task:'任务',notification:'通知'},
   detail:{index:'索引',summary:'摘要',full:'完整',progress:'进展',handoff:'交接'},
   control:{active:'启用',paused:'已暂停',cancelled:'已取消'},
   decision:{satisfied:'条件已满足',continue:'继续核查',wait:'保持等待'},
-  kind:{supplement:'补充任务',resume:'恢复任务',revise:'修订任务',reopen:'重开任务',control:'调整状态',arrange:'安排依赖'},
+  kind:{after:'延迟触发',at:'指定时间',every:'固定间隔',daily:'每日',weekly:'每周',cron:'Cron 规则',supplement:'补充任务',resume:'恢复任务',revise:'修订任务',reopen:'重开任务',control:'调整状态',arrange:'安排依赖'},
   action:{upsert:'保存或更新',delete:'删除',remember:'保存记忆',forget:'删除记忆'},
   replyPurpose:{'direct-answer':'直接答复','task-update':'任务进展'},
 };

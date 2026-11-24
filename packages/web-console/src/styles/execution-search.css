@@ -13,14 +13,13 @@
 .execution-search-hit:hover, .execution-search-hit:active { background: var(--board-hover); }
 .execution-search-hit:focus-visible { outline: 2px solid var(--board-focus); outline-offset: 2px; }
 
-/* Search has its own left-hand slot. The floating task and panel controls
-   are on the right, including when either opens inside a narrow canvas. */
-.task-dialogue .execution-search-owner { position: relative; z-index: 4; pointer-events: none; }
-.task-dialogue .execution-search-owner > :is(.board-icon-button, .execution-search) { pointer-events: auto; }
-.task-dialogue .execution-search-owner > .board-icon-button {
-  margin: 8px auto 0 16px;
-  height: 36px;
-}
-@media (max-width: 760px) {
-  .task-dialogue .execution-history:has(> .execution-search-owner) .execution-todos { inset-block-start: 44px; }
+/* Task detail shares the right toolbar without shifting its transcript
+   under the floating controls, including on a narrow canvas. */
+.task-dialogue .execution-search-owner { position: relative; z-index: 4; min-height: 44px; pointer-events: none; }
+.task-dialogue .execution-search-owner > .execution-search { margin-block-start: 44px; pointer-events: auto; }
+@container execution-canvas (width < 1496px) {
+  .task-dialogue .execution-history:has(> .execution-search-owner) > .execution-todos {
+    inset-inline-end: calc(24px + 2 * var(--board-control-height));
+    max-width: calc(100% - 40px - 2 * var(--board-control-height));
+  }
 }

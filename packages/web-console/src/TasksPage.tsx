@@ -6,6 +6,7 @@ import { Badge, Button, EmptyState, IconButton } from './components/BoardPrimiti
 import { Loading, Notice, Pagination, Search } from './components/Shared';
 import { ConversationFrame } from './components/ConversationFrame';
 import { ExecutionHistory } from './components/ExecutionHistory';
+import { ExecutionSearchToolbar } from './components/ExecutionSearch';
 import { TaskLearningSummary } from './components/TaskLearningSummary';
 import { taskDurationText } from './task-duration';
 import { taskConclusion, taskConclusionDuration } from './task-conclusion';
@@ -62,6 +63,7 @@ export function TaskDetail({ id, header, drafts }: { id: string; header?: ReactN
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
   const [tokenTarget, setTokenTarget] = useState<HTMLDivElement | null>(null);
+  const [searchToolbar, setSearchToolbar] = useState<HTMLSpanElement | null>(null);
   const [rail, setRail] = useState(true);
   useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
   useEffect(() => { if (!query.error) setDenied(false); }, [query.updatedAt]);
@@ -78,10 +80,10 @@ export function TaskDetail({ id, header, drafts }: { id: string; header?: ReactN
   return <div className={`task-workspace${rail ? '' : ' task-rail-hidden'}`}>
     <ConversationFrame label="任务执行记录">
       {header}
-      <div className="conversation-tools task-panel-tools"><div className="topbar-actions"><IconButton label={rail ? '隐藏任务面板' : '显示任务面板'} aria-expanded={rail} aria-controls="task-info-panel" onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>
+      <div className="conversation-tools task-panel-tools"><div className="topbar-actions"><span className="conversation-search-slot" ref={setSearchToolbar}/><IconButton label={rail ? '隐藏任务面板' : '显示任务面板'} aria-expanded={rail} aria-controls="task-info-panel" onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>
       {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
       {!task ? query.loading ? <Loading>正在读取任务…</Loading> : query.error ? null : <EmptyState title="无法读取任务" /> :
-        <div className="task-dialogue"><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={null} tokenTarget={tokenTarget} taskError={query.error} taskRetry={query.refresh} conclusion={!query.error ? taskConclusion(task) : null} conclusionDuration={taskConclusionDuration(task)} refreshAfterInput={draft.accepted}
+        <div className="task-dialogue"><ExecutionSearchToolbar.Provider value={searchToolbar}><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={null} tokenTarget={tokenTarget} taskError={query.error} taskRetry={query.refresh} conclusion={!query.error ? taskConclusion(task) : null} conclusionDuration={taskConclusionDuration(task)} refreshAfterInput={draft.accepted}
           inputPreviews={!query.error && task.session?.sessionId ? [
             ...(draft.previews ?? []).filter(value => value.sessionId === task.session?.sessionId),
             ...(draft.attempt?.sessionId === task.session?.sessionId && draft.attempt ? [{
@@ -93,7 +95,7 @@ export function TaskDetail({ id, header, drafts }: { id: string; header?: ReactN
           onInputsRecorded={requestIds => drafts.update(id, previous => {
             const previews = previous.previews?.filter(value => !requestIds.has(value.requestId));
             return previews?.length === previous.previews?.length ? previous : {...previous, previews};
-          })} />
+          })} /></ExecutionSearchToolbar.Provider>
           <TaskInputComposer taskId={id} sessionId={writableSession} draft={draft} drafts={drafts} />
         </div>}
     </ConversationFrame>

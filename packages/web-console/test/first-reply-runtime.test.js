@@ -2,14 +2,17 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
 import {residentRouterHost,channelMessage,requestEnvelope,requestText,requestTools} from '../../../test/fixtures/resident-router-host.js'
+import {communicationGuidanceReadTool} from '../../../src/channels/message-safety.js'
 import {createWebConsole} from '../server/plugin.js'
 test('真实 Host 直入 Router 的实际回复、未知投递与静默，经HTTP逐消息核验',{timeout:45000},async t=>{
  const replied=new Set(),settled=new Set()
+ let fetchedGuidance=false
  const h=await residentRouterHost(t,body=>{
   const tools=requestTools(body),handoff=requestEnvelope(body,'Router 交接请求：')
   if(handoff&&!tools.length)return {text:JSON.stringify({currentIntent:'保持真实来源',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
   if(tools.includes('resident_router_reply')){
    const input=requestEnvelope(body,'Router 请求：');if(!input)return {text:'等待真实输入'}
+   if (!fetchedGuidance && tools.includes('communication_guidance_read')) {fetchedGuidance=true;return {tool:'communication_guidance_read',args:{}}}
    const key=input.events.map(row=>row.id).join(',');if(settled.has(key))return {text:'本批已结清'}
    const event=input.events.find(row=>row.source&&!row.source.text.includes('SILENT')&&!row.source.text.includes('WAIT')&&!replied.has(row.source.sourceId))
    if(event){replied.add(event.source.sourceId);return {tool:'resident_router_reply',args:{operationId:'direct-'+event.source.sourceId,sourceId:event.source.sourceId,messageVersion:event.source.version,text:'这条消息无需建立任务，可直接答复。'+event.source.text}}}
@@ -30,10 +33,19 @@ test('真实 Host 直入 Router 的实际回复、未知投递与静默，经HTT
   const transcript=await api('/api/conversations/'+id+'/session')
   assert.equal(transcript.status,200)
   const settledRow=transcript.body.items.find(item=>item.kind==='tool-result'&&item.toolName==='resident_router_settle')
-  assert.deepEqual(JSON.parse(settledRow?.text),{settled:true,requestedEventCount:1,dispositions:{'handled-inline':1}})
+  const settlement=JSON.parse(settledRow?.text)
+  assert.equal(settlement.settled,true)
+  assert.equal(settlement.requestedEventCount,1)
+  assert.deepEqual(settlement.dispositions,{'handled-inline':1})
+  assert.equal(settlement.events?.[0]?.kind,'source.message')
+  assert.equal(settlement.events?.[0]?.snippet,'FIRST_ONE')
+  assert.equal(settlement.events?.[0]?.disposition,'handled-inline')
+  const guidance=transcript.body.items.find(item=>item.kind==='tool-result'&&item.toolName==='communication_guidance_read')
+  assert.equal(guidance?.text,(await communicationGuidanceReadTool().execute()).content)
+  assert.equal(guidance?.resourceContent,true)
   const replyRow=transcript.body.items.find(item=>item.kind==='tool-result'&&item.toolName==='resident_router_reply')
   assert.equal(JSON.parse(replyRow?.text).state,'prepared','submission receipt is not the eventual send confirmation')
-  assert.doesNotMatch(settledRow.text,/FIRST_ONE|operationId|Synthetic direct Router decision/)
+  assert.doesNotMatch(settledRow.text,/sourceQuote|operationId|Synthetic direct Router decision/)
   await Promise.all([h.receive(channelMessage('batch-one',{text:'BATCH_TOPIC_ONE'})),h.receive(channelMessage('batch-two',{text:'BATCH_TOPIC_TWO'}))]);await h.service.whenIdle()
   for(const [messageId,text] of [['reply-two','FIRST_TWO'],['reply-direct','DIRECT'],['reply-unknown','UNKNOWN'],['reply-silent','SILENT'],['reply-wait','WAIT']]){await h.receive(channelMessage(messageId,{text}));await h.service.whenIdle().catch(error=>{if(!text.includes('WAIT'))throw error;assert.equal(error.code,'ROUTER_BATCH_UNSETTLED')})}
   const result=await api(endpoint);assert.equal(result.status,200,JSON.stringify(result.body));const row=id=>result.body.items.find(row=>row.messageId===id)

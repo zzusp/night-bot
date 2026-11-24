@@ -1,5 +1,9 @@
+import {dateTime} from '../hooks';
 import {specializedToolPresentation} from '../specialized-tool-content';
 import {planStatusText, type ResidentPlan, type ResidentField} from '../resident-tool-content';
+import type {CompactToolView} from '../compact-tool-presentation';
+import type {ResidentAction, ResidentSettlement, SettleItem} from '../resident-activity-presentation';
+import {TaskToolDetails, TodoCountsRow} from './TaskToolDetails';
 import '../styles/specialized-tool-content.css';
 export {hasSpecializedToolContent, specializedToolLabel, specializedToolSummary} from '../specialized-tool-content';
 
@@ -11,6 +15,8 @@ export interface SpecializedToolContentProps {
   status?: string;
   complete?: boolean;
   plan?: ResidentPlan | null;
+  action?: ResidentAction | null;
+  todoRecorded?: boolean;
   isError?: boolean;
 }
 
@@ -18,14 +24,21 @@ export interface SpecializedToolContentProps {
 export default function SpecializedToolContent(props: SpecializedToolContentProps) {
   const view = specializedToolPresentation(props);
   const plan = props.plan ?? view?.plan;
+  const action = props.action ?? view?.action;
   if (!view) return null;
   return <div className={`specialized-tool-content specialized-tool-content--${view.kind}`}>
     {view.fields.length > 0 && <dl className="specialized-tool-fields">{view.fields.map(field => <div key={field.label}>
       <dt>{field.label}</dt><dd>{field.value}</dd>
     </div>)}</dl>}
     {plan && <ResidentPlanBody plan={plan} />}
-    {view.resident && <ResidentFields fields={view.resident} />}
-    {view.text !== undefined && <pre className="tool-content specialized-tool-text" tabIndex={0}><code>{view.text}</code></pre>}
+    {action && <ResidentActionBody action={action} />}
+    {view.task && <TaskToolDetails view={view.task} recorded={props.todoRecorded} />}
+    {view.todoReceipt && <div className="task-tool-heading"><strong>待办已更新</strong><TodoCountsRow counts={view.todoReceipt} /></div>}
+    {view.taskFailure !== undefined && <p className="task-tool-failure">{view.taskFailure}</p>}
+    {view.compact && <CompactToolBody view={view.compact} />}
+    {view.settlement && <SettlementBody settlement={view.settlement} result={props.phase==='output'} />}
+    {!action && view.resident && <ResidentFields fields={view.resident} />}
+    {!action && view.text !== undefined && <pre className="tool-content specialized-tool-text" tabIndex={0}><code>{view.text}</code></pre>}
   </div>;
 }
 
@@ -43,6 +56,60 @@ function ResidentPlanBody({plan}: {plan: ResidentPlan}) {
     {!!plan.dependencies.length && <div className="resident-plan-dependencies"><strong>依赖</strong><ul>{plan.dependencies.map((dependency,index) =>
       <li key={index}>{dependency.prerequisiteTitle && dependency.taskTitle && <><strong>{dependency.prerequisiteTitle}</strong> → <strong>{dependency.taskTitle}</strong>： </>}
         {dependency.condition}{dependency.state && <span className="resident-plan-note">（{dependency.state === 'pending' ? '待满足' : dependency.state === 'satisfied' ? '已满足' : dependency.state}）</span>}</li>)}</ul></div>}
+  </div>;
+}
+function ResidentActionBody({action}: {action: ResidentAction}) {
+  return <div className="resident-action">
+    <div className="resident-action-heading">
+      {(action.title || action.action) && <strong>{action.title || action.action}</strong>}
+      {(action.state || action.control) && <span className="resident-action-state">
+        {action.state}{action.control && action.control !== '启用' && <>{action.state ? ' · ' : ''}{action.control}</>}
+        {!action.state && action.control === '启用' && action.control}
+      </span>}
+    </div>
+    {action.notice && <p className="resident-action-notice">{action.notice}</p>}
+    {action.copy.length > 0 && <dl className="resident-action-copy">{action.copy.map((item,i) =>
+      <div key={i}><dt>{item.label}</dt><dd>{item.list ? <ul>{item.list.map((line,n)=><li key={n}>{line}</li>)}</ul> : item.text}</dd></div>)}
+    </dl>}
+    {action.extra.length > 0 && <ResidentFields fields={action.extra} />}
+  </div>;
+}
+function CompactToolBody({view}: {view: CompactToolView}) {
+  return <div className="resident-action compact-tool-data">
+    {view.notice && <p className="resident-action-notice">{view.notice}</p>}
+    {!!view.terms?.length && <div className="compact-tool-terms"><strong>检索词</strong><ul>{view.terms.map((term,index)=><li key={index}>{term}</li>)}</ul></div>}
+    {!!view.items?.length && <ul className="compact-tool-items">{view.items.map((item,index)=><li key={index}>
+      <div className="resident-action-heading"><strong>{item.title}</strong>{item.state && <span className="resident-action-state">{item.state}</span>}</div>
+      {!!item.fields?.length && <ResidentFields fields={item.fields} />}
+    </li>)}</ul>}
+    {!!view.fields?.length && <ResidentFields fields={view.fields} />}
+  </div>;
+}
+function SettlementBody({settlement, result}: {settlement: ResidentSettlement; result: boolean}) {
+  const buckets = (label:string, items:SettleItem[]) => items.length > 0 && <div key={label}>
+    <dt>{label}</dt><dd><ul>{items.map(item => <li key={item.label}>{item.label} <strong>{item.count}</strong></li>)}</ul></dd>
+  </div>;
+  return <div className="resident-settlement">
+    <p>提交 <strong>{settlement.requested}</strong> 项事件</p>
+    {settlement.events ? <ol className="resident-settlement-events" aria-label="提交的事件">
+      {settlement.events.map((event,index)=>{
+        const caption=event.title || (event.snippet && <q>{event.snippet}{event.snippetTruncated && '…'}</q>);
+        return <li key={index}>
+          <strong className="resident-settlement-event-title">{caption || event.label}</strong>
+          {event.recorded && <div className="resident-settlement-event-meta">
+            {caption && <span>{event.label}</span>}
+            {event.at && <time dateTime={event.at}>{dateTime(event.at)}</time>}
+            {event.disposition && <span>来源处理：{event.disposition}</span>}
+            {event.inspectionReview && <span>巡查处理：{event.inspectionReview}</span>}
+            {!caption && <span>无可查看的标题或摘录</span>}
+          </div>}
+        </li>;
+      })}
+    </ol> : result && <p className="resident-settlement-unlisted">该记录未保存可核对的逐项事件明细。</p>}
+    {(settlement.dispositions.length > 0 || settlement.reviews.length > 0) && <dl>
+      {buckets(settlement.events ? '未列出的来源处理' : '来源处理', settlement.dispositions)}
+      {buckets(settlement.events ? '未列出的巡查处理' : '巡查处理', settlement.reviews)}
+    </dl>}
   </div>;
 }
 function ResidentFields({fields}: {fields: ResidentField[]}) {

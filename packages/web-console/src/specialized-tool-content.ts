@@ -1,6 +1,10 @@
 import {parsePublicObject, residentPlan, residentFields, type ResidentField, type ResidentPlan} from './resident-tool-content.ts';
 
-export type SpecializedToolKind = 'memory' | 'skill' | 'lookup' | 'resident';
+import {taskToolPresentation, todoReceiptCounts, type TaskToolPresentation} from './task-tool-presentation.ts';
+import {compactToolPresentation, type CompactToolView} from './compact-tool-presentation.ts';
+import {residentTaskAction, residentSettlement, type ResidentAction, type ResidentSettlement} from './resident-activity-presentation.ts';
+
+export type SpecializedToolKind = 'memory' | 'skill' | 'lookup' | 'resident' | 'structured' | 'task';
 type Descriptor = {kind: SpecializedToolKind; label: string};
 const descriptors: Record<string, Descriptor> = {
   memory_status: {kind: 'memory', label: '记忆状态'},
@@ -30,6 +34,22 @@ const descriptors: Record<string, Descriptor> = {
   resident_operator_reply: {kind: 'resident', label: '网页答复'},
   resident_router_settle: {kind: 'resident', label: '结清事件'},
   resident_web_attachment: {kind: 'resident', label: '查看附件'},
+  platform_task_query: {kind:'structured',label:'查询平台任务'},
+  platform_config_query: {kind:'structured',label:'查看平台配置'},
+  platform_schedule_submit: {kind:'structured',label:'提交定时事项'},
+  schedule_create: {kind:'structured',label:'创建定时事项'},
+  schedule_update: {kind:'structured',label:'更新定时事项'},
+  schedule_list: {kind:'structured',label:'查看定时事项'},
+  schedule_delete: {kind:'structured',label:'删除定时事项'},
+  platform_schedule_list: {kind:'structured',label:'查看定时事项'},
+  platform_schedule_update: {kind:'structured',label:'更新定时事项'},
+  platform_schedule_delete: {kind:'structured',label:'删除定时事项'},
+  communication_guidance_read: {kind:'structured',label:'读取沟通指引'},
+  web_search: {kind:'structured',label:'网页搜索'},
+  job_list: {kind:'structured',label:'后台作业'},
+  job_kill: {kind:'structured',label:'取消后台作业'},
+  todo_write: {kind:'task',label:'更新待办'},
+  task_result: {kind:'task',label:'提交任务结果'},
 
 };
 export function specializedToolDescriptor(name: string) {
@@ -60,9 +80,9 @@ export function specializedToolSummary(toolName: string, output?: {
   try {
     const value = parsePublicObject(output.text);
     if (!value) return null;
+    if (toolName === 'resident_task_action' && (value.accepted === false || value.received === false)) return {label:'未接纳',tone:'warning'};
     if (toolName === 'resident_task_plan' && residentPlan(value,true)) return {label:'安排已记录',tone:'success'};
-    if (toolName === 'resident_router_settle' && value.settled === true
-      && Number.isSafeInteger(value.requestedEventCount) && (value.requestedEventCount as number) > 0) return {label:'已结清',tone:'success'};
+    if (toolName === 'resident_router_settle' && residentSettlement(value,true)) return {label:'已结清',tone:'success'};
     if ((toolName.startsWith('resident_memory_') || toolName === 'resident_skill_mutate') && value.ok === false)
       return {label:value.committed === true ? '结果待核实' : '未成功',tone:value.committed === true ? 'warning' : 'danger'};
     if (toolName === 'resident_memory_review' && value.ok === true && value.operation === 'review') return {label:'已核对',tone:'success'};
@@ -77,6 +97,12 @@ export interface SpecializedToolPresentation {
   label: string;
   fields: {label: string; value: string}[];
   plan?: ResidentPlan;
+  action?: ResidentAction;
+  task?: TaskToolPresentation;
+  todoReceipt?: NonNullable<ReturnType<typeof todoReceiptCounts>>;
+  taskFailure?: string;
+  compact?: CompactToolView;
+  settlement?: ResidentSettlement;
   resident?: ResidentField[];
   text?: string;
 }
@@ -87,12 +113,38 @@ export function specializedToolPresentation({toolName, phase, text, offset = 0, 
   const descriptor = specializedToolDescriptor(toolName);
   if (!descriptor) return null;
   const plain = {...descriptor, fields: [], text};
-  if (offset !== 0 || isError || !complete) return plain;
+  if (offset !== 0 || !complete) return plain;
+  if (isError) return descriptor.kind === 'task' && phase === 'output' ? {...descriptor,fields:[],taskFailure:text} : plain;
+  if (descriptor.kind==='task') {
+    if (phase==='input') {
+      const task=taskToolPresentation(toolName,text);
+      return task ? {...descriptor,fields:[],task} : plain;
+    }
+    if(toolName==='todo_write' && status==='completed') {
+      const todoReceipt=todoReceiptCounts(text);
+      return todoReceipt ? {...descriptor,fields:[],todoReceipt} : plain;
+    }
+    const value=parsePublicObject(text);
+    const resident=value ? residentFields(value) : [];
+    return resident.length ? {...descriptor,fields:[],resident} : plain;
+  }
+  if(descriptor.kind==='structured'){
+    const compact=compactToolPresentation(toolName,phase,text);
+    return compact ? {...descriptor,fields:[],compact} : plain;
+  }
   const value = parsePublicObject(text);
   if (!value) return plain;
   if (toolName === 'resident_task_plan') {
     const plan = phase === 'input' ? residentPlan(value,false) : status === 'completed' ? residentPlan(value,true) : null;
     if (plan) return {...descriptor, fields:[], plan};
+  }
+  if (toolName === 'resident_task_action') {
+    const action = phase === 'input' ? residentTaskAction(value) : status === 'completed' ? residentTaskAction(undefined,value) : null;
+    if (action) return {...descriptor, fields:[], action};
+  }
+  if (toolName === 'resident_router_settle' && (phase === 'input' || status === 'completed')) {
+    const settlement=residentSettlement(value,phase==='output');
+    if(settlement)return {...descriptor,fields:[],settlement};
   }
   // No inference from opaque IDs, skill names/paths, memory keys or partial JSON.
   // Any unfamiliar public field retains the existing exact text presentation.

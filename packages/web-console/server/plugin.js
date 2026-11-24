@@ -604,7 +604,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const conversationId = executionContext(chatSession[1], decodeURIComponent(chatSession[2]))
       const taskService = application().tasks, store = taskService.store
       if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
-      const options = {conversationId, executionActivity:true, readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), ...await sessionGuards(async()=>{if(executionContext(chatSession[1],decodeURIComponent(chatSession[2]))!==conversationId)fail('SESSION_PAGE_STALE',409)})}
+      const options = {conversationId, executionActivity:true, readRouterTasks: () => store.query({kind:'task.list',groupId:conversationId,archived:'all'}), readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), ...await sessionGuards(async()=>{if(executionContext(chatSession[1],decodeURIComponent(chatSession[2]))!==conversationId)fail('SESSION_PAGE_STALE',409)})}
       if (chatSession[3]) return send(response, 200, await routerSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[3])}))
       return send(response, 200, await routerSessionView({...options, readExecutionTiming:scope=>taskService.executionHistoryTiming?.(scope), ...sessionOptions(url.searchParams)}))
     }

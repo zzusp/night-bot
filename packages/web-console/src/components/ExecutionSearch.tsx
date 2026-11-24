@@ -1,20 +1,30 @@
-import { useId, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { RiArrowUpSLine, RiArrowDownSLine, RiCloseLine, RiSearchLine } from '@remixicon/react';
 import type { Message } from '../api';
 import { searchExecutionRecords } from '../execution-search';
 import { IconButton } from './BoardPrimitives';
 import '../styles/execution-search.css';
 
+export const ExecutionSearchToolbar = createContext<HTMLElement | null>(null);
+
 export function ExecutionSearch({ messages, onLocate }: { messages: Message[]; onLocate: (id: string) => void }) {
   const [open, setOpen] = useState(false);
-  const trigger = useRef<HTMLDivElement>(null);
-  return <div className="execution-search-owner" ref={trigger}>
-    {!open ? <IconButton label="搜索执行记录" onClick={() => setOpen(true)}><RiSearchLine size={16} /></IconButton>
-      : <ExecutionSearchForm messages={messages} onLocate={onLocate} onClose={() => { setOpen(false); requestAnimationFrame(() => trigger.current?.querySelector('button')?.focus()); }} />}
+  const toolbar = useContext(ExecutionSearchToolbar);
+  const owner = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const close = () => {
+    setOpen(false);
+    requestAnimationFrame(() => (toolbar ?? owner.current)?.querySelector<HTMLButtonElement>('button')?.focus());
+  };
+  const trigger = <IconButton label="搜索执行记录" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => open ? close() : setOpen(true)}><RiSearchLine size={16} /></IconButton>;
+  return <div className="execution-search-owner" ref={owner}>
+    {toolbar ? createPortal(trigger, toolbar) : !open && trigger}
+    {open && <ExecutionSearchForm id={id} messages={messages} onLocate={onLocate} onClose={close} />}
   </div>;
 }
 
-function ExecutionSearchForm({ messages, onLocate, onClose }: { messages: Message[]; onLocate: (id: string) => void; onClose: () => void }) {
+function ExecutionSearchForm({ id, messages, onLocate, onClose }: { id: string; messages: Message[]; onLocate: (id: string) => void; onClose: () => void }) {
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
@@ -30,7 +40,7 @@ function ExecutionSearchForm({ messages, onLocate, onClose }: { messages: Messag
     setSelected(hits[next].id); onLocate(hits[next].id);
   };
   const clear = () => { setDraft(''); setQuery(''); setSelected(null); input.current?.focus(); };
-  return <section className="execution-search" aria-label="搜索执行记录">
+  return <section id={id} className="execution-search" aria-label="搜索执行记录">
     <div className="execution-search-controls">
       <label className="search-field"><RiSearchLine size={16} aria-hidden="true" /><span className="sr-only">搜索已载入记录</span>
         <input autoFocus ref={input} type="search" value={draft} placeholder="搜索记录" aria-describedby={scopeId} autoComplete="off"

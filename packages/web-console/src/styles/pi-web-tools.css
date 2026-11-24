@@ -37,9 +37,18 @@
 .pi-web-tool-card > .pi-tool-body { margin: 0; padding: 0; border: 1px solid var(--tool-rule); border-radius: 11px; box-shadow: none; overflow: hidden; background: var(--tool-surface); color: var(--board-text); --pi-expanded-text: var(--board-text); }
 .pi-web-tool-card .tool-part { min-width: 0; padding: 6px 8px; margin: 0; }
 .pi-web-tool-card .tool-part + .tool-part { margin-top: 0; }
+.pi-tool-detail-state { display: flex; gap: 8px; margin: 0; color: var(--board-muted); font-size: 11px; line-height: 1.65; }
+.pi-tool-detail-state strong { flex: 0 0 auto; font-weight: 600; }
+.pi-tool-detail-state span { min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
+.pi-web-tool-card.is-error .tool-part:last-of-type .pi-tool-detail-state { color: var(--board-danger); }
+.pi-tool-document .markdown p { white-space: pre-line; }
+.pi-tool-document .markdown > :first-child { margin-block-start: 0; }
+.pi-tool-document .markdown > :last-child { margin-block-end: 0; }
+.pi-shell-description { margin: 4px 0 0; color: var(--board-muted); overflow-wrap: anywhere; }
 .pi-web-tool-body-title { padding: 5px 8px 0; color: var(--board-muted); font-size: 12px; }
 .pi-web-tool-footer { min-height: 20px; display: flex; justify-content: flex-end; align-items: center; gap: 7px; padding: 0 8px 4px; color: var(--board-muted); }
 .pi-web-tool-footer .pi-tool-status { flex: 0 0 auto; gap: 3px; }
+.pi-web-tool-footer .pi-tool-status.is-running { color: var(--board-warning); animation: none; }
 .pi-web-tool-card.is-shell .tool-part { padding: 6px 8px; }
 .pi-web-tool-card.is-shell .pi-tool-body > .tool-part + .tool-part { padding-top: 0; }
 .pi-web-tool-card.is-shell .pi-shell-command { display: block; line-height: 1.65; }
@@ -86,7 +95,6 @@
   .pi-web-tool-card .pi-web-tool-name { color: CanvasText; }
 }
 .pi-web-tool-card > .pi-web-tool-summary { display: flex; align-items: center; min-height: var(--execution-compact-row-height, 26px); gap: var(--execution-tool-icon-gap, 7px); padding: 3px var(--execution-tool-inset, 10px); color: var(--board-muted); }
-.pi-web-tool-card > div.pi-web-tool-summary { cursor: default; }
 .pi-web-tool-card .token.pi-token-comment, .pi-web-tool-card .token.pi-token-prolog { color: #626873; }
 .pi-web-tool-card .token.pi-token-string, .pi-web-tool-card .token.pi-token-attr-value { color: #347332; }
 .pi-web-tool-card .token.pi-token-property, .pi-web-tool-card .token.pi-token-tag { color: #285bc8; }
