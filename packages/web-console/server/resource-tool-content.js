@@ -68,10 +68,25 @@ export async function readResourceToolContents(candidates, {memory, reflection, 
   const allowed = new Map(), scopes = new Map(readableScopes(binding).map(({scope}) => [tokenFor(scope), scope]))
   if (!memory?.store?.root) return allowed
   await memory.bindingReady
-  const indices = new Map(), facts = new Map(), learned = new Map(), memoryGrants = new Map()
-  const index = scope => {
-    if (!indices.has(scope.id)) indices.set(scope.id, memory.store.index(scope).catch(() => null))
-    return indices.get(scope.id)
+  const memorySelectors = new Map(), skillMarkers = new Map()
+  for (const {id,candidate} of candidates) {
+    const {kind,value} = candidate
+    if (kind === 'memory-entry' || kind === 'memory-index') {
+      const scope = scopes.get(value.scopeToken)
+      if (!scope) continue
+      if (!memorySelectors.has(scope.id)) memorySelectors.set(scope.id, {scope, selectors: []})
+      if (kind === 'memory-entry') memorySelectors.get(scope.id).selectors.push([id,candidate])
+    } else if (kind === 'learned') {
+      const marker = value.marker, scope = marker && scopes.get(marker[1])
+      if (!scope || value.name !== 'learned-' + marker[2]) continue
+      if (!skillMarkers.has(scope.id)) skillMarkers.set(scope.id, new Set())
+      skillMarkers.get(scope.id).add(marker[0])
+    }
+  }
+  const indices = new Map(), learned = new Map(), memoryGrants = new Map()
+  const skillBatch = scope => {
+    if (!learned.has(scope.id)) learned.set(scope.id, reflection.readSkillHistoryBatch(scope, skillMarkers.get(scope.id)).catch(() => new Map()))
+    return learned.get(scope.id)
   }
   let installed
   if (candidates.some(({candidate}) => candidate.kind === 'filesystem') && memory.host?.runtimePaths) {
@@ -82,6 +97,10 @@ export async function readResourceToolContents(candidates, {memory, reflection, 
       }})
       installed = [...matches.values()]
     } catch { /* Missing inventory proves nothing. */ }
+  }
+  // Finish the fact reads before taking the learned-skill authorization view.
+  for (const [id, {scope, selectors}] of memorySelectors) {
+    indices.set(id, await memory.store.readHistoryBatch(scope, selectors).catch(() => null))
   }
   for (const {id, candidate} of candidates) {
     let text, memoryGrant
@@ -97,24 +116,16 @@ export async function readResourceToolContents(candidates, {memory, reflection, 
       } else if (kind === 'learned') {
         const marker = value.marker
         const scope = marker && scopes.get(marker[1]), key = marker?.[2]
-        if (!scope || value.name !== 'learned-' + key || !reflection?.authorizesSkillHistory || !reflection?.renderSkill || !reflection?.state || !reflection?.skillMarker) continue
-        const cacheKey = scope.id + ':' + marker[0]
-        if (!learned.has(cacheKey)) learned.set(cacheKey, (async () => {
-          if (!await reflection.authorizesSkillHistory(scope, marker[0])) return null
-          const current = (await reflection.state(scope)).skills[key]
-          if (!current?.active || reflection.skillMarker(scope, key, current) !== marker[0]) return null
-          const rendered = reflection.renderSkill(scope, key, current)
-          if (!contentSnapshot(rendered.replace(/^NIGHT_LEARNED_SCOPE=[^\n]*\n?/m, ''), current.revision)) return null
-          const body = current.body ?? current.guidance ?? current.steps?.map((line, i) => (i + 1) + '. ' + line).join('\n')
-          return {rendered, body}
-        })())
-        const current = await learned.get(cacheKey)
-        if (!current || textHash(current.rendered) !== value.hash) continue
-        text = current.body
+        if (!scope || value.name !== 'learned-' + key || !reflection?.readSkillHistoryBatch) continue
+        const current = (await skillBatch(scope)).get(marker[0])
+        if (!current) continue
+        const rendered = reflection.renderSkill(scope, key, current)
+        if (!contentSnapshot(rendered.replace(/^NIGHT_LEARNED_SCOPE=[^\n]*\n?/m, ''), current.revision) || textHash(rendered) !== value.hash) continue
+        text = current.body ?? current.guidance ?? current.steps?.map((line, i) => (i + 1) + '. ' + line).join('\n')
       } else {
         const scope = scopes.get(value.scopeToken)
         if (!scope) continue
-        const current = await index(scope)
+        const current = indices.get(scope.id)
         // This is a fresh Web read, not replay of private model context. A
         // scope revision may advance for unrelated records, but the exact entry
         // (or every public index descriptor) must still agree with the receipt.
@@ -126,16 +137,10 @@ export async function readResourceToolContents(candidates, {memory, reflection, 
           text = renderIndex(rows)
           memoryGrant = {scope, revision: current.revision, topic: candidate.topic, rows}
         } else {
-          const {row} = candidate
-          const descriptor = current.entries.find(item => item.id === row.id && item.key === row.key && item.revision === row.revision
-            && (candidate.path === undefined ? item.topic === candidate.topic : item.path === candidate.path))
-          if (!descriptor) continue
-          const cacheKey = JSON.stringify([scope.id, descriptor.topic, descriptor.key])
-          if (!facts.has(cacheKey)) facts.set(cacheKey, memory.store.read(scope, {topic: descriptor.topic, key: descriptor.key, includeSources: false}))
-          const fact = await facts.get(cacheKey), saved = fact.entries[0]
-          if (fact.revision !== current.revision || fact.entries.length !== 1 || saved?.id !== row.id || saved.revision !== row.revision || typeof saved.text !== 'string' || textHash(saved.text)!==row.hash) continue
-          text = saved.text
-          memoryGrant = {scope, revision: current.revision, descriptor: noEvidence(descriptor)}
+          const fact = current.facts.get(id)
+          if (typeof fact?.text !== 'string' || textHash(fact.text) !== candidate.row.hash) continue
+          text = fact.text
+          memoryGrant = {scope, revision: current.revision, descriptor: noEvidence(fact.descriptor)}
         }
       }
     } catch { /* Unavailable/changed/malformed resources retain the notice. */ }

@@ -211,11 +211,35 @@ export default class Reflection extends Service {
     const fingerprint=hash(JSON.stringify([scope.kind,scope.id,key,value.revision,value.applicability,value.origin??null,value.source??null,value.body??value.guidance??null,value.steps??null]))
     return 'NIGHT_LEARNED_SCOPE='+scope.kind+'/'+scope.id+';revision='+value.revision+';key='+key+';fingerprint='+fingerprint
   }
+  async skillHistorySelection(scope,markers){
+    const keys=new Map()
+    for(const marker of markers){
+      const match=marker.match(/^NIGHT_LEARNED_SCOPE=[^;]+;revision=\d+;key=([a-z0-9]+(?:-[a-z0-9]+)*);fingerprint=[a-f0-9]+$/)
+      if(match&&validKey(match[1]))keys.set(marker,match[1])
+    }
+    if(!keys.size)return {keys,entries:[]}
+    const state=await this.state(scope)
+    for(const [marker,key] of keys){
+      const value=state.skills[key]
+      if(!value?.active||this.skillMarker(scope,key,value)!==marker)keys.delete(marker)
+    }
+    if(!keys.size)return {keys,entries:[]}
+    const entries=await this.supportEntries(scope,state)
+    for(const [marker,key] of keys)if(!learnedSkillSupported(state.skills[key],entries))keys.delete(marker)
+    return {keys,entries}
+  }
   async authorizesSkillHistory(scope,marker){
-    const match=marker.match(/^NIGHT_LEARNED_SCOPE=[^;]+;revision=\d+;key=([a-z0-9]+(?:-[a-z0-9]+)*);fingerprint=[a-f0-9]+$/)
-    if(!match||!validKey(match[1]))return false
-    const state=await this.state(scope),value=state.skills[match[1]]
-    return !!value?.active&&learnedSkillSupported(value,await this.supportEntries(scope,state))&&this.skillMarker(scope,match[1],value)===marker
+    return (await this.skillHistorySelection(scope,[marker])).keys.has(marker)
+  }
+  async readSkillHistoryBatch(scope,markers){
+    const {keys,entries}=await this.skillHistorySelection(scope,markers),allowed=new Map()
+    if(!keys.size)return allowed
+    const current=await this.state(scope)
+    for(const [marker,key] of keys){
+      const value=current.skills[key]
+      if(value?.active&&this.skillMarker(scope,key,value)===marker&&learnedSkillSupported(value,entries))allowed.set(marker,value)
+    }
+    return allowed
   }
   async readSkills(scope,{key}={}){
     if(key!==undefined&&!validKey(key))throw failure('REFLECTION_SKILL_INVALID')
