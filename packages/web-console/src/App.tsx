@@ -1,5 +1,5 @@
 import {ReadErrorScope, ReadErrorOutlet} from './components/ReadErrors';
-import { Component, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { RiBugLine, RiArrowRightLine, RiChat3Line, RiCheckboxCircleLine, RiCloseLine, RiEyeLine, RiEyeOffLine, RiGlobalLine, RiLayoutRightLine, RiLogoutBoxRLine, RiMenuLine, RiMoonLine, RiRefreshLine, RiSeedlingLine, RiSettings3Line, RiShieldCheckLine, RiSunLine, RiCalendarScheduleLine } from '@remixicon/react';
 import { api, errorText, setSession, type ChatSummary, type RecentConversation, type Conversation, type Overview, type Page, type Session, type OperatorSettings } from './api';
 import { navigate, useResource, useRoute } from './hooks';
@@ -63,7 +63,10 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const isConversation = section === 'chat' || (section === 'channels' && !!id);
   const settings = useResource<OperatorSettings>('/settings',10000);
   const inheritedBrand=useAssistantBrand();
-  const brand = settings.data?.appearance || inheritedBrand;
+  const {name,icon} = settings.data?.appearance || inheritedBrand;
+  // Reconnecting re-reads settings as well as history. Equal appearance must
+  // not invalidate every transcript consumer through context.
+  const brand = useMemo(() => ({name,icon}), [name,icon]);
   useEffect(()=>{const refresh=()=>settings.refresh();window.addEventListener('night-settings-updated',refresh);return()=>window.removeEventListener('night-settings-updated',refresh)},[settings.refresh]);
   const overview = useResource<Overview>('/overview', 5000);
   const chats = useResource<Page<ChatSummary>>('/chat?offset=0&limit=20', 5000);

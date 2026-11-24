@@ -13,6 +13,7 @@ import {stageTiming} from './stage-times.js'
 import {routerCompactionTimes} from './router-compaction-times.js'
 import {routerContextWindow} from './router-context-window.js'
 import {createServer} from 'node:http'
+import {performance} from 'node:perf_hooks'
 import {readFile, lstat, realpath} from 'node:fs/promises'
 import {fileURLToPath} from 'node:url'
 import {resolve, join, relative, isAbsolute, sep} from 'node:path'
@@ -33,13 +34,16 @@ const pageNumber = (query, key, fallback, max = 1_000_000) => {
   return Number(raw)
 }
 const sessionOptions = query => {
+  const token=query.get('resources')
+  if(token!==null&&!/^[a-f0-9-]{36}$/.test(token))fail('PAGE_INVALID')
+  const resourceProof=token??undefined
   if (query.has('live')) {
-    if ([...query.keys()].some(key=>key!=='live') || !/^[a-f0-9-]{36}$/.test(query.get('live'))) fail('PAGE_INVALID')
-    return {liveProof:query.get('live')}
+    if ([...query.keys()].some(key=>!['live','resources'].includes(key)) || !/^[a-f0-9-]{36}$/.test(query.get('live'))) fail('PAGE_INVALID')
+    return {liveProof:query.get('live'),resourceProof}
   }
   if (query.get('stream') === '1') {
-    if ([...query.keys()].some(key => !['stream', 'limit', 'checkpoint', 'before'].includes(key))) fail('PAGE_INVALID')
-    return {stream: true, limit: pageNumber(query, 'limit', 200, 500), checkpoint: query.get('checkpoint'), before: query.get('before')}
+    if ([...query.keys()].some(key => !['stream', 'limit', 'checkpoint', 'before', 'resources'].includes(key))) fail('PAGE_INVALID')
+    return {stream: true, limit: pageNumber(query, 'limit', 200, 500), checkpoint: query.get('checkpoint'), before: query.get('before'),resourceProof}
   }
   if ([...query.keys()].some(key => !['offset', 'limit', 'revision'].includes(key))) fail('PAGE_INVALID')
   return {offset: pageNumber(query, 'offset', 0), limit: pageNumber(query, 'limit', 50, 50), revision: query.get('revision')}
@@ -48,6 +52,22 @@ const send = (response, status, body) => {
   if (response.destroyed) return
   response.writeHead(status, {'content-type': 'application/json; charset=utf-8'})
   response.end(JSON.stringify(body))
+}
+async function sendSession(response,view,options,requestStarted){
+  const requestTiming={}
+  try {
+    const body=await view({...options,requestTiming})
+    timingHeader()
+    return send(response,200,body)
+  } catch(error) {
+    timingHeader()
+    throw error
+  }
+  function timingHeader(){
+    // Observe completed phases without tagging a task, account, path, or body.
+    requestTiming.request=performance.now()-requestStarted
+    if(!response.headersSent&&!response.destroyed)response.setHeader('Server-Timing',Object.entries(requestTiming).map(([name,ms])=>name+';dur='+ms.toFixed(1)).join(', '))
+  }
 }
 const headers = response => {
   response.setHeader('cache-control', 'no-store')
@@ -159,6 +179,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
     }})
   } catch (error) {evolutionUsageCache?.close(); sessions.close(); ledger.close(); throw error}
   async function route(request, response) {
+    const requestStarted=performance.now()
     headers(response)
     requireLocalRequest(request, origin, network)
     if (stopped) fail('WEB_STOPPING', 503)
@@ -199,9 +220,9 @@ export async function createWebConsole({channels, paths, config, getApplication,
     }
     const sessionTask = async (id) => {const tasks=application().tasks;return tasks.store?.query ? tasks.store.query({kind:'task.get',taskId:id}) : tasks.taskDetail(id)}
     const taskIdentity = value => JSON.stringify([value?.taskId,value?.groupId,value?.session?.sessionId??value?.sessionId,value?.session?.sessionBound??value?.sessionBound])
-    const taskInputIds = (value, id) => {
+    const taskInputIds = id => {
       const store = application().tasks.store
-      if (!value.supplements?.some(row => row.webTaskInput) || !store?.query) return undefined
+      if (!store?.query) return undefined
       return sessionId => store.query({kind:'task.web-input-history', taskId:id, sessionId})
     }
     if (request.method === 'GET' && path === '/api/session') return send(response, 200, sessionView(session))
@@ -455,7 +476,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
     if (request.method === 'GET' && taskBody) {
       const id = decodeURIComponent(taskBody[1]), value = await sessionTask(id)
       if (!value) fail('TASK_NOT_FOUND', 404)
-      return send(response, 200, await taskSessionMessageView({...bodyOptions(url.searchParams), ...await sessionGuards(async()=>{if(taskIdentity(await sessionTask(id))!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)}), task: value, persistence: getSessionPersistence(), executionActivity:true, readTaskInputIds:taskInputIds(value,id), messageId: decodeURIComponent(taskBody[2])}))
+      return sendSession(response, taskSessionMessageView, {...bodyOptions(url.searchParams), ...await sessionGuards(async()=>{if(taskIdentity(await sessionTask(id))!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)}), task: value, persistence: getSessionPersistence(), executionActivity:true, readTaskInputIds:taskInputIds(id), messageId: decodeURIComponent(taskBody[2])},requestStarted)
     }
     const taskInput = /^\/api\/tasks\/([^/]+)\/input(?:\/([^/]+))?$/.exec(path)
     if(taskInput&&((request.method==='POST'&&!taskInput[2])||(request.method==='GET'&&taskInput[2]))){
@@ -490,8 +511,8 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const value = task[2] === 'session' ? await sessionTask(id) : await app.tasks.taskDetail(id)
       if (!value) fail('TASK_NOT_FOUND', 404)
       if (task[2] === 'session') {
-        return send(response, 200, await taskSessionView({task: value, persistence: getSessionPersistence(), executionActivity:true, readExecutionTiming:scope=>app.tasks.executionHistoryTiming?.(scope), readTaskInputIds:taskInputIds(value,id),
-          ...sessionOptions(url.searchParams), ...await sessionGuards(async()=>{if(taskIdentity(await sessionTask(id))!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)})}))
+        return sendSession(response, taskSessionView, {task: value, persistence: getSessionPersistence(), executionActivity:true, readExecutionTiming:scope=>app.tasks.executionHistoryTiming?.(scope), readTaskInputIds:taskInputIds(id),
+          ...sessionOptions(url.searchParams), ...await sessionGuards(async()=>{if(taskIdentity(await sessionTask(id))!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)})},requestStarted)
       }
       return send(response, 200, taskView(value, [credential.token]))
     }
@@ -579,8 +600,8 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if (!value || value.taskId !== taskId || value.groupId !== conversationId) fail('CHAT_TASK_NOT_FOUND', 404)
       const task = {taskId, session: {sessionId: value.sessionId, sessionBound: value.sessionBound}}
       const options = {task, persistence: getSessionPersistence(), ...await sessionGuards(async()=>{const current=await store.query({kind:'task.get',taskId});if(taskIdentity(current)!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)})}
-      if (chatTask[4]) return send(response, 200, await taskSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatTask[4])}))
-      return send(response, 200, await taskSessionView({...options, ...sessionOptions(url.searchParams)}))
+      if (chatTask[4]) return sendSession(response, taskSessionMessageView, {...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatTask[4])},requestStarted)
+      return sendSession(response, taskSessionView, {...options, ...sessionOptions(url.searchParams)},requestStarted)
     }
     const routerMessage=/^\/api\/conversations\/([^/]+)\/router\/(messages|requests\/([^/]+))$/.exec(path)
     if(routerMessage){
@@ -604,9 +625,9 @@ export async function createWebConsole({channels, paths, config, getApplication,
       const conversationId = executionContext(chatSession[1], decodeURIComponent(chatSession[2]))
       const taskService = application().tasks, store = taskService.store
       if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
-      const options = {conversationId, executionActivity:true, readRouterTasks: () => store.query({kind:'task.list',groupId:conversationId,archived:'all'}), readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), ...await sessionGuards(async()=>{if(executionContext(chatSession[1],decodeURIComponent(chatSession[2]))!==conversationId)fail('SESSION_PAGE_STALE',409)})}
-      if (chatSession[3]) return send(response, 200, await routerSessionMessageView({...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[3])}))
-      return send(response, 200, await routerSessionView({...options, readExecutionTiming:scope=>taskService.executionHistoryTiming?.(scope), ...sessionOptions(url.searchParams)}))
+      const options = {conversationId, executionActivity:true, readRouterTasks: () => store.query({kind:'task.transcript-titles',groupId:conversationId}), readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), ...await sessionGuards(async()=>{if(executionContext(chatSession[1],decodeURIComponent(chatSession[2]))!==conversationId)fail('SESSION_PAGE_STALE',409)})}
+      if (chatSession[3]) return sendSession(response, routerSessionMessageView, {...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[3])},requestStarted)
+      return sendSession(response, routerSessionView, {...options, readExecutionTiming:scope=>taskService.executionHistoryTiming?.(scope), ...sessionOptions(url.searchParams)},requestStarted)
     }
     const chat = /^\/api\/chat\/([^/]+)$/.exec(path)
     if (request.method === 'GET' && chat) {

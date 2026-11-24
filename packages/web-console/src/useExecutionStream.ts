@@ -6,6 +6,23 @@ type Read = 'newer' | 'older' | 'reset' | 'live';
 type State = {data: ExecutionPage | null; error: Error | null; olderError: Error | null; committing: boolean; loading: boolean; loadingOlder: boolean; updatedAt: number | null; epoch: number};
 const initial = (): State => ({data: null, error: null, olderError: null, committing: false, loading: true, loadingOlder: false, updatedAt: null, epoch: 0});
 const unique = (rows: Message[]) => [...new Map(rows.map(row => [row.id, row])).values()];
+const changedFields = <T extends object>(last: T | undefined, patch: T | undefined) =>
+  !!patch && (Object.keys(patch) as (keyof T)[]).some(key => patch[key] !== last?.[key]);
+function applyObservations(rows: Message[], page: ExecutionPage) {
+  if (!page.timingUpdates && !page.compactionUpdates) return rows;
+  let changed: Message[] | undefined;
+  rows.forEach((row, index) => {
+    const timing = page.timingUpdates && Object.hasOwn(page.timingUpdates, row.id) ? page.timingUpdates[row.id] : undefined;
+    const compaction = row.kind === 'compaction' && row.compaction && page.compactionUpdates && Object.hasOwn(page.compactionUpdates, row.id)
+      ? page.compactionUpdates[row.id] : undefined;
+    if (!changedFields(row.timing, timing) && !changedFields(row.compaction, compaction)) return;
+    changed ??= rows.slice();
+    changed[index] = {...row, ...(timing && {timing:{...row.timing,...timing}}), ...(compaction && {compaction:{...row.compaction,...compaction}})};
+  });
+  return changed ?? rows;
+}
+const retainLive = (previous: ExecutionPage['live'], next: ExecutionPage['live']) =>
+  previous === next || (previous && next && previous.revision === next.revision && JSON.stringify(previous) === JSON.stringify(next)) ? previous : next;
 const revoked = (error: unknown) => error instanceof ApiError && [401, 403, 404].includes(error.status);
 
 /** One stream and one in-flight read. Older windows never replace the tail.
@@ -32,7 +49,7 @@ export function useExecutionStream(endpoint: string) {
         if (requested === 'reset' || queued !== 'reset') queued = requested;
         return;
       }
-      const selected = requested === 'live' && (!current.data?.liveProof || Date.now() >= historyDue) ? 'newer' : requested;
+      const selected = requested === 'live' && (!current.data?.liveProof || !!current.data.resourceProof || Date.now() >= historyDue) ? 'newer' : requested;
       const kind = selected === 'reset' && current.data && !current.error ? 'newer' : selected;
       const previous = kind === 'reset' ? null : current.data;
       if (kind === 'older' && (!previous?.before || current.error)) return;
@@ -40,6 +57,7 @@ export function useExecutionStream(endpoint: string) {
       publish({loading: kind !== 'older' && kind !== 'live', loadingOlder: kind === 'older'});
       const params = new URLSearchParams({stream: '1', limit: String(batchSize)});
       if (previous?.checkpoint) params.set('checkpoint', previous.checkpoint);
+      if (previous?.resourceProof) params.set('resources', previous.resourceProof);
       if (kind === 'older' && previous?.before) params.set('before', previous.before);
       if (kind === 'live') {params.delete('stream'); params.delete('limit'); params.delete('checkpoint'); params.set('live', previous!.liveProof!);}
       let catchUp = false;
@@ -48,27 +66,27 @@ export function useExecutionStream(endpoint: string) {
         if (disposed || controller.signal.aborted) return;
         if (kind === 'live') {
           if (page.historyChanged) {
-            publish({data: current.data ? {...current.data, live: {active:false, items:[]}, liveProof:undefined} : null});
+            publish({data: current.data ? {...current.data, live: {active:false, items:[]}, liveProof:undefined, resourceProof:page.resourceProof ?? current.data.resourceProof} : null});
             catchUp = true;
           } else {
             const ended = previous?.live?.active === true && !page.live?.active;
-            publish({data: current.data ? {...current.data, live:page.live} : null, error:null, updatedAt:Date.now()});
+            publish({data: current.data ? {...current.data, live:retainLive(previous?.live,page.live), resourceProof:page.resourceProof ?? current.data.resourceProof} : null, error:null, updatedAt:Date.now()});
             catchUp = ended;
           }
           failures = 0;
           return;
         }
         historyDue = Date.now() + 2500;
-        const withTiming = (rows: Message[]) => !page.timingUpdates && !page.compactionUpdates ? rows : rows.map(row => {
-          const timing = page.timingUpdates && Object.hasOwn(page.timingUpdates, row.id) ? page.timingUpdates[row.id] : undefined;
-          const compaction = row.kind === 'compaction' && row.compaction && page.compactionUpdates && Object.hasOwn(page.compactionUpdates, row.id) ? page.compactionUpdates[row.id] : undefined;
-          return timing || compaction ? {...row, ...(timing ? {timing: {...row.timing, ...timing}} : {}), ...(compaction ? {compaction: {...row.compaction, ...compaction}} : {})} : row;
-        });
-        let data = {...page, items: withTiming(page.items)};
+        let items = page.items, before = page.before;
         if (page.status === 'ready' && previous?.status === 'ready' && previous.checkpoint) {
-          data = {...page, items: withTiming(unique(kind === 'older' ? [...page.items, ...previous.items] : [...previous.items, ...page.items])),
-            before: kind === 'older' ? page.before : previous.before};
+          items = page.items.length ? unique(kind === 'older' ? [...page.items, ...previous.items] : [...previous.items, ...page.items]) : previous.items;
+          before = kind === 'older' ? before : previous.before;
         }
+        // A missing field in an incremental response is not evidence that
+        // earlier protected rows have been discarded. Only reset or an explicit
+        // replacement may change the guard for the bodies still in memory.
+        const data = {...page, items:applyObservations(items,page), before, live:retainLive(previous?.live,page.live),
+          resourceProof:page.resourceProof ?? previous?.resourceProof};
         // A commit barrier keeps the last authorized snapshot, not a read error.
         // Drop provisional output/proof; only a fresh history read can restore it.
         if (page.status === 'pending' && page.reason === 'SESSION_COMMIT_PENDING') {
@@ -100,7 +118,7 @@ export function useExecutionStream(endpoint: string) {
           if (next && failures < 3) void read(next);
           else if (catchUp) void read('newer');
           else if (failures < 3 && !(current.error instanceof ApiError && (current.error.status === 409 || revoked(current.error)))) {
-            const light = !!current.data?.liveProof && current.data?.live?.active === true;
+            const light = !!current.data?.liveProof && !current.data.resourceProof && current.data.live?.active === true;
             const interval = light ? 1000 : 2500;
             timer = setTimeout(() => void read(light ? 'live' : 'newer'), interval * Math.max(1, 2 ** failures));
           }

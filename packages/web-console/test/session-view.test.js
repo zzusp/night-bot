@@ -730,3 +730,12 @@ test('operator request IDs join exact admitted task updates, never raw packet ID
   assert.ok(unattributed.items.every(item=>item.requestId===undefined))
   assert.doesNotMatch(JSON.stringify(page),/fake-request|source-a|operation-a/)
 })
+
+test('observation-only task store can omit input provenance without granting identities', async()=>{
+ const value=snapshot()
+ const persistence={readNative:async()=>value}
+ const read=await taskSessionView({task,persistence,readTaskInputIds:async()=>undefined})
+ assert.equal(read.status,'ready')
+ assert.ok(read.items.every(row=>!row.requestId))
+ await assert.rejects(taskSessionView({task,persistence,readTaskInputIds:async()=>({requestId:'not-a-ledger-list'})}),{code:'SESSION_SOURCE_INVALID'})
+})

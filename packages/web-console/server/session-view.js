@@ -1,5 +1,7 @@
 import {nativeTokenUsage} from './token-usage.js'
+import {observeMemoryLock} from '../../../src/memory/lock-observation.js'
 import {randomUUID} from 'node:crypto'
+import {performance} from 'node:perf_hooks'
 import {isDeepStrictEqual} from 'node:util'
 import {setImmediate as yieldToIO} from 'node:timers/promises'
 import {digest, fail} from './security.js'
@@ -48,7 +50,7 @@ export function visibleText(value, secrets = [], {maxLength = 16000, preservePat
       return [publicKey, scrub(child)]
     })) : typeof value === 'string' ? scrubString(value) : value
   try {
-    const parsed = JSON.parse(text)
+    const parsed = /^[\x20\t\r\n]*[\[{]/.test(text) ? JSON.parse(text) : undefined
     if (parsed && typeof parsed === 'object') {
       structured = true
       const selected = scrub(parsed)
@@ -344,13 +346,14 @@ function taskInstruction(input) {
 
 // A credential may span semantic blocks, not only provider chunks. Apply the
 // existing redactor to their joined, individually sanitized text as well.
-function crossBlockSensitive(blocks, secrets) {
-  const joined = (Array.isArray(blocks) ? blocks : []).filter(b => b.type === 'text' || b.type === 'thinking').map(b => visibleText(b.text ?? b.thinking ?? '', secrets, {maxLength: Infinity, preservePaths: true}).text).join('')
-  return visibleText(joined, secrets, {maxLength: Infinity, preservePaths: true}).text !== joined
+function crossBlockSensitive(blocks, secrets, redact = value => visibleText(value,secrets,{maxLength:Infinity,preservePaths:true})) {
+  const joined = (Array.isArray(blocks) ? blocks : []).filter(b => b.type === 'text' || b.type === 'thinking').map(b => redact(b.text ?? b.thinking ?? '').text).join('')
+  return redact(joined).text !== joined
 }
 
 // Presentation only: retained Pi envelopes stay untouched.
 function routerSummary(text) {
+  if (!/^[\x20\t\r\n]*\{/.test(text)) return null
   let value
   try { value = JSON.parse(text) } catch { return null }
   const keys = ['currentIntent', 'unresolvedQuestions', 'referents', 'assumptions', 'evidenceRefs', 'cutoff']
@@ -477,8 +480,8 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
   const editReceipts = executionActivity && identity.taskId ? new Map() : undefined
   const nativeEntries=executionActivity&&snapshot.context.projection.entries.some(row=>row.sourceEntry?.type==='compaction')?new Map(snapshot.entries.map((entry,index)=>[entry.id,{entry,index}])):undefined
   const timeline=nativeEntries?new WeakMap():undefined
-  const add = (entry, suffix, role, value, extra = {}, message) => {
-    const visible = visibleText(value, secrets, {maxLength: Infinity, preservePaths:extra.kind!=='compaction'})
+  const add = (entry, suffix, role, value, extra = {}, message, preparedVisible) => {
+    const visible = preparedVisible ?? visibleText(value, secrets, {maxLength: Infinity, preservePaths:extra.kind!=='compaction'})
     if (!visible.text && !extra.toolName && !['compaction','router-packet-boundary'].includes(extra.kind)) return
     const row={id: opaque(entry.id, suffix), role, createdAt: stamp(message, entry), ...visible, ...extra,
       source: {sessionId, entryId: opaque(entry.id), ...(extra.callId ? {callId: extra.callId} : {})}}
@@ -504,15 +507,21 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
       if (message.role === 'assistant') {
         const firstRow = items.length
         const blocks = typeof message.content === 'string' ? [{type: 'text', text: message.content}] : message.content
-        const suppressBodies = crossBlockSensitive(blocks, secrets)
+        // Keep identical policy including cross-block checks; reuse redaction for this one message only.
+        const checkedText = new Map()
+        const redactBlock = value => {
+          if(!checkedText.has(value))checkedText.set(value,visibleText(value,secrets,{maxLength:Infinity,preservePaths:true}))
+          return checkedText.get(value)
+        }
+        const suppressBodies = crossBlockSensitive(blocks, secrets, redactBlock)
         for (const [blockIndex, block] of (Array.isArray(blocks) ? blocks : []).entries()) {
           if (suppressBodies && (block.type === 'text' || block.type === 'thinking')) continue
           if (block.type === 'text' && typeof block.text === 'string') {
             const summary = !taskId ? routerSummary(block.text) : null
-            add(entry, 'assistant-' + index + '-' + blockIndex, 'assistant', summary ?? block.text, {kind: summary !== null ? 'context-summary' : 'message', ...(['stop', 'length', 'toolUse', 'error', 'aborted'].includes(message.stopReason) ? {status: message.stopReason} : {})}, message)
+            add(entry, 'assistant-' + index + '-' + blockIndex, 'assistant', summary ?? block.text, {kind: summary !== null ? 'context-summary' : 'message', ...(['stop', 'length', 'toolUse', 'error', 'aborted'].includes(message.stopReason) ? {status: message.stopReason} : {})}, message, redactBlock(summary ?? block.text))
           } else if (block.type === 'thinking' && typeof block.thinking === 'string' && block.redacted !== true) {
             const timing = timingFields({durationMs:executionTiming?.thinking(entry.id,blockIndex)})
-            add(entry, 'thinking-' + index + '-' + blockIndex, 'assistant', block.thinking, {kind: 'thinking',...(timing?{timing}:{})}, message)
+            add(entry, 'thinking-' + index + '-' + blockIndex, 'assistant', block.thinking, {kind: 'thinking',...(timing?{timing}:{})}, message, redactBlock(block.thinking))
           }
           if (block.type !== 'toolCall' || typeof block.name !== 'string') continue
           const callId = opaque(entry.id, index, blockIndex)
@@ -661,7 +670,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
 function pageOptions({offset = 0, limit = 50, stream = false, checkpoint, before, revision}) {
   if (stream) {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500 || offset !== 0 || revision
-      || checkpoint != null && !/^[a-f0-9]{64}\.[a-f0-9]{64}$/.test(checkpoint)
+      || checkpoint != null && !/^[a-f0-9]{64}\.[a-f0-9]{64}(?:\.r)?$/.test(checkpoint)
       || before != null && (!checkpoint || !/^[a-f0-9]{64}$/.test(before))) fail('PAGE_INVALID')
     return {limit}
   }
@@ -766,13 +775,32 @@ async function projectLive(snapshot, identity, secrets, raw, calls, executionAct
 // Every live request rechecks the exact physical journal, current browser and secrets.
 const liveProofs = new WeakMap()
 const liveValidity = Symbol('live-proof-validity')
+const historyData = Symbol('history-candidate-data')
+const historyCache=new WeakMap(), exposureProofs=new Map()
+const projectionBudget=8*1024*1024, cacheTTL=12000, cacheLimit=4, exposureTTL=120000
+async function measure(timing,name,fn){
+  const start=performance.now()
+  try{return await fn()}finally{if(timing)timing[name]=(timing[name]??0)+(performance.now()-start)}
+}
+function cachedHistory(authority,key,read){
+  if(!authority||!['object','function','symbol'].includes(typeof authority))return
+  let cache=historyCache.get(authority)
+  if(!cache){cache=new Map();historyCache.set(authority,cache)}
+  for(const [id,value] of cache)if(value.expires<=Date.now())cache.delete(id)
+  if(read===undefined)return cache.get(key)
+  if(cache.size>=cacheLimit)cache.delete(cache.keys().next().value)
+  cache.set(key,{...read,expires:Date.now()+cacheTTL})
+}
+const resourceHash=row=>digest(JSON.stringify([row.text,row.redacted,row.skillName]))
+
 const proofTTL = 10000, proofLimit = 64
-async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = [], liveProof, proofScope, guard, includeTaskUsage = false, readTaskInputIds, executionActivity = false, readExecutionTiming, readResourceContents, readRouterTasks}) {
+async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = [], liveProof, proofScope, guard, includeTaskUsage = false, readTaskInputIds, executionActivity = false, readExecutionTiming, readResourceContents, readRouterTasks, resourceProof, requestTiming}) {
   const {sessionId} = identity
   if (!sessionId || !persistence?.readNative) return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
   const identityKey = JSON.stringify(identity), secretKey = digest(JSON.stringify(secrets))
   // Cordis 服务门面每次查询都会改变；proof 绑定底层持久化身份。
   const authority = persistence.identity ?? persistence
+  const scoped = JSON.stringify([proofScope,identityKey,secretKey,includeTaskUsage,executionActivity])
   let proofs = liveProofs.get(authority)
   if (!proofs) {proofs = new Map(); liveProofs.set(authority, proofs)}
   for (const [key, value] of proofs) if (value.expires <= Date.now()) proofs.delete(key)
@@ -781,66 +809,136 @@ async function projection({base, identity, persistence, validIdentity, notStarte
     const changed = () => ({...base, status:'ready', historyChanged:true, live:{active:false,items:[]}})
     if (saved && saved.secret !== secretKey) fail('SESSION_REDACTION_CHANGED',409)
     if (!saved || !proofScope || saved.scope !== proofScope || saved.identity !== identityKey || !persistence.readNativeDigest) return changed()
-    try {if (await persistence.readNativeDigest(sessionId) !== saved.digest) return changed()} catch {return changed()}
+    try {if (await measure(requestTiming,'journal',()=>persistence.readNativeDigest(sessionId)) !== saved.digest) return changed()} catch {return changed()}
+    if(resourceProof)fail('SESSION_PAGE_STALE',409)
     const live = await projectLive({context:{projection:{entries:[]}}}, identity, secrets, await persistence.readLive?.(sessionId), saved.calls, executionActivity)
     return {...base, status:'ready', live, liveProof, historyChanged:false, [liveValidity]:()=>saved.expires>Date.now() && proofs.get(liveProof)===saved}
   }
+  let taskInputs,inputKey
+  async function refreshTaskInputs(){
+    const current=identity.taskId&&readTaskInputIds?await measure(requestTiming,'task_inputs',()=>readTaskInputIds(sessionId)):undefined
+    // Some observation-only stores do not implement the optional ledger
+    // read. No result means no proven Web input identities, never a guess.
+    if(current!=null&&!Array.isArray(current))fail('SESSION_SOURCE_INVALID',503)
+    taskInputs=current??[]
+    inputKey=digest(JSON.stringify(taskInputs))
+  }
+  let routerTitles,routerTitleKey
+  const currentTitles=readRouterTasks&&(()=>routerTitles??=measure(requestTiming,'task_titles',readRouterTasks).catch(()=>[]))
+  const titleKey=async()=>digest(JSON.stringify((await currentTitles())?.map(row=>[row.taskId,row.groupId,row.title])??[]))
+  const issueLiveProof=(nativeDigest,calls)=>{
+    while (proofs.size>=proofLimit)proofs.delete(proofs.keys().next().value)
+    const token=randomUUID()
+    proofs.set(token,{scope:proofScope,identity:identityKey,secret:secretKey,digest:nativeDigest,calls,expires:Date.now()+proofTTL})
+    return token
+  }
+  const cached=proofScope&&persistence.readNativeDigest&&cachedHistory(authority,scoped)
+  if(cached){
+    let fresh
+    try{fresh=await measure(requestTiming,'journal',()=>persistence.readNativeDigest(sessionId))===cached.nativeDigest}catch{}
+    if(fresh)await refreshTaskInputs()
+    if(fresh&&cached.inputKey===inputKey&&(!cached.routerTitleKey||currentTitles&&await titleKey()===cached.routerTitleKey)){
+      const live=persistence.readLive?await projectLive({context:{projection:{entries:[]}}},identity,secrets,await persistence.readLive(sessionId),cached.calls,executionActivity):undefined
+      if (revision&&revision!==cached.fixed.revision)fail('SESSION_PAGE_STALE',409)
+      const liveProof=issueLiveProof(cached.nativeDigest,cached.calls)
+      return {...base,...cached.fixed,...live?{live}:{},liveProof,[historyData]:{...cached.data,scoped,authority}}
+    }
+  }
   let snapshot
-  try {snapshot = await persistence.readNative(sessionId, {requireComplete: true})} catch (error) {
+  try {snapshot = await measure(requestTiming,'journal',()=>persistence.readNative(sessionId, {requireComplete: true}))} catch (error) {
     if (error.code === 'PI_SESSION_CHANGED' || error.code === 'PI_SESSION_UNCOMMITTED_TAIL' || error.code === 'PI_SESSION_COMMIT_REQUIRED') return {...base, status: 'pending', reason: 'SESSION_COMMIT_PENDING'}
     if (error.name === 'SessionPersistenceNotFoundError' && notStarted) return {...base, status: 'pending', reason: 'SESSION_NOT_STARTED'}
     return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
   }
   if (snapshot.header?.id !== sessionId || !Array.isArray(snapshot.entries) || !Array.isArray(snapshot.context?.projection?.entries) || !validIdentity(snapshot)) fail('SESSION_IDENTITY_INVALID', 503)
-  const journalRevision = digest(JSON.stringify([sessionId, snapshot.entries.at(-1)?.id]))
+  const journalRevision = digest(JSON.stringify([sessionId, snapshot.journalDigest??snapshot.entries.at(-1)?.id,secretKey]))
   // Validate/redact committed history once, retaining its exact pending-call
   // pairing state for the bounded live suffix. No cached authorization.
   const calls = new Map()
-  const taskInputs = identity.taskId && readTaskInputIds ? await readTaskInputIds(sessionId) : []
+  await refreshTaskInputs()
   let timing
-  if (executionActivity&&readExecutionTiming) try {timing=await readExecutionTiming(identity)} catch { /* Optional diagnostics never blocks committed history. */ }
+  if (executionActivity&&readExecutionTiming) try {timing=await measure(requestTiming,'diagnostics',()=>readExecutionTiming(identity))} catch { /* Optional diagnostics never blocks committed history. */ }
   const resourceCandidates = readResourceContents ? [] : undefined
-  const items = await projectEntries(snapshot, identity, secrets, calls, true, taskInputs, executionActivity, timing, resourceCandidates, readRouterTasks)
+  const items = await measure(requestTiming,'projection',()=>projectEntries(snapshot, identity, secrets, calls, true, taskInputs, executionActivity, timing, resourceCandidates, currentTitles))
   const live = persistence.readLive ? await projectLive(snapshot, identity, secrets, await persistence.readLive(sessionId), calls, executionActivity) : undefined
-  const granted = resourceCandidates?.length ? await readResourceContents(resourceCandidates) : undefined
-  const resources = []
-  if (granted?.size || items.some(row => row.resourceContent)) for (const row of items) {
-    const body = granted?.get(row.id)
-    if (body) {
-      Object.assign(row, visibleText(body.text, secrets, {maxLength: Infinity}), {resourceContent: true})
-      delete row.detailState
-      // Do not recover names from call parameters or Markdown. This canonical
-      // name is known only after the same authorization as the exact body.
-      if (row.toolName === 'skill' && typeof body.skillName === 'string' && !visibleText(body.skillName, secrets).redacted) row.skillName = body.skillName
-    }
-    if (row.resourceContent) resources.push([row.id, digest(row.text), row.redacted, ...(row.skillName ? [row.skillName] : [])])
-  }
-  // A continuation or a stream prefix cannot reuse prior authorization when a
-  // resource changes independently of the physical session journal.
-  const currentRevision = resources.length ? digest(JSON.stringify([journalRevision, resources])) : journalRevision
-  if (revision && revision !== currentRevision) fail('SESSION_PAGE_STALE', 409)
+  if (revision && revision !== journalRevision) fail('SESSION_PAGE_STALE', 409)
   let nextProof
-  // The lightweight request cannot reauthorize dependent bodies. Never let
-  // it refresh an already disclosed resource or cache any raw resource data.
   const liveCalls = new Map([...calls].map(([id, call]) => {
     if (!call?.resourceArgs) return [id, call]
     const {resourceArgs, ...safe} = call
     return [id, safe]
   }))
-  if (!resources.length && proofScope && liveCalls.size <= 256 && JSON.stringify([...liveCalls]).length <= 65536 && typeof snapshot.journalDigest === 'string' && persistence.readNativeDigest) {
-    while (proofs.size >= proofLimit) proofs.delete(proofs.keys().next().value)
-    nextProof = randomUUID()
-    proofs.set(nextProof, {scope:proofScope, identity:identityKey, secret:secretKey, digest:snapshot.journalDigest, calls:liveCalls, expires:Date.now()+proofTTL})
+  const canProve=proofScope && liveCalls.size<=256 && JSON.stringify([...liveCalls]).length<=65536 && typeof snapshot.journalDigest==='string' && persistence.readNativeDigest
+  if(canProve)nextProof=issueLiveProof(snapshot.journalDigest,liveCalls)
+  const fixed={status:'ready',revision:journalRevision,...(includeTaskUsage?{tokenUsage:nativeTokenUsage(snapshot.entries)}:{}),
+    ...taskTodos(snapshot,identity,secrets),items}
+  const data={candidates:new Map((resourceCandidates??[]).map(({id,candidate})=>[id,candidate])),prefixes:new Map(),positions:new Map(items.map((row,index)=>[row.id,index]))}
+  // Never retain independently authorized readback text or a native snapshot.
+  // Only verified selectors with body digests and redacted projection belong here.
+  if(routerTitles)routerTitleKey=await titleKey()
+  if(canProve && Buffer.byteLength(JSON.stringify([items,[...data.candidates]]))<=projectionBudget)
+    cachedHistory(authority,scoped,{nativeDigest:snapshot.journalDigest,inputKey,routerTitleKey,fixed,data,calls:liveCalls})
+  return {...base,...fixed,...(live?{live}:{}),...(nextProof?{liveProof:nextProof}:{}),[historyData]:{...data,scoped,authority}}
+}
+function readExposure(token,context){
+  if(!token)return new Map()
+  const entry=exposureProofs.get(token)
+  if(!entry||entry.expires<=Date.now()||entry.scope!==context?.scoped||entry.authority!==context?.authority)fail('SESSION_PAGE_STALE',409)
+  return entry.loaded
+}
+async function authorizeHistory(value,options,selected){
+  const context=value[historyData]
+  const {resourceProof,readResourceContents,requestTiming,secrets=[]}=options
+  const loaded=readExposure(resourceProof,context)
+  if(!context){return {value,selected}}
+  const selectedIds=new Set(selected.map(row=>row.id))
+  const ids=[...new Set([...selectedIds,...loaded.keys()])]
+  const candidates=ids.flatMap(id=>context.candidates.has(id)?[{id,candidate:context.candidates.get(id)}]:[])
+  const granted=candidates.length&&readResourceContents?await measure(requestTiming,'permissions',()=>requestTiming?observeMemoryLock(ms=>{
+    requestTiming.memory_wait=(requestTiming.memory_wait??0)+ms
+  },()=>readResourceContents(candidates)):readResourceContents(candidates)):new Map()
+  const current=new Map()
+  const items=selected.map(row=>{
+    const body=granted.get(row.id)
+    if(!body)return row
+    const next={...row,...visibleText(body.text,secrets,{maxLength:Infinity}),resourceContent:true}
+    delete next.detailState
+    if(row.toolName==='skill'&&typeof body.skillName==='string'&&!visibleText(body.skillName,secrets).redacted)next.skillName=body.skillName
+    current.set(row.id,resourceHash(next))
+    return next
+  })
+  if(options.messageId&&context.candidates.has(options.messageId)&&!granted.has(options.messageId))fail('SESSION_PAGE_STALE',409)
+  if(loaded.size){
+    for(const [id,hash] of loaded){
+      const body=granted.get(id),row=value.items[context.positions.get(id)]
+      if(!body||!row)fail('SESSION_PAGE_STALE',409)
+      const safe=visibleText(body.text,secrets,{maxLength:Infinity})
+      const skillName=row.toolName==='skill'&&typeof body.skillName==='string'&&!visibleText(body.skillName,secrets).redacted?body.skillName:undefined
+      if(resourceHash({...safe,skillName})!==hash)fail('SESSION_PAGE_STALE',409)
+      current.set(id,hash)
+    }
   }
-  return {...base, status: 'ready', revision: currentRevision, ...(includeTaskUsage ? {tokenUsage:nativeTokenUsage(snapshot.entries)} : {}), ...taskTodos(snapshot, identity, secrets), items, ...(live ? {live} : {}), ...(nextProof ? {liveProof:nextProof} : {})}
+  let next
+  if(options.stream&&current.size){
+    // A viewer that has accumulated too many independently revocable bodies
+    // must reload its window, not keep unverified bodies indefinitely.
+    if(current.size>512)fail('SESSION_PAGE_STALE',409)
+    for(const [token,proof] of exposureProofs)if(proof.expires<=Date.now())exposureProofs.delete(token)
+    while(exposureProofs.size>=128)exposureProofs.delete(exposureProofs.keys().next().value)
+    next=randomUUID()
+    exposureProofs.set(next,{scope:context.scoped,authority:context.authority,loaded:current,expires:Date.now()+exposureTTL})
+  }
+  const out={...value}
+  delete out[historyData]
+  if(next){out.resourceProof=next;delete out.liveProof}
+  return {value:out,selected:items}
 }
 function sessionPage(value, options) {
   const {offset, limit} = pageOptions(options)
   if (value.status !== 'ready') return value
   if (options.stream) return sessionStream(value, options)
   const rows = value.items, end = Math.max(0, rows.length - offset)
-  const items = rows.slice(Math.max(0, end - limit), end).map(row => ({...row, text: row.text.slice(0, 16000), textTotal: row.text.length,
-    textNextOffset: row.text.length > 16000 ? 16000 : null, ...(row.text.length > 16000 ? {truncated: true} : {})}))
+  const items = rows.slice(Math.max(0, end - limit), end)
   return {...value, items, total: rows.length, offset, limit, nextOffset: offset + items.length < rows.length ? offset + items.length : null}
 }
 
@@ -849,21 +947,27 @@ function sessionPage(value, options) {
 // a different session invalidates the prefix instead of mixing snapshots.
 function sessionStream(value, {limit = 200, checkpoint, before, executionActivity}) {
   const rows = value.items
-  const proof = index => digest(JSON.stringify(rows.slice(0, index + 1).map(row=>{
+  const proof = index => {
+    const known=value[historyData]?.prefixes
+    if(known?.has(index))return known.get(index)
+    const hash=digest(JSON.stringify(rows.slice(0, index + 1).map(row=>{
     if(!row.timing)return row
     const {timing,...stable}=row
     if(stable.compaction){const {mode,tokensAfter,...committed}=stable.compaction;stable.compaction=committed}
     return stable
-  })))
+    })))
+    if((known?.size??0)<1024)known?.set(index,hash)
+    return hash
+  }
   let anchor = -1
   if (checkpoint) {
     const [id, hash] = checkpoint.split('.')
-    anchor = rows.findIndex(row => row.id === id)
+    anchor = value[historyData]?.positions.get(id)??-1
     if (anchor < 0 || proof(anchor) !== hash) fail('SESSION_PAGE_STALE', 409)
   }
   let start, end
   if (before) {
-    end = rows.findIndex(row => row.id === before)
+    end = value[historyData]?.positions.get(before)??-1
     if (end < 0 || end > anchor) fail('SESSION_PAGE_STALE', 409)
     start = Math.max(0, end - limit)
   } else if (checkpoint) {
@@ -874,8 +978,7 @@ function sessionStream(value, {limit = 200, checkpoint, before, executionActivit
     start = Math.max(0, end - limit)
   }
   const last = before ? anchor : end - 1
-  const items = rows.slice(start, end).map(row => ({...row, text: row.text.slice(0, 16000), textTotal: row.text.length,
-    textNextOffset: row.text.length > 16000 ? 16000 : null, ...(row.text.length > 16000 ? {truncated: true} : {})}))
+  const items = rows.slice(start, end)
   // Asynchronous diagnostic metadata must not rewrite a history cursor.
   const previousTail=executionActivity&&checkpoint&&!before?rows.slice(Math.max(0,start-200),start):[]
   const timingUpdates=Object.fromEntries(previousTail.flatMap(row=>row.timing?[[row.id,row.timing]]:[]))
@@ -931,12 +1034,33 @@ async function routerProjection({conversationId, readRouter, readRotations, ...o
   return value
 }
 async function finalRead(value, options) {
-  await options.guard?.()
+  if(options.guard)await measure(options.requestTiming,'final_guard',options.guard)
   const valid=value[liveValidity];delete value[liveValidity]
   if(valid&&!valid())return {...value,historyChanged:true,live:{active:false,items:[]}}
   return value
 }
-export async function taskSessionView(options) {pageOptions(options); const value = await finalRead(await taskProjection(options), options); return options.liveProof ? value : sessionPage(value, options)}
-export async function taskSessionMessageView(options) {const value = await finalRead(await taskProjection(options), options); return messagePage(value, options)}
-export async function routerSessionView(options) {pageOptions(options); const value = await finalRead(await routerProjection(options), options); return options.liveProof ? value : sessionPage(value, options)}
-export async function routerSessionMessageView(options) {const value = await finalRead(await routerProjection(options), options); return messagePage(value, options)}
+async function readPage(project,options){
+  pageOptions(options)
+  if(options.checkpoint?.endsWith('.r')&&!options.resourceProof)fail('SESSION_PAGE_STALE',409)
+  const value=await project(options)
+  if(value.status!=='ready'&&options.resourceProof)fail('SESSION_PAGE_STALE',409)
+  if(options.liveProof||value.status!=='ready')return finalRead(value,options)
+  const page=sessionPage(value,options)
+  const {value:output,selected}=await authorizeHistory(value,options,page.items)
+  const result={...page,...output.resourceProof?{resourceProof:output.resourceProof}:{},items:selected.map(row=>({...row,text:row.text.slice(0,16000),textTotal:row.text.length,
+    textNextOffset:row.text.length>16000?16000:null,...row.text.length>16000?{truncated:true}:{}}))}
+  delete result[historyData]
+  if(result.resourceProof){delete result.liveProof;if(result.checkpoint)result.checkpoint+='.r'}
+  return finalRead(result,options)
+}
+async function readBody(project,options){
+  const value=await project(options)
+  if(value.status!=='ready')return messagePage(await finalRead(value,options),options)
+  const found=value.items[value[historyData]?.positions.get(options.messageId)]
+  const {value:output,selected}=await authorizeHistory(value,options,found?[found]:[])
+  return messagePage(await finalRead({...output,items:selected},options),options)
+}
+export const taskSessionView=options=>readPage(taskProjection,options)
+export const taskSessionMessageView=options=>readBody(taskProjection,options)
+export const routerSessionView=options=>readPage(routerProjection,options)
+export const routerSessionMessageView=options=>readBody(routerProjection,options)

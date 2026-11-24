@@ -1,4 +1,5 @@
 import {dirname} from 'node:path'
+import {digest} from './security.js'
 import {isDeepStrictEqual} from 'node:util'
 import {readableScopes} from '../../../src/memory/scope.js'
 import {label} from '../../../src/memory/format.js'
@@ -14,6 +15,7 @@ export const isResourceTool = name => names.has(name)
 const tokenFor = scope => scope.kind + '/' + scope.id
 const bounded = (text, limit = CONTENT_LIMIT) => typeof text === 'string' && text.length <= limit && Buffer.byteLength(text) <= limit
 const visibleBody = text => typeof text === 'string' && !!text.trim() && contentSnapshot(text, 0) !== null
+const textHash=value=>digest(JSON.stringify(value))
 const noEvidence = row => ({id: row.id, revision: row.revision, topic: row.topic, key: row.key, path: row.path, title: row.title, summary: row.summary})
 
 /** Native receipt, exact pairing and content are necessary but never sufficient
@@ -36,7 +38,8 @@ export function resourceReadCandidate(name, args, message, sourceEntry) {
       || !visibleBody(value.content)
       || (value.provider === 'filesystem' ? value.resourceBase?.kind !== 'directory' || typeof value.resourceBase.path !== 'string' : value.resourceBase !== undefined)
       || renderSkillContent(value) !== rendered) return null
-    return {kind: value.provider, value}
+    const marker = /^NIGHT_LEARNED_SCOPE=([^;\n]+);revision=\d+;key=([a-z0-9-]+);fingerprint=[a-f0-9]{64}$/m.exec(value.content)
+    return {kind:value.provider,value:{name:value.name,resourceBase:value.resourceBase,hash:textHash(value.content),marker:marker?.slice(0,3)}}
   }
   if (value.kind !== 'night-memory-result' || value.revoked || typeof value.scopeToken !== 'string'
     || !Number.isSafeInteger(value.revision) || value.revision < 0 || !Array.isArray(value.entries) || args.candidates !== undefined) return null
@@ -44,7 +47,7 @@ export function resourceReadCandidate(name, args, message, sourceEntry) {
     if (value.stage !== (args.topic === undefined ? 'root-index' : 'filtered-index') || value.topic !== args.topic
       || (args.topic !== undefined && !label(args.topic)) || value.markdown !== rendered
       || value.entries.some(row => !row || typeof row.summary !== 'string') || renderMemoryIndex(value) !== rendered) return null
-    return {kind: 'memory-index', topic: args.topic, value}
+    return {kind:'memory-index',topic:args.topic,value:{scopeToken:value.scopeToken,revision:value.revision,rowsHash:digest(JSON.stringify(value.entries.map(noEvidence)))}}
   }
   if (value.stage !== undefined || value.entries.length !== 1 || JSON.stringify(value) !== rendered) return null
   const row = value.entries[0]
@@ -55,7 +58,7 @@ export function resourceReadCandidate(name, args, message, sourceEntry) {
     if (typeof args.path !== 'string' || args.topic !== undefined || args.key !== undefined) return null
     try {path = decodeURIComponent(args.path)} catch {return null}
   } else if (!label(args.topic) || args.key !== row.key) return null
-  return {kind: 'memory-entry', value, row, path, topic: args.topic}
+  return {kind:'memory-entry',value:{scopeToken:value.scopeToken,revision:value.revision},row:{id:row.id,key:row.key,revision:row.revision,hash:textHash(row.text)},path,topic:args.topic}
 }
 
 /** Current shared-resource authorization, independent of task or Router
@@ -89,10 +92,10 @@ export async function readResourceToolContents(candidates, {memory, reflection, 
           && item.name === value.name && dirname(file.path) === value.resourceBase.path) ?? []
         if (matching.length !== 1) continue
         const {item, file} = matching[0]
-        if (!contentSnapshot(file.text, item.revision) || parseSkillFrontmatter(file.text)?.content !== value.content) continue
-        text = value.content
+        if (!contentSnapshot(file.text, item.revision) || textHash(parseSkillFrontmatter(file.text)?.content??'') !== value.hash) continue
+        text = parseSkillFrontmatter(file.text)?.content
       } else if (kind === 'learned') {
-        const marker = /^NIGHT_LEARNED_SCOPE=([^;\n]+);revision=\d+;key=([a-z0-9-]+);fingerprint=[a-f0-9]{64}$/m.exec(value.content)
+        const marker = value.marker
         const scope = marker && scopes.get(marker[1]), key = marker?.[2]
         if (!scope || value.name !== 'learned-' + key || !reflection?.authorizesSkillHistory || !reflection?.renderSkill || !reflection?.state || !reflection?.skillMarker) continue
         const cacheKey = scope.id + ':' + marker[0]
@@ -106,7 +109,7 @@ export async function readResourceToolContents(candidates, {memory, reflection, 
           return {rendered, body}
         })())
         const current = await learned.get(cacheKey)
-        if (!current || current.rendered !== value.content) continue
+        if (!current || textHash(current.rendered) !== value.hash) continue
         text = current.body
       } else {
         const scope = scopes.get(value.scopeToken)
@@ -118,7 +121,7 @@ export async function readResourceToolContents(candidates, {memory, reflection, 
         if (!Number.isSafeInteger(current?.revision) || current.revision < value.revision) continue
         if (kind === 'memory-index') {
           const rows = current.entries.filter(row => candidate.topic === undefined || row.topic === candidate.topic).map(noEvidence)
-          if (!isDeepStrictEqual(rows, value.entries.map(noEvidence))) continue
+          if (digest(JSON.stringify(rows))!==value.rowsHash) continue
           // Keep real Markdown and omit caller-specific applicability/context.
           text = renderIndex(rows)
           memoryGrant = {scope, revision: current.revision, topic: candidate.topic, rows}
@@ -130,7 +133,7 @@ export async function readResourceToolContents(candidates, {memory, reflection, 
           const cacheKey = JSON.stringify([scope.id, descriptor.topic, descriptor.key])
           if (!facts.has(cacheKey)) facts.set(cacheKey, memory.store.read(scope, {topic: descriptor.topic, key: descriptor.key, includeSources: false}))
           const fact = await facts.get(cacheKey), saved = fact.entries[0]
-          if (fact.revision !== current.revision || fact.entries.length !== 1 || saved?.id !== row.id || saved.revision !== row.revision || saved.text !== row.text) continue
+          if (fact.revision !== current.revision || fact.entries.length !== 1 || saved?.id !== row.id || saved.revision !== row.revision || typeof saved.text !== 'string' || textHash(saved.text)!==row.hash) continue
           text = saved.text
           memoryGrant = {scope, revision: current.revision, descriptor: noEvidence(descriptor)}
         }
