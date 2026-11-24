@@ -38,17 +38,20 @@ test('pi-web single disclosure shows object status real duration and request edi
   }
 });
 
-test('empty parameters and results produce no disclosure or placeholder, and timeout is not elapsed', async ({page}) => {
+test('empty parameters and results have honest expanded states, and timeout is not elapsed', async ({page}) => {
   await open(page, [call('empty', 'job_list', {}), output('empty', 'job_list', ''), {id:'split', role:'assistant', text:'继续'}, call('shell', 'bash', {command:'echo hello', timeoutMs:7000})]);
   const empty = page.locator('[data-message-id="empty"]');
   await expect(empty.locator('.pi-web-tool-card')).toBeVisible();
-  await expect(empty.locator('details')).toHaveCount(0);
-  await expect(empty).not.toContainText('本页无输入');
-  await expect(empty).not.toContainText('尚无结果');
+  await expect(empty.locator('details')).toHaveCount(1);
+  await expect(empty.locator('.pi-tool-body')).toHaveCount(0);
+  await empty.locator('summary').click();
+  await expect(empty.getByText('无需参数。',{exact:true})).toBeVisible();
+  await expect(empty.getByText('已返回，无文字输出。',{exact:true})).toBeVisible();
   const shell = page.locator('[data-message-id="shell"]');
   await expect(shell.locator('.pi-web-tool-duration')).toHaveCount(0);
   await shell.locator('summary').click();
-  await expect(shell.locator('.tool-part')).toHaveCount(1);
+  await expect(shell.locator('.tool-part')).toHaveCount(2);
+  await expect(shell.getByText('未记录工具结果。',{exact:true})).toBeVisible();
   await expect(shell.locator('.pi-shell-command small')).toHaveText('(timeout: 7s)');
 });
 

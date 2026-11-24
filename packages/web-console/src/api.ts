@@ -69,6 +69,7 @@ export interface Message {
   timing?: MessageTiming;
   compaction?: {mode?: 'foreground' | 'background'; tokensBefore?: number; tokensAfter?: number; summaryHidden?: boolean};
   kind?: string; toolName?: string; callId?: string; isError?: boolean; redacted?: boolean; truncated?: boolean; resourceContent?: boolean; skillName?: string; editDiff?: boolean;
+  detailState?: 'empty' | 'withheld' | 'not-recorded';
   source?: MessageSource; textTotal?: number; textNextOffset?: number | null;
 }
 export interface Chat {

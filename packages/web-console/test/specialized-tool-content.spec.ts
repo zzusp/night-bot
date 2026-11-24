@@ -7,8 +7,8 @@ import {FIXTURE_TOKEN} from './preview.mjs';
 const endpoint = '**/api/conversations/room-product/session';
 const source = {sessionId: 'fixture-router', entryId: 'fixture-entry'};
 const pair = (id: string, toolName: string, input: string, output: string) => [
-  {id: `call-${id}`, role: 'tool', kind: 'tool-call', callId: id, toolName, text: input, status: 'result-unrecorded', source},
-  {id: `result-${id}`, role: 'tool', kind: 'tool-result', callId: id, toolName, text: output, status: 'completed', source},
+  {id: `call-${id}`, role: 'tool', kind: 'tool-call', callId: id, toolName, text: input, status: 'result-unrecorded', source, redacted: input.startsWith('此工具尚未声明') },
+  {id: `result-${id}`, role: 'tool', kind: 'tool-result', callId: id, toolName, text: output, status: 'completed', source, redacted: output.startsWith('此工具') },
 ];
 const notice = '此工具涉及独立的记忆或技能读取权限，请通过记忆与技能入口查看获权正文。';
 const items = [
@@ -155,7 +155,7 @@ test('Skill 和记忆默认收起，展开记忆后能读获权正文', async ({
   await expect(summary.locator('.pi-web-tool-object')).toHaveText('加载技能');
   await expect(skill).not.toContainText(skillName);
   await summary.click();
-  await expect(skill.locator('.specialized-tool-text')).toHaveText(notice);
+  await expect(skill.locator('.pi-tool-detail-state')).toContainText(notice);
   await expect(skill).not.toContainText('确认目标环境和版本');
 });
 

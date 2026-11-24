@@ -3,10 +3,11 @@ import {randomUUID} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {setImmediate as yieldToIO} from 'node:timers/promises'
 import {digest, fail} from './security.js'
+import {committedCommunicationGuidance, coreToolInput, coreToolOutput, hasCoreToolActivity} from './core-tool-activity.js'
 import {specializedToolInput, specializedToolOutput} from './specialized-tool-activity.js'
 import {residentTaskToolInput, residentTaskToolOutput} from './resident-task-activity.js'
 import {residentMemoryToolInput, residentMemoryToolOutput} from './resident-memory-tool-activity.js'
-import {isResidentRouterActivity, residentRouterActivityInput, residentRouterActivityOutput} from './resident-router-tool-activity.js'
+import {isResidentRouterActivity, residentRouterActivityInput, residentRouterActivityOutput, residentRouterSettleDetails, safeRouterSettlementEvent} from './resident-router-tool-activity.js'
 import {isResourceTool, resourceReadCandidate} from './resource-tool-content.js'
 import {parsePiEditDiff} from '../src/edit-diff.ts'
 
@@ -152,9 +153,11 @@ function toolInput(name, args, identity) {
   const resident = residentRouterActivityInput(name,args,identity) ?? residentMemoryToolInput(name,args,identity) ?? residentTaskToolInput(name,args,identity)
   if (resident) return resident
   if (isResidentRouterActivity(name)) return {toolName:name,text:'此调用缺少可核对的参数；未展示私有内容。',redacted:true}
+  const core = coreToolInput(name,args)
+  if (core) return core
   const specialized=specializedToolInput(name,args,identity)
   if(specialized)return specialized
-  if (!Object.hasOwn(toolInputs, name)) return {toolName: name, text: '此工具尚未声明可展示的输入字段；调用名称与状态保留。', redacted: true}
+  if (!Object.hasOwn(toolInputs, name)) return {toolName: name, text: '该工具的参数未公开。', redacted: true, detailState:'withheld'}
   const state = {hidden: false}, value = toolObject(toolInputs[name])(args ?? {}, state) ?? {}
   if (!args || typeof args !== 'object' || Array.isArray(args)) state.hidden = true
   if (name === 'working_directory') value.action = typeof args?.cd === 'string' ? '切换工作目录' : '读取工作目录'
@@ -162,7 +165,7 @@ function toolInput(name, args, identity) {
   if (name === 'read_image') value.action = '读取图像'
   if (name === 'web_fetch') value.action = '读取网页'
   if (name === 'resident_router_reply' && Array.isArray(args?.taskDelivery?.artifactIds)) value.deliveryFileCount = args.taskDelivery.artifactIds.length
-  return {toolName: name, text: JSON.stringify(value, null, 2), redacted: state.hidden}
+  return {toolName: name, text: JSON.stringify(value, null, 2), redacted: state.hidden, ...Object.keys(value).length===0?{detailState:state.hidden?'withheld':'empty'}:{}}
 }
 // The input has already passed the tool field allowlist. Receipts decide whether
 // this text becomes a message; raw journal arguments are never used here.
@@ -196,7 +199,7 @@ const publicToolFailures = new Map([
 function toolFailure(call, message) {
   const fallback = {reason: '未记录失败原因'}
   // Unknown/custom tool bodies cannot lend themselves the Host error contract.
-  if (!call || call.name !== message.toolName || !(Object.hasOwn(toolInputs, call.name) || call.name === 'resident_reply_query')) return fallback
+  if (!call || call.name !== message.toolName || !(Object.hasOwn(toolInputs, call.name) || hasCoreToolActivity(call.name) || call.name === 'resident_reply_query')) return fallback
   const native = message.details?.nativeResult
   if (native?.isError !== true) return fallback
   const info = native.error?.info
@@ -245,24 +248,27 @@ function committedEditDiff(message, entry, expectedText, secrets) {
     unsafe(rows.filter(row => row.kind !== skip).map(row => row.text).join('\n'))) ? null : details.diff
 }
 
-function toolOutput(call, message, identity) {
+function toolOutput(call, message, identity, entry) {
   if (message.isError === true) {
     const failure = toolFailure(call, message)
     return {toolName: message.toolName, text: failure.reason + (failure.code ? '\n错误码：' + failure.code : ''), redacted: true, failure}
   }
-  const hidden = {toolName: message.toolName, text: '此结果没有唯一配对的工具调用，正文未展示。', redacted: true}
+  const hidden = {toolName: message.toolName, text: '此结果没有唯一配对的工具调用，正文未展示。', redacted: true, detailState:'not-recorded'}
   // 孤立、重复 ID 或名称冲突的结果保留事件，但不借 result.toolName 猜测公开权限。
   if (!call || call.name !== message.toolName) return hidden
   const name = call.name, state = {hidden: false}
+  if (name==='communication_guidance_read') {
+    return committedCommunicationGuidance(call,message,entry) ?? {toolName:name,text:'未记录可核对的沟通指引正文。',redacted:true,detailState:'withheld'}
+  }
   const summary = {toolName: name, text: /^(?:memory_|skill$|resident_(?:memory|skill)_)/.test(name)
     ? '此工具涉及独立的记忆或技能读取权限，请通过记忆与技能入口查看获权正文。'
-    : '此工具尚未声明可展示的结果字段；调用名称与状态保留。', redacted: true}
+    : '该工具的返回正文未公开。', redacted: true, detailState:'withheld'}
   const content = message.content
   if (Array.isArray(content) && content.some(block => block.type !== 'text' || Object.keys(block).some(key => key !== 'type' && key !== 'text'))) state.hidden = true
   const text = texts(content)
   // 同一任务已授权的执行工具正文可读；details、二进制和独立 memory/skill scope 不由此公开。
   if (identity.taskId && taskTextTools.has(name)) {
-    return {toolName: name, text: text || '工具已返回，未包含文字正文。', redacted: state.hidden}
+    return {toolName: name, text: text || '工具已返回，未包含文字正文。', redacted: state.hidden, ...!text?{detailState:state.hidden?'withheld':'empty'}:{}}
   }
   if (name==='resident_task_lookup_async'&&text.length<=65536) {
     let raw
@@ -275,7 +281,7 @@ function toolOutput(call, message, identity) {
     if (text.length <= 1048576 && !state.hidden) try {raw = JSON.parse(text)} catch {}
     let input
     if (call.publicInput) try {input=JSON.parse(call.publicInput)} catch {}
-    const activity = residentRouterActivityOutput(name,raw,identity,input)
+    const activity = residentRouterActivityOutput(name,raw,identity,input,call.settlementEvents)
     if (activity) return activity
     // Old journals can lack a full payload. Retain the historical reply event,
     // without treating it as fresh notification state or leaking a raw ID.
@@ -293,6 +299,13 @@ function toolOutput(call, message, identity) {
     const projected = residentTaskToolOutput(name,attachment,identity)
     if (projected) return projected
   }
+  if (hasCoreToolActivity(name) && text.length <= 1048576 && !state.hidden) {
+    let raw
+    try {raw=JSON.parse(text)} catch {}
+    const projected = coreToolOutput(name,raw)
+    if (projected) return projected
+  }
+  if (!text && !state.hidden) return {...summary,text:'工具已返回，未包含文字正文。',detailState:'empty'}
   if (!Object.hasOwn(toolOutputs, name) && !/^resident_(?:memory|skill)_/.test(name)) return summary
   let raw
   if (text.length <= 1048576) try {raw = JSON.parse(text)} catch {return summary}
@@ -432,11 +445,14 @@ function compactionSummaryVisible(entry, entries, secrets) {
   }
   return true
 }
-async function projectEntries(snapshot, identity, secrets, calls = new Map(), resultMessages = true, taskInputs = [], executionActivity = false, executionTiming, resourceCandidates) {
+async function projectEntries(snapshot, identity, secrets, calls = new Map(), resultMessages = true, taskInputs = [], executionActivity = false, executionTiming, resourceCandidates, readRouterTasks) {
   const {taskId, sessionId, conversationId, generation} = identity
   const items = [], sources = new Set(), operatorReplies = new Set(), seenTaskInputs = new Set(), subagentCalls = new Map()
   const inputsById = new Map(taskInputs.map(row => [row.inputId, row]))
   const inputsBySource = new Map(taskInputs.map(row => [row.sourceId, row]))
+  const provedRouterEvents = new Map()
+  let authorizedTaskTitles
+  const sourceRows = new Map()
   let routerPacketProof, processed = 0
   function isOriginalRouterPacket(entry, message) {
     const packetId = entry.details?.packetId
@@ -472,9 +488,12 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
   const sourceText = (entry, suffix, row) => {
     if (typeof row?.text !== 'string') return
     const key = JSON.stringify([row.sourceId, row.version, row.text])
-    if (sources.has(key)) return
+    if (sources.has(key)) return sourceRows.get(key)
     sources.add(key)
+    const previousCount=items.length
     add(entry, suffix, 'user', row.text, {kind: 'source'})
+    if(items.length!==previousCount)sourceRows.set(key,items.at(-1))
+    return sourceRows.get(key)
   }
   for (const projected of snapshot.context.projection.entries) {
     // Long journals must not monopolize the shared HTTP event loop.
@@ -500,8 +519,8 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           // 厂商 ID 可跨轮重用；未配对的重复 ID 不能猜测归属。
           const selected = toolInput(block.name, block.arguments, identity)
           const resultText = businessResultText(block.name, selected.text)
-          if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(executionActivity?{entryId:entry.id}:{}), ...(block.name==='resident_router_settle'?{publicInput:selected.text}:{}), ...(resourceCandidates&&isResourceTool(block.name)?{resourceArgs:block.arguments}:{}), ...(block.name==='resident_operator_reply'&&typeof block.arguments?.eventId==='string'?{operatorEventKey:opaque('operator-reply',block.arguments.eventId)}:{}), ...(resultText ? {resultText} : {})})
-          add(entry, 'call-' + index + '-' + blockIndex, 'tool', selected.text, {kind: 'tool-call', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), callId, status: 'result-unrecorded'}, message)
+          if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(executionActivity?{entryId:entry.id}:{}), ...(block.name==='resident_router_settle'?{publicInput:selected.text,settlementEvents:residentRouterSettleDetails(block.arguments,provedRouterEvents)}:{}), ...(resourceCandidates&&isResourceTool(block.name)?{resourceArgs:block.arguments}:{}), ...(block.name==='resident_operator_reply'&&typeof block.arguments?.eventId==='string'?{operatorEventKey:opaque('operator-reply',block.arguments.eventId)}:{}), ...(resultText ? {resultText} : {})})
+          add(entry, 'call-' + index + '-' + blockIndex, 'tool', selected.text, {kind: 'tool-call', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), ...(selected.detailState ? {detailState:selected.detailState}:{}), callId, status: 'result-unrecorded'}, message)
           const args = block.arguments
           if (editReceipts && block.name === 'edit' && entry.type === 'message' && entry.message?.role === 'assistant'
             && isDeepStrictEqual(entry.message.content?.[blockIndex], block)
@@ -533,9 +552,9 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
         const expectedEdit = editReceipts?.get(call?.id)
         if (expectedEdit) editReceipts.delete(call.id)
         const editDiff = expectedEdit && committedEditDiff(message, entry, expectedEdit, secrets)
-        const selected = childId ? {toolName: 'subagent', text: '子代理已启动。', redacted: true, resourceContent: true} : toolOutput(call, message, identity)
+        const selected = childId ? {toolName: 'subagent', text: '子代理已启动。', redacted: true, resourceContent: true} : toolOutput(call, message, identity, entry)
         const timing = typeof nativeId === 'string' && call?.entryId ? timingFields({durationMs:executionTiming?.tool(call.entryId,nativeId)}) : undefined
-        add(entry, 'result-' + index, 'tool', editDiff || selected.text, {kind: 'tool-result', toolName: selected.toolName, ...(editDiff ? {editDiff:true} : {}), ...(selected.redacted ? {redacted: true} : {}), ...(selected.resourceContent ? {resourceContent: true} : {}), ...(selected.failure ? {failure: selected.failure} : {}), ...(timing?{timing}:{}), callId, isError: message.isError === true, status: message.isError ? 'error' : childId ? 'accepted' : 'completed'}, message)
+        add(entry, 'result-' + index, 'tool', editDiff || selected.text, {kind: 'tool-result', toolName: selected.toolName, ...(editDiff ? {editDiff:true} : {}), ...(selected.redacted ? {redacted: true} : {}), ...(selected.detailState ? {detailState:selected.detailState}:{}), ...(selected.resourceContent ? {resourceContent: true} : {}), ...(selected.failure ? {failure: selected.failure} : {}), ...(timing?{timing}:{}), callId, isError: message.isError === true, status: message.isError ? 'error' : childId ? 'accepted' : 'completed'}, message)
         if (resourceCandidates && call?.resourceArgs) {
           let candidate
           try {candidate = resourceReadCandidate(call.name, call.resourceArgs, message, entry)} catch { /* Invalid receipt proves no body. */ }
@@ -589,17 +608,45 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           let input
           try {if (!content.startsWith(prefix)) throw new Error(); input = JSON.parse(content.slice(prefix.length))} catch {fail('SESSION_SOURCE_INVALID', 503)}
           if (input.conversationId !== conversationId || input.generation !== generation || !Array.isArray(input.events)) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
+          const verifiedPacket = isOriginalRouterPacket(entry,message)
           const firstRow = items.length
-          input.events.forEach((event, n) => {
-            if(event.kind==='operator.message'){if(event.operator?.destination!=='web')fail('SESSION_SOURCE_IDENTITY_INVALID',503);sourceText(entry,'router-operator-'+index+'-'+n,{sourceId:event.id,version:1,text:event.operator.text});return}
+          const displayed = input.events.map((event, n) => {
+            if(event.kind==='operator.message'){if(event.operator?.destination!=='web')fail('SESSION_SOURCE_IDENTITY_INVALID',503);return sourceText(entry,'router-operator-'+index+'-'+n,{sourceId:event.id,version:1,text:event.operator.text})}
             if (!event.source) return
             const row = event.source
             if ((row.conversationId ?? row.groupId) !== conversationId) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
-            sourceText(entry, 'router-source-' + index + '-' + n, row)
+            return sourceText(entry, 'router-source-' + index + '-' + n, row)
           })
+          if (verifiedPacket && Array.isArray(source.eventIds) && source.eventIds.length <= 30
+            && isDeepStrictEqual(source.eventIds,input.events.map(event=>event.id))) {
+            for (const [n,event] of input.events.entries()) {
+              const safe = safeRouterSettlementEvent(event)
+              if (!safe || typeof event.id !== 'string' || !event.id) continue
+              if (safe.kind==='source.message' && event.sourceId===event.source?.sourceId
+                && event.messageVersion===event.source?.version && displayed[n]?.text
+                && event.source.retracted!==true && event.source.authorizationRevoked!==true) {
+                const chars=Array.from(displayed[n].text.replace(/\s+/g,' ').trim())
+                if(chars.length)safe.snippet=chars.slice(0,120).join('')
+                if(chars.length>120)safe.snippetTruncated=true
+              }
+              if (readRouterTasks && safe.kind.startsWith('task.') && typeof event.taskId==='string' && event.taskId
+                && event.taskEvent?.taskId===event.taskId && typeof event.taskEventId==='string' && event.taskEventId
+                && event.taskEvent.id===event.taskEventId) {
+                authorizedTaskTitles ??= Promise.resolve().then(readRouterTasks).then(rows => new Map(
+                  (Array.isArray(rows)?rows:[]).filter(row=>row?.groupId===conversationId && typeof row.taskId==='string' && typeof row.title==='string')
+                    .map(row=>[row.taskId,visibleText(row.title,secrets).text.slice(0,120)])
+                )).catch(()=>new Map())
+                const title = (await authorizedTaskTitles).get(event.taskId)
+                if(title)safe.title=title
+              }
+              const prior = provedRouterEvents.get(event.id)
+              if (prior === undefined) provedRouterEvents.set(event.id,safe)
+              else if (!isDeepStrictEqual(prior,safe)) provedRouterEvents.set(event.id,null)
+            }
+          }
           // An internal or deduplicated packet still starts its own *admitted*
           // Router process. Carry only that boundary; never publish the packet.
-          if (executionActivity && items.length === firstRow && stamp(undefined, entry) && isOriginalRouterPacket(entry, message)) {
+          if (executionActivity && items.length === firstRow && stamp(undefined, entry) && verifiedPacket) {
             add(entry, 'router-packet-boundary', 'assistant', '', {kind:'router-packet-boundary'})
           }
         }
@@ -720,7 +767,7 @@ async function projectLive(snapshot, identity, secrets, raw, calls, executionAct
 const liveProofs = new WeakMap()
 const liveValidity = Symbol('live-proof-validity')
 const proofTTL = 10000, proofLimit = 64
-async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = [], liveProof, proofScope, guard, includeTaskUsage = false, readTaskInputIds, executionActivity = false, readExecutionTiming, readResourceContents}) {
+async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = [], liveProof, proofScope, guard, includeTaskUsage = false, readTaskInputIds, executionActivity = false, readExecutionTiming, readResourceContents, readRouterTasks}) {
   const {sessionId} = identity
   if (!sessionId || !persistence?.readNative) return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
   const identityKey = JSON.stringify(identity), secretKey = digest(JSON.stringify(secrets))
@@ -753,7 +800,7 @@ async function projection({base, identity, persistence, validIdentity, notStarte
   let timing
   if (executionActivity&&readExecutionTiming) try {timing=await readExecutionTiming(identity)} catch { /* Optional diagnostics never blocks committed history. */ }
   const resourceCandidates = readResourceContents ? [] : undefined
-  const items = await projectEntries(snapshot, identity, secrets, calls, true, taskInputs, executionActivity, timing, resourceCandidates)
+  const items = await projectEntries(snapshot, identity, secrets, calls, true, taskInputs, executionActivity, timing, resourceCandidates, readRouterTasks)
   const live = persistence.readLive ? await projectLive(snapshot, identity, secrets, await persistence.readLive(sessionId), calls, executionActivity) : undefined
   const granted = resourceCandidates?.length ? await readResourceContents(resourceCandidates) : undefined
   const resources = []
@@ -761,6 +808,7 @@ async function projection({base, identity, persistence, validIdentity, notStarte
     const body = granted?.get(row.id)
     if (body) {
       Object.assign(row, visibleText(body.text, secrets, {maxLength: Infinity}), {resourceContent: true})
+      delete row.detailState
       // Do not recover names from call parameters or Markdown. This canonical
       // name is known only after the same authorization as the exact body.
       if (row.toolName === 'skill' && typeof body.skillName === 'string' && !visibleText(body.skillName, secrets).redacted) row.skillName = body.skillName

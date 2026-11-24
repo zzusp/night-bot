@@ -5,6 +5,7 @@ import { api, errorText, setSession, type ChatSummary, type RecentConversation, 
 import { navigate, useResource, useRoute } from './hooks';
 import { Badge, Button, EmptyState, IconButton, Logo } from './components/BoardPrimitives';
 import { Loading, Notice } from './components/Shared';
+import { ExecutionSearchToolbar } from './components/ExecutionSearch';
 import { ActivityPanel } from './components/ActivityPanel';
 import ChatPage, { createDrafts, type Drafts } from './ChatPage';
 import { TaskDetail, TaskList } from './TasksPage';
@@ -70,6 +71,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const conversations = useResource<{items: Conversation[]}>('/conversations', 5000);
   const [resolvedWebChat, setResolvedWebChat] = useState<{route: string; id: string} | null>(null);
   const onChatResolved = useCallback((chatId: string) => setResolvedWebChat({route: route.pathname, id: chatId}), [route.pathname]);
+  const [searchToolbar, setSearchToolbar] = useState<HTMLSpanElement | null>(null);
   const [rail, setRail] = useState(() => window.matchMedia('(min-width: 1251px)').matches);
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'light');
   const [logoutError, setLogoutError] = useState<unknown>(null);
@@ -116,14 +118,14 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const globalTools = <div className="topbar-actions"><span className={`connection ${overview.error ? 'offline' : ''}`} role="status"><i />{overview.error ? '概览暂不可读' : overview.data ? '已连接' : '连接中'}</span><span className="toolbar-divider" />
         <PermissionsPanel key={permissionIdentity.epoch} /><IconButton label="刷新概览" onClick={refresh}><RiRefreshLine size={18} /></IconButton><IconButton label="设置" aria-haspopup="dialog" onClick={event=>{event.currentTarget.focus({preventScroll:true});setSettingsOpen(true)}}><RiSettings3Line size={18}/></IconButton><IconButton label={theme === 'light' ? '切换深色外观' : '切换浅色外观'} onClick={toggleTheme}>{theme === 'light' ? <RiMoonLine size={18} /> : <RiSunLine size={18} />}</IconButton></div>;
   const workspaceHeader = <header className="topbar workspace-topbar">{locationHeader}{globalTools}</header>;
-  const conversationHeader = <div className="conversation-tools"><div className="topbar-actions"><IconButton label={rail ? '隐藏活动面板' : '显示活动面板'} className="rail-toggle" aria-expanded={rail} aria-controls={rail ? "activity-panel" : undefined} onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>;
+  const conversationHeader = <div className="conversation-tools"><div className="topbar-actions"><span className="conversation-search-slot" ref={setSearchToolbar}/><IconButton label={rail ? '隐藏活动面板' : '显示活动面板'} className="rail-toggle" aria-expanded={rail} aria-controls={rail ? "activity-panel" : undefined} onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>;
   return <AssistantBrandContext.Provider value={brand}><div className="app-shell"><a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>跳转到主内容</a><aside className="sidebar desktop-sidebar" inert={settingsOpen} aria-hidden={settingsOpen||undefined}>{sidebar()}</aside>
     <dialog ref={drawer} className="nav-dialog" aria-label="导航" aria-hidden={settingsOpen||undefined}><div className="sidebar">{sidebar(true)}</div></dialog>
     <div className="main-frame" inert={settingsOpen} aria-hidden={settingsOpen||undefined}>{workspaceHeader}
       {!!logoutError && <Notice error={logoutError} />}
-      <ReadErrorScope key={`${route.pathname}:${permissionIdentity.epoch}`}><div className={`workspace-body${isConversation ? ' conversation-workspace' : ''}`}>{currentChats.error && <Notice read error={currentChats.error} source="/recent-conversations" onRetry={currentChats.refresh}/>}<main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : ''}`}><ReadErrorOutlet/>{isConversation && conversationHeader}<div className={isConversation ? 'conversation-content' : 'page-content-slot'}><PageBoundary resetKey={route.pathname}>
+      <ReadErrorScope key={`${route.pathname}:${permissionIdentity.epoch}`}><div className={`workspace-body${isConversation ? ' conversation-workspace' : ''}`}>{currentChats.error && <Notice read error={currentChats.error} source="/recent-conversations" onRetry={currentChats.refresh}/>}<main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : ''}`}><ReadErrorOutlet/>{isConversation && conversationHeader}<div className={isConversation ? 'conversation-content' : 'page-content-slot'}><PageBoundary resetKey={route.pathname}><ExecutionSearchToolbar.Provider value={isConversation ? searchToolbar : null}>
         {section === 'chat' ? <ChatPage id={id} onResolved={onChatResolved} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} drafts={taskInputDrafts} /> : <TaskList route={route} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
-      </PageBoundary></div></main>
+      </ExecutionSearchToolbar.Provider></PageBoundary></div></main>
       {isConversation && rail && <ActivityPanel conversation={{kind: section === 'chat' ? 'chat' : 'conversations', id: id || (resolvedWebChat?.route === route.pathname ? resolvedWebChat.id : undefined)}} data={overview.data ?? undefined} loading={overview.loading} error={overview.error} onRetry={overview.refresh}/>}
       </div></ReadErrorScope>
     </div>

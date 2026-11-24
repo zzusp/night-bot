@@ -22,6 +22,30 @@ export const isResidentRouterActivity = name => routerTools.has(name)
 const router = identity => !identity?.taskId && typeof identity?.conversationId === 'string' && Boolean(identity.conversationId)
   && typeof identity.sessionId === 'string' && Boolean(identity.sessionId) && Number.isSafeInteger(identity.generation) && identity.generation > 0
 const summary = (toolName, value) => value && {toolName,text:JSON.stringify(value,null,2),redacted:true}
+const eventKinds = ['source.message','operator.message','task.completed','task.blocked','task.failed','task.changed','task.inspection',
+  'task.arranged','task.reopened','task.started','task.resumed','task.result','task.waiting','task.cancelled','task.notification','task.interrupted',
+  'schedule.triggered','router.lookup.completed','notification.delivered','notification.failed']
+const dispositionsAllowed = ['handled-inline','clarification','not-assigned','context-only','async-query']
+export function residentRouterSettleDetails(args,provedEvents) {
+  if (!count(args?.eventIds,30) || args.eventIds.some(id=>typeof id!=='string'||!id)) return
+  const events = [...new Set(args.eventIds)].map(id => {
+    const event = provedEvents.get(id)
+    if (!event?.kind) return {recorded:false}
+    const submitted = Array.isArray(args.noTaskDispositions) && args.noTaskDispositions.length <= 15
+      ? args.noTaskDispositions.filter(row=>row?.eventId===id && dispositionsAllowed.includes(row.outcome)) : []
+    return {recorded:true,kind:event.kind,...event.at?{at:event.at}:{},...event.title?{title:event.title}:{},
+      ...event.snippet?{snippet:event.snippet,...event.snippetTruncated?{snippetTruncated:true}:{}}:{},
+      ...submitted.length===1?{disposition:submitted[0].outcome}:{}}
+  })
+  // Legacy snapshots without any match keep the recorded count without
+  // presenting a list of invented identities.
+  return events.some(event=>event.recorded) ? events : undefined
+}
+export function safeRouterSettlementEvent(event) {
+  const kind=oneOf(event?.kind,eventKinds)
+  return kind ? {kind,at:date(event.source?.timestamp??event.taskEvent?.recordedAt??event.taskEvent?.createdAt??event.createdAt)} : undefined
+}
+
 
 export function residentRouterActivityInput(name, args, identity) {
   if (!routerTools.has(name) || !router(identity) || !object(args)) return
@@ -52,7 +76,7 @@ export function residentRouterActivityInput(name, args, identity) {
   if (name === 'resident_source_get' && typeof args.sourceId === 'string' && args.sourceId) return summary(name,{by:'source'})
 }
 
-export function residentRouterActivityOutput(name, value, identity, input) {
+export function residentRouterActivityOutput(name, value, identity, input, events) {
   if (!router(identity) || !object(value)) return
   if (name === 'resident_router_settle') {
     const conversation = value.result?.conversation
@@ -62,7 +86,7 @@ export function residentRouterActivityOutput(name, value, identity, input) {
     // Successful settlement says nothing about task completion, send status, or
     // how many of these requests were newly consumed rather than already settled.
     return summary(name,{settled:true,requestedEventCount:input.requestedEventCount,
-      dispositions:input.dispositions,inspectionReviews:input.inspectionReviews})
+      dispositions:input.dispositions,inspectionReviews:input.inspectionReviews,events})
   }
   if (name === 'resident_operator_reply') {
     const receipt = value.result

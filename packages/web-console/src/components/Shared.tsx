@@ -18,7 +18,10 @@ import {EditDiff} from './EditDiff';
 import {parsePiEditDiff, requestedEditRows} from '../edit-diff';
 import '../styles/execution-groups.css';
 import '../styles/pi-web-tools.css';
-import {mergeResidentPlan, residentInputRemainder, wholeToolMessage, type ResidentPlan} from '../resident-tool-content';
+import {mergeResidentTaskAction, residentTaskActionLabel, type ResidentAction} from '../resident-activity-presentation';
+import {toolDetailNotice, type ToolDetailPhase} from '../tool-detail-state';
+import {sameTodoCounts, taskToolPresentation, todoReceiptCounts} from '../task-tool-presentation';
+import {mergeResidentPlan, pairedPublicResult, residentInputRemainder, wholeToolMessage, type ResidentPlan} from '../resident-tool-content';
 import SpecializedToolContent, {hasSpecializedToolContent, specializedToolLabel, specializedToolSummary} from './SpecializedToolContent';
 
 const states: Record<string, [string, 'neutral' | 'success' | 'warning' | 'danger' | 'info']> = {
@@ -146,6 +149,7 @@ function toolObject(item: ToolItem): string {
   const result = item.results.at(-1);
   if (name === 'skill' && result?.toolName === 'skill' && result.resourceContent === true && result.skillName
     && result.status === 'completed' && !result.isError) return result.skillName;
+  if (name === 'resident_task_action') return residentTaskActionLabel(item.call) ?? specializedToolLabel(name);
   if (hasSpecializedToolContent(name)) return specializedToolLabel(name) || '';
   if (!item.call || item.call.truncated || item.call.textNextOffset != null) return '';
   try {
@@ -202,7 +206,7 @@ function toolInputPresentation(name: string, text: string, complete: boolean): R
     if (['bash', 'pwsh'].includes(name) && typeof args.command === 'string') {
       const timeout = typeof args.timeoutMs === 'number' ? args.timeoutMs / 1000 : args.timeout;
       const extra = Object.fromEntries(Object.entries(args).filter(([key]) => !['command', 'timeoutMs', 'timeout', 'description'].includes(key)));
-      return <><div className="pi-shell-command"><span aria-hidden="true">$</span><code>{args.command}</code>{typeof timeout === 'number' && <small>(timeout: {timeout}s)</small>}</div>{Object.keys(extra).length > 0 && toolFieldsPresentation(extra)}</>;
+      return <><div className="pi-shell-command"><span aria-hidden="true">$</span><code>{args.command}</code>{typeof timeout === 'number' && <small>(timeout: {timeout}s)</small>}</div>{typeof args.description === 'string' && args.description.trim() && args.description.trim() !== args.command.trim() && <p className="pi-shell-description">{args.description}</p>}{Object.keys(extra).length > 0 && toolFieldsPresentation(extra)}</>;
     }
     if (name === 'write' && typeof args.path === 'string' && typeof args.content === 'string' && keys.every(key => ['path', 'content'].includes(key))) {
       return <><div className="pi-read-path"><code>{args.path}</code></div>{readOutputPresentation(args.content, 0, text)}</>;
@@ -237,8 +241,16 @@ function isAppliedEditResult(output: Message) {
     && !output.transient && !output.truncated && output.textNextOffset == null;
 }
 
-function toolOutputPresentation(name: string, text: string, offset: number, output: Message, input?: string, plan?: ResidentPlan | null): ReactNode {
-  if (hasSpecializedToolContent(name)) return <SpecializedToolContent toolName={name} phase="output" text={text} offset={offset} status={output.status} isError={output.isError || ['error','failed'].includes(output.status || '')} complete={wholeToolMessage(output)} plan={offset === 0 ? plan : undefined} />;
+function isGuidanceDocument(output?: Message): boolean {
+  return output?.toolName === 'communication_guidance_read' && output.resourceContent === true
+    && output.status === 'completed' && !output.isError && !output.transient;
+}
+
+function toolOutputPresentation(name: string, text: string, offset: number, output: Message, input?: string, plan?: ResidentPlan | null, action?: ResidentAction | null): ReactNode {
+  if (name === 'communication_guidance_read' && isGuidanceDocument(output)) {
+    return <div className="pi-tool-document"><Markdown text={text} /></div>;
+  }
+  if (hasSpecializedToolContent(name)) return <SpecializedToolContent toolName={name} phase="output" text={text} offset={offset} status={output.status} isError={output.isError || ['error','failed'].includes(output.status || '')} complete={wholeToolMessage(output)} plan={offset === 0 ? plan : undefined} action={offset === 0 ? action : undefined} />;
   if (!output.isError && !['error', 'failed'].includes(output.status || '') && ['read', 'read_window'].includes(name)) return readOutputPresentation(text, offset, input);
   if (name === 'edit' && offset === 0 && isAppliedEditResult(output)) {
     const rows = parsePiEditDiff(text);
@@ -253,9 +265,13 @@ function toolOutputPresentation(name: string, text: string, offset: number, outp
 
 const shellToolNames = ['bash', 'pwsh'];
 const showsResourceContent = (item: ToolItem) => item.results.some(result => result.resourceContent === true && !result.isError && !!result.text.trim());
-const foldedResourceTools = new Set(['skill', 'memory_read']);
+const foldedResourceTools = new Set(['skill', 'memory_read', 'communication_guidance_read']);
 const defaultToolOpen = (item: ToolItem, disclosures?: Map<string, boolean>) => disclosures?.get(item.id)
   ?? (!foldedResourceTools.has((item.call || item.results[0]).toolName ?? '') && showsResourceContent(item));
+
+function ToolDetailState({phase, text}: {phase: ToolDetailPhase; text: string}) {
+  return <p className="pi-tool-detail-state"><strong>{phase === 'input' ? '输入' : '输出'}</strong><span>{text}</span></p>;
+}
 
 function ToolActivity({ item, history, compact = false, disclosures, onRecordUnavailable }: { item: ToolItem; history?: HistoryReader; compact?: boolean; disclosures?: Map<string, boolean>; onRecordUnavailable?: (id: string) => void }) {
   const [manualOpen, setOpen] = useState(() => disclosures?.get(item.id));
@@ -295,14 +311,21 @@ function ToolActivity({ item, history, compact = false, disclosures, onRecordUna
   }
   const duplicateResourceAction = name === 'skill' && showsResourceContent(item) && !item.call?.truncated
     && item.call?.textNextOffset == null && /^\{\s*"action"\s*:\s*"加载技能"\s*\}$/.test(item.call?.text.trim() || '');
-  const outputs = item.results.filter(output => !!output.text.trim() || output.truncated || output.textNextOffset != null);
-  const appliedEdit = name === 'edit' && outputs.some(output => isAppliedEditResult(output) && parsePiEditDiff(output.text));
+  const outputs = item.results;
+  const inputNotice = toolDetailNotice('input', item.call, {elsewhere: item.inputElsewhere});
+  const appliedEdit = name === 'edit' && wholeToolMessage(item.call) && !inputNotice
+    && outputs.length === 1 && isAppliedEditResult(outputs[0]) && !!parsePiEditDiff(outputs[0].text);
   const mergedPlan = !summaryHidden && name === 'resident_task_plan' && outputs.length === 1 ? mergeResidentPlan(item.call, outputs[0]) : null;
+  const mergedAction = !summaryHidden && name === 'resident_task_action' && outputs.length === 1 ? mergeResidentTaskAction(item.call, outputs[0]) : null;
+  const submittedTodo = name === 'todo_write' && wholeToolMessage(item.call) ? taskToolPresentation(name, item.call.text) : null;
+  const todoReceipt = !summaryHidden && submittedTodo?.kind === 'todos' && item.call?.source?.sessionId && outputs.length === 1
+    && pairedPublicResult(item.call,outputs[0]) ? todoReceiptCounts(outputs[0].text) : null;
+  const todoRecorded = !!(submittedTodo?.kind === 'todos' && todoReceipt && sameTodoCounts(submittedTodo.counts,todoReceipt));
   const residentInput = !summaryHidden && outputs.length === 1 ? residentInputRemainder(item.call, outputs[0]) : null;
-  const inputVisible = !mergedPlan && residentInput !== '' && !appliedEdit && !duplicateResourceAction && !duplicateReadPath && !!item.call && (!!item.call.truncated || item.call.textNextOffset != null || !!item.call.text.trim() && item.call.text.trim() !== '{}');
-  const hasDetails = inputVisible || outputs.length > 0 || !!item.inputElsewhere || !!item.resultStatus;
-  const Card = hasDetails ? 'details' : 'div';
-  const Header = hasDetails ? 'summary' : 'div';
+  const duplicateGuidanceScope = name === 'communication_guidance_read' && isGuidanceDocument(result) && wholeToolMessage(item.call)
+    && /^\{\s*"scope"\s*:\s*"communication-guidance"\s*\}$/u.test(item.call.text.trim());
+  const inputRepresented = !inputNotice && (mergedPlan || mergedAction || residentInput === '' || appliedEdit || duplicateResourceAction || duplicateReadPath || duplicateGuidanceScope);
+  const outputNotice = !result && toolDetailNotice('output', undefined, {elsewhere: !!item.resultStatus, running});
   const label = receipt?.label || (state === 'completed' && complete ? '成功' : states[state]?.[0] || state);
   const statusIcon = running ? mdiLoading : failed ? mdiAlertCircle : complete ? mdiCheck : undefined;
   const statusClass = `pi-tool-status${running ? ' is-running' : failed ? ' is-error' : complete ? ' is-complete' : ''}`;
@@ -310,30 +333,33 @@ function ToolActivity({ item, history, compact = false, disclosures, onRecordUna
     ? mdiFileDocumentOutline : ['write', 'edit'].includes(name) ? mdiPencil
     : ['find', 'grep', 'web_search'].includes(name) ? mdiMagnify : mdiWrenchOutline;
   return <article ref={frame} className={`message message-tool pi-tool-frame pi-web-tool-frame${compact ? ' is-compact' : ''}${running ? ' is-running' : ''}`} data-message-id={item.id} data-record-ids={[item.id, ...item.results.map(output => output.id)].join(' ')}>
-    <Card className={`pi-tool-step pi-web-tool-card${shell ? ' is-shell' : ''}${failed ? ' is-error' : receipt?.tone === 'neutral' ? ' is-neutral' : receipt?.tone === 'warning' ? ' is-warning' : ''}`} open={hasDetails ? open : undefined} onToggle={event => {
+    <details className={`pi-tool-step pi-web-tool-card${shell ? ' is-shell' : ''}${failed ? ' is-error' : receipt?.tone === 'neutral' ? ' is-neutral' : receipt?.tone === 'warning' ? ' is-warning' : ''}`} open={open} onToggle={event => {
       if (event.target !== event.currentTarget || !(event.currentTarget instanceof HTMLDetailsElement) || event.currentTarget.open === open) return;
       setOpen(event.currentTarget.open);
       disclosures?.set(item.id, event.currentTarget.open);
       if (event.currentTarget.open) setOpened(true);
     }}>
-      <Header className={`pi-web-tool-summary${running ? ' pi-tool-shimmer' : ''}`}>
+      <summary className={`pi-web-tool-summary${running ? ' pi-tool-shimmer' : ''}`}>
         <span key={state} className={`pi-web-tool-glyph${running || failed ? ` ${statusClass}` : ''}${completionCue ? ' pi-motion-cue' : ''}`} aria-hidden="true"><PiIcon path={(running || failed) && statusIcon ? statusIcon : headerIcon} size={14} /></span>
         <span className="pi-web-tool-labels">
           <span className="pi-tool-title">{(!shell || !object) && <strong className="pi-web-tool-name">{shell ? 'Shell' : name}</strong>}{object && <> <span className="pi-web-tool-object" title={name === 'skill' ? object : undefined}>{object}</span></>}</span>
           <span className="pi-web-tool-summary-meta"><span className="pi-tool-state">{label}</span><ToolElapsed item={item} running={running} /></span>
         </span>
-        {hasDetails && <PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} />}
-      </Header>
-      {(opened || open) && hasDetails && <div className="pi-tool-body pi-specialized-tool">
+        <PiIcon path={mdiChevronRight} className="pi-tool-chevron" size={14} />
+      </summary>
+      {(opened || open) && <div className="pi-tool-body pi-specialized-tool">
         {shell && <div className="pi-web-tool-body-title">Shell</div>}
-        {(inputVisible || item.inputElsewhere) && <section className="tool-part"><p className="sr-only">输入</p>{inputVisible && item.call ? <MessageBody message={item.call} history={history} plain formatText={(text, offset) => hasSpecializedToolContent(name)
-          ? <SpecializedToolContent toolName={name} phase="input" text={offset === 0 ? residentInput ?? text : text} offset={offset} status={item.call?.status} complete={wholeToolMessage(item.call)} />
-          : toolInputPresentation(name, text, offset === 0 && !item.call?.truncated && item.call?.textNextOffset == null)} onUnavailable={() => unavailable(item.call!.id)} /> : <span className="execution-tool-missing">输入见上方调用。</span>}</section>}
-        {outputs.map(output => <section className="tool-part" key={output.id + (output.resourceContent === true ? ":resource" : "")}><p className="sr-only">输出{output.isError || ['error', 'failed'].includes(output.status || '') ? ' · 失败' : ''}</p><MessageBody message={output} history={history} plain formatText={(text, offset) => toolOutputPresentation(name, text, offset, output, item.call?.text, mergedPlan)} onUnavailable={() => unavailable(output.id)} /></section>)}
-        {!result && item.resultStatus && <section className="tool-part"><p className="sr-only">输出</p><span className="execution-tool-missing">见下方结果。</span></section>}
+        {!inputRepresented && <section className="tool-part">{inputNotice ? <ToolDetailState phase="input" text={inputNotice} /> : item.call && <><p className="sr-only">输入</p><MessageBody message={item.call} history={history} plain formatText={(text, offset) => hasSpecializedToolContent(name)
+          ? <SpecializedToolContent toolName={name} phase="input" text={offset === 0 ? residentInput ?? text : text} offset={offset} status={item.call?.status} complete={wholeToolMessage(item.call)} todoRecorded={todoRecorded} />
+          : toolInputPresentation(name, text, offset === 0 && !item.call?.truncated && item.call?.textNextOffset == null)} onUnavailable={() => unavailable(item.call!.id)} /></>}</section>}
+        {!todoRecorded && outputs.map(output => {
+          const notice = toolDetailNotice('output', output);
+          return <section className="tool-part" key={output.id + (output.resourceContent === true ? ':resource' : '')}>{notice ? <ToolDetailState phase="output" text={notice} /> : <><p className="sr-only">输出{output.isError || ['error', 'failed'].includes(output.status || '') ? ' · 失败' : ''}</p><MessageBody message={output} history={history} plain formatText={(text, offset) => toolOutputPresentation(name, text, offset, output, item.call?.text, mergedPlan, mergedAction)} onUnavailable={() => unavailable(output.id)} /></>}</section>;
+        })}
+        {outputNotice && <section className="tool-part"><ToolDetailState phase="output" text={outputNotice} /></section>}
         <div className="pi-web-tool-footer"><span className={statusClass}>{statusIcon && <PiIcon path={statusIcon} size={13} />}<span className="pi-tool-state">{label}</span></span></div>
       </div>}
-    </Card>
+    </details>
   </article>;
 }
 function ToolActivityGroup({ tools, history, compact = false, anchorId, disclosures, onRecordUnavailable }: { onRecordUnavailable?: (id: string) => void; tools: ToolItem[]; history?: HistoryReader; compact?: boolean; anchorId?: string; disclosures?: Map<string, boolean> }) {

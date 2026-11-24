@@ -1,5 +1,5 @@
 /* Flat field rows follow pi-web ToolCallBlock's content layout. The shared
- * tool card owns borders/disclosures; these rows add no independent controls. */
+ * tool card owns borders and disclosure. */
 .specialized-tool-content { min-width: 0; color: var(--board-text); }
 .specialized-tool-fields { display: grid; gap: 6px; margin: 0; font-size: 12px; line-height: 1.6; }
 .specialized-tool-fields > div { display: grid; grid-template-columns: minmax(64px, auto) minmax(0, 1fr); gap: 6px 12px; align-items: baseline; }
@@ -17,3 +17,46 @@
 .resident-plan-task-heading > span { flex-shrink: 0; color: var(--board-muted); font-size: 11px; }
 .resident-plan p:not(.resident-plan-heading) { margin: 4px 0; white-space: pre-wrap; }
 .resident-plan ul { margin: 3px 0 0; padding-inline-start: 1.4em; }
+
+/* Action and settlement keep human-readable content on one surface. */
+.resident-action, .resident-settlement { min-width: 0; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.resident-action-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 3px 8px; margin-bottom: 4px; }
+.resident-action-heading > strong { font-weight: 600; }
+.resident-action-state { color: var(--board-muted); font-size: 11px; white-space: nowrap; }
+.resident-action-notice { margin: 0 0 4px; color: var(--board-muted); }
+.resident-action-copy, .resident-settlement dl { display: grid; gap: 3px; margin: 0; }
+.resident-action-copy > div, .resident-settlement dl > div { display: grid; grid-template-columns: minmax(52px, auto) minmax(0, 1fr); align-items: baseline; gap: 4px 8px; }
+.resident-action-copy dt, .resident-settlement dt { color: var(--board-muted); }
+.resident-action-copy dd, .resident-settlement dd { margin: 0; min-width: 0; white-space: pre-wrap; }
+.resident-action-copy ul { margin: 0; padding-inline-start: 1.3em; }
+.resident-action > .specialized-tool-fields { margin-top: 4px; }
+.resident-settlement p { margin: 0; }
+.resident-settlement dl { margin-top: 3px; }
+.resident-settlement ul { display: flex; flex-wrap: wrap; gap: 3px 12px; margin: 0; padding: 0; list-style: none; }
+.resident-settlement ul > li { white-space: nowrap; }
+.resident-settlement-events { margin: 4px 0 0; padding-inline-start: 22px; }
+.resident-settlement-events > li { padding-block: 5px; }
+.resident-settlement-events > li + li { border-top: 1px solid var(--board-border); }
+.resident-settlement-events > li::marker { color: var(--board-muted); font-variant-numeric: tabular-nums; }
+.resident-settlement-event-title { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.resident-settlement-event-title q { quotes: '“' '”'; }
+.resident-settlement-event-meta { display: flex; margin-top: 1px; gap: 1px 10px; flex-wrap: wrap; align-items: baseline; font-size: 11px; color: var(--board-muted); }
+.resident-settlement-event-meta time { font-variant-numeric: tabular-nums; }
+.resident-settlement-unlisted { color: var(--board-muted); }
+.resident-settlement .resident-settlement-unlisted { margin-top: 3px; }
+.resident-settlement li strong { font-variant-numeric: tabular-nums; }
+
+.compact-tool-terms ul { margin: 2px 0 0; padding-inline-start: 1.3em; }
+.compact-tool-items { padding: 0; margin: 0; list-style: none; }
+.compact-tool-items > li { padding-block: 4px; }
+.compact-tool-items > li + li { border-top: 1px solid var(--board-border); }
+
+.task-tool-details { font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.task-tool-details p { margin: 3px 0 0; }
+.task-tool-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 4px; font-size: 12px; }
+.task-tool-heading > span, .task-tool-todo-state { color: var(--board-muted); font-size: 11px; }
+.task-tool-counts { display: flex; gap: 4px 9px; flex-wrap: wrap; }
+.task-tool-todos { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.task-tool-todos li { display: flex; justify-content: space-between; align-items: baseline; gap: 6px 12px; white-space: pre-wrap; }
+.task-tool-todo-state { flex-shrink: 0; }
+.task-tool-failure { margin: 0; color: var(--board-danger); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }

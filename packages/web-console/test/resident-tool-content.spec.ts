@@ -80,7 +80,7 @@ test('Router plan reads once with real dependencies, and failures or changed rec
     await card.locator('summary').click();
     for(const field of fields) await expect(card).toContainText(field);
     await expect(card.locator('pre')).toHaveCount(0);
-    await expect(card.getByText(id === 'settle' ? '提交事件数' : '操作',{exact:true})).toHaveCount(1);
+    await expect(card.getByText(id === 'settle' ? '提交 2 项事件' : '操作',{exact:true})).toHaveCount(1);
     await card.screenshot({path:info.outputPath(`resident-${id}-mobile.png`)});
   }
   const mutation=find('mutation'), bounded=find('bounded');

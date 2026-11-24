@@ -640,6 +640,7 @@ html, body, #root { width: 100%; min-width: 0; }
 .chat-panel { position: relative; }
 .conversation-tools { position: absolute; top: 8px; right: 16px; z-index: 3; }
 .conversation-tools .rail-toggle { display: inline-flex; }
+.conversation-search-slot { display: contents; }
 .chat-panel .message-column { padding-top: 56px; }
 .chat-panel .transcript { scroll-padding-top: 52px; }
 @media (max-width: 760px) { .main-frame { --content-inset: 16px; } }
@@ -648,6 +649,7 @@ html, body, #root { width: 100%; min-width: 0; }
   .workspace-topbar { padding: 2px var(--content-inset); gap: 6px; }
   .workspace-topbar .header-location { gap: 6px; }
   .conversation-tools { right: 12px; }
+  .conversation-search-slot > .board-icon-button { width: 30px; height: 32px; }
 }
 
 .task-table-wrap:focus-visible { outline: 2px solid var(--board-focus); outline-offset: -2px; }
@@ -656,7 +658,7 @@ html, body, #root { width: 100%; min-width: 0; }
 
 /* Conversation and Router reuse one bounded reading surface. */
 .conversation-with-tabs { position: relative; }
-.conversation-session-tabs { display: flex; flex: none; align-items: center; gap: 4px; min-height: 52px; padding: 8px 68px 8px 20px; }
+.conversation-session-tabs { display: flex; flex: none; align-items: center; gap: 4px; min-height: 52px; padding: 8px 96px 8px 20px; }
 .conversation-session-tabs [role="tab"] { cursor: pointer; border: 0; border-radius: 8px; padding: 7px 14px; color: var(--board-muted); background: transparent; font: inherit; font-size: 13px; white-space: nowrap; }
 .conversation-session-tabs [role="tab"]:hover { color: var(--board-text); background: var(--board-border); }
 .conversation-session-tabs [aria-selected="true"] { color: var(--board-text); background: var(--board-surface); box-shadow: 0 1px 3px #0000000a; }
