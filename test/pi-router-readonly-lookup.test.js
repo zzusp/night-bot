@@ -129,3 +129,51 @@ test('two lookups from one Router run together; overflow is durable and skips ex
  }
  await worker.close();assert.deepEqual(await query('task.get',{taskId:'queue-existing'}),task);assert.equal(h.sent.length,0)
 })
+
+test('queued lookups time out independently and an unresponsive read does not hang shutdown',{timeout:nativeTestTimeout(55000)},async t=>{
+ const {createRouterReadonlyLookups}=await import('../src/channels/router-readonly-lookup.js')
+ const h=await residentRouterHost(t,async body=>{
+  if(!requestTools(body).includes('resident_router_settle'))return {text:'No work'}
+  const packet=input(body);if(done(body))return {text:'Settled'}
+  return call('resident_router_settle',{operationId:'deadline-settle:'+packet.events.map(event=>event.id).join(','),eventIds:packet.events.map(event=>event.id)})
+ })
+ const gate=Promise.withResolvers(),lateAdmission=Promise.withResolvers(),admissionReading=Promise.withResolvers(),started=[],notifications=[],timers=[]
+ t.after(()=>{gate.resolve();lateAdmission.resolve()})
+ const ids=['deadline-a','deadline-b','deadline-c','deadline-d','deadline-e']
+ const conversationId=h.host.ctx.channels.identity(channelMessage(ids[0])).sessionId
+ for(const id of ids)await h.receive(channelMessage(id))
+ await h.service.whenIdle()
+ const sources=(await h.query('source.list')).filter(s=>ids.includes(s.messageId)).sort((a,b)=>a.messageId.localeCompare(b.messageId))
+ const router=await h.query('router.get',{conversationId})
+ const worker=createRouterReadonlyLookups({ctx:h.host.ctx,
+  query:async(kind,args)=>{
+   if(kind==='router.source-current'){started.push(args.sourceId);return gate.promise}
+   if(kind==='router.action'&&args.operationId==='deadline-operation-4'){admissionReading.resolve();await lateAdmission.promise}
+   return h.query(kind,args)
+  },
+  command:(kind,args,id)=>h.store.command({kind,args,id}),
+  models:()=>h.config.model,schedule:cid=>notifications.push(cid),
+  setTimer:fire=>{const timer={fire,cleared:false};timers.push(timer);return timer},
+  clearTimer:timer=>{timer.cleared=true},
+ })
+ t.after(()=>worker.close())
+ const args=sources.map((s,i)=>({conversationId,generation:router.generation,sourceId:s.sourceId,messageVersion:s.version,operationId:'deadline-operation-'+i}))
+ for(const a of args.slice(0,4))assert.equal((await worker.submit(a)).status,'pending')
+ assert.deepEqual(started,args.slice(0,2).map(a=>a.sourceId))
+ assert.equal(timers.length,4)
+ timers[0].fire();timers[2].fire()
+ await eventually(()=>notifications.length===2,'the first lookup and waiting lookup both publish timeouts')
+ const status=a=>h.query('router.action',{conversationId,operationId:a.operationId}).then(row=>row.result.lookup.state)
+ assert.deepEqual(await Promise.all(args.slice(0,4).map(status)),['timed-out','pending','timed-out','pending'])
+ assert.deepEqual(started,args.slice(0,2).map(a=>a.sourceId),'timed-out work retains its execution slots until exit')
+ const late=worker.submit(args[4]);await admissionReading.promise
+ const closing=worker.close();lateAdmission.resolve()
+ assert.equal((await late).status,'pending')
+ await closing
+ assert.deepEqual(await Promise.all(args.map(status)),['timed-out','interrupted','timed-out','interrupted','interrupted'])
+ assert.equal(timers[3].cleared,true)
+ assert.equal(h.host.ctx.get('jobs').list().filter(job=>job.kind==='router-readonly-lookup').length,0)
+ gate.resolve({version:1,text:'a delayed result'})
+ await Promise.resolve()
+ assert.equal(notifications.length,2)
+})
