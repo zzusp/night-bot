@@ -114,12 +114,12 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
    // Retry only this scoped resource transaction, never the model/tool turn.
    // Each attempt starts from a fresh catalog and retains all authorization,
    // content, filesystem and lifetime checks; revocations cannot reuse old data.
+   const options={scope:actor,cwd,signal},revisionForActor=()=>skills.revisionFor(actor)
    for(let attempt=0;;attempt++){
     assertCurrent()
-    let revision=skills.revision
+    let revision=revisionForActor()
     try{
-     const options={scope:actor,cwd,signal}
-     const snapshot=await withActor(()=>skills.snapshot(options));revision=skills.revision
+     const snapshot=await withActor(()=>skills.snapshot(options));revision=revisionForActor()
      const readLearned=()=>withActor(()=>reflection.officialResources(skills,options))
      const learned=snapshot.complete&&reflection?await readLearned():new Map(),learnedFiles=[]
      const resources=await officialSkillResources(snapshot,{resolveFilePath:async summary=>{
@@ -130,7 +130,7 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
      if(learnedFiles.length){
       const verifyLearned=async()=>{
        const current=await readLearned()
-       if(revision!==skills.revision||!isDeepStrictEqual(current,learned))fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
+       if(revision!==revisionForActor()||!isDeepStrictEqual(current,learned))fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
        assertCurrent()
       }
       // Learned skills share a fresh authorization view per phase. Warm files
@@ -141,14 +141,13 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
      }
      // Another parallel mapping may still be reading when a provider is
      // revoked. Do not publish the already mapped part of that old catalog.
-     if(revision!==skills.revision)fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
+     if(revision!==revisionForActor())fail('PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
      assertCurrent();return resources
     }catch(error){
      assertCurrent()
      if(error?.code!=='PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED'||attempt>=2)throw error
-     // A concurrent owner may already have invalidated this revision. Repeating
-     // that mutation makes two refreshing actors invalidate each other's retries.
-     if(revision===skills.revision)skills.invalidateCache()
+     // A stale read is not a global mutation; evict only this actor's snapshot.
+     if(revision===revisionForActor())skills.discardSnapshot(options)
     }
    }
   }

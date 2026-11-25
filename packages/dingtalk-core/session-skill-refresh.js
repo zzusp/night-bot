@@ -17,6 +17,9 @@ const recordSchema=z.discriminatedUnion('kind',[
 const receiptSchema=z.strictObject({callId:z.string().min(1),resultEntryId:z.string().min(1),record:recordSchema})
 export const skillObservationAuditKinds=Object.freeze({'skill-observation/read':value=>receiptSchema.safeParse(value).success})
 const installed=new WeakMap()
+const promptName='dingtalk:skill-refresh'
+export const skillVersionPromptSection='night_'+Buffer.from(promptName).toString('hex')
+export const currentSkillVersionNotice=actor=>installed.get(actor)?.notice()??''
 const fail=code=>Object.assign(new Error(code),{code})
 
 /** Business read-version receipts only. Pi owns history, tool calls/results and
@@ -30,7 +33,7 @@ export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
  const loader=tools?.get('skill',actor),trustedLoader=isNativeSkillLoader(loader);if(!skills||!loader)return {async close(){},async refresh(){}}
  const currentCwd=()=>get('workingDirectory')?.get(actor)??cwd
  const filesystem=get('agentPresets')?.serviceFor?.(actor,'fs')??get('fs'),readers=new Map(['read','read_window'].map(name=>[name,tools.get(name,actor)]).filter(([,tool])=>tool)),loaded=new Map(),references=new Map(),observations=new WeakMap(),prepared=new WeakMap(),legacy=new Set(),pendingResults=new Map(),disposers=[]
- let closed=false,tail=Promise.resolve(),failure,pending=[],lastNotice,renderedPromptKey
+ let closed=false,tail=Promise.resolve(),failure,pending=[],lastNotice
  const alive=()=>{if(closed||signal?.aborted||actor.lifecycle?.isLive()!==true||actor.lifecycle.signal.aborted||actor.piSession!==session||scopeOf(ctx)!==actor||agents?.get(actor.id)!==actor)throw fail('PI_SKILL_OBSERVATION_ACTOR_NOT_LIVE')}
  const remember=record=>{if(record.kind==='skill'){if(digest(loaded.get(record.key)?.resourceBase??null)!==digest(record.resourceBase??null))for(const [key,ref]of references)if(ref.name===record.name)references.delete(key);loaded.set(record.key,record);legacy.delete(record.name)}else references.set(record.key,record)}
  // Official entries provide successful call/result pairing; receipts carry only
@@ -49,7 +52,7 @@ export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
   pending.length?`本会话已读技能或引用有变化：${JSON.stringify(pending)}。继续相关操作前，用原生 skill 重读对应入口、read 按需重读相关引用；缺失或读取失败如实说明。此提示不是已读取的证据，不扩大授权，也不要求重做已经有效完成的操作。`:'',
   legacy.size?`历史成功技能调用尚无可核对版本记录：${JSON.stringify([...legacy])}。先按当前目录判断本阶段适用项，再用原生 skill 重读；不把旧同名工具回执当成当前规则。`:'',
  ].filter(Boolean).join('\n')
- const prompt=get('systemPrompt');if(prompt)disposers.push(prompt.context({name:'dingtalk:skill-refresh',order:21,required:true,text:()=>text(),officialText:async()=>{await refresh();const value=text();renderedPromptKey=digest(value);return value}}))
+ const prompt=get('systemPrompt');if(prompt)disposers.push(prompt.context({name:promptName,order:21,required:true,interpolate:false,text:()=>text(),officialText:async()=>{await refresh();return text()}}))
  async function refresh(){
   alive();await tail;if(failure)throw failure
   const changed=[]
@@ -98,17 +101,16 @@ export async function installSessionSkillRefresh(ctx,actor,{cwd,signal}){
   tail=operation.catch(cause=>{failure??=cause})
   await operation
  }))
- disposers.push(actor.requestPolicy.addBeforeRequest(async()=>{
-  await refresh();const notice=text()
-  if(notice&&renderedPromptKey!==digest(notice)&&!session.sessionManager.buildSessionProjection().messages.some(message=>message.role==='custom'&&message.customType==='night.skill-version-notice'&&message.content===notice))throw fail('PI_SKILL_VERSION_NOTICE_PENDING')
- }))
+ // Pi may defer a context-only journal entry until turn_end. The official
+ // request projection supplies this snapshot even before that entry is visible.
+ disposers.push(actor.requestPolicy.addBeforeRequest(refresh))
  // The public Agent finishTurn hook is awaited before SDK turn_end flushes
  // context-only custom messages. AgentSession UI subscribers are synchronous.
  const previousFinish=session.agent.finishTurn
  const finish=async function(...args){const result=await previousFinish?.apply(this,args);if(!closed&&!signal?.aborted)await refresh();return result}
  session.agent.finishTurn=finish
  disposers.push(()=>{if(session.agent.finishTurn===finish)session.agent.finishTurn=previousFinish})
- const handle={refresh,async close(){if(closed)return;closed=true;installed.delete(actor);for(const dispose of disposers.reverse())if(typeof dispose==='function')dispose();await tail;if(failure)throw failure}}
+ const handle={refresh,notice:text,async close(){if(closed)return;closed=true;installed.delete(actor);for(const dispose of disposers.reverse())if(typeof dispose==='function')dispose();await tail;if(failure)throw failure}}
  installed.set(actor,handle)
  return handle
 }

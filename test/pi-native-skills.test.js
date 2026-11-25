@@ -14,6 +14,18 @@ test('native skill catalogs preserve ranked provider precedence and nearest-scop
  assert.deepEqual(catalog(actual.child),[{name:'global',provider:'global'},{name:'inherited',provider:'parent'},{name:'runtime',provider:'filesystem'},{name:'shared',provider:'child'}])
  assert.equal(actual.loaded.provider,'child');assert.equal(actual.loaded.content,'trusted fixture body');assert.deepEqual(actual.loaded.invocation,policy)
 })
+test('ancestor provider changes refresh only inheriting catalogs',async t=>{
+ const h=fixture(t),parent={},child={},peer={},p=createScope(h.ctx,parent),c=createScope(h.ctx,child,{parent}),s=createScope(h.ctx,peer)
+ let control,name='parent-skill',stale=false,peerLists=0
+ p.ctx.skills.registerProvider(api=>{control=api;return{name:'parent',list:async()=>[{...skill(name,{provider:'parent'}),rank:100,locator:0}],get:async()=>skill(stale?'renamed':name,{provider:'parent'})}})
+ s.ctx.skills.registerProvider(()=>({name:'peer',list:async()=>{peerLists++;return[]},get:async()=>undefined}))
+ const childView={scope:child},peerView={scope:peer}
+ assert.deepEqual((await h.registry.list(childView)).map(s=>s.name),['parent-skill']);assert.deepEqual(await h.registry.list(peerView),[])
+ name='parent-updated';control.invalidate()
+ assert.deepEqual((await h.registry.list(childView)).map(s=>s.name),['parent-updated']);assert.deepEqual(await h.registry.list(peerView),[])
+ stale=true;assert.equal(await h.registry.get('parent-updated',childView),undefined)
+ await c.dispose();await p.dispose();assert.deepEqual(await h.registry.list(peerView),[]);assert.equal(peerLists,1)
+})
 test('runtime duplicates are first-wins and duplicate disposal cannot remove the winner',async t=>{const h=fixture(t);const first=h.registry.register(skill('same',{provider:undefined,invocation:undefined})),duplicate=h.registry.register(skill('same'));await duplicate();assert.equal((await h.registry.get('same')).provider,'runtime');await first();assert.equal(await h.registry.get('same'),undefined);assert.equal(h.warnings.length,1)})
 test('skill lookup options, candidates and opaque locators are passed through by identity',async t=>{const h=fixture(t),options=Object.freeze({cwd:'/project'}),locator=Object.freeze({opaque:'location'}),candidate=Object.freeze({...skill(),rank:100,locator}),loaded=Object.freeze(skill());h.registry.registerProvider(()=>({name:'filesystem',list:async o=>{assert.equal(o,options);return[candidate]},get:async(c,o)=>{assert.equal(c,candidate);assert.equal(o,options);assert.equal(c.locator,locator);return loaded}}));assert.equal(await h.registry.get('fixture',options),loaded)})
 test('incomplete discovery and provider failures are not cached and invalid catalog shapes fail loudly',async t=>{const h=fixture(t);let calls=0;const dispose=h.registry.registerProvider(()=>({name:'filesystem',list:async()=>{calls++;if(calls===1)throw new Error('unavailable');return{candidates:[{...skill(),rank:100,locator:0}],complete:false}},get:async()=>skill()}));assert.deepEqual(await h.registry.snapshot(),{skills:[],complete:false});assert.equal((await h.registry.snapshot()).complete,false);assert.equal((await h.registry.snapshot()).complete,false);assert.equal(calls,3);await dispose();h.registry.registerProvider(()=>({name:'bad',list:async()=>({candidates:[],complete:'invalid'}),get:async()=>{}}));await assert.rejects(h.registry.list(),/complete observation/)})
