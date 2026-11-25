@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {sessionWorkspace} from '../../packages/dingtalk-core/session-workspaces.js'
 import {conversationSource} from './message-safety.js'
-import {routerModelBody,routerModelBatch} from './router-model-input.js'
+import {routerModelBody,routerModelBatch,routerModelEvent} from './router-model-input.js'
 import {pendingBusinessInputs} from '../runtime/pi-business-inputs.js'
 import {residentOperationId} from './resident-router-business.js'
 import {unresolvedRouterCalls} from '../runtime/pi-router-recovery-view.js'
@@ -75,6 +75,57 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     if(handoffId&&!native.entries.some(entry=>entry.type==='custom_message'&&entry.customType==='night.router-handoff'&&entry.details?.handoffId===handoffId))fail('ROUTER_NATIVE_HANDOFF_MISSING')
     return native
   }
+  const reviewKind='conversation-router-held-review',reviewTool='resident_review_held_source'
+  async function heldSourceNoEffect(event){
+    const rotation=(await query('router.rotations',{conversationId:event.conversationId})).find(item=>item.id===event.deliveryHold.handoffId)
+    if(rotation?.state!=='published'||rotation.recovery?.reason!=='ROUTER_BATCH_NO_PROGRESS'||agents.get(rotation.oldSessionId))return false
+    let native
+    try{native=await persistence.readNative(rotation.oldSessionId,{requireComplete:true})}
+    catch(error){ctx.logger?.warn?.(`router held evidence unavailable: ${error.code??error.name}`);return false}
+    assertOpen()
+    if(native.header.id!==rotation.oldSessionId||native.header.runtimeOwner!=='conversation-router'||native.header.conversationId!==event.conversationId||native.header.generation!==rotation.oldGeneration)return false
+    const inputs=native.entries.filter(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input'
+      &&entry.details?.source?.kind==='conversation-router'&&entry.details.source.eventIds?.includes(event.id))
+    if(inputs.length!==1)return false
+    const input=inputs[0],receipt=native.audit.find(item=>item.domain==='admission'&&item.kind==='admitted'&&item.payload?.id===input.details.packetId)
+    if(receipt?.payload.entryId!==input.id)return false
+    // 未找到回执不能证明无动作，必须核验旧进程退出后严格提交的只读轮。
+    const readonly=new Set(['resident_task_query','resident_source_query','resident_source_get','resident_reply_query','platform_task_query','platform_config_query','platform_schedule_list'])
+    return native.entries.slice(native.entries.indexOf(input)+1).every(entry=>{
+      if(entry.type==='message'&&entry.message.role==='assistant')return entry.message.content.every(block=>block.type!=='toolCall'||readonly.has(block.name))
+      if(entry.type==='message'&&entry.message.role==='toolResult')return readonly.has(entry.message.toolName)
+      return entry.type!=='custom'||entry.customType!=='night.audit'||!['task','job'].includes(entry.data?.domain)
+    })
+  }
+  function recordHeldReview(packet,decision,evidenceId){
+    const {conversationId,generation,eventId,sourceId,messageVersion,handoffId,noEffect}=packet.source
+    return command('router.held-review.record',{conversationId,generation,eventId,sourceId,messageVersion,handoffId,decision,noEffect,...evidenceId===undefined?{}:{evidenceId}})
+  }
+  async function reviewHeldSource(row,handle,persisted){
+    const candidate=await query('router.held-review.next',{conversationId:row.id,...persisted?{eventId:persisted.source.eventId}:{}});assertOpen()
+    if(!candidate){if(persisted)await handle.retireHeldReview(persisted.id);return !!persisted}
+    const {row:event,source,evidence,mayRelease}=candidate
+    const noEffect=!evidence.tasks.length&&!evidence.replies.length&&mayRelease&&await heldSourceNoEffect(event)
+    const identity={kind:reviewKind,conversationId:row.id,generation:row.generation,eventId:event.id,sourceId:source.sourceId,messageVersion:source.version,handoffId:event.deliveryHold.handoffId,noEffect}
+    const body={eventId:event.id,source:routerModelEvent({...event,source}).source,evidence,noEffect}
+    const packet={id:'router-held-review:'+hash([identity,body]),source:identity,content:[{type:'text',text:'Router 挂起来源复查：'+JSON.stringify(body)}]}
+    if(persisted&&!isDeepStrictEqual(packet,persisted)){await handle.retireHeldReview(persisted.id);return true}
+    if(handle.agent.admission.status(packet.id)!=='admitted'){
+      const tools=handle.session.getActiveToolNames()
+      packets.set(packet.id,packet)
+      try{
+        handle.session.setActiveToolsByName([reviewTool])
+        await handle.enqueue(packet);assertOpen();await handle.deliver(packet.id);await handle.whenIdle();assertOpen()
+      }finally{
+        packets.delete(packet.id)
+        try{await handle.whenIdle()}finally{handle.session.setActiveToolsByName(tools)}
+      }
+    }
+    // 模型未给出有效判断时保留原挂起，不让该轮占住普通消息队列。
+    const remaining=await query('router.held-review.next',{conversationId:row.id,eventId:event.id});assertOpen()
+    if(remaining?.row.deliveryHold.handoffId===identity.handoffId)await recordHeldReview(packet,'no-decision')
+    return true
+  }
   async function bindMemory(id,conversationId,previous){
     const memory=ctx.get('memory')
     if(!memory)return
@@ -104,7 +155,10 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     const authorizeInput=async(packet,actor)=>{
       assertOpen()
       const current=await query('router.get',{conversationId:row.id});assertOpen()
-      return actor.id===id&&current?.activeSessionId===id&&current.generation===generation&&current.phase==='active'&&isDeepStrictEqual(packets.get(packet.id),packet)
+      if(actor.id!==id||current?.activeSessionId!==id||current.generation!==generation||current.phase!=='active'||!isDeepStrictEqual(packets.get(packet.id),packet))return false
+      if(packet.source.kind!==reviewKind)return true
+      const candidate=await query('router.held-review.next',{conversationId:row.id,eventId:packet.source.eventId});assertOpen()
+      return candidate?.row.deliveryHold.handoffId===packet.source.handoffId&&candidate.source.sourceId===packet.source.sourceId&&candidate.source.version===packet.source.messageVersion
     }
     const options={agentOptions:typeof models==='function'?models():models,authorizeInput,
       beforeRequest:async actor=>{
@@ -114,7 +168,12 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       },
       setup:async(agentCtx,agent)=>{
         await agentCtx.get('agentPresets').mount(agentCtx,agentPreset)
-        await setupBusiness(agentCtx,{conversationId:row.id,generation,sessionId:id})
+        await setupBusiness(agentCtx,{conversationId:row.id,generation,sessionId:id,
+          reviewHeld:async(packet,{eventId,decision,evidenceId})=>{
+            assertOpen();ctx.get('channels').assertGroupTarget(row.id)
+            if(packet.source.kind!==reviewKind||packet.source.eventId!==eventId||!isDeepStrictEqual(packet,packets.get(packet.id)))fail('ROUTER_HELD_REVIEW_SCOPE')
+            return recordHeldReview(packet,decision,evidenceId)
+          }})
       }}
     const handle=existing?await agents.resume({...options,resumeSessionId:id}):await agents.create({...options,sessionId:id,meta:{cwd:workspace,runtimeOwner:'conversation-router',agentPreset,conversationId:row.id,generation},...(handoff?{routerHandoff:{...handoff,conversationId:row.id}}:{})})
     handles.set(id,handle)
@@ -176,10 +235,10 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     // 恢复和旧 owner 释放共享本会话队列，不把仍在途的交接当作冷中断。
     const rotations=await query('router.rotations',{conversationId});assertOpen()
     for(const rotation of rotations)if(rotation.state==='published'&&rotation.candidateSessionId===row.activeSessionId){const old=handles.get(rotation.oldSessionId);if(old){await old.dispose();handles.delete(rotation.oldSessionId)}}
-    let handle
+    let handle,reviewTurn=false
     for(;;){
       const inbox=await query('router.inbox',{conversationId,limit:30,deliverable:true});assertOpen()
-      if(!inbox.length)break
+      if(!inbox.length&&!await query('router.held-review.next',{conversationId}))break
       const startedAt=new Date().toISOString()
       if(!handle)try{handle=await open(row)}catch(error){
         // No active old owner may be abandoned. Failed opens clean up their own
@@ -189,6 +248,12 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         handle=await open(row)
       }
       assertOpen()
+      const queued=pendingBusinessInputs(handle.agent)[0]
+      if(queued?.source.kind===reviewKind||!queued&&(!inbox.length||reviewTurn)){
+        reviewTurn=false
+        if(await reviewHeldSource(row,handle,queued)){row=await query('router.get',{conversationId});continue}
+      }
+      if(!inbox.length)break
       const admittedInput=handle.session.sessionManager.getBranch().findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')
       const admittedPacket=admittedInput&&handle.agent.admission.lookupPacket(admittedInput.details?.packetId)
       if(admittedPacket?.source.kind==='conversation-router'){
@@ -347,6 +412,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         fail('ROUTER_BATCH_UNSETTLED')
       }
       row=await query('router.get',{conversationId})
+      reviewTurn=true
     }
     // Keep the same Pi owner even when the inbox and tasks are idle. Pi's
     // native compaction handles bounded context; idle is not a semantic cutoff.

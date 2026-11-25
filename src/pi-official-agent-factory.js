@@ -277,6 +277,13 @@ export class OfficialAgentFactory {
      if(pending.size||!bundle.session.isIdle)throw fail('PI_TRIAGE_RECOVERY_BUSY')
      return admission.cancelPending('triage-batch-refreshed')
     },
+    retireHeldReview(packetId){
+     active();check()
+     if(store.header.runtimeOwner!=='conversation-router'||ownerCtx.agents.currentInitiator?.()!==undefined)throw fail('PI_ROUTER_RESUME_HOST_ONLY')
+     const packet=admission.lookupPacket(packetId)
+     if(packet?.source.kind!=='conversation-router-held-review'||!isDeepStrictEqual(admission.pending(),[packetId])||pending.size||!bundle.session.isIdle)throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
+     return admission.cancelPending('router-held-review-stale')
+    },
     enqueue:packet=>{active();if(routerFrozen||routerContinuing)throw fail('PI_ROUTER_FROZEN');return admission.enqueue(packet)},
     deliver:(packetId,deliveryOptions)=>{
      active();if(routerFrozen||routerContinuing)throw fail('PI_ROUTER_FROZEN');const operation=deliveryContext.run(actor,()=>thisFactory.executionContext.run(actor,()=>bundle.deliver(packetId,deliveryOptions)));pending.add(operation);void operation.finally(()=>pending.delete(operation)).catch(()=>{});return operation

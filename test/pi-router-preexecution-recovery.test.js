@@ -7,7 +7,7 @@ import {pathToFileURL,fileURLToPath} from 'node:url'
 import {execFile,spawn} from 'node:child_process'
 import {promisify} from 'node:util'
 import {once} from 'node:events'
-import {residentRouterHost,channelMessage,requestTools,requestEnvelope} from './fixtures/resident-router-host.js'
+import {residentRouterHost,channelMessage,requestTools,requestEnvelope,eventually} from './fixtures/resident-router-host.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {piJournalFilename} from '../src/runtime/pi-journal.js'
 
@@ -144,7 +144,7 @@ for(const directlyHeld of [false,true])test(`fresh Router scheduling survives a 
  h=await residentRouterHost(t,async body=>{
   if(requestTools(body).includes('task_result')){
    ++runs
-   return {tool:'task_result',args:{decision:{action:'wait',summary:`已进入第 ${runs} 次执行`,evidence:[],limitations:[]}}}
+   return {tool:'task_result',args:{decision:{action:'complete',summary:`已完成第 ${runs} 次执行`,evidence:[],limitations:[]}}}
   }
   if(!requestTools(body).includes('resident_router_settle'))return {text:'No work'}
   const input=requestEnvelope(body,'Router 请求：'),event=input?.events.find(e=>e.source)
@@ -162,7 +162,7 @@ for(const directlyHeld of [false,true])test(`fresh Router scheduling survives a 
  },{wrapStore})
  await h.receive(channelMessage('original-work'));await h.service.whenIdle()
  const original=await h.query('task.get',{taskId})
- assert.equal(original.lastDecision.action,'wait')
+ assert.equal(original.status,'completed');assert.equal(original.completion?.result?.summary,'已完成第 1 次执行')
  heldSource=original.sourceRefs[0]
  assert.ok(heldSource)
  await h.receive(channelMessage('new-instruction',{text:'继续原任务核对实际结果'}));await h.service.whenIdle()
@@ -175,7 +175,7 @@ for(const directlyHeld of [false,true])test(`fresh Router scheduling survives a 
  assert.equal(actions[4].result.isError,false)
  const resumed=await h.query('task.get',{taskId})
  assert.equal(resumed.sessionId,original.sessionId)
- assert.equal(resumed.lastDecision.summary,'已进入第 2 次执行')
+ assert.equal(resumed.status,'completed');assert.equal(resumed.completion?.result?.summary,'已完成第 2 次执行')
  assert.equal(resumed.drained,true)
  const journal=await h.host.ctx.sessionPersistence.readNative(original.sessionId,{requireComplete:true})
  assert.equal(journal.entries.filter(e=>e.type==='message'&&e.message.role==='toolResult'&&e.message.toolName==='task_result'&&!e.message.isError).length,2)
@@ -220,7 +220,7 @@ test('cold Router isolates a persisted zero-progress event and actually dispatch
   if(tools.includes('task_result')){
    assert.match(JSON.stringify(body.messages),/Complete the separate bounded work after restart/)
    runs++
-   return {tool:'task_result',args:{decision:{action:'wait',summary:'Fresh work was actually admitted',evidence:[],limitations:[]}}}
+   return {tool:'task_result',args:{decision:{action:'complete',summary:'Fresh work was actually admitted',evidence:[],limitations:[]}}}
   }
   if(!tools.includes('resident_router_settle'))return {text:'No work'}
   const {events}=requestEnvelope(body,'Router 请求：'),messageIds=events.flatMap(event=>event.source?[event.source.messageId]:[])
@@ -248,7 +248,7 @@ test('cold Router isolates a persisted zero-progress event and actually dispatch
  assert.deepEqual(deliveries,['cold-zero-progress','cold-fresh-work'])
  assert.equal(oldAttempts,1);assert.equal(plans,1);assert.equal(runs,1)
  const task=await h.query('task.get',{taskId})
- assert.equal(task.drained,true);assert.equal(task.lastDecision.summary,'Fresh work was actually admitted')
+ assert.equal(task.drained,true);assert.equal(task.status,'completed');assert.equal(task.completion?.result?.summary,'Fresh work was actually admitted')
  assert.ok((await h.query('wake.list',{taskId})).every(wake=>wake.state==='acked'))
  const journal=await h.host.ctx.sessionPersistence.readNative(task.sessionId,{requireComplete:true})
  assert.equal(journal.entries.filter(entry=>entry.type==='message'&&entry.message.toolName==='task_result'&&!entry.message.isError).length,1)
@@ -258,4 +258,80 @@ test('cold Router isolates a persisted zero-progress event and actually dispatch
  assert.equal((await h.query('router.get',{conversationId})).generation,before.generation+1)
  assert.deepEqual(await readFile(archive),original)
  assert.equal(h.sent.length,0)
+})
+
+for(const decision of ['continue','processed','defer'])test(`recovered Router actively reviews a held source: ${decision}`,{timeout:nativeTestTimeout(90000)},async t=>{
+ const ordinary=[],reviews=[];let attempts=0,notificationId,reviewTried=false,reviewReady=decision!=='processed'
+ const id='held-for-'+decision
+ const h=await residentRouterHost(t,async body=>{
+  const tools=requestTools(body),last=body.messages.at(-1)
+  if(tools.includes('resident_review_held_source')&&!tools.includes('resident_router_settle')){
+   assert.deepEqual(tools,['resident_review_held_source'])
+   const input=requestEnvelope(body,'Router 挂起来源复查：')
+   assert.equal(input.source.messageId,id)
+   if(last.role==='tool'){
+    if(decision==='defer'&&reviewTried&&reviews.length===1){reviews.push('rejected');return {tool:'resident_router_reply',args:{operationId:'review-must-not-reply',sourceId:input.source.sourceId,messageVersion:input.source.version,replyPurpose:'direct-answer',text:'This must not be sent'}}}
+    if(decision==='defer'&&reviews.length===2){reviews.push('forbidden');return {tool:'resident_review_held_source',args:{eventId:input.eventId,decision:'defer'}}}
+    return {text:'Review complete'}
+   }
+   reviews.push(input)
+   if(decision==='processed'){notificationId=input.evidence.replies[0]?.notificationId;assert.equal(input.evidence.replies[0]?.state,'delivered')}
+   if(decision==='defer'){reviewTried=true;assert.equal(input.noEffect,false)}
+   if(decision==='continue')assert.equal(input.noEffect,true)
+   return {tool:'resident_review_held_source',args:{eventId:input.eventId,decision:decision==='defer'?'continue':decision,...notificationId?{evidenceId:notificationId}:{}}}
+  }
+  if(!tools.includes('resident_router_settle'))return {text:'No work'}
+  const events=requestEnvelope(body,'Router 请求：').events
+  const original=events.find(event=>event.source?.messageId===id)
+  if(last.role==='tool'){
+   const tool=body.messages.findLast(message=>message.role==='assistant')?.tool_calls?.at(-1)?.function?.name
+   if(decision==='continue'&&original&&tool==='resident_router_reply')return {tool:'resident_router_settle',args:{operationId:'settle-continued',eventIds:[original.id],noTaskDispositions:[{eventId:original.id,outcome:'handled-inline',sourceQuote:original.source.text,reason:'Original answered after proven safe continuation'}]}}
+   return {text:'End turn'}
+  }
+  ordinary.push(...events.map(event=>event.source?.messageId))
+  if(original&&++attempts===1){
+   if(decision==='continue')return {text:'Original round ended before any action'}
+   if(decision==='processed')return {tool:'resident_router_reply',args:{operationId:'old-reply',sourceId:original.sourceId,messageVersion:original.messageVersion,replyPurpose:'direct-answer',text:'Existing answer'}}
+   return {tool:'resident_router_settle',args:{operationId:'refused-first',eventIds:[original.id],noTaskDispositions:[{eventId:original.id,outcome:'context-only',sourceQuote:'incorrect quote',reason:'Leave the input unhandled'}]}}
+  }
+  if(original&&decision==='continue')return {tool:'resident_router_reply',args:{operationId:'continued-reply',sourceId:original.sourceId,messageVersion:original.messageVersion,replyPurpose:'direct-answer',text:'Answer from the safely continued source'}}
+  return {tool:'resident_router_settle',args:{operationId:'settle-'+events[0].id,eventIds:events.map(event=>event.id),noTaskDispositions:events.map(event=>({eventId:event.id,outcome:'context-only',sourceQuote:event.source.text,reason:'Fixture has no further external work'}))}}
+ },{wrapStore:store=>({...store,query:q=>!reviewReady&&q.kind==='router.held-review.next'?Promise.resolve(null):store.query(q)})})
+ await h.receive(channelMessage(id))
+ await assert.rejects(h.service.whenIdle(),{code:'ROUTER_BATCH_UNSETTLED'})
+ const original=(await h.query('source.list')).find(source=>source.messageId===id),conversationId=original.groupId
+ if(decision==='processed')await eventually(async()=>{
+  const result=await h.query('router.reply-history',{conversationId,sourceId:original.sourceId})
+  return result.replies.some(reply=>reply.state==='delivered')
+ },'original fake transport reply received')
+ const previous=await h.query('router.get',{conversationId})
+ await h.receive(channelMessage('fresh-after-'+decision));await h.service.whenIdle()
+ if(decision==='processed'){
+  // 模拟发布恢复代际后停止，旧留置已经落盘，但尚未进入复查。
+  assert.equal(reviews.length,0)
+  const [held]=await h.query('router.inbox',{conversationId})
+  assert.equal(held?.sourceId,original.sourceId);assert.ok(held.deliveryHold)
+  assert.deepEqual(await h.query('router.inbox',{conversationId,deliverable:true}),[])
+  reviewReady=true
+  await h.restart();await h.service.whenIdle()
+ }
+ const next=await h.query('router.get',{conversationId})
+ assert.ok(h.results.some(r=>r.name==="resident_review_held_source"&&!r.result.isError),JSON.stringify(h.results.filter(r=>r.name==="resident_review_held_source")))
+ assert.ok(next.generation>previous.generation)
+ assert.deepEqual(ordinary,[id,'fresh-after-'+decision,...decision==='continue'?[id]:[]])
+ assert.equal(reviews.filter(input=>input.eventId).length,1)
+ assert.deepEqual(await h.query('router.inbox',{conversationId,deliverable:true}),[])
+ const eventId=original.routeReceipt.eventId
+ const [final]=await h.query('router.batch-events',{conversationId,eventIds:[eventId]})
+ assert.equal(final.heldReviews.at(-1).decision,decision)
+ assert.equal(final.state,decision==='defer'?'pending':'consumed')
+ const expectedSends=decision==='defer'?0:1
+ if(expectedSends)await eventually(()=>h.sent.length===expectedSends,'one reply through the fake transport')
+ if(decision==='defer'){
+  assert.ok(h.results.some(r=>r.name==='resident_review_held_source'&&r.result.error?.message==='ROUTER_HELD_REVIEW_EFFECT_UNKNOWN'))
+  assert.ok(reviews.includes('forbidden'))
+ }
+ await h.restart();await h.service.whenIdle()
+ assert.equal(reviews.filter(input=>input.eventId).length,1)
+ assert.equal(h.sent.length,expectedSends)
 })
