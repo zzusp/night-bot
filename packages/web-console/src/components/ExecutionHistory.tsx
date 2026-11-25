@@ -64,7 +64,7 @@ export function ExecutionHistory({ endpoint, router = false, sessionKind, status
   }, [searchScope]);
   const excludedSearch = unavailableSearch.scope === searchScope ? unavailableSearch.ids : noExcludedRecords;
   const searchable = useMemo(() => excludedSearch.size ? committed.filter(message => !excludedSearch.has(message.id)) : committed, [committed, excludedSearch]);
-  const locate = useCallback((id: string) => setFocusRecord(previous => ({id, scope: searchScope, version: (previous?.version ?? 0) + 1})), [searchScope]);
+  const locate = useCallback((id: string | null) => setFocusRecord(previous => id ? ({id, scope: searchScope, version: (previous?.version ?? 0) + 1}) : undefined), [searchScope]);
   const recoveryRead = useRef<number | null | undefined>(undefined);
   const updatedAt = useRef(query.updatedAt);
   useLayoutEffect(() => { updatedAt.current = query.updatedAt; }, [query.updatedAt]);

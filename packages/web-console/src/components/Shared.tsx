@@ -630,7 +630,9 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
     for (let parent = row.parentElement; parent && parent !== list; parent = parent.parentElement) {
       if (parent instanceof HTMLDetailsElement) parent.open = true;
     }
-    requestAnimationFrame(() => {if (row.isConnected) {list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - (list.clientHeight - row.offsetHeight) / 2; captureAnchor();}});
+    row.dataset.executionSearchMatch = 'true';
+    const frame = requestAnimationFrame(() => {if (row.isConnected) {list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - (list.clientHeight - row.offsetHeight) / 2; captureAnchor();}});
+    return () => { cancelAnimationFrame(frame); delete row.dataset.executionSearchMatch; };
   }, [focusRecord]);
   const latest = () => { cancelRestore(); following.current = true; setShowLatest(false); ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: 'instant' }); };
   const renderItem = (item: ExecutionItem, key: string) => {
