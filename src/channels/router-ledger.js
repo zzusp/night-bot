@@ -295,8 +295,10 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       return operation(a,()=>{
         if(a.taskIds!==undefined&&(!Array.isArray(a.taskIds)||!a.taskIds.length||a.taskIds.length>3||new Set(a.taskIds).size!==a.taskIds.length))fail('ROUTER_LOOKUP_ARGUMENT_INVALID')
         for(const taskId of a.taskIds??[]){const task=read('tasks',required(taskId),true);if(!task||task.groupId!==a.conversationId)fail('ROUTER_LOOKUP_TASK_SCOPE')}
-        const pending=rows('router_actions').filter(row=>row.result?.lookup?.state==='pending')
-        if(pending.length>=2||pending.some(row=>row.conversationId===a.conversationId))fail('ROUTER_LOOKUP_CAPACITY')
+        const duplicate=db.prepare(`SELECT 1 FROM dynamic_router_actions WHERE json_extract(body,'$.conversationId')=?
+          AND json_extract(body,'$.result.lookup.sourceId')=? AND json_extract(body,'$.result.lookup.messageVersion')=? LIMIT 1`)
+          .get(a.conversationId,a.sourceId,a.messageVersion)
+        if(duplicate)fail('ROUTER_LOOKUP_SOURCE_ALREADY_SUBMITTED')
         if(a.alongsideWork===true){
           if(!sourceLinks.get(a.conversationId,source.sourceId,source.version))fail('ROUTER_LOOKUP_WORK_RECEIPT_REQUIRED')
         }else markProgressOnly(source)

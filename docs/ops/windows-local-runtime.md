@@ -296,6 +296,8 @@ node bin/night-bot-dingtalk.js $config list
 
 登记前回声保护覆盖 Router/任务队列通知，与 `dingtalk_operator_notifications` 开关无关。若原发送身份未知，明确是其他发送者的消息照常入站；仅同账号或身份命名空间不明的候选及其已知直接引用单独暂缓。查看该渠道现有 `data/state/channels/.../ingress.json`：`backfillThroughAt` 是完整历史水位，`deferredMessages` 是未接纳的单条记录；精确读取失败会记录 `DINGTALK_DEFERRED_READ_FAILED`，不会清记录、推断未发送或触发重发。不要手工删记录、补写回执或注入旧消息。原生 shell 外发回声能力不在本次范围，见 [渠道合同](../CHANNELS.md)。
 
+核查 Router 只读查询时，区分原来源已接纳、查询收据终态、内部结果已消费、以及用户答复已送达。全实例同时执行两条，其余后台等待；30 秒包含等待，超时或重启中断不代表业务任务失败。此变更无需迁移或配置，不手改账本或重放中断查询。见[只读查询契约](../CHANNELS.md#router-的临时任务只读查询)。
+
 ## 停机中断后的 Router 恢复
 
 正常 IPC 退出只证明进程关闭，不证明每个 Router 批次已 settled。新版冷启动会对原生最后 aborted 生成领取一次原检查点；较新真实输入先进入同一官方会话，再触发续轮。仅最后 aborted 生成中的调用依据固定 Pi 的未派发语义处理，较早调用缺结果、失败或未决效果仍阻断。不删除 admission/inbox，不手改 stopReason，不重发原群消息。

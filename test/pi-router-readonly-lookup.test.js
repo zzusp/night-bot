@@ -84,3 +84,48 @@ test('lookup timeout cancels its isolated provider, returns a durable result and
  const action=await h.query('router.action',{conversationId,operationId:'timeout-operation'});assert.equal(action.result.lookup.result,undefined);assert.equal(action.result.lookup.id,receipt.lookupId)
  assert.equal(h.sent.length,0)
 })
+
+test('two lookups from one Router run together; overflow is durable and skips expired work',{timeout:nativeTestTimeout(55000)},async t=>{
+ const {createRouterReadonlyLookups}=await import('../src/channels/router-readonly-lookup.js')
+ const started=[],released=Array.from({length:3},()=>Promise.withResolvers())
+ let active=0,peak=0
+ t.after(()=>{for(const gate of released)gate.resolve()})
+ const h=await residentRouterHost(t,async body=>{
+  if(requestText(body).some(text=>text.includes('NIGHT_ROUTER_TASK_LOOKUP'))){
+   const index=started.length;started.push(index);active++;peak=Math.max(peak,active)
+   assert.deepEqual(requestTools(body),[]);await released[index].promise;active--
+   return {text:JSON.stringify({summary:'Current snapshot '+index,limitations:[]})}
+  }
+  if(!requestTools(body).includes('resident_router_settle'))return {text:'No work'}
+  const packet=input(body);if(done(body))return {text:'Settled'}
+  return call('resident_router_settle',{operationId:'queue-settle:'+packet.events.map(event=>event.id).join(','),eventIds:packet.events.map(event=>event.id)})
+ })
+ const conversationId=h.host.ctx.channels.identity(channelMessage('queue-a')).sessionId
+ for(const id of ['queue-a','queue-b','queue-c','queue-d'])await h.receive(channelMessage(id));await h.service.whenIdle()
+ const sources=(await h.query('source.list')).filter(s=>['queue-a','queue-b','queue-c','queue-d'].includes(s.messageId)).sort((a,b)=>a.messageId.localeCompare(b.messageId))
+ const router=await h.query('router.get',{conversationId})
+ await h.store.command({id:'queue-task',kind:'task.create',args:{taskId:'queue-existing',groupId:conversationId,conversationId,ownerActorId:'alice',request:'Retained task'}})
+ await h.store.command({id:'queue-paused',kind:'task.control',args:{taskId:'queue-existing',control:'paused',expectedControlRevision:1}})
+ const task=await h.query('task.get',{taskId:'queue-existing'}),notifications=[]
+ const query=(kind,args={})=>h.query(kind,args),command=(kind,args,id)=>h.store.command({kind,args,id})
+ let clockOffset=0
+ const worker=createRouterReadonlyLookups({ctx:h.host.ctx,query,command,models:()=>h.config.model,schedule:cid=>notifications.push(cid),now:()=>Date.now()+clockOffset})
+ t.after(()=>worker.close())
+ const args=sources.map((source,i)=>({conversationId,generation:router.generation,sourceId:source.sourceId,messageVersion:source.version,operationId:'queue-operation-'+i,taskIds:['queue-existing']}))
+ const receipts=[];for(const arg of args)receipts.push(await worker.submit(arg))
+ assert.equal(receipts.length,4);assert.equal(new Set(receipts.map(r=>r.lookupId)).size,4);assert.ok(receipts.every(r=>r.readOnly&&r.status==='pending'))
+ await eventually(()=>started.length===2,'two queries reached the provider')
+ await worker.recover();assert.equal((await query('router.lookup.pending')).length,4);assert.equal(started.length,2)
+ assert.deepEqual(await worker.submit(args[2]),receipts[2])
+ released[0].resolve();await eventually(()=>started.length===3,'third query started when its slot freed')
+ assert.equal(peak,2);clockOffset=31000;released[1].resolve();released[2].resolve()
+ await eventually(()=>notifications.length===4,'all completion events durably enqueued')
+ assert.equal(started.length,3);assert.ok(notifications.every(cid=>cid===conversationId));assert.deepEqual(await query('router.lookup.pending'),[])
+ for(const [index,arg] of args.entries()){
+  const row=await query('router.action',{conversationId,operationId:arg.operationId})
+  assert.equal(row.result.lookup.id,receipts[index].lookupId);assert.equal(row.result.lookup.sourceId,arg.sourceId)
+  if(index===3){assert.equal(row.result.lookup.state,'timed-out');assert.equal(row.result.lookup.result,undefined)}
+  else{assert.equal(row.result.lookup.state,'completed');assert.equal(row.result.lookup.result.snapshots[0].taskId,'queue-existing')}
+ }
+ await worker.close();assert.deepEqual(await query('task.get',{taskId:'queue-existing'}),task);assert.equal(h.sent.length,0)
+})
