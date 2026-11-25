@@ -73,6 +73,64 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     return routerTriageConclusion({...event,source,triageConclusion:value})
   }
   const pendingInbox = (conversationId, deliverable) => rows('router_inbox').filter(row=>row.conversationId===conversationId&&row.state==='pending'&&(!deliverable||!row.deliveryHold))
+  const sourceLinks=db.prepare("SELECT body FROM dynamic_source_links WHERE json_extract(body,'$.conversationId')=? AND json_extract(body,'$.sourceId')=? AND json_extract(body,'$.messageVersion')=?")
+  const heldReplies=db.prepare(`SELECT body FROM (SELECT body FROM dynamic_notifications UNION ALL SELECT body FROM dynamic_archived_notifications)
+    WHERE json_extract(body,'$.payload.conversationId')=? AND json_extract(body,'$.payload.sourceId')=?
+    AND coalesce(json_extract(body,'$.payload.sourceVersion'),json_extract(body,'$.payload.sourceRef.messageVersion'))=?`)
+  const heldDependencies=db.prepare("SELECT body FROM dynamic_dependencies WHERE json_extract(body,'$.taskId')=? ORDER BY id")
+  const heldArrangement=db.prepare(`SELECT body FROM dynamic_task_events WHERE json_extract(body,'$.kind')='task.arranged'
+    AND json_extract(body,'$.taskId')=? AND json_extract(body,'$.sourceId')=? AND json_extract(body,'$.messageVersion')=?
+    ORDER BY json_extract(body,'$.arrangementRevision') DESC LIMIT 1`)
+  function heldSource(row){
+    if(row?.state!=='pending'||row.kind!=='source.message'||!row.deliveryHold)return
+    const source=read('sources',row.sourceId,true)
+    if(source?.groupId===row.conversationId&&source.version===row.messageVersion&&source.channel!=='internal'
+      &&!source.retracted&&!source.authorizationRevoked&&!source.triageHold&&!source.archiveRestoreHold&&latest(source))return source
+  }
+  const evidenceText=(value,limit)=>typeof value==='string'?value.slice(0,limit):''
+  function heldEvidence(row){
+    const args=[row.conversationId,row.sourceId,row.messageVersion]
+    const dependencyPreview=({prerequisiteTaskId,prerequisiteRequirementRevision,condition,state,authorizationSourceId,authorizationSourceVersion})=>{
+      const prior=read('tasks',prerequisiteTaskId,true)
+      const currentPrerequisiteTitle=prior?.groupId===row.conversationId?evidenceText(prior.title||prior.objective,512):''
+      return {prerequisiteTaskId,prerequisiteRequirementRevision,currentPrerequisiteTitle,condition:evidenceText(condition,512),state,authorizationSourceId,authorizationSourceVersion}
+    }
+    return {
+      tasks:sourceLinks.all(...args).map(({body})=>JSON.parse(body)).flatMap(link=>{
+        const task=read('tasks',link.taskId,true)
+        if(task?.groupId!==row.conversationId)return []
+        const title=evidenceText(task.title,512),objective=evidenceText(task.objective,4096),request=evidenceText(task.request,4096),anchor=evidenceText(link.anchor,4096)
+        const requirements=Array.isArray(task.requirements)?task.requirements:[]
+        const requirementPreviews=requirements.slice(0,20).map(value=>evidenceText(value,512))
+        const current=heldDependencies.all(task.taskId).map(({body})=>JSON.parse(body))
+        const historical=heldArrangement.get(task.taskId,row.sourceId,row.messageVersion)
+        const original=historical&&JSON.parse(historical.body)
+        const dependencies=current.map(dependencyPreview)
+        const sourceArrangement=original&&{arrangementRevision:original.arrangementRevision,dependencies:original.dependencies.map(dependencyPreview)}
+        const truncated=(task.title?.length??0)>title.length||(task.objective?.length??0)>objective.length||(task.request?.length??0)>request.length
+          ||(link.anchor?.length??0)>anchor.length||requirements.length!==requirementPreviews.length||requirements.some((item,index)=>item!==requirementPreviews[index])
+          ||current.some((item,index)=>item.condition!==dependencies[index].condition)
+          ||original?.dependencies.some((item,index)=>item.condition!==sourceArrangement.dependencies[index].condition)
+        const eligible=!truncated&&!!(request.trim()||objective.trim())&&!task.archivedAt&&!task.archiveRestoreHold&&!task.archiveRestore?.reviewRequired
+          &&!['failed','cancelled'].includes(task.status)&&['create','task.supplement','task.revise','task.reopen','task.resume','task.arrange','task.control'].includes(link.relation)
+        return [{taskId:task.taskId,relation:link.relation,status:task.status,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,
+          title,objective,request,sourceExcerpt:anchor,requirements:requirementPreviews,arrangementRevision:task.arrangementRevision??1,dependencies,
+          ...sourceArrangement?{sourceArrangement}:{},truncated:!!truncated,eligible}]
+      }),
+      replies:heldReplies.all(...args).map(({body})=>JSON.parse(body)).map(n=>{
+        const {text:stored,replyPurpose:purpose,completionBinding,taskDelivery}=n.payload
+        const text=evidenceText(stored,8000),truncated=(stored?.length??0)>text.length
+        const eligible=n.state==='delivered'&&n.kind==='router-reply'&&purpose==='direct-answer'&&!completionBinding&&!taskDelivery&&!!text.trim()&&!truncated
+        return {notificationId:n.id,kind:n.kind,state:n.state,purpose,text,truncated,eligible}
+      })
+    }
+  }
+  function mayReleaseHold(row){
+    // Only clear the restriction belonging to the checked hold, never a separate unknown effect.
+    const released=new Set(row.heldReviews?.filter(review=>review.decision==='continue').map(review=>review.handoffId))
+    return rows('router_rotations').every(rotation=>rotation.conversationId!==row.conversationId
+      ||rotation.id===row.deliveryHold.handoffId||released.has(rotation.id)||!rotation.recovery?.unknownSourceIds.includes(row.sourceId))
+  }
   function independentSource(pending, excluded){
     return pending.find(row=>{
       if(excluded.has(row.id)||row.kind!=='source.message')return false
@@ -413,6 +471,28 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(a.decision==='satisfied'&&dependenciesReady(task))wake(task.taskId,'dependency.satisfied',{dependencyId:row.id,evaluationId:id},`wake:dependency:${row.id}:${row.arrangementRevision}`)
       return changed({dependency:row,evaluation,task})
     })
+    if(kind==='router.held-review.record'){
+      const conversation=conversationOf(a),row=read('router_inbox',required(a.eventId),true)
+      if(!row||row.conversationId!==conversation.id||row.sourceId!==a.sourceId||row.messageVersion!==a.messageVersion
+        ||row.deliveryHold?.handoffId!==a.handoffId||!heldSource(row))fail('ROUTER_HELD_REVIEW_STALE')
+      if(a.reviewCount!==(row.heldReviews?.length??0))fail('ROUTER_HELD_REVIEW_STALE')
+      const evidence=heldEvidence(row)
+      if(a.decision==='processed'){
+        if(typeof a.coverage!=='string'||!a.coverage.trim()||a.coverage.length>1000)fail('ROUTER_HELD_REVIEW_COVERAGE_REQUIRED')
+        if(a.evidenceHash!==hash(evidence))fail('ROUTER_HELD_REVIEW_STALE')
+        const task=evidence.tasks.find(task=>task.taskId===a.evidenceId&&task.eligible)
+        const reply=evidence.replies.find(reply=>reply.notificationId===a.evidenceId&&reply.eligible)
+        if(!task&&!reply)fail('ROUTER_HELD_REVIEW_EVIDENCE_REQUIRED')
+        row.state='consumed';row.processedGeneration=conversation.generation;row.processedCursor=++conversation.cursor
+        write('conversations',conversation)
+      }else if(a.decision==='continue'){
+        if(a.noEffect!==true||!mayReleaseHold(row)||evidence.tasks.length||evidence.replies.length)fail('ROUTER_HELD_REVIEW_EFFECT_UNKNOWN')
+        delete row.deliveryHold
+      }else if(!['defer','no-decision'].includes(a.decision))fail('ROUTER_ARGUMENT_INVALID')
+      const review={handoffId:a.handoffId,generation:a.generation,decision:a.decision,...a.decision==='processed'?{evidenceId:a.evidenceId,coverage:a.coverage.trim()}:{},recordedAt:new Date().toISOString()}
+      ;(row.heldReviews??=[]).push(review)
+      write('router_inbox',row);return changed({review})
+    }
     if(kind==='router.settle')return operation(a,()=>{
       const conversation=conversationOf(a)
       if(!Array.isArray(a.eventIds)||!a.eventIds.length)fail('ROUTER_EVENTS_REQUIRED')
@@ -552,6 +632,20 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       return independentSource(pendingInbox(q.conversationId,true),new Set(q.eventIds))?.id??null
     }
     if(q.kind==='router.outcome-inspection')return inspectOutcomes(q.overdueBefore)
+    if(q.kind==='router.held-review.next'){
+      const conversation=conversationOf(q)
+      const candidates=q.eventId===undefined?pendingInbox(conversation.id,false):[read('router_inbox',q.eventId,true)]
+      for(const row of candidates){
+        if(row?.conversationId!==conversation.id||q.excludeEventIds?.includes(row.id))continue
+        const source=heldSource(row)
+        if(!source||!q.includeReviewed&&row.heldReviews?.some(review=>review.generation===conversation.generation&&review.handoffId===row.deliveryHold.handoffId))continue
+        return {row,source,reviewCount:row.heldReviews?.length??0,evidence:heldEvidence(row),mayRelease:mayReleaseHold(row)}
+      }
+      return null
+    }
+    if(q.kind==='router.held-review.released')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId
+      &&row.heldReviews?.some(review=>review.decision==='continue')).flatMap(row=>row.heldReviews.filter(review=>review.decision==='continue')
+        .map(review=>({sourceId:row.sourceId,handoffId:review.handoffId})))
     if(q.kind==='router.delivery-holds')return [...new Set(rows('router_inbox').filter(row=>row.state==='pending'&&row.deliveryHold).map(row=>row.conversationId))]
     if(q.kind==='router.pending-completion')return rows('router_inbox').some(row=>row.conversationId===q.conversationId&&row.state==='pending'&&row.taskEventId&&readEvent(row.taskEventId)?.kind==='task.completed')
     if(q.kind==='router.inbox-count')return pendingInbox(q.conversationId,q.deliverable).length
