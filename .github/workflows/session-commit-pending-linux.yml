@@ -1,0 +1,37 @@
+name: Session commit pending Linux verification
+on:
+  push:
+    branches: [feature/session-commit-pending-409-ci]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: 59cf3661aea98a78336020701cb3f082d1874c1f
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Verify exact PR checkout and install locked dependencies
+        run: |
+          test "$(git rev-parse HEAD)" = 59cf3661aea98a78336020701cb3f082d1874c1f
+          test "$(git rev-parse 'HEAD^{tree}')" = b6c1a2bf955c45b90a610ff20a3b41771f52a52f
+          git log -1 --format='tested_commit=%H tested_tree=%T'
+          npm install --global pnpm@11.25.0
+          pnpm install --frozen-lockfile
+          pnpm --dir packages/web-console install --frozen-lockfile
+      - name: Web history HTTP and projection guards
+        run: |
+          pnpm check
+          node --test packages/web-console/test/session-view.test.js
+          node --test --test-name-pattern 'execution HTTP independently authorizes|zero-new polls|checkpoint' packages/web-console/test/server.test.js
+      - name: Build Web and run execution history browser regressions
+        run: |
+          pnpm --dir packages/web-console build
+          pnpm --dir packages/web-console exec playwright install --with-deps chromium
+          pnpm --dir packages/web-console test:browser execution-live-output.spec.ts execution-scroll.spec.ts
