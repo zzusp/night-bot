@@ -777,7 +777,7 @@
       "source": "session-skill-refresh.js",
       "sourceSha256": "70edb96124113b8158682f60f64bf8a0f8dc698220a0a776a2fda74785f9bf32",
       "status": "adapted",
-      "sha256": "0212773ab241136caf704c81c9778bc94fbce541ed4d05cd6a9026fb03023c93",
+      "sha256": "4c7d96a542a2e7513b49e74502da7ece6f141c5103f42f2f1b77d0fb30c940e7",
       "adaptation": "Official Pi partial-result visibility follows the shared tool partial policy; final successful native result/version receipts with exact NativeTools execution observations, path/read_window references, cold committed evidence and no duplicate history. Observe committed successful native skill and exact file-read results for Bot-wide usage; catalog preparation does not count as a call."
     },
     {

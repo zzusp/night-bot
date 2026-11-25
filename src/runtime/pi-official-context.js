@@ -4,6 +4,7 @@ import {CONTEXT_RETENTION_POLICY} from './context-retention-policy.js'
 import {roleCompactionExtension} from './pi-role-compaction.js'
 import {DefaultResourceLoader,SettingsManager,estimateTokens} from '@earendil-works/pi-coding-agent'
 import {createPiProjectionRequest} from './pi-request-context.js'
+import {currentSkillVersionNotice,skillVersionPromptSection} from '../../packages/dingtalk-core/session-skill-refresh.js'
 
 const error=(code,message)=>Object.assign(new Error(message),{code})
 /** Official extension/resource seam. These ports supply business facts, never a
@@ -52,8 +53,27 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
    const result=await measurePhase('context-projection',()=>memory.filter(current,request,ctx))
    return {messages:compactionRole==='conversation-router'?projectInterruptedRouterCalls(result.messages):result.messages}
   }))
-  if(['channel-triage','conversation-router'].includes(compactionRole))pi.on('context_with_system',guarded(async event=>{
-   const current=actor(),sections=await systemPrompt?.officialSections(current)??{},policy=await memory?.prompt?.(current);assertActive(current)
+  pi.on('context_with_system',guarded(async event=>{
+   const current=actor(),resident=['channel-triage','conversation-router'].includes(compactionRole)
+   if(!resident){
+    const notice=currentSkillVersionNotice(current)
+    // 清掉后续系统增量中的旧提醒，否则 Pi 合并系统段落时会覆盖当前版本。
+    let first=true,changed=false
+    const messages=event.messages.map(message=>{
+     if(message.role!=='system')return message
+     const next=first?notice:'';first=false
+     const sections=message.sections??{}
+     if(next?sections[skillVersionPromptSection]===next:!Object.hasOwn(sections,skillVersionPromptSection))return message
+     const updated={...sections};changed=true
+     if(next)updated[skillVersionPromptSection]=next
+     else delete updated[skillVersionPromptSection]
+     return {...message,sections:updated}
+    })
+    if(first&&notice)throw error('PI_SKILL_VERSION_CONTEXT_REQUIRED','An official system message is required for the current skill version notice')
+    if(changed)return {messages}
+    return
+   }
+   const sections=await systemPrompt?.officialSections(current)??{},policy=await memory?.prompt?.(current);assertActive(current)
    if(policy)sections.night_memory_index=policy
    if(hasTools())sections.night_tool_parallelism=SAFE_TOOL_PARALLELISM_POLICY
    // Native overflow may summarize the custom input as well as older history.

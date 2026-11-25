@@ -7,8 +7,9 @@ import {join} from 'node:path'
 import {createHost} from '../src/host.js'
 import {AgentSession} from '@earendil-works/pi-coding-agent'
 import {installSessionSkillRefresh,skillObservationAuditKinds} from '../packages/dingtalk-core/session-skill-refresh.js'
+import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 const sleep=ms=>new Promise(r=>setTimeout(r,ms))
-test('external body-only skill edits notify the next real Pi request and require an explicit reread', {timeout:15000},async t=>{
+test('external body-only skill edits notify the next real Pi request and require an explicit reread', {timeout:nativeTestTimeout(15000)},async t=>{
  const root=await mkdtemp(join(tmpdir(),'night-skill-refresh-wire-')),work=join(root,'work'),dir=join(work,'skills'),file=join(dir,'fixture.md'),requests=[];let host,handle,serverFailure
  const doc=body=>'---\nname: fixture\ndescription: Stable description\n---\n'+body+'\n'
  await mkdir(dir,{recursive:true});await writeFile(file,doc('ORIGINAL_TRUSTED_BODY'))
@@ -32,7 +33,7 @@ test('external body-only skill edits notify the next real Pi request and require
  const recovered=await installSessionSkillRefresh(handle.agent.ctx,handle.agent,{cwd:work,signal:handle.agent.lifecycle.signal});t.after(()=>recovered.close());const beforeDelete=host.ctx.skills.revision;await rm(file);for(let i=0;i<150&&host.ctx.skills.revision===beforeDelete;i++)await sleep(10);assert.ok(host.ctx.skills.revision>beforeDelete);await handle.enqueue({id:'after-delete',source:{kind:'fixture-user'},content:'Check whether the skill still exists.'});await handle.deliver('after-delete');await handle.whenIdle();assert.equal(requests.length,5);assert.match(JSON.stringify(requests[4]),/本会话已读技能或引用有变化/);assert.match(JSON.stringify(requests[4]),/unavailable/);assert.equal((await handle.agent.receipts.read()).filter(r=>r.domain==='skill-observation'&&r.kind==='read').length,2)
 })
 
-for(const reader of ['read','read_window'])test('official '+reader+' reference observations retain exact execution evidence and survive cold restore',{timeout:20000},async t=>{
+for(const reader of ['read','read_window'])test('official '+reader+' reference observations retain exact execution evidence and survive cold restore',{timeout:nativeTestTimeout(20000)},async t=>{
  const {memoryHost}=await import('./fixtures/memory-host.js')
  const {registerPiFileTools}=await import('../src/pi-file-tool-registration.js')
  const {createPiFileToolBudgets}=await import('../src/runtime/pi-file-tool-budgets.js')
@@ -64,10 +65,25 @@ for(const reader of ['read','read_window'])test('official '+reader+' reference o
  assert.equal(entry.message.toolName,reader);assert.equal(entry.message.isError??false,false);assert.equal(entry.message.toolCallId,reference.payload.callId)
  assert.doesNotMatch(JSON.stringify(reference),/REFERENCE_BEFORE_CHANGE|REFERENCE_AFTER_CHANGE/)
  assert.equal(saved.audit.filter(receipt=>receipt.domain==='skill-observation').length,2)
+ const journalNotice=journal=>journal.entries.findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.skill-version-notice')?.content
+ const previousNotice=journalNotice(saved)
+ assert.ok(previousNotice)
  await handle.dispose()
- handle=await f.host.ctx.agents.resume({sessionId:'reference-'+reader,agentOptions:f.config.model,authorizeInput:packet=>packet.source.kind==='user',setup})
+ let changedOnRequest=false
+ handle=await f.host.ctx.agents.resume({sessionId:'reference-'+reader,agentOptions:f.config.model,authorizeInput:packet=>packet.source.kind==='user',setup:async(ctx,actor)=>{
+  await setup(ctx,actor)
+  actor.requestPolicy.addBeforeRequest(async()=>{if(!changedOnRequest){changedOnRequest=true;await writeFile(file,'REFERENCE_CHANGED_AT_REQUEST_BOUNDARY\n')}})
+ }})
  await handle.enqueue({id:'reference-after-cold',source:{kind:'user'},content:'Inspect the current reference version notice without rereading.'});await handle.deliver('reference-after-cold');await handle.whenIdle()
+ assert.ok(changedOnRequest);assert.doesNotMatch(JSON.stringify(f.requests.at(-1)),/REFERENCE_CHANGED_AT_REQUEST_BOUNDARY/)
  saved=await f.host.ctx.sessionPersistence.readNative(handle.agent.id,{requireComplete:true})
+ const latestNotice=journalNotice(saved)
+ assert.ok(latestNotice);assert.notEqual(latestNotice,previousNotice)
+ const system=f.requests.at(-1).messages.filter(message=>['system','developer'].includes(message.role))
+ assert.ok(JSON.stringify(system).includes(JSON.stringify(latestNotice).slice(1,-1)),'the resumed request must see the newly persisted version, not just an older history notice')
+ assert.ok(!JSON.stringify(system).includes(JSON.stringify(previousNotice).slice(1,-1)),'old system deltas must not override the current notice')
+ const response=saved.entries.findLast(entry=>entry.type==='message'&&entry.message.role==='assistant')
+ assert.ok(response?.message.content.some(block=>block.type==='text'&&block.text==='reference change verified'))
  assert.equal(saved.audit.filter(receipt=>receipt.domain==='skill-observation').length,2,'cold receipts are verified against original official read/read_window entries without replay')
  assert.equal(f.requests.length,5)
 })

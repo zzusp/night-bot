@@ -295,6 +295,17 @@ test('skill refresh does not treat an incomplete catalog as a transient authoriz
  assert.equal(lists,1);assert.equal(reads,0)
 })
 
+test('another owner mounting scoped skills cannot invalidate Router resource authorization',async t=>{
+ const f=await fixture(t);f.a.header.runtimeOwner='conversation-router';let reads=0
+ f.ctx.skills.registerProvider(()=>({name:'shared-fixture',list:async()=>[{...runtimeSkill,provider:'shared-fixture',rank:100}],get:async()=>{
+  f.b.actor.ctx.skills.register({...runtimeSkill,name:'sibling-'+ ++reads})
+  return {...runtimeSkill,provider:'shared-fixture'}
+ }}))
+ const resources=await f.resolve(f.a),list=await resources.context.skills(f.a.actor)
+ assert.deepEqual(list.map(row=>row.name),[runtimeSkill.name]);assert.ok(reads>=3)
+ assert.equal(await readFile(list[0].filePath,'utf8'),runtimeSkill.content)
+})
+
 test('parallel skill mapping rechecks catalog revision after all scoped reads before publication',async t=>{
  const f=await fixture(t);let changed=false,lists=0
  const values=['fast','slow','added'].map(name=>({...runtimeSkill,name,provider:'parallel',rank:100}))
