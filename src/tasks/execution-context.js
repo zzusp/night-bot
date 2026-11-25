@@ -3,7 +3,7 @@ import {conversationSource} from '../channels/message-safety.js'
 import {ROUTER_HANDOFF_POLICY} from '../channels/router-handoff.js'
 // Model view only. SQL and Pi retain the original source/actions/effect receipts.
 // In particular, never copy audit histories and mutable scheduling queues here.
-const fields=['taskId','sessionId','ownerActorId','groupId','conversationId','title','objective','request','requirements','requirementRevision','contextRevision','controlRevision','leaseEpoch','status','control','sourceRefs','dependencies','archiveRestore']
+const fields=['taskId','sessionId','ownerActorId','groupId','conversationId','title','objective','request','requirements','requirementRevision','contextRevision','controlRevision','leaseEpoch','status','control','sourceRefs','dependencies','archiveRestore','milestone']
 export const sourceOnlyTaskInput=task=>task?.metadata?.routerInputPolicy==='source-only-v1'
 export const routerHandoffTaskInput=task=>task?.metadata?.routerInputPolicy===ROUTER_HANDOFF_POLICY
 const routerHandoffSourceFields=['sourceId','messageId','version','actorId','actorRole','senderId','senderName','channelId','channelType','groupId','conversationId','channel','timestamp','authorizationRevoked','archiveRestoreHold']

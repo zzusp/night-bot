@@ -125,7 +125,7 @@ for(const mode of ['missing','preserve','replan','cancel'])test(`official Router
   const source=input.events?.find(event=>event.source?.messageId==='semantic-input')?.source
   if(names.includes('resident_router_settle')&&source&&created){
    if(semanticTurns++===0){const args={operationId:'explicit-context-action',sourceId:source.sourceId,messageVersion:source.version,taskId:created.taskId,expectedRequirementRevision:created.requirementRevision,expectedControlRevision:created.controlRevision,
-    ...(mode==='cancel'?{kind:'control',control:'cancelled',reason:source.text}:mode==='replan'?{kind:'revise',objective:source.text,text:source.text,handoff:source.text}:mode==='preserve'?{kind:'supplement',text:source.text,handoff:source.text}:{text:source.text})};return[call('resident_task_action',args)]}
+    ...(mode==='cancel'?{kind:'control',control:'cancelled',reason:source.text}:mode==='replan'?{kind:'revise',objective:source.text,text:source.text,handoff:source.text,replaceActiveGoalQuote:source.text}:mode==='preserve'?{kind:'supplement',text:source.text,handoff:source.text}:{text:source.text})};return[call('resident_task_action',args)]}
    if(semanticTurns===2)return[call('resident_router_settle',{operationId:'settle-context-action',eventIds:input.events.map(event=>event.id),...(mode==='missing'?{noTaskDispositions:[{eventId:input.events.find(event=>event.source?.sourceId===source.sourceId).id,outcome:'context-only',sourceQuote:source.text,reason:'The invalid action did not change the task.'}]}:{})})]
    return[]
   }
