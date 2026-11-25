@@ -1,8 +1,11 @@
+import { memo } from 'react';
 import type { Task } from '../api';
 import { dateTime } from '../hooks';
 import { taskDurationText } from '../task-duration';
 import { Badge } from './BoardPrimitives';
 import { Markdown, Status } from './Shared';
+
+const ObjectiveMarkdown = memo(Markdown);
 
 /** Read-only inspector: duration values are supplied by the task API. */
 export function TaskOverview({ task }: { task: Task }) {
@@ -23,6 +26,6 @@ export function TaskOverview({ task }: { task: Task }) {
         {task.state === 'cancelled' && <div><dt>取消原因</dt><dd>{task.cancellationReason || '未记录'}</dd></div>}
       </dl>
     </section>
-    <section className="detail-section task-objective-card"><h3>任务目标</h3>{task.objective ? <Markdown text={task.objective} /> : <p className="task-empty">暂无任务目标</p>}</section>
+    <section className="detail-section task-objective-card"><h3>任务目标</h3>{task.objective ? <ObjectiveMarkdown text={task.objective} /> : <p className="task-empty">暂无任务目标</p>}</section>
   </>;
 }

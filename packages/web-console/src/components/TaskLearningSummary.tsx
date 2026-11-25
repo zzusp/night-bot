@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { ApiError, type TaskLearning } from '../api';
 import { useResource } from '../hooks';
+import { TASK_SIDEBAR_REFRESH_MS } from '../task-sidebar-refresh';
 import { taskLearningCounts } from '../task-learning-counts';
 import { Notice } from './Shared';
 
-export function TaskLearningSummary({taskId}: {taskId: string}) {
-  const query = useResource<TaskLearning>(`/tasks/${encodeURIComponent(taskId)}/learning`, 4000);
+export const TaskLearningSummary = memo(function TaskLearningSummary({taskId,state}: {taskId: string;state: string}) {
+  const query = useResource<TaskLearning>(`/tasks/${encodeURIComponent(taskId)}/learning`, TASK_SIDEBAR_REFRESH_MS, {pauseWhenHidden:true,quiet:true,refreshKey:state});
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
   useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
@@ -21,4 +22,4 @@ export function TaskLearningSummary({taskId}: {taskId: string}) {
     {query.error && <Notice error={query.error} stale={!!data} onRetry={query.refresh} />}
 
   </section>;
-}
+});

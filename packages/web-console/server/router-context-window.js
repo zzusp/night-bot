@@ -1,4 +1,4 @@
-import {estimateTokens} from '@earendil-works/pi-coding-agent'
+import {calculateContextTokens,estimateTokens} from '@earendil-works/pi-coding-agent'
 import {getCurrentSystemMessage} from '@earendil-works/pi-ai'
 import {officialConversationContextBudget} from '../../../src/runtime/pi-official-settings.js'
 
@@ -46,7 +46,10 @@ function classify(session,total){
   detail={manager,leaf,counts:estimateBreakdown(messages)}
   breakdowns.set(session,detail)
  }
- const classified=leaf&&detail?Object.entries(detail.counts):[]
+ return classifiedRows(leaf&&detail?detail.counts:{},total)
+}
+function classifiedRows(counts,total) {
+ const classified=Object.entries(counts)
  const sum=classified.reduce((n,[,tokens])=>n+tokens,0)
  // Pi's measured aggregate and its per-message estimates can disagree.
  // Never force a fit by scaling categories or arbitrarily dropping one.
@@ -72,20 +75,64 @@ export async function routerContextWindow(tasks, agents, conversationId) {
  return nativeContextWindow(session,model=>officialConversationContextBudget(model,'ROUTER').budgetTokens)
 }
 
-export async function taskContextWindow(readTask, agents, taskId) {
+export async function taskContextWindow(readTask, agents, taskId, {persistence,describeModel}={}) {
  const task=await readTask()
  if(!task||task.taskId!==taskId)return null
  const sessionId=task.session?.sessionId??task.sessionId
  const bound=task.session?.sessionBound??task.sessionBound
  if(!sessionId||bound===false)return {...unavailable,reason:'task-not-started'}
  const actor=agents?.get?.(sessionId),session=actor?.piSession
- if(!actor)return {...unavailable,reason:'task-not-loaded'}
- if(actor.id!==sessionId||session?.sessionId!==sessionId||actor.metadata?.agentPreset!=='night-bot-task'||actor.lifecycle?.signal.aborted)return unavailable
+ if(actor&&(actor.id!==sessionId||session?.sessionId!==sessionId||actor.metadata?.agentPreset!=='night-bot-task'||actor.lifecycle?.signal.aborted))return unavailable
+ const result=actor?undefined:await committedTaskContext(persistence,describeModel,taskId,sessionId)
  const current=await readTask()
  if(!current||current.taskId!==taskId)return null
  if(current.groupId!==task.groupId||(current.session?.sessionId??current.sessionId)!==sessionId||
-    (current.session?.sessionBound??current.sessionBound)!==bound||agents.get(sessionId)!==actor||actor.lifecycle?.signal.aborted)return unavailable
- return nativeContextWindow(session,model=>model.contextWindow)
+    (current.session?.sessionBound??current.sessionBound)!==bound||agents?.get?.(sessionId)!==actor||actor?.lifecycle?.signal.aborted)return unavailable
+ return actor?nativeContextWindow(session,model=>model.contextWindow):result
+}
+
+// Reconstruct only the selected, strictly committed Pi context. This is not
+// cumulative API usage, nor is it obtained by starting an idle execution.
+async function committedTaskContext(persistence,describeModel,taskId,sessionId) {
+ if(!persistence?.readNative)return {...unavailable,reason:'task-not-loaded'}
+ try {
+  const saved=await persistence.readNative(sessionId,{requireComplete:true})
+  const ids=saved.audit?.filter(row=>row.domain==='task'&&row.kind==='identity')??[]
+  if(saved.header?.id!==sessionId||ids.length!==1||ids[0].version!==1||ids[0].payload?.taskId!==taskId||ids[0].payload?.sessionId!==sessionId)return unavailable
+  const projection=saved.context?.projection
+  if(!Array.isArray(projection?.entries)||!Array.isArray(projection.messages)||!Array.isArray(saved.entries))return unavailable
+  const indexed=new Map(saved.entries.map((entry,index)=>[entry.id,{entry,index}]))
+  let boundary=-1
+  for(let entry=saved.entries.at(-1);entry;entry=indexed.get(entry.parentId)?.entry){
+   if(entry.type==='compaction'||entry.type==='context_edit'){boundary=indexed.get(entry.id).index;break}
+  }
+  let usageIndex=-1, measured=0, latestModel, offset=0
+  for(const {sourceEntry,messages} of projection.entries){
+   for(const message of messages){
+    if(message.role==='assistant'&&message.stopReason!=='aborted'&&message.stopReason!=='error'){
+     if(message.provider&&message.model)latestModel={provider:message.provider,modelId:message.model}
+     const tokens=message.usage&&calculateContextTokens(message.usage)
+     if((indexed.get(sourceEntry.id)?.index??-1)>boundary&&Number.isSafeInteger(tokens)&&tokens>0){usageIndex=offset;measured=tokens}
+    }
+    offset++
+   }
+  }
+  const messages=projection.messages
+  if(offset!==messages.length)return unavailable
+  const system=getCurrentSystemMessage(messages)
+  const tokens=usageIndex>=0?measured+messages.slice(usageIndex+1).reduce((n,msg)=>n+estimateTokens(msg),0):
+    messages.reduce((n,msg)=>n+(msg.role==='system'?0:estimateTokens(msg)),system?estimateTokens(system):0)
+  if(!Number.isSafeInteger(tokens)||tokens<=0)return unavailable
+  const model=projection.model??latestModel
+  let contextWindow
+  if(model&&describeModel)try{
+   const current=await describeModel(model.provider,model.modelId)
+   const value=current?.context?.contextWindow
+   if(Number.isSafeInteger(value)&&value>0)contextWindow=value
+  }catch{/* An unavailable model does not erase the verified token count. */}
+  if(persistence.readNativeDigest&&saved.journalDigest&&await persistence.readNativeDigest(sessionId)!==saved.journalDigest)return unavailable
+  return {status:'ready',basis:'pi-committed-context-estimate',tokens,...contextWindow?{contextWindow,windowBasis:'current-model-config'}:{},categories:classifiedRows(estimateBreakdown(messages),tokens)}
+ }catch{return {...unavailable,reason:'task-history-unavailable'}}
 }
 
 function nativeContextWindow(session,windowFor) {

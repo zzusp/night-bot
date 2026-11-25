@@ -12,6 +12,7 @@ import { taskDurationText } from './task-duration';
 import { taskConclusion, taskConclusionDuration } from './task-conclusion';
 import { ContextWindow, type ContextWindowSnapshot } from './components/ContextWindow';
 import { TaskOverview } from './components/TaskOverview';
+import { TASK_SIDEBAR_REFRESH_MS } from './task-sidebar-refresh';
 import { TaskInputComposer } from './components/TaskInputComposer';
 import type {TaskInputDrafts} from './task-input-drafts';
 
@@ -60,7 +61,7 @@ export function TaskList({ route }: { route: URL }) {
 }
 
 export function TaskDetail({ id, header, drafts }: { id: string; header?: ReactNode; drafts: TaskInputDrafts }) {
-  const query = useResource<Task>(`/tasks/${encodeURIComponent(id)}`, 4000);
+  const query = useResource<Task>(`/tasks/${encodeURIComponent(id)}`, TASK_SIDEBAR_REFRESH_MS, {pauseWhenHidden:true,quiet:true});
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
   const [tokenTarget, setTokenTarget] = useState<HTMLDivElement | null>(null);
@@ -70,7 +71,7 @@ export function TaskDetail({ id, header, drafts }: { id: string; header?: ReactN
   useEffect(() => { if (!query.error) setDenied(false); }, [query.updatedAt]);
   const task = forbidden || denied ? undefined : query.data;
   const context = useResource<ContextWindowSnapshot>(rail && task && !query.error
-    ? `/tasks/${encodeURIComponent(id)}/context-window` : null, 10000, {pauseWhenHidden:true});
+    ? `/tasks/${encodeURIComponent(id)}/context-window` : null, task?.state === 'running' ? TASK_SIDEBAR_REFRESH_MS : 0, {pauseWhenHidden:true,quiet:true,refreshKey:task?.session?.sessionId});
   const draft = useSyncExternalStore(drafts.subscribe, () => drafts.get(id));
   const accepted = useRef(draft.accepted);
   useEffect(() => {
@@ -104,7 +105,7 @@ export function TaskDetail({ id, header, drafts }: { id: string; header?: ReactN
     </ConversationFrame>
     <aside id="task-info-panel" hidden={!rail} className="task-info-rail" aria-label="任务详情">
       <div className="task-info-content" tabIndex={0} aria-label="任务信息卡片">
-        {!task ? <p className="muted">{query.loading ? '正在读取任务信息…' : '任务信息暂不可读。'}</p> : <><TaskOverview task={task} /><ContextWindow task snapshot={context.error ? undefined : context.data ?? undefined} loading={context.loading} /><div ref={setTokenTarget} /><TaskLearningSummary key={id} taskId={id} /></>}
+        {!task ? <p className="muted">{query.loading ? '正在读取任务信息…' : '任务信息暂不可读。'}</p> : <><TaskOverview task={task} /><ContextWindow task snapshot={context.error ? undefined : context.data ?? undefined} loading={context.loading} /><div ref={setTokenTarget} />{rail && <TaskLearningSummary key={id} taskId={id} state={task.state} />}</>}
       </div>
     </aside>
   </div>;
