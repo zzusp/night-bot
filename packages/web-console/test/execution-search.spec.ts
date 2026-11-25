@@ -1,17 +1,27 @@
 import {test,expect} from '@playwright/test';
 import {FIXTURE_TOKEN} from './preview.mjs';
-test('execution search locates loaded records, handles keyboard, clears and hides after revoked reads', async({page})=>{
+test('execution search locates loaded records, handles keyboard, closes and hides after revoked reads', async({page})=>{
  await page.goto('/#/tasks/task-research');
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
  await page.getByRole('button',{name:'搜索执行记录',exact:true}).click();
  const search=page.getByRole('region',{name:'搜索执行记录'}), input=search.getByRole('searchbox');
- await expect(search).toContainText('仅已载入正文');
- await input.fill('已读取 3 份资料'); await input.press('Enter');
+ await expect(search).not.toContainText('仅已载入正文');
+ await input.fill('已读取 3 份资料');
  await expect(search.getByRole('status')).toContainText('1 /');
+ await expect(page.locator('[data-execution-search-match]')).toHaveCount(1);
  await expect(page.locator('.pi-tool-frame').filter({hasText:'已读取 3 份资料'}).first()).toBeInViewport();
- await search.getByRole('button',{name:'清除记录搜索'}).click();
+ const trigger = page.getByRole('button',{name:'搜索执行记录',exact:true});
+ const close = search.getByRole('button',{name:'关闭记录搜索',exact:true});
+ await expect(close).toHaveCount(1);
+ await search.locator('.search-field').getByRole('button',{name:'关闭记录搜索',exact:true}).click();
+ await expect(search).toHaveCount(0); await expect(trigger).toBeFocused();
+ await trigger.click();
  await expect(input).toHaveValue(''); await expect(input).toBeFocused();
+ await close.click();
+ await expect(search).toHaveCount(0); await expect(trigger).toBeFocused();
+ await trigger.click();
+ await expect(page.locator('[data-execution-search-match]')).toHaveCount(0);
  await input.fill('not-a-real-fixture-result'); await expect(search).toContainText('无匹配');
  await expect(search.getByRole('button',{name:'下一个搜索结果'})).toBeDisabled();
  await input.press('Escape'); await expect(search).toHaveCount(0);
@@ -23,7 +33,7 @@ test('execution search locates loaded records, handles keyboard, clears and hide
 });
 
 test('Router search sits immediately before the activity button at wide and narrow widths',async({page})=>{
- await page.route('**/api/chat/sample-plan/session?*',route=>route.fulfill({json:{status:'ready',revision:'toolbar-r1',scope:'current-router-session-context',total:1,items:[{id:'toolbar-row',role:'assistant',kind:'message',text:'可搜索的路由记录'}]}}));
+ await page.route('**/api/chat/sample-plan/session?*',route=>route.fulfill({json:{status:'ready',revision:'toolbar-r1',scope:'current-router-session-context',total:3,items:[{id:'m-1',role:'user',kind:'message',text:'看看有哪些任务可以继续做。'},{id:'toolbar-row',role:'assistant',kind:'message',text:'已同步任务进度：导出功能在验证，文档已更新。'},{id:'m-2',role:'assistant',kind:'message',text:'已更新任务进度：两项检查都通过了。'}]}}));
  await page.goto('/#/chat/sample-plan');
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
@@ -46,10 +56,27 @@ test('Router search sits immediately before the activity button at wide and narr
      x,y:Math.max(0,Math.floor(toolbarBox.y)-5),width:Math.min(width-x,Math.ceil(toolbarBox.x+toolbarBox.width-x)+8),height:Math.ceil(toolbarBox.height)+10,
    }});
    await trigger.focus();await page.keyboard.press('Enter');
-   await expect(trigger).toHaveAttribute('aria-expanded','true');
-   const input=page.getByRole('region',{name:'搜索执行记录'}).getByRole('searchbox');
+   const search=toolbar.getByRole('region',{name:'搜索执行记录'});
+   const input=search.getByRole('searchbox');
    await expect(input).toBeFocused();
-   await input.press('Escape');
+   await expect(trigger).toHaveCount(0);
+   const opened=(await input.boundingBox())!, unchanged=(await rail.boundingBox())!;
+   expect(Math.abs(opened.y+opened.height/2-(b!.y+b!.height/2))).toBeLessThan(1);
+   expect(unchanged.x).toBe(b!.x);
+   if (width===1440) await page.screenshot({path:test.info().outputPath('router-search-open.png'),animations:'disabled'});
+   await input.fill('任务进度');
+   const field=search.locator('.search-field');
+   await expect(field.getByRole('status')).toHaveText('1 / 2');
+   await expect(field.getByRole('button')).toHaveCount(3);
+   await expect(field.getByRole('button').nth(0)).toHaveAccessibleName('上一个搜索结果');
+   await expect(field.getByRole('button').nth(1)).toHaveAccessibleName('下一个搜索结果');
+   await expect(field.getByRole('button').nth(2)).toHaveAccessibleName('关闭记录搜索');
+   await expect(page.locator('[data-execution-search-match]')).toContainText('已同步任务进度');
+   await search.getByRole('button',{name:'下一个搜索结果'}).click();
+   await expect(search.getByRole('status')).toHaveText('2 / 2');
+   await expect(page.locator('[data-execution-search-match]')).toContainText('已更新任务进度');
+   await page.screenshot({path:test.info().outputPath(`router-search-match-${width}.png`),animations:'disabled'});
+   await page.keyboard.press('Escape');
    await expect(trigger).toBeFocused();
    await expect(trigger).toHaveAttribute('aria-expanded','false');
  }
@@ -84,11 +111,16 @@ test('Task search shares the right toolbar before panel, without overlapping pro
      x,y:Math.max(0,Math.floor(search!.y)-5),width:Math.min(width-x,Math.ceil(canvas.x+canvas.width-x)),height:44,
    }});
    await trigger.focus();await page.keyboard.press('Enter');
-   const panel=page.getByRole('region',{name:'搜索执行记录'});
+   const panel=toolbar.getByRole('region',{name:'搜索执行记录'});
    const input=panel.getByRole('searchbox');
    await expect(input).toBeFocused();
-   const formBox=(await panel.boundingBox())!;
-   expect(formBox.y).toBeGreaterThanOrEqual(toggle!.y+toggle!.height-.5);
+   const field=(await input.boundingBox())!;
+   expect(Math.abs(field.y+field.height/2-(toggle!.y+toggle!.height/2))).toBeLessThan(1);
+   expect((await rail.boundingBox())!.x).toBe(toggle!.x);
+   await input.fill('已读取 3 份资料');
+   await expect(panel.locator('.search-field').getByRole('status')).toContainText('1 /');
+   await expect(page.locator('[data-execution-search-match]')).toHaveCount(1);
+   await page.screenshot({path:info.outputPath(`task-search-match-${width}.png`),animations:'disabled'});
    await input.press('Escape');
    await expect(trigger).toBeFocused();
    await expect(trigger).toHaveAttribute('aria-expanded','false');

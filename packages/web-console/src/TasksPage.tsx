@@ -64,7 +64,7 @@ export function TaskDetail({ id, header, drafts }: { id: string; header?: ReactN
   const forbidden = query.error instanceof ApiError && [401, 403, 404].includes(query.error.status);
   const [denied, setDenied] = useState(false);
   const [tokenTarget, setTokenTarget] = useState<HTMLDivElement | null>(null);
-  const [searchToolbar, setSearchToolbar] = useState<HTMLSpanElement | null>(null);
+  const [searchToolbar, setSearchToolbar] = useState<HTMLDivElement | null>(null);
   const [rail, setRail] = useState(true);
   useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
   useEffect(() => { if (!query.error) setDenied(false); }, [query.updatedAt]);
@@ -83,7 +83,7 @@ export function TaskDetail({ id, header, drafts }: { id: string; header?: ReactN
   return <div className={`task-workspace${rail ? '' : ' task-rail-hidden'}`}>
     <ConversationFrame label="任务执行记录">
       {header}
-      <div className="conversation-tools task-panel-tools"><div className="topbar-actions"><span className="conversation-search-slot" ref={setSearchToolbar}/><IconButton label={rail ? '隐藏任务面板' : '显示任务面板'} aria-expanded={rail} aria-controls="task-info-panel" onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>
+      <div className="conversation-tools task-panel-tools"><div className="topbar-actions"><div className="conversation-search-slot" ref={setSearchToolbar}/><IconButton label={rail ? '隐藏任务面板' : '显示任务面板'} aria-expanded={rail} aria-controls="task-info-panel" onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>
       {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!task} />}
       {!task ? query.loading ? <Loading>正在读取任务…</Loading> : query.error ? null : <EmptyState title="无法读取任务" /> :
         <div className="task-dialogue"><ExecutionSearchToolbar.Provider value={searchToolbar}><ExecutionHistory key={id} endpoint={`/tasks/${encodeURIComponent(id)}/session`} status={task.session?.status} taskTitle={task.title} taskState={task.state} controlsTarget={null} tokenTarget={tokenTarget} taskError={query.error} taskRetry={query.refresh} conclusion={!query.error ? taskConclusion(task) : null} conclusionDuration={taskConclusionDuration(task)} refreshAfterInput={draft.accepted}
