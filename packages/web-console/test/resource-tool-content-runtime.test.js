@@ -47,6 +47,7 @@ test('authenticated HTTP reopens actual Router memory reads without disclosing c
       body:JSON.stringify({token:(await readFile(web.credentialPath,'utf8')).trim()})})
     assert.equal(login.status,200)
     headers.cookie=login.headers.get('set-cookie').split(';')[0]
+    const {csrfToken}=await login.json()
     const read=async () => {
       const response=await fetch(endpoint+'?stream=1',{headers})
       assert.equal(response.status,200)
@@ -60,12 +61,27 @@ test('authenticated HTTP reopens actual Router memory reads without disclosing c
     // Pending memory authorization behaves like a held lock. An unrelated
     // one-row page and zero-new poll must not queue behind it.
     let narrowPage
-    const realIndex=memory.store.index.bind(memory.store)
-    let indexCalls=0
-    let releaseIndex
-    const blockedIndex=new Promise(resolve=>{releaseIndex=resolve})
-    memory.store.index=async (...args)=>{indexCalls++;await blockedIndex;return realIndex(...args)}
+    const readHistoryBatch=memory.store.readHistoryBatch
+    let batchCalls=0
+    const blockedBatch=Promise.withResolvers()
+    memory.store.readHistoryBatch=async (...args)=>{batchCalls++;await blockedBatch.promise;return readHistoryBatch.apply(memory.store,args)}
+    const events=await fetch(endpoint+'?events=1',{headers,signal:AbortSignal.timeout(nativeTestTimeout(18000))})
+    assert.equal(events.status,200)
+    const eventReader=events.body.pipeThrough(new TextDecoderStream()).getReader()
+    let pending=''
+    const nextEvent=async ()=>{
+      while(!pending.includes('\n\n')){
+        const chunk=await eventReader.read();assert.equal(chunk.done,false,'stream closed before next event');pending+=chunk.value
+      }
+      const stop=pending.indexOf('\n\n'), frame=pending.slice(0,stop);pending=pending.slice(stop+2)
+      assert.ok(!frame.includes(original),'SSE never discloses stored memory text')
+      return frame
+    }
+    const untilEvent=async type=>{for(;;){const frame=await nextEvent();if(frame.startsWith(`event: ${type}\n`))return frame}}
     try {
+      await untilEvent('ready')
+      await untilEvent('live')
+      await untilEvent('heartbeat')
       const first=await fetch(endpoint+'?stream=1&limit=1',{headers,signal:AbortSignal.timeout(3000)})
       const page=narrowPage=await first.json()
       assert.equal(first.status,200)
@@ -75,10 +91,10 @@ test('authenticated HTTP reopens actual Router memory reads without disclosing c
       const noNew=await fetch(endpoint+'?'+new URLSearchParams({stream:'1',limit:'1',checkpoint:page.checkpoint}),{headers,signal:AbortSignal.timeout(3000)})
       assert.equal(noNew.status,200)
       assert.deepEqual((await noNew.json()).items,[])
-      assert.equal(indexCalls,0)
+      assert.equal(batchCalls,0)
       assert.match(noNew.headers.get('Server-Timing')??'',/journal;dur=/)
       assert.doesNotMatch(noNew.headers.get('Server-Timing')??'',/projection|permissions/)
-    } finally {releaseIndex();memory.store.index=realIndex}
+    } finally {blockedBatch.resolve();memory.store.readHistoryBatch=readHistoryBatch}
 
     // Loading older history must register any newly exposed resources even
     // though the journal tail anchor does not change.
@@ -93,7 +109,7 @@ test('authenticated HTTP reopens actual Router memory reads without disclosing c
     assert.ok(timing.memory_wait>0,'resource authorization records its real locks')
     assert.ok(timing.memory_wait>=timing.memory_lock_write)
     assert.ok(timing.permissions>=timing.resource_memory_batch)
-    assert.ok(Number.isFinite(timing.resource_memory_recheck))
+    assert.equal(timing.resource_memory_recheck,undefined)
     assert.ok(Number.isFinite(timing.memory_lock_release))
     const before=await read()
     assert.deepEqual(before.rows.map(row=>row.resourceContent),[true,true,true,true])
@@ -132,5 +148,9 @@ test('authenticated HTTP reopens actual Router memory reads without disclosing c
     assert.doesNotMatch(forgotten.rows[2].text,/release-check|健康探针/)
     await memory.store.remember(scope,{topic:'facts',key:'release-check',text:original,source:source(5)})
     assert.ok((await read()).rows.slice(0,2).every(row=>!row.resourceContent),'same key and text cannot restore a forgotten identity')
+    const logout=await fetch(web.origin+'/api/logout',{method:'POST',headers:{...headers,'content-type':'application/json','x-csrf-token':csrfToken},body:'{}'})
+    assert.equal(logout.status,200)
+    assert.match(await untilEvent('invalidate'),/"status":401/)
+    assert.equal((await eventReader.read()).done,true,'the already open Router stream closes on logout')
   } finally {await web.close()}
 })

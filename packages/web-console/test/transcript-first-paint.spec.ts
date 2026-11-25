@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {FIXTURE_TOKEN} from './preview.mjs';
+import {FIXTURE_TOKEN,startPreview} from './preview.mjs';
 
 const marker='fixture-tool-input-275';
 const source={sessionId:'perf-journal',entryId:'fixture'};
@@ -106,7 +106,7 @@ for(const router of [false,true])test(`${router?'Router':'任务详情'}按需�
  await expect(tool.getByText('检索独一回执',{exact:true})).toBeVisible();
 });
 
-test('protected history keeps its proof on incremental responses and erases old content before a reset',async({page})=>{
+test('流连接健康时，已展示的独立正文仍会复核，撤权后先清除再重读',async({page})=>{
  const privateText='合成正文：这段记忆后来不可查看';
  const replacement={id:'sanitized',role:'assistant',text:'权限刷新后的记录。'};
  const items=[
@@ -114,42 +114,48 @@ test('protected history keeps its proof on incremental responses and erases old 
   {id:'result',callId:'read',role:'tool',kind:'tool-result',toolName:'memory_read',text:privateText,status:'completed',resourceContent:true},
  ];
  const ready=(extra:object)=>({status:'ready',revision:'protected-history',scope:'current-context',total:2,checkpoint:'proof-cp',...extra});
- const loaded={...ready({items,resourceProof:'proof-one',liveProof:'ignored-when-protected'}),live:{active:true,phase:'waiting',items:[]}};
+ const preview=await startPreview({port:0,persistenceOverride:{subscribeSessionView(){return ()=>{}},
+  async readNative(id:string){return {header:{id},audit:[{domain:'task',kind:'identity',version:1,payload:{taskId:'task-research',sessionId:id}}],entries:[],context:{projection:{entries:[]}}};},
+ }});
  const requests:URL[]=[];
- let polls=0;
- let resetting=false;
+ let polls=0, revoked=false, resetting=false;
  let release!:()=>void;
  const resetGate=new Promise<void>(done=>{release=done;});
- await page.route('**/api/tasks/task-research/session?*',async route=>{
-  const url=new URL(route.request().url());requests.push(url);
-  if(url.searchParams.has('checkpoint')||url.searchParams.has('live')){
-   if(++polls===1)return route.fulfill({json:ready({items:[],liveProof:'ignored-when-protected',live:loaded.live})});
-   resetting=true;
-   return route.fulfill({status:409,json:{error:'SESSION_PAGE_STALE'}});
-  }
-  if(!resetting)return route.fulfill({json:loaded});
-  await resetGate;
-  return route.fulfill({json:ready({items:[replacement]})});
- });
  try{
-  await page.goto('/#/tasks/task-research');
-  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+  await page.route('**/api/tasks/task-research/session?*',async route=>{
+   const url=new URL(route.request().url());
+   if(url.searchParams.has('events'))return route.continue();
+   requests.push(url);
+   if(url.searchParams.has('checkpoint')||url.searchParams.has('live')){
+    polls++;
+    if(!revoked)return route.fulfill({json:ready({items:[],liveProof:'ignored-when-protected'})});
+    resetting=true;
+    return route.fulfill({status:409,json:{error:'SESSION_PAGE_STALE'}});
+   }
+   if(!resetting)return route.fulfill({json:ready({items,resourceProof:'proof-one',liveProof:'ignored-when-protected'})});
+   await resetGate;
+   return route.fulfill({json:ready({items:[replacement]})});
+  });
+  const stream=page.waitForResponse(res=>res.url().endsWith('/session?events=1'));
+  await page.goto(preview.origin+'/#/tasks/task-research');
+  await page.getByLabel('访问令牌',{exact:true}).fill(preview.token);
   await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+  expect((await stream).headers()['content-type']).toMatch(/^text\/event-stream/);
   const tool=page.locator('[data-message-id="call"]');
   await tool.locator('summary').click();
   await expect(tool.getByText(privateText,{exact:true})).toBeVisible();
-  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
-  await expect.poll(()=>polls).toBe(1);
+  const before=polls;
+  await expect.poll(()=>polls).toBeGreaterThan(before);
   await expect(tool.getByText(privateText,{exact:true})).toBeVisible();
-  // The next scheduled refresh must use history, never the live shortcut.
+  revoked=true;
   await expect.poll(()=>resetting).toBe(true);
   await expect(page.getByText(privateText,{exact:true})).toHaveCount(0);
   await expect.poll(()=>requests.length).toBeGreaterThanOrEqual(4);
-  expect(requests.slice(1,3).map(url=>url.searchParams.get('resources'))).toEqual(['proof-one','proof-one']);
+  expect(requests.filter(url=>url.searchParams.has('checkpoint')).every(url=>url.searchParams.get('resources')==='proof-one')).toBe(true);
   expect(requests.some(url=>url.searchParams.has('live'))).toBe(false);
-  expect(requests[3].searchParams.has('checkpoint')).toBe(false);
-  expect(requests[3].searchParams.has('resources')).toBe(false);
- } finally {release();}
- await expect(page.getByText(replacement.text,{exact:true})).toBeVisible();
- await expect(page.getByText(privateText,{exact:true})).toHaveCount(0);
+  expect(requests.at(-1)?.searchParams.has('checkpoint')).toBe(false);
+  expect(requests.at(-1)?.searchParams.has('resources')).toBe(false);
+  release();
+  await expect(page.getByText(replacement.text,{exact:true})).toBeVisible();
+ } finally {release();await preview.close();}
 });

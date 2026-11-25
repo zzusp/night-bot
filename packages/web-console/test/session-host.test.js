@@ -11,9 +11,12 @@ import {createWebConsole} from '../server/plugin.js'
 
 test('task session API reads actual committed Pi source, todos and tool records without changing history', {timeout: nativeTestTimeout(30000)}, async t => {
   let taskTurns = 0
+  const providerReady=Promise.withResolvers(), releaseProvider=Promise.withResolvers()
+  const prefixText='正在核对本地测试记录。'
   const f = await memoryHost(t, body => {
     if (JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION')) return {text: '{"lessons":[]}'}
-    if (body.tools?.some(tool => tool.function.name === 'task_result') && taskTurns++ === 0) return {tool: 'todo_write', args: {todos: [
+    if (body.tools?.some(tool => tool.function.name === 'task_result') && taskTurns++ === 0) return {tool: 'todo_write', prefixText,
+      async beforeFinish(){providerReady.resolve();await releaseProvider.promise},args: {todos: [
       {content: '核对 /fixture/materials/report.txt', status: 'completed'},
       {content: '保留模型实际提交状态', status: 'in_progress'},
     ]}}
@@ -45,7 +48,39 @@ test('task session API reads actual committed Pi source, todos and tool records 
     }
     const objective = '仅核对 USER_SESSION_MARKER 原始请求，不执行外部操作。apiKey=REDACT_ME；文件 C:\\sensitive\\private.txt'
     const created = await app.tasks.createTask({requestId: 'web-session-proof', title: '执行记录只读验证', objective})
+    const endpoint = '/api/tasks/' + created.taskId + '/session'
+    const eventsURL = web.origin + endpoint + '?events=1'
+    assert.equal((await fetch(eventsURL,{headers:{origin:web.origin}})).status,401)
+    assert.equal((await fetch(eventsURL,{headers:{origin:'https://unrelated.example',cookie}})).status,403)
+    await providerReady.promise
+    const events = await fetch(eventsURL,{headers:{origin:web.origin,cookie},signal:AbortSignal.timeout(nativeTestTimeout(15_000))})
+    assert.equal(events.status,200)
+    assert.match(events.headers.get('content-type'),/^text\/event-stream/)
+    const reader = events.body.pipeThrough(new TextDecoderStream()).getReader()
+    let pending = ''
+    const next = async (type, accepts=()=>true) => {
+      for (;;) {
+        const end = pending.indexOf('\n\n')
+        if (end<0) {const chunk=await reader.read();assert.equal(chunk.done,false,`stream closed before ${type}`);pending+=chunk.value;continue}
+        const frame=pending.slice(0,end);pending=pending.slice(end+2)
+        if (!frame.startsWith(`event: ${type}\n`)) continue
+        const value=JSON.parse(frame.split('\ndata: ')[1])
+        if (accepts(value)) return value
+      }
+    }
+    await next('ready')
+    await providerReady.promise
+    const streamed=await next('live',data=>data.live.items.some(row=>row.text===prefixText))
+    assert.ok(streamed.live.items.some(row=>row.transient===true))
+    const beforeCommit=await api(endpoint+'?stream=1')
+    assert.ok(beforeCommit.body.checkpoint)
+    assert.ok(!beforeCommit.body.items.some(row=>row.text===prefixText))
+    releaseProvider.resolve()
+    await next('history')
     await app.tasks.whenIdle()
+    const catchup=await api(endpoint+'?stream=1&checkpoint='+encodeURIComponent(beforeCommit.body.checkpoint))
+    assert.equal(catchup.status,200)
+    assert.ok(catchup.body.items.some(row=>row.text===prefixText&&row.transient!==true))
     const task = await app.tasks.taskDetail(created.taskId)
     assert.equal(task.status, 'completed', JSON.stringify(task.result))
     assert.deepEqual(task.blockers, {executions: [], operations: [], legacy: []}, 'the real core keeps its original three-collection contract')
@@ -63,7 +98,6 @@ test('task session API reads actual committed Pi source, todos and tool records 
     assert.ok(snapshot.entries.some(entry => entry.type === 'message' && entry.message.role === 'assistant'
       && entry.message.content.some(block => block.type === 'toolCall' && block.name === 'task_result')))
     const requestCount = f.requests.length
-    const endpoint = '/api/tasks/' + created.taskId + '/session'
     const result = await api(endpoint)
     assert.equal(result.status, 200, JSON.stringify(result.body))
     assert.equal(result.body.status, 'ready'); assert.equal(result.body.scope, 'current-session-context')
@@ -98,8 +132,9 @@ test('task session API reads actual committed Pi source, todos and tool records 
     assert.deepEqual(await readFile(journal), before, 'session views cannot append, repair or replay the journal')
     assert.equal(f.requests.length, requestCount, 'session views cannot invoke a model')
     await web.close(); web = undefined
+    while (!(await reader.read()).done) { /* Drain the promptly closed response. */ }
     assert.deepEqual(await readFile(journal), before, 'closing the optional view cannot mutate task history')
-  } finally {await web?.close()}
+  } finally {releaseProvider.resolve();await web?.close()}
 })
 
 

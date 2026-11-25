@@ -1,5 +1,66 @@
 import {test,expect} from '@playwright/test';
-import {FIXTURE_TOKEN} from './preview.mjs';
+import {FIXTURE_TOKEN,startPreview} from './preview.mjs';
+
+for(const router of [false,true])test(`${router?'Router':'任务详情'}用真实 EventSource 接收快照，断线按游标补读`,async({page})=>{
+ const taskId='task-research',conversationId='room-product';
+ const sessionId=router?'fixture-router-'+conversationId:'fixture-pi-'+taskId;
+ const endpoint=router?`/api/conversations/${conversationId}/session`:`/api/tasks/${taskId}/session`;
+ const rows=[{id:'first',text:'已提交的起始记录。'}];
+ const away={id:'during-break',text:'断线时写入的记录。'};
+ let liveText='', liveRevision=0, subscriptions=0, disconnections=0, drop=false;
+ const reads:URL[]=[];
+ const listeners=new Set<(kind:string)=>void>();
+ const persistence={
+  subscribeSessionView(id:string,listener:(kind:string)=>void){
+   expect(id).toBe(sessionId);subscriptions++;listeners.add(listener);
+   return ()=>{
+    disconnections++;listeners.delete(listener);
+    if(drop){drop=false;rows.push(away);}
+   };
+  },
+  async readNative(id:string){
+   expect(id).toBe(sessionId);
+   const identity=router?{header:{id,conversationId,runtimeOwner:'conversation-router',generation:1}}
+    :{header:{id},audit:[{domain:'task',kind:'identity',version:1,payload:{taskId,sessionId}}]};
+   return {...identity,entries:rows.map(({id})=>({id})),
+    context:{projection:{entries:rows.map(({id,text})=>({sourceEntry:{id},messages:[{role:'assistant',content:[{type:'text',text}]}]}))}}};
+  },
+  readLive(){
+   if(drop)throw new Error('fixture: stream interrupted');
+   return {sessionId,active:!!liveText,phase:'text',revision:String(liveRevision),tools:[],assistant:{id:'live-one',message:{role:'assistant',content:[{type:'text',text:liveText,complete:true}]}}};
+  },
+ };
+ const preview=await startPreview({port:0,persistenceOverride:persistence,sessionRecords:router});
+ try{
+  page.on('request',request=>{const url=new URL(request.url());if(url.pathname===endpoint&&url.searchParams.has('stream'))reads.push(url);});
+  await page.goto(preview.origin+(router?'/#/channels/'+conversationId:'/#/tasks/'+taskId));
+  await page.getByLabel('访问令牌',{exact:true}).fill(preview.token);
+  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+  if(router)await page.getByRole('tab',{name:'路由',exact:true}).click();
+  await expect(page.getByText(rows[0].text,{exact:true})).toBeVisible();
+  await expect.poll(()=>subscriptions).toBe(1);
+  liveText='这一段由事件推送。';liveRevision++;
+  for(const listener of listeners)listener('live');
+  await expect(page.locator('.pi-live-message')).toContainText(liveText);
+  const idleStart=reads.length;
+  await new Promise(resolve=>setTimeout(resolve,3100)); // 超过一次旧历史轮询间隔。
+  expect(reads).toHaveLength(idleStart);
+  rows.push({id:'committed',text:liveText});liveText='';liveRevision++;
+  for(const listener of listeners){listener('history');listener('live');}
+  await expect(page.locator('.pi-live-message')).toHaveCount(0);
+  await expect(page.getByText(rows[1].text,{exact:true})).toHaveCount(1);
+  expect(reads).toHaveLength(idleStart+1);
+  drop=true;
+  for(const listener of listeners)listener('live');
+  await expect.poll(()=>disconnections).toBe(1);
+  await expect.poll(()=>subscriptions,{timeout:10_000}).toBe(2);
+  await expect(page.getByText(away.text,{exact:true})).toBeVisible();
+  for(const row of rows)await expect(page.getByText(row.text,{exact:true})).toHaveCount(1);
+  expect(reads.slice(idleStart).every(url=>url.searchParams.has('checkpoint'))).toBe(true);
+  await page.goto(preview.origin+'/#/tasks');
+  await expect.poll(()=>disconnections).toBe(2);
+ }finally{await preview.close();}
+});
 
 for(const layout of [{name:'desktop light',width:1440,height:960,theme:'light'},{name:'mobile dark',width:390,height:844,theme:'dark'}]){
  test(`commit waiting retains authorized history without a read alert and automatically catches up: ${layout.name}`,async({page},testInfo)=>{
@@ -178,6 +239,7 @@ test('active output polls the light lane and catches up history without duplicat
  const output={id:'live-lane-output',role:'assistant',text:'实时轻量输出',status:'running',transient:true};
  await page.route('**/api/tasks/task-research/session?*',r=>{
   const url=new URL(r.request().url());
+  if(url.searchParams.has('events'))return r.fulfill({status:503});
   if(url.searchParams.has('live')){
    light++;
    return r.fulfill({json:{status:'ready',items:[],historyChanged:committed,liveProof:'proof-1',live:{active:!committed,items:committed?[]:[output]}}});

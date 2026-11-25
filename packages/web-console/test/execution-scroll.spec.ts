@@ -71,6 +71,31 @@ test('200 records initially, prepend stays anchored, newer bursts have no gaps o
   await expect(transcript(page).locator('.message-assistant')).toHaveCount(1081)
 })
 
+test('scrolling through a running task keeps one bubble per user record', async ({page}) => {
+  const userIds = [100, 250, 450, 475, 550];
+  const records = Array.from({length: 650}, (_, i): Message => userIds.includes(i)
+    ? {id: `row-${i}`, role: 'user', kind: 'instruction', text: '请继续核对。'}
+    : row(i));
+  const state = await installStream(page, records);
+  await login(page);
+  const list = transcript(page), bubbles = list.locator('.message-user');
+  const ids = () => bubbles.evaluateAll(nodes => nodes.map(node => (node as HTMLElement).dataset.messageId));
+  await expect.poll(ids).toEqual(['row-450', 'row-475', 'row-550']);
+  await list.hover();
+  await page.mouse.wheel(0, -100000);
+  await expect.poll(() => state.requests.filter(url => url.searchParams.has('before')).length).toBeGreaterThanOrEqual(1);
+  await expect(list.locator('.message-user[data-message-id="row-250"]')).toHaveCount(1);
+  await expect.poll(ids).toEqual(['row-250', 'row-450', 'row-475', 'row-550']);
+  await page.mouse.wheel(0, 800);
+  await page.mouse.wheel(0, -100000);
+  await expect(list.locator('.message-user[data-message-id="row-100"]')).toHaveCount(1);
+  await expect.poll(ids).toEqual(userIds.map(i => `row-${i}`));
+  state.rows.push(row(650));
+  await online(page);
+  await expect(list.locator('[data-message-id="row-650"]')).toHaveCount(1);
+  await expect.poll(ids).toEqual(userIds.map(i => `row-${i}`));
+});
+
 test('collapsed runs fill the viewport automatically and preserve expanded input/output on polling', async ({page}) => {
   const tools = Array.from({length: 520}, (_, i): Message => ({id: `tool-${i}`, role: 'tool', kind: i % 2 ? 'tool-result' : 'tool-call', toolName: 'read', callId: `call-${Math.floor(i / 2)}`,
     text: i % 2 ? `读取结果 ${i}\n第二行` : `读取资料 ${i}`, status: i % 2 ? 'completed' : 'pending'}))

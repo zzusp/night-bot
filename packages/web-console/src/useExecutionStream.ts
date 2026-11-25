@@ -38,11 +38,24 @@ export function useExecutionStream(endpoint: string) {
     let current = initial(), disposed = false, busy = false, failures = 0, historyDue = 0;
     let queued: Read | null = null, inFlight: Read | null = null, timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | null = null;
+    let source: EventSource | undefined, connected = false, reconnect = false, historyPending = false, liveVersion = 0;
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
     const publish = (patch: Partial<State>) => { current = {...current, ...patch}; if (!disposed) setState(current); };
     publish({});
+    const planRead = () => {
+      clearTimeout(timer);
+      if (disposed || busy || document.visibilityState === 'hidden' || failures >= 3 || revoked(current.error)) return;
+      // Independent resource changes and incomplete commits can occur without a
+      // Pi event. Only those pages keep their regular authorized check.
+      if (connected && !current.data?.resourceProof && !current.committing && !current.error &&
+        (current.data?.status === 'ready' || current.data?.reason === 'SESSION_NOT_STARTED')) return;
+      const light = !connected && !!current.data?.liveProof && !current.data.resourceProof && current.data.live?.active === true;
+      timer = setTimeout(() => void read(light ? 'live' : 'newer'), (light ? 1000 : 2500) * Math.max(1, 2 ** failures));
+    };
     const read = async (requested: Read) => {
       if (disposed || document.visibilityState === 'hidden') return;
       if (busy) {
+        if (requested === 'newer') { historyPending = true; return; }
         // Scroll events can arrive before React paints the busy state. Coalesce
         // repeats rather than queuing another historical window per event.
         if (requested === 'older' && inFlight === 'older') return;
@@ -61,6 +74,7 @@ export function useExecutionStream(endpoint: string) {
       if (kind === 'older' && previous?.before) params.set('before', previous.before);
       if (kind === 'live') {params.delete('stream'); params.delete('limit'); params.delete('checkpoint'); params.set('live', previous!.liveProof!);}
       let catchUp = false;
+      const startedLiveVersion = liveVersion;
       try {
         const page = await api<ExecutionPage>(`${endpoint}?${params}`, {signal: controller.signal});
         if (disposed || controller.signal.aborted) return;
@@ -85,7 +99,9 @@ export function useExecutionStream(endpoint: string) {
         // A missing field in an incremental response is not evidence that
         // earlier protected rows have been discarded. Only reset or an explicit
         // replacement may change the guard for the bodies still in memory.
-        const data = {...page, items:applyObservations(items,page), before, live:retainLive(previous?.live,page.live),
+        const sameSnapshot = current.data?.sessionId === page.sessionId && current.data?.activeGeneration === page.activeGeneration && current.data?.revision === page.revision;
+        const nextLive = startedLiveVersion !== liveVersion && sameSnapshot ? current.data?.live : page.live;
+        const data = {...page, items:applyObservations(items,page), before, live:retainLive(previous?.live,nextLive),
           resourceProof:page.resourceProof ?? previous?.resourceProof};
         // A commit barrier keeps the last authorized snapshot, not a read error.
         // Drop provisional output/proof; only a fresh history read can restore it.
@@ -94,6 +110,7 @@ export function useExecutionStream(endpoint: string) {
           publish({data: retained ? {...retained, liveProof:undefined, live:{active:false,items:[]}} : page, committing:!!retained && !current.error});
         } else {
           publish({data, error: null, olderError: null, committing:false, updatedAt: Date.now(), epoch: current.epoch + (kind === 'reset' ? 1 : 0)});
+          if (reconnect) {reconnect = false;openEvents();}
         }
         failures = 0; catchUp = page.status === 'ready' && page.hasNewer === true;
       } catch (error) {
@@ -115,26 +132,69 @@ export function useExecutionStream(endpoint: string) {
         if (!disposed) {
           publish({loading: false, loadingOlder: false});
           const next = queued; queued = null;
-          if (next && failures < 3) void read(next);
-          else if (catchUp) void read('newer');
-          else if (failures < 3 && !(current.error instanceof ApiError && (current.error.status === 409 || revoked(current.error)))) {
-            const light = !!current.data?.liveProof && !current.data.resourceProof && current.data.live?.active === true;
-            const interval = light ? 1000 : 2500;
-            timer = setTimeout(() => void read(light ? 'live' : 'newer'), interval * Math.max(1, 2 ** failures));
-          }
+          const pending = historyPending; historyPending = false;
+          if (next && failures < 3) { historyPending = pending && next === 'older'; void read(next); }
+          else if ((catchUp || pending) && failures < 3 && !revoked(current.error)) void read('newer');
+          else planRead();
         }
       }
     };
-    dispatch.current = kind => { if (kind === 'reset') failures = 0; void read(kind); };
+    const closeEvents = () => { clearTimeout(watchdog); source?.close(); source = undefined; connected = false; };
+    const openEvents = () => {
+      if (source || typeof EventSource === 'undefined' || document.visibilityState === 'hidden') return;
+      const events = new EventSource(`/api${endpoint}?events=1`);
+      source = events;
+      const currentSource = () => !disposed && source === events;
+      const tick = () => {
+        clearTimeout(watchdog);
+        watchdog = setTimeout(() => {
+          if (!currentSource()) return;
+          const stalled = events.readyState === EventSource.OPEN;
+          closeEvents();
+          if (stalled) openEvents();
+          planRead();
+        }, 10_000);
+      };
+      events.addEventListener('ready', () => {
+        if (!currentSource()) return;
+        connected = true; tick();
+        if (!revoked(current.error)) {failures = 0;void read('newer');}
+      });
+      events.addEventListener('heartbeat', () => { if (currentSource()) tick(); });
+      events.addEventListener('history', () => { if (currentSource() && connected && !revoked(current.error)) {tick(); void read('newer');} });
+      events.addEventListener('live', event => {
+        if (!currentSource() || !connected) return;
+        tick();
+        const data = current.data;
+        const frame = JSON.parse(event.data) as Pick<ExecutionPage, 'sessionId' | 'activeGeneration' | 'live'>;
+        if (!data || current.error || current.committing || data.status !== 'ready' || frame.sessionId !== data.sessionId || frame.activeGeneration !== data.activeGeneration) return;
+        liveVersion++;
+        publish({data:{...data, live:retainLive(data.live,frame.live)}});
+      });
+      events.addEventListener('invalidate', event => {
+        if (!currentSource()) return;
+        closeEvents(); controller?.abort();
+        const {status,code} = JSON.parse(event.data) as {status:number;code:string};
+        reconnect = status === 409;
+        publish({data:null, error:new ApiError(status,code), olderError:null, committing:false, epoch:current.epoch+1});
+        failures = 0; void read('reset');
+      });
+      events.onerror = () => {
+        if (!currentSource()) return;
+        connected = false; tick(); planRead();
+      };
+      tick();
+    };
+    dispatch.current = kind => { if (kind === 'reset') {failures = 0;openEvents();} void read(kind); };
     const resume = () => {
-      if (document.visibilityState === 'hidden') { clearTimeout(timer); controller?.abort(); }
-      else { failures = 0; void read('newer'); }
+      if (document.visibilityState === 'hidden') { clearTimeout(timer); controller?.abort(); closeEvents(); }
+      else { openEvents(); failures = 0; void read('newer'); }
     };
     document.addEventListener('visibilitychange', resume);
     window.addEventListener('online', resume);
-    void read('newer');
+    openEvents(); void read('newer');
     return () => {
-      disposed = true; controller?.abort(); clearTimeout(timer);
+      disposed = true; controller?.abort(); clearTimeout(timer); closeEvents();
       document.removeEventListener('visibilitychange', resume);
       window.removeEventListener('online', resume);
     };
