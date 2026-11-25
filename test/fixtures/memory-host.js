@@ -23,7 +23,7 @@ export async function memoryHost(t,decide=()=>undefined,{callIdPrefix='',backgro
       const direct=events.filter(event=>event.directRouter&&event.source&&decision.args.eventIds?.includes(event.id)&&!provided.some(item=>item.eventId===event.id))
       if(direct.length)decision={...decision,args:{...decision.args,noTaskDispositions:[...provided,...direct.map(event=>({eventId:event.id,outcome:'context-only',sourceQuote:event.source.text,reason:'Synthetic model explicitly finishes this background source without further action'}))]}}
     }
-    if(decision?.error){res.writeHead(400,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:decision.error,type:'invalid_request_error'}}));return}
+    if(decision?.error){res.writeHead(decision.errorStatus??400,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:decision.error,type:'invalid_request_error'}}));return}
     res.writeHead(200,{'content-type':'text/event-stream'})
     const chunk=(delta,finish_reason=null)=>res.write('data: '+JSON.stringify({id:'memory-fixture',object:'chat.completion.chunk',created:1,model:body.model,choices:[{index:0,delta,finish_reason}]})+'\n\n')
     if(decision?.tool){if(decision.prefixText)chunk({role:'assistant',content:decision.prefixText});chunk({role:'assistant',tool_calls:[{index:0,id:callIdPrefix+'call-'+requests.length,type:'function',function:{name:decision.tool,arguments:JSON.stringify(decision.args)}}]});if(decision.beforeFinish)await decision.beforeFinish();chunk({},'tool_calls')}

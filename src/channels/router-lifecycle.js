@@ -8,9 +8,12 @@ import {routerModelBody,routerModelBatch} from './router-model-input.js'
 import {pendingBusinessInputs} from '../runtime/pi-business-inputs.js'
 import {residentOperationId} from './resident-router-business.js'
 import {unresolvedRouterCalls} from '../runtime/pi-router-recovery-view.js'
+import {classifyPiFailure} from '../pi-provider-events.js'
 
 const fail=(code,recoveryReason)=>{throw Object.assign(new Error(code),{code,...recoveryReason?{recoveryReason}:{}})}
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
+const routerCheckpointTail=branch=>branch.findLast(entry=>entry.type==='message'||entry.type==='custom_message'&&entry.customType==='night.business-input')
+const routerTimedOut=entry=>entry?.message?.role==='assistant'&&classifyPiFailure(entry.message)?.code==='TIMEOUT'
 const operatorInput=event=>{if(event.kind!=='operator.message')return event;const {operatorReply,...input}=event;return input}
 const withoutTiming=source=>{if(!source)return source;const {stages,...value}=source;return value}
 const triageDeliveryFields=new Set('state ack ackedAt deliveredAt deliveryError dispatchToken evidenceRef lastReadbackError nextAttemptAt readbackAttemptCount receipt recoveryToken sendAttemptCount sendPermit sendStartedAt updatedAt'.split(' '))
@@ -223,11 +226,10 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
           row=await query('router.get',{conversationId});assertOpen();continue
         }
       }
-      // 冷中断从原生已提交检查点续办一次；仍使用原批次和 Host 校验。
-      // 未知工具效果、较新取消和版本冲突不得绕过；普通 error/stop 仍需显式续办。
+      // 冷中断或已登记的超时从原生检查点续办；其它 error/stop 仍需显式续办。
       if(admittedPacket?.source.kind==='conversation-router'&&handle.agent.admission.status(admittedPacket.id)==='admitted'&&admittedPacket.source.eventIds.some(id=>inbox.some(event=>event.id===id))){
         const branch=handle.session.sessionManager.getBranch()
-        const failed=branch.findLast(entry=>entry.type==='message'||entry.type==='custom_message'&&entry.customType==='night.business-input')
+        const failed=routerCheckpointTail(branch)
         const cold=coldSessions.delete(row.activeSessionId)
         const unexpectedStop=cold&&(failed?.id===admittedInput.id||failed?.message?.role==='toolResult'||failed?.message?.stopReason==='toolUse')
         // Partial settlement changes the pending prefix, not the immutable admitted
@@ -281,8 +283,16 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
           }
           row=await replaceOwner(row,'ROUTER_CONTINUATION_FAILED',handle,checkpointIds);handle=undefined;continue
         }
+        const timedOut=routerTimedOut(failed)&&!admittedPacket.source.webOnly
+        const deferred=row.timeoutContinuation
+        if(timedOut&&!deferred){
+          const {id:packetId,source:{eventIds}}=admittedPacket
+          await command('router.timeout.defer',{conversationId,generation:row.generation,sessionId:row.activeSessionId,packetId,failedEntryId:failed.id,eventIds})
+          fail('ROUTER_BATCH_UNSETTLED')
+        }
+        const deferredTimeout=timedOut&&deferred?.packetId===admittedPacket.id&&deferred.failedEntryId===failed.id
         const inspection=inbox.some(event=>event.kind==='task.inspection')
-        const mayResume=unexpectedStop||failed?.message?.role==='assistant'&&(failed.message.stopReason==='aborted'||inspection&&['error','stop'].includes(failed.message.stopReason))
+        const mayResume=deferredTimeout||unexpectedStop||failed?.message?.role==='assistant'&&(failed.message.stopReason==='aborted'||inspection&&['error','stop'].includes(failed.message.stopReason))
         let resumeFailure
         if(mayResume){
           try{await continueBatch(row,handle,admittedPacket,failed.id,()=>{},undefined,unexpectedStop);row=await query('router.get',{conversationId});continue}
@@ -332,7 +342,10 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         try{await handle.whenIdle();await observed.finish()}catch{await observed.finishIfSettled()}finally{stopObserving()}
       }
       const pending=await query('router.inbox',{conversationId,limit:30,deliverable:true});assertOpen()
-      if(batch.some(event=>pending.some(item=>item.id===event.id)))fail('ROUTER_BATCH_UNSETTLED')
+      if(batch.some(event=>pending.some(item=>item.id===event.id))){
+        if(!packet.source.webOnly&&routerTimedOut(routerCheckpointTail(handle.session.sessionManager.getBranch())))continue
+        fail('ROUTER_BATCH_UNSETTLED')
+      }
       row=await query('router.get',{conversationId})
     }
     // Keep the same Pi owner even when the inbox and tasks are idle. Pi's

@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestText} from './fixtures/resident-router-host.js'
+import {residentRouterHost,channelMessage,eventually,requestEnvelope,requestTools,requestText} from './fixtures/resident-router-host.js'
+import {memoryHost} from './fixtures/memory-host.js'
+import {apply as applyApplication,inject} from '../src/application.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 
 for(const action of ['complete','blocked','wait','natural-stop','policy-refusal','silent'])test('execution final-only Router delivery: '+action,{timeout:nativeTestTimeout(30000)},async t=>{
@@ -103,6 +105,88 @@ for(const action of ['complete','blocked','wait','natural-stop','policy-refusal'
  assert.equal(h.sent.length,sent,'巡检没有补发')
  await h.restart();await h.service.whenIdle()
  assert.equal(h.requests.length,count);assert.equal(h.sent.length,sent)
+})
+
+for(const mode of ['periodic','restart-frozen'])test('Router automatically continues a timed-out task outcome: '+mode,{timeout:nativeTestTimeout(60000)},async t=>{
+ const restart=mode==='restart-frozen',taskId='timeout-outcome-task',replyText='测试材料已核对。'
+ const resumeReady=Promise.withResolvers(),sent=[]
+ let planned=false,source,outcome,executions=0,timeouts=0,resumes=0,replies=0
+ const h=await memoryHost(t,async body=>{
+  const tools=requestTools(body)
+  if(tools.includes('task_result')){
+   executions++;return {tool:'task_result',args:{decision:{action:'complete',summary:'Synthetic material checked',evidence:['Fixture verified'],limitations:[]}}}
+  }
+  if(!tools.includes('resident_router_settle'))return {text:'No work'}
+  const priorCall=body.messages.findLast(message=>message.role==='assistant')?.tool_calls?.at(-1)?.function.name
+  if(body.messages.at(-1)?.role==='tool'&&priorCall==='resident_router_settle')return {text:'Settled'}
+  const input=requestEnvelope(body,'Router 请求：')
+  if(!planned){
+   planned=true;source=input.events[0].source
+   return {tool:'resident_task_plan',args:{operationId:'timeout-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId,title:'Check fixture',objective:'Check the synthetic material',requirements:[],handoff:'Check only the local fixture.'}],dependencies:[]}}
+  }
+  outcome??=input.events.find(event=>event.kind==='task.completed')
+  if(input.events.some(event=>event.id===outcome?.id)){
+   const resumed=requestText(body).includes('继续处理未完成的事项')
+   if(resumed){await resumeReady.promise;if(body.messages.at(-1)?.role!=='tool')resumes++}
+   if((restart&&!resumed||!restart&&resumed)&&!replies){
+    replies++
+    const context=requestText(body).flatMap(text=>text.split('\n')).findLast(line=>line.startsWith('{"asOf":')&&line.includes('"sourceTaskLinks"'))
+    const reply=JSON.parse(context).taskOutcomeReplies.find(item=>item.outcomeEventId===outcome.taskEventId)
+    return {tool:'resident_router_reply',args:{...reply,text:replyText}}
+   }
+   if(!resumed){timeouts++;return {errorStatus:504,error:'fixture gateway timeout'}}
+  }
+  return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events[0].id,eventIds:input.events.map(event=>event.id)}}
+ },{hostConfig:config=>{
+  config.providers.fixture.retry={enabled:true,maxRetries:1,baseDelayMs:1,provider:{maxRetries:0}}
+  return config
+ }})
+ const config={...h.config,resident:{port:0,taskSessions:{instanceId:'timeout-outcome-fixture',ownerActorId:'owner',webActorId:'owner',ingressEpoch:'2026-01-01T00:00:00Z',initialize:true,reasoningMode:'inherit',inspectionIntervalMs:0,...restart?{recoveryIntervalMs:60000}:{}}}}
+ const start=async()=>{
+  const ctx=h.host.ctx
+  ctx.channels.registerTransport('resident-fixture',{
+   async send(envelope){sent.push(structuredClone(envelope));return {messageId:'timeout-visible'}},
+   async readback(){return sent.length?{messageId:'timeout-visible',visible:true}:undefined},
+  })
+  await ctx.plugin({inject,apply:pluginCtx=>applyApplication(pluginCtx,config)})
+  return ctx.get('application').tasks
+ }
+ let tasks=await start()
+ const message=channelMessage('timeout-outcome'),conversationId=h.host.ctx.channels.identity(message).sessionId
+ const query=(kind,args={})=>tasks.store.query({kind,conversationId,...args})
+ const notification=async()=> (await query('notification.list')).find(notice=>notice.payload?.completionBinding?.eventId===outcome?.taskEventId)
+ try{
+  await h.host.ctx.channels.receive(message)
+  const before=await eventually(async()=>{
+   const row=await query('router.get');return row?.timeoutContinuation&&row
+  },'the exhausted timeout is durably deferred',t.signal)
+  const [pending]=await query('router.batch-events',{eventIds:[outcome.id]})
+  assert.equal(pending.state,'pending');assert.ok(before.timeoutContinuation.eventIds.includes(pending.id))
+  assert.equal((await query('task.get',{taskId})).status,'completed')
+  assert.equal(timeouts,2,'Pi exhausted one native retry before deferring')
+  const frozen=await notification()
+  if(restart){assert.ok(frozen,'the original reply was frozen before the timeout');await h.close();await h.boot();tasks=await start()}
+  else{assert.equal(frozen,undefined);assert.equal(sent.length,0)}
+  resumeReady.resolve()
+  const delivered=await eventually(async()=>{
+   const notice=await notification(),[event]=await query('router.batch-events',{eventIds:[outcome.id]})
+   return notice?.state==='delivered'&&event.state==='consumed'&&notice
+  },'the original task result is settled and its reply delivered without new input',t.signal).catch(async error=>{
+   const [event]=await query('router.batch-events',{eventIds:[outcome.id]}),row=await query('router.get')
+   t.diagnostic(JSON.stringify({timeouts,resumes,replies,sends:sent.length,event:event.state,notification:(await notification())?.state,timeoutContinuation:row.timeoutContinuation,alerts:tasks.listAlerts().map(({code,detail})=>({code,detail})),errors:h.errors.map(e=>e.code??e.message),requestTails:h.requests.slice(-6).map(body=>({last:body.messages.at(-1)?.role,tool:body.messages.findLast(m=>m.tool_calls)?.tool_calls?.at(-1)?.function.name,hasResume:requestText(body).includes('继续处理未完成的事项')}))}))
+   throw error
+  })
+  await tasks.whenIdle()
+  const after=await query('router.get')
+  assert.equal(after.activeSessionId,before.activeSessionId);assert.equal(after.generation,before.generation)
+  assert.equal(after.timeoutContinuation,undefined)
+  assert.ok(delivered.receipt);if(frozen)assert.equal(delivered.id,frozen.id)
+  assert.equal(sent.length,1);assert.equal(sent[0].text,replyText)
+  assert.equal(executions,1);assert.equal(resumes,1);assert.equal(replies,1)
+  const {entries}=await h.host.ctx.sessionPersistence.readNative(after.activeSessionId,{requireComplete:true})
+  assert.equal(entries.filter(entry=>entry.customType==='night.business-input'&&entry.details?.packetId===before.timeoutContinuation.packetId).length,1)
+  assert.equal(entries.filter(entry=>entry.customType==='night.router-resume-claim'&&entry.details?.failedEntryId===before.timeoutContinuation.failedEntryId).length,1)
+ }finally{resumeReady.resolve()}
 })
 
 test('Router can retry the same interrupted session and then cancel with a durable reason',{timeout:nativeTestTimeout(45000)},async t=>{
