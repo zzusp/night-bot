@@ -290,21 +290,18 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     return result
   }
   function command(kind, a, commandId) {
-    if(kind==='router.progress.mark'){
-      conversationOf(a);const source=sourceOf(a)
-      if(!markProgressOnly(source))fail('ROUTER_PROGRESS_SOURCE_NOT_PENDING')
-      return changed({readOnly:true})
-    }
     if(kind==='router.lookup.submit'){
       conversationOf(a);const source=sourceOf(a)
       return operation(a,()=>{
-        if(!Array.isArray(a.taskIds)||!a.taskIds.length||a.taskIds.length>3||new Set(a.taskIds).size!==a.taskIds.length)fail('ROUTER_LOOKUP_ARGUMENT_INVALID')
-        for(const taskId of a.taskIds){const task=read('tasks',required(taskId),true);if(!task||task.groupId!==a.conversationId)fail('ROUTER_LOOKUP_TASK_SCOPE')}
+        if(a.taskIds!==undefined&&(!Array.isArray(a.taskIds)||!a.taskIds.length||a.taskIds.length>3||new Set(a.taskIds).size!==a.taskIds.length))fail('ROUTER_LOOKUP_ARGUMENT_INVALID')
+        for(const taskId of a.taskIds??[]){const task=read('tasks',required(taskId),true);if(!task||task.groupId!==a.conversationId)fail('ROUTER_LOOKUP_TASK_SCOPE')}
         const pending=rows('router_actions').filter(row=>row.result?.lookup?.state==='pending')
         if(pending.length>=2||pending.some(row=>row.conversationId===a.conversationId))fail('ROUTER_LOOKUP_CAPACITY')
-        markProgressOnly(source)
+        if(a.alongsideWork===true){
+          if(!sourceLinks.get(a.conversationId,source.sourceId,source.version))fail('ROUTER_LOOKUP_WORK_RECEIPT_REQUIRED')
+        }else markProgressOnly(source)
         const id=`router-action:${hash([a.conversationId,a.operationId])}`
-        return changed({lookup:{id,conversationId:a.conversationId,sourceId:a.sourceId,messageVersion:a.messageVersion,taskIds:a.taskIds,state:'pending',createdAt:new Date().toISOString(),deadlineAt:new Date(Date.now()+30000).toISOString()}})
+        return changed({lookup:{id,conversationId:a.conversationId,sourceId:a.sourceId,messageVersion:a.messageVersion,taskIds:a.taskIds??[],state:'pending',createdAt:new Date().toISOString(),deadlineAt:new Date(Date.now()+30000).toISOString()}})
       })
     }
     if(kind==='router.lookup.complete'){
@@ -316,8 +313,8 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       const fresh=source&&source.groupId===a.conversationId&&source.version===lookup.messageVersion&&latest(source)&&!source.retracted&&!source.authorizationRevoked&&!source.triageHold&&!source.archiveRestoreHold
       lookup.state=fresh?a.status:'discarded';lookup.completedAt=new Date().toISOString()
       if(a.status==='completed'&&fresh){
-        if(typeof a.summary!=='string'||!a.summary.trim()||a.summary.length>4000||!Array.isArray(a.limitations)||a.limitations.length>4||a.limitations.some(text=>typeof text!=='string'||text.length>300)||!Array.isArray(a.snapshots)||a.snapshots.length!==lookup.taskIds.length||new Set(a.snapshots.map(row=>row.taskId)).size!==lookup.taskIds.length)fail('ROUTER_LOOKUP_RESULT_INVALID')
-        for(const snap of a.snapshots){const task=read('tasks',snap.taskId,true);if(!lookup.taskIds.includes(snap.taskId)||!task||task.groupId!==a.conversationId)fail('ROUTER_LOOKUP_SCOPE');if(task.requirementRevision!==snap.requirementRevision||task.controlRevision!==snap.controlRevision||(task.contextRevision??0)!==snap.contextRevision||(task.runSequence??0)!==snap.runSequence||task.status!==snap.status||(task.leaseEpoch??0)!==snap.leaseEpoch)lookup.state='stale'}
+        if(typeof a.summary!=='string'||!a.summary.trim()||a.summary.length>4000||!Array.isArray(a.limitations)||a.limitations.length>4||a.limitations.some(text=>typeof text!=='string'||text.length>300)||!Array.isArray(a.snapshots)||a.snapshots.length>3||lookup.taskIds.length>0&&a.snapshots.length!==lookup.taskIds.length||new Set(a.snapshots.map(row=>row.taskId)).size!==a.snapshots.length)fail('ROUTER_LOOKUP_RESULT_INVALID')
+        for(const snap of a.snapshots){const task=read('tasks',snap.taskId,true);if(lookup.taskIds.length>0&&!lookup.taskIds.includes(snap.taskId)||!task||task.groupId!==a.conversationId)fail('ROUTER_LOOKUP_SCOPE');if(task.requirementRevision!==snap.requirementRevision||task.controlRevision!==snap.controlRevision||(task.contextRevision??0)!==snap.contextRevision||(task.runSequence??0)!==snap.runSequence||task.status!==snap.status||(task.leaseEpoch??0)!==snap.leaseEpoch)lookup.state='stale'}
         if(lookup.state==='completed')lookup.result={summary:a.summary,limitations:a.limitations,snapshots:a.snapshots}
       }
       write('router_actions',row)

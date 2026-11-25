@@ -34,7 +34,7 @@ test('real readonly lookup returns asynchronously to same Router after second me
  await h.receive(channelMessage('second',{text:'Unrelated background while the slow lookup is pending.'}));await h.service.whenIdle();assert.equal(secondHandled,true)
  assert.equal(completion,undefined);release.resolve()
  await eventually(()=>completion,'durable lookup result returned without new input');await h.service.whenIdle()
- assert.equal(completion.lookupResult.state,'completed');assert.match(completion.lookupResult.summary,/paused/);assert.equal(completion.lookupResult.snapshots[0].status,before.status);assert.equal(completion.lookupResult.snapshots[0].leaseEpoch,before.leaseEpoch)
+ assert.equal(completion.lookupResult.state,'completed');assert.match(completion.lookupResult.summary,/paused/);assert.equal(completion.lookupResult.snapshots,undefined);const stored=await h.query('router.action',{conversationId,operationId:(await import('../src/channels/resident-router-business.js')).residentOperationId(conversationId,'lookup-existing')});assert.equal(stored.result.lookup.result.snapshots[0].leaseEpoch,before.leaseEpoch)
  assert.equal((await h.query('task.list')).length,1);assert.equal((await h.query('execution.list')).length,executions);assert.deepEqual(await h.query('task.get',{taskId:'existing-task'}),before);assert.equal(h.sent.length,1);assert.equal(h.results.filter(row=>row.name==='resident_router_reply'&&!row.result.isError).length,1)
  const count=h.requests.length;await h.restart();await h.service.whenIdle();assert.equal(h.requests.length,count);assert.equal(lookupCalls,1)
 })

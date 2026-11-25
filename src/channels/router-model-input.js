@@ -10,7 +10,7 @@ const pick=(value,keys)=>Object.fromEntries(keys.filter(key=>value[key]!==undefi
  */
 export function routerModelEvent(event,{compactCompletion=false}={}){
   const view=pick(event,['id','kind','sourceId','messageVersion','taskId','taskEventId','directRouter','suppressChannelOutcome'])
-  if(event.kind==='router.lookup.completed')view.lookupResult=event.lookupResult
+  if(event.kind==='router.lookup.completed')view.lookupResult=pick(event.lookupResult,['lookupId','sourceId','messageVersion','state','completedAt','summary','limitations'])
   if(event.kind==='operator.message')view.operator=pick(event.operator,['requestId','actorId','text','destination'])
   if(event.source){
     const source=conversationSource(event.source)
