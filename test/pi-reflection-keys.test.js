@@ -101,19 +101,56 @@ test('duplicate model lesson keys fail before any memory writes',async t=>{
  assert.deepEqual((await f.ctx.memory.store.read(f.scope,{topic:'experience'})).entries,[])
 })
 
-test('a Router collision during inference is fenced, refuses to rename on retry without overwriting',async t=>{
+test('a stale no-write plan is re-admitted from the new catalog and writes once',async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
+ const f=await fixture(t,async input=>{entered.resolve();await release.promise;return [lesson(input,'fresh-plan')]})
+ const memory=f.ctx.memory.store,id=hash(f.event.id),owner=f.ctx.reflection
+ const pending=f.start();await entered.promise
+ await memory.remember(f.scope,{topic:'experience',key:'unrelated',text:'Concurrent Router memory',source:{sessionId:'router',messageId:'current'}})
+ release.resolve();await pending
+ const failed=(await owner.state(f.scope)).reviews[id]
+ assert.equal(failed.code,'MEMORY_SCOPE_CHANGED');assert.equal(failed.lessons[0].memoryWrite,'not-applied')
+ assert.deepEqual((await memory.read(f.scope,{topic:'experience'})).entries.map(row=>row.key),['unrelated'])
+ await f.retry()
+ const report=(await owner.state(f.scope)).reviews[id]
+ assert.equal(f.analyses,2);assert.equal(report.status,'done');assert.equal(report.attempts,2)
+ const rows=(await memory.read(f.scope,{topic:'experience'})).entries
+ const saved=rows.find(row=>row.key==='fresh-plan');assert.equal(rows.length,2);assert.equal(saved.revision,1);assert.equal(saved.source.messageId,f.event.id)
+ assert.deepEqual(JSON.parse(await readFile(join(owner.directory(f.scope),'reviews',id+'.json'),'utf8')),report)
+ owner.scan();await owner.whenIdle();assert.equal(f.analyses,2)
+ assert.deepEqual((await memory.read(f.scope,{topic:'experience'})).entries,rows)
+ assert.equal((await f.store.query({kind:'task.get',taskId:f.event.taskId})).status,'completed')
+})
+
+test('fresh admission after a Router collision uses the current ownership and leaves its memory untouched',async t=>{
  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
  const f=await fixture(t,async input=>{entered.resolve();await release.promise;return [lesson(input,'same-name')]})
+ const memory=f.ctx.memory.store,id=hash(f.event.id)
  const pending=f.start();await entered.promise
- await f.ctx.memory.store.remember(f.scope,{topic:'experience',key:'same-name',text:'Concurrent Router memory',source:{sessionId:'router',messageId:'current'}})
+ await memory.remember(f.scope,{topic:'experience',key:'same-name',text:'Concurrent Router memory',source:{sessionId:'router',messageId:'current'}})
  release.resolve();await pending
- const before=(await f.ctx.memory.store.read(f.scope,{topic:'experience'})).entries[0]
- const failed=(await f.ctx.reflection.state(f.scope)).reviews[hash(f.event.id)]
+ const before=(await memory.read(f.scope,{topic:'experience'})).entries
+ const failed=(await f.ctx.reflection.state(f.scope)).reviews[id]
  assert.equal(failed.code,'MEMORY_SCOPE_CHANGED');assert.equal(failed.lessons[0].memoryWrite,'not-applied')
  await f.retry()
- const rows=(await f.ctx.memory.store.read(f.scope,{topic:'experience'})).entries
- assert.deepEqual(rows,[before]);assert.equal(f.analyses,1)
- assert.equal((await f.ctx.reflection.state(f.scope)).reviews[hash(f.event.id)].destinations[0].memory.key,'same-name')
+ assert.deepEqual((await memory.read(f.scope,{topic:'experience'})).entries,before);assert.equal(f.analyses,2)
+ const report=(await f.ctx.reflection.state(f.scope)).reviews[id]
+ assert.equal(report.status,'skipped');assert.deepEqual(report.destinations,[])
+})
+
+test('forgetting across attempts does not regenerate a stale no-write plan',async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
+ const f=await fixture(t,async input=>{entered.resolve();await release.promise;return [lesson(input,'forgotten-plan')]})
+ const memory=f.ctx.memory.store,id=hash(f.event.id),owner=f.ctx.reflection
+ const pending=f.start();await entered.promise
+ await memory.remember(f.scope,{topic:'experience',key:'unrelated',text:'Concurrent Router memory',source:{sessionId:'router',messageId:'current'}})
+ release.resolve();await pending
+ assert.equal((await owner.state(f.scope)).reviews[id].code,'MEMORY_SCOPE_CHANGED')
+ await memory.forget(f.scope,{topic:'experience',key:'unrelated'});await owner.forget(f.scope,'unrelated')
+ await f.retry()
+ const report=(await owner.state(f.scope)).reviews[id]
+ assert.equal(f.analyses,1);assert.equal(report.status,'skipped');assert.equal(report.code,'REFLECTION_SCOPE_REVOKED')
+ assert.deepEqual((await memory.read(f.scope,{topic:'experience'})).entries,[])
 })
 
 test('partial retries retain rejected keys and never replay a completed skill over later Router changes',async t=>{

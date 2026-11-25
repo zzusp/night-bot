@@ -31,6 +31,8 @@ releases dependencies nor creates authority for a follow-up task.
 
 复盘新增记忆和 Skill 时，机器标识 key 只用小写英文字母、数字及分隔用连字符，限 1–60 字符；更新使用读到的原 key 和版本。正文仍可用中文。无效名称与缺失或越界的证据引用分别记录，均在生成或写入之前拒绝。无工具推理使用 Pi 模型路由的传输限制和流空闲超时，不额外按总耗时 30 秒中断；Host 关闭仍取消并等待流排空。复盘收到原生 `TimeoutError` 时记录 `REFLECTION_MODEL_TIMEOUT`，不写 Node 的数字异常码。
 
+复盘按模型输入和输出空间逐页查索引。模型用同一套短编号选择记忆、学习 Skill 和安装 Skill；长条目拆开的片段保留同一编号。Host 拒绝重复、非本页或不合法的编号，仍按原标识与版本读取正文；选错一页不算覆盖检查完成。
+
 ## 内置 creator 生成阶段
 
 自动复盘仍是无工具调用，只提出证据和技能候选。首次发布及正文更新另经 Pi 原生 Agent 的短生成阶段：模型必须实际调用唯一的 `skill` 工具加载本发行内置 `skill-creator`，据候选、原始证据引用和旧版正文生成新的 description 与 Markdown。生成阶段不是业务执行会话，无文件写入、shell、任务或渠道工具；不启动子代理。安装的同名技能不覆盖此内置来源，内置文件只读。
@@ -126,6 +128,10 @@ stream-idle timeouts. Creator drafting follows provider limits and caller/Host
 cancellation. Host shutdown cancels and drains in-flight calls; learning failures
 never reverse a completed task. This does not promise exactly one vendor request
 across an unrecorded hard crash.
+
+共享记忆或学习 Skill 在复盘期间被其他操作更新时，只有确认旧计划无任何已发生或不明的效果、且遗忘代次未变，才在下一次扫描用当前索引重新判断。已提交、结果未知或部分写入的计划继续用原标识和原回执。没有代次的历史计划不扩大补偿范围；已耗尽的复盘不因升级或重启重跑。
+
+`REFLECTION_MODEL_INCOMPLETE` 表示 Pi 未返回可用的完整输出；`REFLECTION_WRITE_PENDING` 表示写入前已保存计划检查点，不能仅凭该码判定效果，需核对其中的逐条状态和原回执。历史 `REFLECTION_INCOMPLETE` 可能来自任一阶段，保留原样。
 
 Correcting or forgetting an `experience` entry removes corresponding derived skill
 state and review lesson bodies. If derived cleanup fails after memory committed,

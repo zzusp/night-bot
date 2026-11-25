@@ -20,8 +20,8 @@ test('official reflection uses one native tool-free request with explicit route 
  const {context,options}=f.requests[0];assert.match(context.messages[0].content,/长期记忆筛选规则/);assert.match(context.messages[0].content,/正向.*反向/);assert.match(context.messages[0].content,/未经验证/);assert.equal(context.tools,undefined);assert.equal(context.messages.length,2);assert.equal(context.messages[0].role,'system');assert.deepEqual(JSON.parse(context.messages[1].content),input);assert.equal(options.maxTokens,17);assert.equal(options.reasoning,undefined);assert.equal(options.maxRetries,0)
 })
 test('official reflection rejects nonfinal, tool calls and oversized final/delta output',async t=>{
- for(const stopReason of ['error','aborted','length','toolUse'])await t.test(stopReason,async()=>{const f=await fixture(async()=>({stopReason}));await assert.rejects(officialReflectionText(f.resolved,{}),{code:'REFLECTION_INCOMPLETE'});assert.equal(f.requests.length,1)})
- const call=await fixture(async()=>({content:[{type:'toolCall',id:'x',name:'no',arguments:{}}]}));await assert.rejects(officialReflectionText(call.resolved,{}),{code:'REFLECTION_INCOMPLETE'})
+ for(const stopReason of ['error','aborted','length','toolUse'])await t.test(stopReason,async()=>{const f=await fixture(async()=>({stopReason}));await assert.rejects(officialReflectionText(f.resolved,{}),{code:'REFLECTION_MODEL_INCOMPLETE'});assert.equal(f.requests.length,1)})
+ const call=await fixture(async()=>({content:[{type:'toolCall',id:'x',name:'no',arguments:{}}]}));await assert.rejects(officialReflectionText(call.resolved,{}),{code:'REFLECTION_MODEL_INCOMPLETE'})
  const final=await fixture(async()=>({text:'x'.repeat(12001)}));await assert.rejects(officialReflectionText(final.resolved,{}),{code:'REFLECTION_TOO_LARGE'})
  const delta=await fixture(async({stream})=>{stream.push({type:'text_delta',contentIndex:0,delta:'x'.repeat(12001)});return{}});await assert.rejects(officialReflectionText(delta.resolved,{}),{code:'REFLECTION_TOO_LARGE'});assert.equal(delta.requests[0].options.signal.aborted,true)
 })
@@ -60,7 +60,7 @@ test('reflection batches follow resolved context and native output headroom incl
  assert.equal(fitsSmall(data,'policy'),false);assert.equal(fitsLarge(data,'policy'),true);
  assert.equal(fitsSmall({text:'ok'},'policy'),true);
  assert.equal(reflectionInputFits(small,'responsibility '.repeat(2000))({text:'ok'},'policy'),false);
- assert.equal(fitsSmall.selection({memoryIds:['m'],skillKeys:[],installedIds:[]}),true);
- assert.equal(fitsSmall.selection({memoryIds:Array.from({length:300},(_,i)=>'identity-'+i),skillKeys:[],installedIds:[]}),false);
+ assert.equal(fitsSmall.selection({refs:[1],deferred:false}),true);
+ assert.equal(fitsSmall.selection({refs:Array.from({length:1200},(_,i)=>i+1),deferred:false}),false);
  assert.throws(()=>reflectionInputFits({model:{contextWindow:500,maxTokens:1024}}),{code:'REFLECTION_OFFICIAL_MODEL_REQUIRED'});
 });

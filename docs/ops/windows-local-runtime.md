@@ -118,6 +118,8 @@ API Key profile 使用声明的 `apiKeyEnv` 引用。可通过既有环境或 `n
 
 新技能和正文更新必须通过本发行内置 `skill-creator` 生成，复盘自身仍无工具。`SKILL_CREATOR_UNAVAILABLE`、`SKILL_CREATOR_NOT_USED`、`SKILL_GENERATION_INCOMPLETE` 或 `SKILL_GENERATION_INVALID` 表示生成未完成，不是业务任务回滚。核对复盘报告或受管 `generationFailures` 的来源与错误，再检查发行内置资源和实际模型配置；不能手写 SKILL.md、补造 creator 收据或回退直接拼装求成功。若复盘报告是 `REFLECTION_MEMORY_KEY_INVALID` 或 `REFLECTION_SKILL_KEY_INVALID`，先查对应条目的机器标识；`REFLECTION_EVIDENCE_INVALID` 查本次事实引用。这些拒绝发生在 creator 和写入之前，均不影响已提交的业务结果。已存在技能仅按已提交状态重建，不自动批量重生成；历史没有 creator 证据的版本继续按历史显示。参见 [自进化](../SELF-EVOLUTION.md#内置-creator-生成阶段)。
 
+复盘失败以原完成事件对应的持久报告为准。`REFLECTION_MODEL_INCOMPLETE` 查 Pi 模型输出；`REFLECTION_WRITE_PENDING` 查逐条写入状态及原回执，不能当作未写入。并发冲突仅在能证明旧计划未产生效果且未跨遗忘时重新查目录；沿用原恢复扫描、至少 30 秒间隔及每事件最多三次尝试。无需配置或数据迁移；升级不补跑已耗尽的报告，不要手改尝试次数或回执。见[失败与遗忘](../SELF-EVOLUTION.md#durability-failures-and-forgetting)。
+
 ## 启动与停止
 
 ```powershell

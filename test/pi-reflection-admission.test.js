@@ -39,14 +39,24 @@ test('index selection loads only requested details and fails closed on unknown i
  const entry={...entries[0],text:'SELECTED_BODY',source:{messageId:'event'},provenance:{taskId:'task'}};
  const owner={host:{runtimePaths:{skills:join(root,'skills'),installRoot:root},memory:{store:{index:async()=>({revision:4,entries}),read:async()=>{reads++;return {revision:4,entries:[entry]}}}}}};
  const initial={skills:{},reviews:{[hash('event')]:{eventId:'event',taskId:'task',lessons:[{memoryKey:'canonical'}]}}};
- const result=await reflectionAdmission(owner,{},initial,{facts:[]},async(input,prompt)=>{if(prompt){assert.equal(reads,0);assert.ok(!JSON.stringify(input).includes('SELECTED_BODY'));assert.ok(!JSON.stringify(input).includes('INSTALLED_RULE_BODY'));assert.equal(input.catalog.installed[0].description,'Receipt recovery is already covered');stage++;return JSON.stringify({memoryIds:['m'],skillKeys:[],installedIds:[input.catalog.installed[0].id]})}assert.equal(reads,1);assert.equal(input.details.memories[0].writable,true);assert.ok(JSON.stringify(input).includes('SELECTED_BODY'));assert.ok(JSON.stringify(input).includes('INSTALLED_RULE_BODY'));return '{"lessons":[]}'});
+ const result=await reflectionAdmission(owner,{},initial,{facts:[]},async(input,prompt)=>{if(prompt){assert.equal(reads,0);assert.ok(!JSON.stringify(input).includes('SELECTED_BODY'));assert.ok(!JSON.stringify(input).includes('INSTALLED_RULE_BODY'));assert.equal(input.catalog.installed[0].description,'Receipt recovery is already covered');stage++;return JSON.stringify({refs:[input.catalog.memories[0].ref,input.catalog.installed[0].ref]})}assert.equal(reads,1);assert.equal(input.details.memories[0].writable,true);assert.ok(JSON.stringify(input).includes('SELECTED_BODY'));assert.ok(JSON.stringify(input).includes('INSTALLED_RULE_BODY'));return '{"lessons":[]}'});
  assert.equal(stage,1);assert.equal(result.index.revision,4);assert.equal(await readFile(skillPath,'utf8'),skillText);
- await assert.rejects(reflectionAdmission(owner,{},initial,{},async(input,prompt)=>{assert.ok(prompt);await writeFile(skillPath,skillText+' changed');return JSON.stringify({memoryIds:[],skillKeys:[],installedIds:[input.catalog.installed[0].id]})}),{code:'REFLECTION_ADMISSION_INSTALLED_CHANGED'});await writeFile(skillPath,skillText);
- await assert.rejects(reflectionAdmission(owner,{},initial,{},async()=>JSON.stringify({memoryIds:[],skillKeys:[],installedIds:[],deferred:true})),{code:'REFLECTION_ADMISSION_DEFERRED'});
- await assert.rejects(reflectionAdmission(owner,{},initial,{},async()=>JSON.stringify({memoryIds:['forged'],skillKeys:[],installedIds:[]})),{code:'REFLECTION_ADMISSION_SELECTION_INVALID'});
- owner.host.memory.store.read=async()=>({revision:5,entries:[entry]});await assert.rejects(reflectionAdmission(owner,{},initial,{},async()=>JSON.stringify({memoryIds:['m'],skillKeys:[],installedIds:[]})),{code:'MEMORY_SCOPE_CHANGED'});
+ await assert.rejects(reflectionAdmission(owner,{},initial,{},async(input,prompt)=>{assert.ok(prompt);await writeFile(skillPath,skillText+' changed');return JSON.stringify({refs:[input.catalog.installed[0].ref]})}),{code:'REFLECTION_ADMISSION_INSTALLED_CHANGED'});await writeFile(skillPath,skillText);
+ await assert.rejects(reflectionAdmission(owner,{},initial,{},async()=>JSON.stringify({refs:[],deferred:true})),{code:'REFLECTION_ADMISSION_DEFERRED'});
+ for(const raw of ['not JSON','{\"refs\":[999]}','{\"refs\":[\"1\"]}','{\"refs\":[1,1]}'])await assert.rejects(reflectionAdmission(owner,{},initial,{},async()=>raw),{code:'REFLECTION_ADMISSION_SELECTION_INVALID'});
+ owner.host.memory.store.read=async()=>({revision:5,entries:[entry]});await assert.rejects(reflectionAdmission(owner,{},initial,{},async input=>JSON.stringify({refs:[input.catalog.memories[0].ref]})),{code:'MEMORY_SCOPE_CHANGED'});
 
 });
+
+test('an index reference from another page cannot resolve to the current row',async()=>{
+ const catalog={memories:[{id:'first',summary:'a'},{id:'second',summary:'b'}],skills:[],installed:[]};let previousRef,calls=0
+ await assert.rejects(recallReflectionIndex(catalog,{},async input=>{
+  const [row]=input.catalog.memories;calls++
+  if(calls===1){previousRef=row.ref;return JSON.stringify({refs:[row.ref]})}
+  return JSON.stringify({refs:[previousRef]})
+ },input=>input.catalog.memories.length<=1),{code:'REFLECTION_ADMISSION_SELECTION_INVALID'})
+ assert.equal(calls,2)
+})
 
 async function completed(store,root,id){let seq=0;const command=(kind,args)=>store.command({id:id+'-'+(++seq),kind,args});await command('task.create',{taskId:id,request:'Recover an interrupted local write',ownerActorId:'owner'});await initializeMemoryTaskWorkspace(store,root,id);const binding=(await command('task.claim',{taskId:id})).result.binding;return (await command('task.complete',{binding,summary:'The receipt confirmed the original write; no repeat was needed'})).completionEvent}
 
@@ -77,7 +87,7 @@ test('real Host updates an alias into original memory/Skill identities, preserve
  assert.match(skillPolicy,/情况不同怎么选以及如何验证结果/);
 });
 
-test('a concurrent learned catalog revision fences a prepared new plan and retry cannot bypass it',async t=>{
+test('a concurrent learned catalog change fences the old plan and allows fresh admission',async t=>{
  let f,store;const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(async()=>{release.resolve();await f?.close();await store?.close()});
  f=await memoryHost(t,body=>{if(!JSON.stringify(body.messages).includes('NIGHT_BOT_TASK_REFLECTION'))return;
   const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content);
@@ -91,7 +101,7 @@ test('a concurrent learned catalog revision fences a prepared new plan and retry
  const originalSkills=(await owner.state(scope)).skills;release.resolve();await owner.whenIdle();
  let state=await owner.state(scope);assert.deepEqual(state.skills,originalSkills);assert.equal(state.reviews[hash(event.id)].code,'REFLECTION_REVISION_CONFLICT');assert.deepEqual((await f.host.ctx.memory.store.read(scope,{topic:'experience'})).entries,[]);
  state.reviews[hash(event.id)].retryAt=0;const {atomicWrite}=await import('../src/runtime/files.js');await atomicWrite(join(owner.directory(scope),'state.json'),JSON.stringify(state));owner.scan();await owner.whenIdle();
- state=await owner.state(scope);assert.ok(['REFLECTION_REVISION_CONFLICT','MEMORY_SCOPE_CHANGED'].includes(state.reviews[hash(event.id)].code));assert.deepEqual(state.skills,originalSkills);assert.deepEqual((await f.host.ctx.memory.store.read(scope,{topic:'experience'})).entries,[]);
+ state=await owner.state(scope);assert.equal(state.reviews[hash(event.id)].status,'done');assert.equal(state.reviews[hash(event.id)].attempts,2);assert.deepEqual(state.skills['router-owned'],originalSkills['router-owned']);assert.equal(state.skills['race-method'].revision,1);assert.deepEqual((await f.host.ctx.memory.store.read(scope,{topic:'experience'})).entries.map(row=>[row.key,row.revision]),[['race-memory',1]]);
 });
 
 test('large indexes and long descriptors are fully scanned; late matches update canonical scenarios within request budgets',async t=>{
@@ -108,8 +118,8 @@ test('large indexes and long descriptors are fully scanned; late matches update 
   if(prompt){
    pages++;assert.equal(detailReads,0);
    for(const row of input.catalog.memories)seen.set(row.id,(seen.get(row.id)??'')+row.summary)
-   const ids=[...new Set(input.catalog.memories.filter(row=>row.summary.includes('TARGET_RECEIPT')||row.summary.includes('TAIL_MATCH')).map(row=>row.id))];
-   return JSON.stringify({memoryIds:ids,skillKeys:[],installedIds:[]});
+   const ids=[...new Set(input.catalog.memories.filter(row=>row.summary.includes('TARGET_RECEIPT')||row.summary.includes('TAIL_MATCH')).map(row=>row.ref))];
+   return JSON.stringify({refs:ids});
   }
   assert.equal(input.indexScanComplete,true);assert.equal(input.existing.memories.length,2);assert.equal(input.details.memories.length,2);
   return JSON.stringify({lessons:[{...learned({eventId:'new-event'},'task-specific-alias'),memory:choice('update','receipt-scenario',2),skillDecision:{action:'skip',reason:'One reusable conclusion is sufficient'}}]});
@@ -130,7 +140,7 @@ test('more than seven relevant details survive selection and adaptive detail mer
   const fits=input=>JSON.stringify(input).length<=capacity;
   const view=await reflectionAdmission(owner,{},initial,{eventId:'new'},async(input,prompt)=>{
    assert.ok(fits(input));
-   if(prompt?.includes('NIGHT_BOT_REFLECTION_SELECT'))return JSON.stringify({memoryIds:input.catalog.memories.map(e=>e.id),skillKeys:input.catalog.skills.map(e=>e.key),installedIds:[]});
+   if(prompt?.includes('NIGHT_BOT_REFLECTION_SELECT'))return JSON.stringify({refs:[...new Set([...input.catalog.memories,...input.catalog.skills].map(e=>e.ref))]});
    if(prompt?.includes('NIGHT_BOT_REFLECTION_DETAILS')){
     summaries++;if(input.parts.some(part=>typeof part==='string'))merges++;for(const entry of entries)if(JSON.stringify(input.parts).includes('BODY_'+entry.id))seenBodies.add(entry.id);for(let i=0;i<10;i++)if(JSON.stringify(input.parts).includes('SKILL_BODY_'+i))seenSkills.add('method-'+i);
     return JSON.stringify({notes:'Preserve receipt boundary; canonical scenario-11 revision 2 and method-9 revision 3, task-reflection writable. Existing original receipt evidence must precede retries. '+ 'Boundary must stay evidence backed. '.repeat(30),uncertain:false});
@@ -147,5 +157,5 @@ test('uncertain detail reduction fails closed rather than inferring novelty from
  const root=await mkdtemp(join(tmpdir(),'night-admission-uncertain-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const row={id:'m',topic:'experience',key:'receipt',revision:1,summary:'Related'};
  const owner={host:{runtimePaths:{skills:join(root,'skills'),installRoot:root},memory:{store:{index:async()=>({revision:1,entries:[row]}),read:async()=>({revision:1,entries:[{...row,text:'Boundary '.repeat(2000)}]})}}}};
- for(const reduction of [{notes:'Cannot retain required boundary',uncertain:true},{notes:'same '.repeat(800),uncertain:false}])await assert.rejects(reflectionAdmission(owner,{},{skills:{},reviews:{}},{},async(input,prompt)=>prompt.includes('NIGHT_BOT_REFLECTION_SELECT')?JSON.stringify({memoryIds:['m'],skillKeys:[],installedIds:[]}):JSON.stringify(reduction),{fits:input=>JSON.stringify(input).length<8000}),{code:'REFLECTION_ADMISSION_DEFERRED'});
+ for(const reduction of [{notes:'Cannot retain required boundary',uncertain:true},{notes:'same '.repeat(800),uncertain:false}])await assert.rejects(reflectionAdmission(owner,{},{skills:{},reviews:{}},{},async(input,prompt)=>prompt.includes('NIGHT_BOT_REFLECTION_SELECT')?JSON.stringify({refs:[input.catalog.memories[0].ref]}):JSON.stringify(reduction),{fits:input=>JSON.stringify(input).length<8000}),{code:'REFLECTION_ADMISSION_DEFERRED'});
 });
