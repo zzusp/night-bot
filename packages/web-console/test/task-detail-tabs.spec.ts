@@ -26,12 +26,12 @@ test('无标签概览与复盘保留，Tokens位于复盘前，浅深窄屏不�
  await expect(counts).toHaveText(['1','1']);
  await expect(rail.locator('.task-learning-counts dt')).toHaveText(['记忆','技能']);
  await expect(rail.locator('.task-learning-summary p')).toHaveCount(0);
- await expect(rail.locator('.detail-section')).toHaveCount(4);
+ await expect(rail.locator('.detail-section')).toHaveCount(5);
  await expect(rail.locator('nav, [role=tab], .task-blocker-card, .learning-change, .learning-review')).toHaveCount(0);
  await expect(rail.locator('.detail-section').nth(0)).toHaveClass(/task-summary-card/);
  await expect(rail.locator('.detail-section').nth(1)).toHaveClass(/task-objective-card/);
- await expect(rail.locator('.detail-section').nth(2)).toHaveClass(/task-token-card/);
- await expect(rail.locator('.detail-section').nth(3)).toHaveClass(/task-learning-summary/);
+ await expect(rail.locator('.detail-section').nth(3)).toHaveClass(/task-token-card/);
+ await expect(rail.locator('.detail-section').nth(4)).toHaveClass(/task-learning-summary/);
  await expect(rail).toContainText('2 小时 18 分');
  const transcript=page.locator('.transcript');await transcript.evaluate(el=>el.setAttribute('data-preserved','yes'));
  const refresh=()=>page.evaluate(()=>window.dispatchEvent(new Event('online')));

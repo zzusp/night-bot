@@ -610,7 +610,8 @@ GitHub Pages 文档页沿用蓝白品牌与本机字体，不更换框架、地�
 确认尚未开始或记录总数为零时，显示「还没有路由记录」，沿用原居中轻量空态。加载、提交等待、读取失败与撤权保持真实状态，不以空态掩盖错误。
 
 ### Task detail inspector (2026-11-14)
-- The right rail contains task overview, objective, token usage and task review cards, with no tabs or duplicate transcript. Reuse existing Markdown/Status/Notice and task/session authorization.
+- The right rail contains task overview, objective, context window, token usage and task review cards, with no tabs or duplicate transcript. Reuse existing Markdown/Status/Notice and task/session authorization.
+- 「上下文窗口」位于「任务目标」与「消耗 Tokens」之间，复用 Router 的堆叠条和图例，不显示图例脚注。任务窗口使用当前执行会话原生模型窗口，不套用 Router 预算；仅显示当前任务绑定、正在加载的 Pi 会话的数字。会话未开始、未运行或原生用量不可用时不填零、不替用户启动会话。可见时独立轻量刷新，不重读历史记录。
 - Durations come from TaskDTO. Learning counts use only task-associated applied evidence, deduplicate across updates and distinguish missing/incomplete values from proven zero.
 - The inspector owns its scroll surface. The shared transcript is centered on the whole canvas; the default narrow TODO is in a separate control band, with dismissible manual overlay.
 

@@ -57,8 +57,9 @@ function classify(session,total){
  return rows
 }
 
+const unavailable={status:'unavailable'}
+
 export async function routerContextWindow(tasks, agents, conversationId) {
- const unavailable={status:'unavailable'}
  if(!tasks?.store?.query||!agents?.get)return unavailable
  const row=await tasks.store.query({kind:'router.get',conversationId})
  if(!row)return {...unavailable,reason:'not-started'}
@@ -68,12 +69,32 @@ export async function routerContextWindow(tasks, agents, conversationId) {
  if(actor.id!==row.activeSessionId||session?.sessionId!==row.activeSessionId||meta?.runtimeOwner!=='conversation-router'||meta.conversationId!==conversationId||meta.generation!==row.generation||actor.lifecycle?.signal.aborted||typeof session.getContextUsage!=='function')return unavailable
  const current=await tasks.store.query({kind:'router.get',conversationId})
  if(current?.activeSessionId!==row.activeSessionId||current.generation!==row.generation||current.phase!=='active'||agents.get(row.activeSessionId)!==actor||actor.lifecycle?.signal.aborted)return unavailable
+ return nativeContextWindow(session,model=>officialConversationContextBudget(model,'ROUTER').budgetTokens)
+}
+
+export async function taskContextWindow(readTask, agents, taskId) {
+ const task=await readTask()
+ if(!task||task.taskId!==taskId)return null
+ const sessionId=task.session?.sessionId??task.sessionId
+ const bound=task.session?.sessionBound??task.sessionBound
+ if(!sessionId||bound===false)return {...unavailable,reason:'task-not-started'}
+ const actor=agents?.get?.(sessionId),session=actor?.piSession
+ if(!actor)return {...unavailable,reason:'task-not-loaded'}
+ if(actor.id!==sessionId||session?.sessionId!==sessionId||actor.metadata?.agentPreset!=='night-bot-task'||actor.lifecycle?.signal.aborted)return unavailable
+ const current=await readTask()
+ if(!current||current.taskId!==taskId)return null
+ if(current.groupId!==task.groupId||(current.session?.sessionId??current.sessionId)!==sessionId||
+    (current.session?.sessionBound??current.sessionBound)!==bound||agents.get(sessionId)!==actor||actor.lifecycle?.signal.aborted)return unavailable
+ return nativeContextWindow(session,model=>model.contextWindow)
+}
+
+function nativeContextWindow(session,windowFor) {
  let usage,budget
  try{
   usage=session.getContextUsage()
   const model=session.routedModel?.model??session.model
   if(model?.contextWindow!==usage?.contextWindow||!Number.isSafeInteger(usage?.contextWindow)||usage.contextWindow<=0)return unavailable
-  budget=officialConversationContextBudget(model,'ROUTER').budgetTokens
+  budget=windowFor(model)
  }catch{return unavailable}
  if(usage.tokens===null)return {...unavailable,reason:'awaiting-model-usage'}
  if(!Number.isSafeInteger(usage.tokens)||usage.tokens<=0)return unavailable

@@ -11,7 +11,7 @@ import {latestComparison} from '../../../src/memory/evolution-content.js'
 import {responseTiming,selectedResponseTiming} from './response-times.js'
 import {stageTiming} from './stage-times.js'
 import {routerCompactionTimes} from './router-compaction-times.js'
-import {routerContextWindow} from './router-context-window.js'
+import {routerContextWindow,taskContextWindow} from './router-context-window.js'
 import {createServer} from 'node:http'
 import {performance} from 'node:perf_hooks'
 import {readFile, lstat, realpath} from 'node:fs/promises'
@@ -510,6 +510,14 @@ export async function createWebConsole({channels, paths, config, getApplication,
         if(status)fail(error.code,status)
         throw error
       }
+    }
+    const contextTask = /^\/api\/tasks\/([^/]+)\/context-window$/.exec(path)
+    if (request.method === 'GET' && contextTask) {
+      if ([...url.searchParams.keys()].length) fail('PAGE_INVALID')
+      const id = decodeURIComponent(contextTask[1])
+      const snapshot = await taskContextWindow(() => sessionTask(id), getAgents(), id)
+      if (!snapshot) fail('TASK_NOT_FOUND',404)
+      return send(response,200,snapshot)
     }
     const task = /^\/api\/tasks\/([^/]+)(?:\/(dialogue|executions|session))?$/.exec(path)
     if (request.method === 'GET' && task) {

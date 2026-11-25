@@ -70,7 +70,7 @@ async function fixture(t, options = {}) {
     }
     old.close()
   }
-  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist})
+  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getAgents: () => options.agents, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist})
   t.after(async () => {await web.close(); await rm(root, {recursive: true, force: true})})
   let cookie, csrfToken
   const fetchApi = async (path, {method = 'GET', body, headers = {}} = {}) => {
@@ -89,7 +89,7 @@ async function fixture(t, options = {}) {
     return result
   }
   return {root, paths, dist, channels, received, app, fetchApi, login, get web() {return web},
-    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist}); cookie = undefined; csrfToken = undefined},
+    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getAgents: () => options.agents, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist}); cookie = undefined; csrfToken = undefined},
   }
 }
 
@@ -1511,4 +1511,31 @@ test('task zero-new polls reauthorize six facts, six learned and two file skills
     readings.push({withoutProof:empty.timing.request,leases,...Object.fromEntries(['request','permissions',...expected].map(key=>[key,full.timing[key]]))})
   }
   t.diagnostic(JSON.stringify(readings))
+})
+
+
+test('task context window uses the bound Pi handle and returns numbers only to authenticated readers',async t=>{
+ const session={sessionId:'pi-one',model:{contextWindow:700000},getContextUsage:()=>({tokens:12000,contextWindow:700000,private:'do not expose'})}
+ const actor={id:'pi-one',metadata:{agentPreset:'night-bot-task'},piSession:session,lifecycle:{signal:new AbortController().signal}}
+ const agents=new Map([['pi-one',actor]])
+ const f=await fixture(t,{agents}),path='/api/tasks/task-one/context-window'
+ assert.equal((await f.fetchApi(path)).status,401)
+ await f.login()
+ const ready=await f.fetchApi(path)
+ assert.equal(ready.status,200)
+ assert.deepEqual(ready.body,{status:'ready',basis:'pi-context-estimate',tokens:12000,contextWindow:700000,modelWindow:700000,categories:[{key:'unclassified',tokens:12000}]})
+ assert.equal((await f.fetchApi(path+'?sessionId=another')).status,400)
+ assert.equal((await f.fetchApi('/api/tasks/foreign/context-window')).status,404)
+ const read=f.app.tasks.taskDetail
+ let reads=0
+ f.app.tasks.taskDetail=async id=>{
+  const row=await read(id)
+  return ++reads===1?row:{...row,session:{sessionId:'other'}}
+ }
+ assert.deepEqual((await f.fetchApi(path)).body,{status:'unavailable'})
+ f.app.tasks.taskDetail=read
+ session.getContextUsage=()=>({tokens:null,contextWindow:700000})
+ assert.deepEqual((await f.fetchApi(path)).body,{status:'unavailable',reason:'awaiting-model-usage'})
+ agents.clear()
+ assert.deepEqual((await f.fetchApi(path)).body,{status:'unavailable',reason:'task-not-loaded'})
 })

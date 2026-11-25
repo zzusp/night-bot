@@ -1,4 +1,4 @@
-import {RouterContextWindow, type ContextWindowSnapshot} from './RouterContextWindow';
+import {ContextWindow, type ContextWindowSnapshot} from './ContextWindow';
 import {ApiError} from '../api';
 import {Notice} from './Shared';
 import { useId, useState } from 'react';
@@ -55,7 +55,7 @@ export function StageTimingChart({kind, id}: {kind: 'chat'|'conversations'; id?:
   const failure = query.error ?? (query.data && query.data.status !== 'ready' ? unavailableTimings : null);
   const items = !failure && query.data?.status === 'ready' ? [...query.data.items].reverse() : [];
   return <div className="stage-timing-charts" role="group" aria-label="最近处理耗时">{failure && <Notice read source={!query.error ? `/${kind}/${encodeURIComponent(resolvedId || '')}/stage-times?limit=8&contextWindow=1` : undefined} error={failure} onRetry={query.refresh}/>}
-    <RouterContextWindow key={resolvedId} snapshot={!failure ? query.data?.contextWindow : undefined} loading={query.loading || !resolvedId}/>
+    <ContextWindow key={resolvedId} snapshot={!failure ? query.data?.contextWindow : undefined} loading={query.loading || !resolvedId}/>
     <section className="rail-section stage-timing-card stage-timing-card-router" aria-label="路由耗时">
       <div className="rail-section-title"><h3><i className="stage-title-dot"/>路由耗时</h3><span className="stage-scope">本会话 · {items.length ? `${items.length} 条消息` : '最近消息'}</span></div>
       {items.length ? <StagePlot key={`${resolvedId}:router`} items={items} stage="router" title="路由"/> : <p className="rail-empty">{failure ? '—' : query.loading || !resolvedId ? '读取中…' : '暂无耗时记录'}</p>}

@@ -36,7 +36,35 @@ for(const [name,contextWindow,detail] of [
 });
 test('actual aggregate uses unclassified, overflow stays bounded, failed refresh clears estimate',async({page})=>{
  let fail=false;await page.route('**/stage-times?limit=8*',r=>fail?r.fulfill({status:503,json:{error:'UNAVAILABLE'}}):r.fulfill({json:{...timings,contextWindow:{status:'ready',basis:'pi-context-estimate',tokens:1200,contextWindow:1000,categories:[{key:'unclassified',tokens:1200}]}}}));await login(page);
- const card=page.getByRole('region',{name:'上下文窗口',exact:true});await expect(card).toContainText('1.2k / 1k (120%)');await expect(card).toContainText('未分类');await expect(card).toContainText('Pi 估算');
+ const card=page.getByRole('region',{name:'上下文窗口',exact:true});await expect(card).toContainText('1.2k / 1k (120%)');await expect(card).toContainText('未分类');await expect(card).not.toContainText('Pi 估算');await expect(card).not.toContainText('未分类部分暂无可靠明细');
  expect(await card.locator('.context-window-bar').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
  fail=true;await page.reload();await expect(card).toContainText('暂无可靠的上下文计数');await expect(card).not.toContainText('1.2k');
+});
+
+
+test('task context window follows objective and precedes consumption; no Router footer',async({page})=>{
+ const path='**/api/tasks/task-research/context-window';
+ let available=true;
+ await page.route(path,route=>route.fulfill({json:available?synthetic:{status:'unavailable',reason:'task-not-loaded'}}));
+ await page.goto('/#/tasks/task-research');
+ await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
+ await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
+ const rail=page.getByRole('complementary',{name:'任务详情'});
+ const card=rail.getByRole('region',{name:'上下文窗口',exact:true});
+ await expect(rail.locator('.detail-section')).toHaveClass([/task-summary-card/,/task-objective-card/,/task-context-window/,/task-token-card/,/task-learning-summary/]);
+ await expect(card).toContainText('387k / 472k (82%)');
+ await expect(card).toContainText('未分类');
+ await expect(card).not.toContainText('Pi 估算');
+ await expect(card.locator('.context-window-bar > i')).toHaveCount(7);
+ for (const width of [1440,390]) {
+  await page.setViewportSize({width,height:960});
+  await card.scrollIntoViewIfNeeded();
+  expect(await card.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+  await card.screenshot({path:test.info().outputPath(`task-context-window-${width}.png`)});
+ }
+ available=false;
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await expect(card).toContainText('任务会话未在运行');
+ await expect(card.locator('.context-window-bar')).toHaveCount(0);
+ await expect(card).not.toContainText('387k');
 });
