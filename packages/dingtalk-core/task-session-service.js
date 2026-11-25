@@ -281,7 +281,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (receipt.result?.task) taskCache.set(receipt.result.task.taskId, topicTaskView(receipt.replayed?await query('task.get',{taskId:receipt.result.task.taskId}):receipt.result.task))
     for(const task of receipt.result?.tasks??[])taskCache.set(task.taskId,topicTaskView(receipt.replayed?await query('task.get',{taskId:task.taskId}):task))
     for(const notification of receipt.result?.notifications??[]){notificationCache.set(notification.id,notification);await projectTaskNotification({residentStore,notification})}
-    if(kind!=='task.historical-close'&&residentRouter&&receipt.result?.task?.conversationId)void hostScheduler(()=>residentRouter.schedule(receipt.result.task.conversationId)).catch(error=>recordRouterFailure(receipt.result.task.conversationId,error))
+    // 已存在的巡检交给恢复路径按账本退避，不用空操作重新调度。
+    if(kind!=='task.historical-close'&&(kind!=='task.inspect'||receipt.result?.inspected&&!receipt.replayed)&&residentRouter&&receipt.result?.task?.conversationId)void hostScheduler(()=>residentRouter.schedule(receipt.result.task.conversationId)).catch(error=>recordRouterFailure(receipt.result.task.conversationId,error))
     for (const fact of receipt.topicFacts ?? receipt.result?.topicFacts ?? []) {
       if (fact.state === 'unbound') failures.set(`topic-fact:${fact.id}`, { id: fact.taskId, code: 'TOPIC_FACT_REPLY_BINDING_MISSING' })
       else if (fact.state === 'pending' && !closed) void kickGroup(fact.groupId, true).catch(error => {

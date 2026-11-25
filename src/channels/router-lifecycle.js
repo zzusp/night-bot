@@ -618,7 +618,8 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         const recovering=schedule(id,restoreIdleRouters).catch(async error=>{
           failures.push({conversationId:id,code:error.recoveryReason??error.code??error.message})
           if(error.code!=='ROUTER_BATCH_UNSETTLED')fatal.push(error)
-          if(row&&inspection)await command('router.recovery-attempt',{conversationId:id,generation:row.generation,key})
+          // Same recovery snapshot is idempotent; later failures need a new receipt.
+          if(row&&inspection)await command('router.recovery-attempt',{conversationId:id,generation:row.generation,key},'router.recovery-attempt:'+hash([id,row.generation,key,retry??null]))
         })
         work.push(recovering)
       }

@@ -11,7 +11,7 @@ const error=(code,message)=>Object.assign(new Error(message),{code})
  * replacement history, message-role mapper, tool catalog or compaction engine.
  * getActor is lazy: createAgentSession loads extensions before returning itself. */
 export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,instructions,runInstructions,skills,memory,currentDirectory,measurePhase=(_phase,run)=>run(),settingsManager=SettingsManager.inMemory({packages:[]}),compactionRole,hasTools=()=>false}){
- let runInstructionFiles=[],resources={agentsFiles:[],skills:[]},lastOutcome,lastPolicyFailure,runPromptOptions
+ let runInstructionFiles=[],resources={agentsFiles:[],skills:[]},lastOutcome,lastPolicyFailure,turnEndResourceFailure,runPromptOptions
  const actor=()=>{const value=getActor();if(!value?.id||!value.piSession||value.session)throw error('PI_OFFICIAL_ACTOR_REQUIRED','An official AgentSession actor without a Session facade is required');return value}
  const assertActive=current=>current.lifecycle?.signal?.throwIfAborted()
  const bindActor=()=>{const current=actor();assertActive(current);return measurePhase('memory-bind',()=>memory?.bindActor?.(current))}
@@ -26,12 +26,21 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
   resources={agentsFiles:[...agentsFiles,...roleFiles],skills:skillList}
   return resources
  }
+ const refreshTurnEndResources=current=>measurePhase('resources-turn-end',async()=>{await refreshResources();assertActive(current);await reloadResources();assertActive(current)})
+ // A failed refresh fences the current run. The next idle input may restore
+ // only this resource snapshot, after the same authorization and reload pass.
+ async function recoverTurnEndResources(){
+  const failed=turnEndResourceFailure
+  if(!failed||lastPolicyFailure!==failed)return
+  await refreshTurnEndResources(actor())
+  if(lastPolicyFailure===failed){lastPolicyFailure=undefined;turnEndResourceFailure=undefined}
+ }
  // Pi reports extension errors and continues other handlers. Security policy
  // failures must additionally abort the official run, never merely throw.
  const guarded=handler=>async(event,ctx)=>{try{return await handler(event,ctx)}catch(cause){lastPolicyFailure=cause;ctx.abort();throw cause}}
  const extensionFactory=pi=>{
   pi.on('before_agent_start',guarded((event,ctx)=>measurePhase('before-run',async()=>{
-   const current=actor();lastOutcome=undefined;lastPolicyFailure=undefined;assertActive(current)
+   const current=actor();lastOutcome=undefined;lastPolicyFailure=undefined;turnEndResourceFailure=undefined;assertActive(current)
    await measurePhase('memory-before-run',()=>memory?.beforeRun?.(current,ctx));assertActive(current)
    await measurePhase('resources-before-run',()=>refreshResources({startRun:true}));assertActive(current)
    const sections=await measurePhase('system-prompt',()=>systemPrompt?.officialSections(current)??{});assertActive(current)
@@ -97,7 +106,7 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
    // resource reads after the actor's lifetime capability has been revoked.
    if(current.lifecycle?.signal.aborted)return
    await memory?.turnEnd?.(current,event,ctx);assertActive(current)
-   await measurePhase('resources-turn-end',async()=>{await refreshResources();assertActive(current);await reloadResources();assertActive(current)})
+   try{await refreshTurnEndResources(current)}catch(cause){if(!lastPolicyFailure)turnEndResourceFailure=cause;throw cause}
    if(runPromptOptions){runPromptOptions.contextFiles=resources.agentsFiles;runPromptOptions.skills=resources.skills;if(currentDirectory)runPromptOptions.cwd=await currentDirectory(current)}
   }))
   pi.on('agent_settled',async(event,ctx)=>{await memory?.settled?.(actor(),{...event,outcome:lastOutcome},ctx)})
@@ -114,5 +123,5 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
   return estimateTokens({role:'system',sections,content:policy??'',toolsAdded:{contextFiles,skills:resources.skills}})
  }
  const reloadResources=()=>measurePhase('sdk-reload',()=>resourceLoader.reload())
- return {extensionFactory,resourceLoader,bindActor,refreshResources,reloadResources,estimateInputPromptTokens,get policyFailure(){return lastPolicyFailure}}
+ return {extensionFactory,resourceLoader,bindActor,refreshResources,reloadResources,recoverTurnEndResources,estimateInputPromptTokens,get policyFailure(){return lastPolicyFailure}}
 }
