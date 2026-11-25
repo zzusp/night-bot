@@ -1491,7 +1491,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       ctx.logger?.warn?.(`historical task closure: ${error.code}`)
     }
   }
-  async function recover({waitForRouter=true}={}) {
+  async function recover({waitForRouter=true,restoreIdleRouters=false}={}) {
     if (closed) return { failures: [] }
     // Inspection must keep recording incidents while a previous recovery waits
     // on a busy Router. Its cadence guard is claimed before the first await.
@@ -1547,7 +1547,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         }catch(error){failures.set(outbound.outboundId,{id:outbound.outboundId,code:error.code??error.message})}
       }
       await readonlyLookups.recover()
-      await residentRouter.recover({wait:waitForRouter})
+      await residentRouter.recover({wait:waitForRouter,restoreIdleRouters})
       await syncRouterFailures()
 
 

@@ -177,7 +177,7 @@ Pi 文件工具的匹配错误及底层原子锁内的观察/版本拒绝，在�
 | --- | --- |
 | 本机运行 | [Windows](docs/ops/windows-local-runtime.md) · [macOS](docs/ops/mac-local-runtime.md) · [Linux 隔离前置](docs/ops/linux-contained-runtime.md) |
 | 容器部署 | [Docker](docs/ops/docker-deployment.md) · [Kubernetes](docs/ops/kubernetes-deployment.md) · [云端准备验收](docs/acceptance/docker-cloud-readiness/goal.md) |
-| 使用与设置 | [Web 使用说明](docs/manual/web-console.md) · [Web 运维](docs/ops/web-console-local.md) · [统一配置 CLI](docs/ops/shared-settings.md) |
+| 使用与设置 | [Web 使用说明（含 Router 上下文）](docs/manual/web-console.md) · [Web 运维](docs/ops/web-console-local.md) · [统一配置 CLI](docs/ops/shared-settings.md) |
 | 核心能力 | [运行时](docs/RUNTIME.md) · [任务](docs/SINGLE-TASK.md) · [记忆](docs/MEMORY.md) · [自进化](docs/SELF-EVOLUTION.md) |
 | 集成接口 | [HTTP API](docs/HTTP-ROUTES.md) · [渠道协议](docs/CHANNELS.md) · [渠道插件](docs/CHANNEL-PLUGINS.md) |
 | 验收与迁移 | [验证说明](docs/VALIDATION.md) · [当前验收范围](docs/acceptance/resident-conversation-routing/goal.md) · [功能映射](docs/MIGRATION.md) |
