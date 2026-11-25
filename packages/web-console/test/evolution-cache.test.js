@@ -31,6 +31,7 @@ test('first load deduplicates, persists private indexed metadata, and restart se
   const f = await setup(t)
   const [a,b] = await Promise.all([f.cache.read(), f.cache.read()])
   assert.deepEqual(a,b); assert.equal(f.calls(),1); assert.equal(a.cache.stale,false)
+  assert.equal(a.snapshot.skills.totalCount,0)
   const path = join(f.directory, filename('reader'))
   if (process.platform !== 'win32') assert.equal((await stat(path)).mode & 0o777,0o600)
   await f.cache.close()
@@ -308,6 +309,8 @@ test('server pagination loads only requested indexed records after restart', asy
   assert.equal(second.snapshot.memory.acceptedCount,103,'summary stays Bot-wide')
   const skills=await f.cache.read({kind:'skill',offset:100})
   assert.deepEqual(skills.snapshot.items.map(row=>row.id),['201','203']); assert.equal(skills.snapshot.nextOffset,null)
+  assert.equal(skills.snapshot.skills.totalCount,skills.snapshot.total); assert.equal(skills.snapshot.total,102)
+  assert.equal(first.snapshot.skills.totalCount,skills.snapshot.total)
   const beyond=await f.cache.read({kind:'memory',offset:1000})
   assert.deepEqual(beyond.snapshot.items,[]); assert.equal(beyond.snapshot.total,103)
   await f.cache.close()
@@ -315,6 +318,7 @@ test('server pagination loads only requested indexed records after restart', asy
   const length=Number.parseInt(bytes.subarray(0,9).toString('ascii'),16)
   const header=JSON.parse(bytes.subarray(9,9+length).toString('utf8'))
   assert.equal('items' in header.summary,false)
+  assert.equal('totalCount' in header.summary.skills,false,'persisted snapshot does not need a secondary count')
   // Corrupt a record on a different page. Startup and first-page reads must not
   // read or deserialize it; accessing the affected page detects the mismatch.
   bytes[9+length+header.rows[200].offset]=0x21
@@ -324,6 +328,7 @@ test('server pagination loads only requested indexed records after restart', asy
   t.after(()=>restarted.close())
   const page=await restarted.read({kind:'memory',offset:10})
   assert.deepEqual(page.snapshot.items,second.snapshot.items); assert.equal(collections,0)
+  assert.equal(page.snapshot.skills.totalCount,skills.snapshot.total,'existing cache supplies the count without a refresh')
   await assert.rejects(restarted.read({kind:'memory',offset:100}),{code:'EVOLUTION_CACHE_INVALID'})
   assert.equal(collections,0)
   const repaired=await restarted.read({kind:'memory',offset:100,force:true})

@@ -223,7 +223,9 @@ export async function openEvolutionCache({directory, identity, collect, now = Da
         if (!itemValid(item) || item.kind !== row.kind || !metadataOnly(item) || JSON.stringify(evolutionSortValues(item)) !== JSON.stringify(row.sort)) throw failure('EVOLUTION_CACHE_INVALID')
         items.push(item)
       }
-      return {...structuredClone(value.summary), items, kind, offset, limit, total: index.length,
+      const summary = structuredClone(value.summary)
+      summary.skills.totalCount = value.byKind.skill.length
+      return {...summary, items, kind, offset, limit, total: index.length,
         hasMore: offset + limit < index.length, nextOffset: offset + limit < index.length ? offset + limit : null}
     } finally {
       value.readers--
