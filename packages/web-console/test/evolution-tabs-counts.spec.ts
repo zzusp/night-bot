@@ -4,7 +4,7 @@ import {FIXTURE_TOKEN} from './preview.mjs';
 
 const memory = {id: 'memory-1', kind: 'memory', name: '合成记忆', scope: 'bot', status: 'applied', revision: 1, updatedAt: null, memoryUse: {readCount: 3, searchCount: 2}};
 const skill = {id: 'skill-1', kind: 'skill', name: '合成技能', scope: 'bot', status: 'applied', revision: 1, updatedAt: null, modelUseCount: 2, userUseCount: 1, fileReadCount: 4};
-const snapshot = (items: object[], partial = false) => ({status: 'ready', items, total: items.length, offset: 0, limit: 20, nextOffset: null, memory: {acceptedCount: 6, candidateCount: 0, readCount: null, searchCount: null}, skills: {installedCount: 11, modelUseCount: 1, userUseCount: null, fileReadCount: 5}, usageCoverage: {status: partial ? 'partial' : 'ready'}});
+const snapshot = (items: object[], partial = false) => ({status: 'ready', items, total: items.length, offset: 0, limit: 20, nextOffset: null, memory: {acceptedCount: 6, candidateCount: 0, readCount: null, searchCount: null}, skills: {installedCount: 11, totalCount: 14, modelUseCount: 1, userUseCount: null, fileReadCount: 5}, usageCoverage: {status: partial ? 'partial' : 'ready'}});
 async function open(page: Page) {
   await page.goto('/#/evolution');
   await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN);
@@ -38,7 +38,7 @@ test('分类读取仅更新列表，工具栏与焦点稳定，迟到结果不�
   expect(await libraryNode!.evaluate(el => el.isConnected)).toBe(true);
   expect(await summaryNode!.evaluate(el => el.isConnected)).toBe(true);
   expect(await summary.boundingBox()).toEqual(summaryBounds);
-  await expect(summary.locator('dd')).toHaveText(['6', '0', '未记录', '未记录', '11', '1', '未记录', '5']);
+  await expect(summary.locator('dd')).toHaveText(['6', '未记录', '未记录', '未记录', '14', '1', '未记录', '5']);
   expect(await toolbar.boundingBox()).toEqual(bounds);
   expect(await page.locator('.evolution-list-body').evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(height);
   await expect(page.getByRole('button', {name: '查看内容：合成记忆'})).toHaveCount(0);
