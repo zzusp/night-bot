@@ -1,15 +1,23 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {channelMessage,eventually,requestEnvelope,requestTools,residentRouterHost} from './fixtures/resident-router-host.js'
+import {channelMessage,eventually,requestEnvelope,requestText,requestTools,residentRouterHost} from './fixtures/resident-router-host.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 
-test('live channel status check uses Router readback and cannot supplement or conclude the existing execution',{timeout:nativeTestTimeout(45000)},async t=>{
+test('live channel status check delegates to an isolated lookup and cannot supplement or conclude the existing execution',{timeout:nativeTestTimeout(45000)},async t=>{
  const running=Promise.withResolvers(),release=Promise.withResolvers()
  t.after(()=>release.resolve())
  const steps=new Map(),taskId='progress-original-task',answer='The task is still running. No intermediate result has been verified.'
- let h,executionCalls=0,progressPrompt
+ let h,executionCalls=0,progressPrompt,lookupId,lookupCalls=0
  h=await residentRouterHost(t,async body=>{
-  const tools=requestTools(body)
+  const tools=requestTools(body),texts=requestText(body)
+  if(texts.some(text=>text.includes('NIGHT_ROUTER_TASK_LOOKUP_SELECT'))){
+   assert.deepEqual(tools,[]);assert.match(texts.join(' '),/Original fixture work/)
+   return {text:JSON.stringify({taskIds:[taskId]})}
+  }
+  if(texts.some(text=>text.includes('NIGHT_ROUTER_TASK_LOOKUP。'))){
+   lookupCalls++;assert.deepEqual(tools,[])
+   return {text:JSON.stringify({summary:answer,limitations:[]})}
+  }
   if(tools.includes('task_result')){
    executionCalls++
    return {tool:'task_result',args:{decision:{action:'complete',summary:'The original work was finished.',evidence:['Fixture run ended'],limitations:[]}},beforeFinish:async()=>{running.resolve();await release.promise}}
@@ -21,20 +29,28 @@ test('live channel status check uses Router readback and cannot supplement or co
   const settle=dispositions=>({tool:'resident_router_settle',args:{operationId:'settle-'+key,eventIds:packet.events.map(e=>e.id),...dispositions?{noTaskDispositions:dispositions}:{}}})
   if(key==='work'&&step===0)return {tool:'resident_task_plan',args:{operationId:'start-work',sourceId:event.sourceId,messageVersion:event.messageVersion,
    tasks:[{taskId,title:'Original fixture work',objective:'Finish original work',handoff:'Finish the original fixture work, then tell the requester.',requirements:[]}],dependencies:[]}}
+  const lookup=packet.events.find(e=>e.kind==='router.lookup.completed')?.lookupResult
+  if(lookup){
+   assert.equal(lookup.snapshots,undefined);assert.equal(lookup.activities,undefined)
+   assert.doesNotMatch(texts.filter(text=>text.includes('Host 当前账本投影')).join(' '),/"taskIndex":/u)
+   if(step===0)return {tool:'resident_router_reply',args:{sourceId:lookup.sourceId,messageVersion:lookup.messageVersion,operationId:'status-answer',text:lookup.summary,replyPurpose:'task-update'}}
+   if(step===1)return settle()
+   return {text:'Result delivered.'}
+  }
   if(key==='ask'){
    const source={sourceId:event.sourceId,messageVersion:event.messageVersion}
    if(step===0){
     progressPrompt=JSON.stringify(body.messages.filter(row=>row.role==='system'))
-    return {tool:'resident_task_query',args:{...source,taskId,detail:'progress'}}
+    return {tool:'resident_task_lookup_async',args:{...source,operationId:'lookup-status'}}
    }
    if(step===1){
+    lookupId=JSON.parse(body.messages.at(-1).content).lookupId
     // Deliberately simulate the former routing error after the query was admitted
     // read-only, to verify rejection below at the real tool/Host boundary.
     const task=await h.query('task.get',{taskId})
     return {tool:'resident_task_action',args:{...source,operationId:'incorrect-supplement',kind:'supplement',taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,handoff:'Report the status back to the channel.'}}
    }
-   if(step===2)return {tool:'resident_router_reply',args:{...source,operationId:'status-answer',text:answer,replyPurpose:'task-update'}}
-   if(step===3)return settle([{eventId:event.id,outcome:'handled-inline',sourceQuote:event.source.text,reason:'Answered a read-only progress question from the current Router snapshot'}])
+   if(step===2)return settle([{eventId:event.id,outcome:'async-query',lookupId,sourceQuote:event.source.text,reason:'Delegated read-only status query'}])
    return {text:'Status question settled.'}
   }
   if(step<2)return settle()
@@ -49,10 +65,10 @@ test('live channel status check uses Router readback and cannot supplement or co
   assert.equal(before.drained,false)
   await h.receive(channelMessage('ask',{text:'How is this going?'}))
   await eventually(()=>h.sent.some(row=>row.text===answer),'Router channels the read-only answer',t.signal)
-  assert.match(progressPrompt,/绝不为补证据把问题转交执行会话/u)
+  assert.match(progressPrompt,/不亲自查询或查目录/u)
+  assert.equal(lookupCalls,1)
   assert.match(progressPrompt,/明确要求执行、requiresFullRead=false/u)
-  const query=h.results.find(row=>row.name==='resident_task_query')
-  assert.equal(query.result.isError,false)
+  assert.equal(h.results.some(row=>row.name==='resident_task_query'),false)
   const error=h.results.find(row=>row.name==='resident_task_action')
   assert.equal(error.result.isError,true)
   assert.match(JSON.stringify(error.result),/ROUTER_PROGRESS_SOURCE_READ_ONLY/u)

@@ -13,10 +13,10 @@ const taskProjection=`json_object(${columns.map(key=>`'${key}',json_extract(t.bo
 const refs=values=>{if(!Array.isArray(values)||values.some(value=>typeof value!=='string'||!value))fail('ROUTER_CONTEXT_REFERENCE_INVALID');return JSON.stringify([...new Set(values)])}
 
 /** Current SQLite projections never create a second ledger. */
-export function queryTaskIndex(db,{conversationId,sourceIds=[],taskIds=[],...page},{dependenciesReady}={}){
+export function queryTaskIndex(db,{conversationId,sourceIds=[],taskIds=[],includeRecentTerminal=false,...page},{dependenciesReady}={}){
  const {offset,limit}=checkedPage(page),sources=refs(sourceIds),tasks=refs(taskIds)
- const where=`json_extract(t.body,'$.groupId')=? AND ((json_extract(t.body,'$.archivedAt') IS NULL AND json_extract(t.body,'$.status') NOT IN (${terminal.map(()=>'?').join(',')})) OR t.id IN (SELECT value FROM json_each(?)) OR EXISTS (SELECT 1 FROM dynamic_source_links l WHERE json_extract(l.body,'$.conversationId')=? AND json_extract(l.body,'$.taskId')=t.id AND json_extract(l.body,'$.sourceId') IN (SELECT value FROM json_each(?))))`
- const args=[conversationId,...terminal,tasks,conversationId,sources]
+ const where=`json_extract(t.body,'$.groupId')=? AND ((json_extract(t.body,'$.archivedAt') IS NULL AND (? OR json_extract(t.body,'$.status') NOT IN (${terminal.map(()=>'?').join(',')}))) OR t.id IN (SELECT value FROM json_each(?)) OR EXISTS (SELECT 1 FROM dynamic_source_links l WHERE json_extract(l.body,'$.conversationId')=? AND json_extract(l.body,'$.taskId')=t.id AND json_extract(l.body,'$.sourceId') IN (SELECT value FROM json_each(?))))`
+ const args=[conversationId,includeRecentTerminal===true?1:0,...terminal,tasks,conversationId,sources]
  const table='(SELECT id,body FROM dynamic_tasks UNION ALL SELECT id,body FROM dynamic_archived_tasks)'
  const total=db.prepare(`SELECT count(*) AS n FROM ${table} t WHERE ${where}`).get(...args).n
  const rows=db.prepare(`SELECT ${taskProjection} AS projection FROM ${table} t WHERE ${where} ORDER BY json_extract(t.body,'$.updatedAt') DESC,t.id LIMIT ? OFFSET ?`).all(...args,limit,offset)

@@ -60,15 +60,23 @@ test('reply history includes requester questions and task status without exposin
 })
 
 test('real Router reads committed sole-execution progress without waking another run',{timeout:nativeTestTimeout(120000)},async t=>{
- const steps=new Map();let h,checked=false
+ const steps=new Map();let h,checked=false,forwarded=false
  h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
+  if(JSON.stringify(body).includes('NIGHT_ROUTER_TASK_LOOKUP。')){
+   const parsed=JSON.parse(body.messages.findLast(message=>message.role==='user').content)
+   assert.equal(parsed.tasks[0].progress.coverage,'committed-current-run')
+   checked=true
+   return {text:'{"summary":"Local fixture checked","limitations":[]}'}
+  }
   if(tools.includes('channel_triage_submit')){const input=requestEnvelope(body,'一级分诊请求：');return {tool:'channel_triage_submit',args:{dispositions:input.messages.map(s=>({sourceId:s.sourceId,messageVersion:s.version,needsHandling:true,reason:'Current request'}))}}}
   if(tools.includes('resident_router_settle')){
    const input=requestEnvelope(body,'Router 请求：'),source=input.events.find(event=>event.source)?.source,key=source?.messageId??input.events[0].id,step=steps.get(key)??0;steps.set(key,step+1)
    if(source?.messageId==='start'&&step===0)return {tool:'resident_task_plan',args:{operationId:'start',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'context-progress-task',handoff:'Verify the local fixture only.',title:'Local verification',objective:'Check the local fixture',requirements:['Use fixture only']}],dependencies:[]}}
-   if(source?.messageId==='progress'&&step===0){const system=JSON.stringify(body.messages.filter(message=>message.role==='system'));assert.match(system,/不自动安排业务复测/);assert.match(system,/不得把一般经验、模型建议/);assert.ok(system.includes('taskIndex'));return {tool:'resident_task_query',args:{taskId:'context-progress-task',detail:'progress'}}}
-   if(source?.messageId==='progress'&&step===1){const raw=body.messages.at(-1).content;assert.ok(raw.startsWith('{'),raw);const result=JSON.parse(raw);assert.equal(result.coverage,'committed-current-run');assert.ok(result.activities.some(row=>row.toolCalls.some(call=>call.name==='task_result')));checked=true}
+   if(source?.messageId==='progress'&&step===0){const system=JSON.stringify(body.messages.filter(message=>message.role==='system'));assert.match(system,/不自动安排业务复测/);assert.match(system,/不得把一般经验、模型建议/);assert.ok(system.includes('taskIndex'));return {tool:'resident_task_lookup_async',args:{operationId:'context-progress',sourceId:source.sourceId,messageVersion:source.version,taskIds:['context-progress-task']}}}
+   if(source?.messageId==='progress'&&step===1){const value=JSON.parse(body.messages.at(-1).content);return {tool:'resident_router_settle',args:{operationId:'settle-progress-accepted',eventIds:input.events.map(event=>event.id),noTaskDispositions:[{eventId:input.events.find(event=>event.source?.messageId==='progress').id,outcome:'async-query',lookupId:value.lookupId,sourceQuote:source.text,reason:'Delegated'}]}}}
+   const result=input.events.find(event=>event.kind==='router.lookup.completed')
+   if(result){assert.equal(result.lookupResult.snapshots,undefined);forwarded=result.lookupResult.summary==='Local fixture checked'}
    if(body.messages.at(-1)?.role!=='tool'||step<2)return {tool:'resident_router_settle',args:{operationId:'settle-'+key,eventIds:input.events.map(event=>event.id)}}
    return {text:'Committed.'}
   }
@@ -77,7 +85,7 @@ test('real Router reads committed sole-execution progress without waking another
  })
  await h.receive(channelMessage('start'));await h.service.whenIdle()
  const task=await h.query('task.get',{taskId:'context-progress-task'});assert.equal(task.status,'completed')
- await h.receive(channelMessage('progress',{text:'查询刚才任务的实际进度'}));await h.service.whenIdle();assert.equal(checked,true)
+ await h.receive(channelMessage('progress',{text:'查询刚才任务的实际进度'}));await eventually(()=>forwarded,'lookup result reaches Router',t.signal);await h.service.whenIdle();assert.equal(checked,true)
  const after=await h.query('task.get',{taskId:task.taskId});assert.equal(after.leaseEpoch,task.leaseEpoch);assert.equal(after.runSequence,task.runSequence)
  const missing=await routerTaskProgress({...task,leaseEpoch:task.leaseEpoch+1},{persistence:h.host.ctx.sessionPersistence})
  assert.equal(missing.coverage,'unavailable');assert.equal(missing.reason,'TASK_CURRENT_RUN_HISTORY_UNAVAILABLE')
