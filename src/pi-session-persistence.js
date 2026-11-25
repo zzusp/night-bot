@@ -98,7 +98,7 @@ export default class PiSessionPersistence extends Service {
   identity=Symbol('native-pi-session-persistence')
   constructor(ctx,config) {
     super(ctx,'sessionPersistence');this.taskRoutes=ctx.get('taskSessionRoutes');this.config={...config,root:resolve(config.root)};this.closed=false;this.handles=new Set();this.writers=new Map();this.readCache=new Map();this.readCacheBytes=0
-    ctx.effect(()=>async()=>{this.closed=true;this.readCache.clear();this.readCacheBytes=0;const results=await Promise.allSettled([...this.handles].map(h=>h.close()));const errors=results.filter(r=>r.status==='rejected').map(r=>r.reason);if(errors.length)throw new AggregateError(errors,'Pi persistence close failed')})
+    ctx.effect(()=>async()=>{this.closed=true;this.viewListeners.clear();this.readCache.clear();this.readCacheBytes=0;const results=await Promise.allSettled([...this.handles].map(h=>h.close()));const errors=results.filter(r=>r.status==='rejected').map(r=>r.reason);if(errors.length)throw new AggregateError(errors,'Pi persistence close failed')})
   }
   async checkedRoot(create=false,root=this.config.root) {
     const paths=[];let cursor=root
@@ -130,6 +130,20 @@ export default class PiSessionPersistence extends Service {
       manager.appendCustomEntry('night.header',{header:this.ctx.get('portablePaths')?.header(header)??header,storage:{engine:'pi-native',version:1}})
       return nativeStore({backend:this,path,header,initial:[manager.getHeader(),...manager.getEntries()],lease,options})
     }catch(error){await lease.close();throw error}
+  }
+  viewListeners = new Map()
+  subscribeSessionView(id, listener) {
+    if (this.closed) throw fail('PI_PERSISTENCE_CLOSED')
+    let listeners = this.viewListeners.get(id)
+    if (!listeners) this.viewListeners.set(id, listeners = new Set())
+    listeners.add(listener)
+    return () => {listeners.delete(listener);if (!listeners.size) this.viewListeners.delete(id)}
+  }
+  notifySessionView(id, kind) {
+    // Observers cannot block, fail, or change the outcome of a Pi commit.
+    for (const listener of this.viewListeners.get(id) ?? []) {
+      try {listener(kind)} catch { /* Web observers own their own failure handling. */ }
+    }
   }
   readLive(id) {
     if(this.closed)return null

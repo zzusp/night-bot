@@ -95,6 +95,7 @@ export function nativeStore({backend,path,header,initial,lease,data,options={}})
       else if(marker)poisoned=error
       throw poisoned??error
     }finally{await file?.close();if(temp)await unlink(temp).catch(error=>{if(error.code!=='ENOENT')throw error})}
+    backend.notifySessionView?.(id,'history')
   }
   const pathCodec=backend.ctx.get('portablePaths')
   const sourceHeader=clone(initial[1]?.data.header)

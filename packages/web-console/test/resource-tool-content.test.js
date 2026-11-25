@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os'
 import {dirname, join} from 'node:path'
 import {digest} from '../server/security.js'
 import {MarkdownMemoryStore} from '../../../src/memory/store.js'
+import {atomicWrite} from '../../../src/runtime/files.js'
 import Reflection from '../../../src/memory/reflection.js'
 import {memoryScope} from '../../../src/memory/scope.js'
 import {renderSkillContent} from '../../../src/native-skill-protocol.js'
@@ -15,8 +16,9 @@ test('learned skill grant requires current exact content, scope, signature, and 
   const key = 'approved-resource', name = 'learned-' + key
   const state = {skills: {[key]: {revision: 1, active: true, origin: 'task-reflection', applicability: 'Check evidence',
     steps: ['Confirm source', 'Check current facts'], supports: [{memoryKey: 'observed-verification'}]}}}
-  let supports = [{key: 'observed-verification'}]
-  const reflection = Object.assign(Object.create(Reflection.prototype), {state: async () => structuredClone(state), supportEntries: async () => supports})
+  const witness = {topic: 'experience', key: 'observed-verification'}
+  let supports = [witness]
+  const reflection = Object.create(Reflection.prototype)
   const value = {name, provider: 'learned', content: reflection.renderSkill(scope, key, state.skills[key])}
   const proof = value => {
     const content = [{type: 'text', text: renderSkillContent(value)}]
@@ -24,16 +26,17 @@ test('learned skill grant requires current exact content, scope, signature, and 
       details: {nativeResult: {value, content, isError: false}, unexpected: 'PRIVATE_CHILD'}}
     return resourceReadCandidate('skill', {name}, message, {type: 'message', message})
   }
-  const resolve = candidate => readResourceToolContents([{id: 'one', candidate}], {memory: {store: {root: '/test'}}, reflection, binding})
+  const memory = {store: {root: '/test', readHistoryBatch: async () => ({entries:supports, skillState:state})}}
+  const resolve = candidate => readResourceToolContents([{id: 'one', candidate}], {memory, reflection, binding})
   const candidate = proof(value)
   assert.ok(candidate)
   assert.deepEqual([...await resolve(candidate)], [['one', {text:'1. Confirm source\n2. Check current facts', skillName:name}]])
   assert.equal((await resolve(proof({...value, content: value.content + 'FORGED_TAIL'}))).size, 0)
   assert.equal((await resolve(proof({...value, content: value.content.replace(scope.id, 'a'.repeat(64))}))).size, 0)
   assert.equal((await resolve(proof({...value, content: value.content.replace(/;key=.*$/m, '')}))).size, 0)
-  supports = []
+  supports = [{...witness, topic:'facts'}]
   assert.equal((await resolve(candidate)).size, 0)
-  supports = [{key: 'observed-verification'}]
+  supports = [witness]
   state.skills[key].revision = 2
   assert.equal((await resolve(candidate)).size, 0)
   state.skills[key].revision = 1
@@ -41,16 +44,18 @@ test('learned skill grant requires current exact content, scope, signature, and 
   assert.equal((await resolve(candidate)).size, 0)
 })
 
-test('history batches disk reads and rechecks changed learned state without withdrawing unrelated resources',async t=>{
+test('one history lease batches file reads and checks latest skill state and expiry',async t=>{
   const root=await mkdtemp(join(tmpdir(),'night-history-batch-'))
-  const reads=[], store=new MarkdownMemoryStore(root,{onRead:name=>reads.push(name)})
+  let now=Date.now()
+  const reads=[], store=new MarkdownMemoryStore(root,{now:()=>now,onRead:name=>reads.push(name)})
   t.after(async()=>{await store.close();await rm(root,{recursive:true,force:true})})
   const binding={actorId:'fixture-operator'},scope=memoryScope(binding)
   const source=key=>({messageId:'message-'+key,sessionId:'fixture-session'})
-  const fact=async(key,text)=> (await store.remember(scope,{topic:'facts',key,text,source:source(key)})).entry
+  const expiresAt=new Date(now+60_000).toISOString()
+  const fact=async(key,text,expiry)=> (await store.remember(scope,{topic:'facts',key,text,expiresAt:expiry,source:source(key)})).entry
   const alpha=await fact('alpha','Independently verified fact A.')
-  const beta=await fact('beta','Independently verified fact B.')
-  await store.remember(scope,{topic:'experience',key:'support',text:'Verified skill evidence.',source:source('support')})
+  const beta=await fact('beta','Independently verified fact B.',expiresAt)
+  await store.remember(scope,{topic:'experience',key:'support',text:'Verified skill evidence.',expiresAt,source:source('support')})
   const reflection=Object.assign(Object.create(Reflection.prototype),{host:{memory:{store}}})
   const skill=key=>({revision:1,active:true,origin:'task-reflection',applicability:'Use only after confirmation',body:`Approved ${key}`,supports:[{memoryKey:'support'}]})
   const state={skills:{alpha:skill('alpha'),beta:skill('beta')}}
@@ -67,37 +72,38 @@ test('history batches disk reads and rechecks changed learned state without with
   const input=[['s-a',recordedSkill('alpha')],['a',recordedFact(alpha)],['b',recordedFact(beta)],
     ['a-again',{...recordedFact(alpha),topic:undefined,path:'categories/facts/entries/alpha.md'}],
     ['s-b',recordedSkill('beta')]].map(([id,candidate])=>({id,candidate}))
-  const counter={state:0}, readState=reflection.state.bind(reflection)
-  reflection.state=()=>{counter.state++;return readState(scope)}
   const resolve=()=>readResourceToolContents(input,{memory:{store},reflection,binding})
   reads.length=0
   assert.deepEqual([...await resolve()].map(([id])=>id),input.map(({id})=>id))
-  assert.equal(counter.state,2,'two state reads for the whole skill batch')
-  assert.equal(reads.filter(name=>name==='index.md').length,3,'shared fact index, skill evidence, final fact recheck')
+  assert.equal(reads.filter(name=>name==='scope.json').length,1,'one memory lease')
+  assert.equal(reads.filter(name=>name==='index.md').length,1,'one current evidence index')
+  assert.equal(reads.filter(name=>name==='evolution/state.json').length,1,'one current atomic skill state')
   assert.equal(reads.filter(name=>name.startsWith('categories/facts/entries/')).length,2,'duplicate receipts read their exact fact once')
 
-  const readFacts=store.readHistoryBatch.bind(store)
-  const currentBeta=state.skills.beta
-  store.readHistoryBatch=async(...args)=>{
-    const batch=await readFacts(...args)
-    state.skills.beta={...currentBeta,revision:2,active:false}
-    await writeFile(statePath,JSON.stringify(state))
-    return batch
+  const readFile=store.file.bind(store), currentBeta=state.skills.beta
+  store.file=async(dir,name)=>{
+    if(name==='evolution/state.json'){
+      state.skills.beta={...currentBeta,revision:2,active:false}
+      await atomicWrite(statePath,JSON.stringify(state))
+    }
+    return readFile(dir,name)
   }
   assert.deepEqual([...await resolve()].map(([id])=>id),['s-a','a','b','a-again'])
-  store.readHistoryBatch=readFacts
+  store.file=readFile
   state.skills.beta=currentBeta
-  await writeFile(statePath,JSON.stringify(state))
+  await atomicWrite(statePath,JSON.stringify(state))
 
-  const originalSupport=reflection.supportEntries.bind(reflection)
-  reflection.supportEntries=async(...args)=>{
-    const entries=await originalSupport(...args)
-    state.skills.beta={...state.skills.beta,revision:2,active:false}
-    await writeFile(statePath,JSON.stringify(state))
-    return entries
+  store.file=async(dir,name)=>{
+    const result=await readFile(dir,name)
+    if(name==='evolution/state.json')now=Date.parse(expiresAt)
+    return result
   }
-  assert.deepEqual([...await resolve()].map(([id])=>id),['s-a','a','b','a-again'])
-  reflection.supportEntries=originalSupport
+  assert.deepEqual([...await resolve()].map(([id])=>id),['a','a-again'],'expiry during IO removes the fact and its skill support')
+  store.file=readFile
+  now-=1000
+  await writeFile(statePath,'not valid JSON')
+  assert.deepEqual([...await resolve()].map(([id])=>id),['a','b','a-again'],'invalid skill state does not hide valid facts')
+  await atomicWrite(statePath,JSON.stringify(state))
   await store.forget(scope,{topic:'experience',key:'support',source:source('forget-support')})
   assert.deepEqual([...await resolve()].map(([id])=>id),['a','b','a-again'])
 

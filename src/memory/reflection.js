@@ -231,15 +231,10 @@ export default class Reflection extends Service {
   async authorizesSkillHistory(scope,marker){
     return (await this.skillHistorySelection(scope,[marker])).keys.has(marker)
   }
-  async readSkillHistoryBatch(scope,markers){
-    const {keys,entries}=await this.skillHistorySelection(scope,markers),allowed=new Map()
-    if(!keys.size)return allowed
-    const current=await this.state(scope)
-    for(const [marker,key] of keys){
-      const value=current.skills[key]
-      if(value?.active&&this.skillMarker(scope,key,value)===marker&&learnedSkillSupported(value,entries))allowed.set(marker,value)
-    }
-    return allowed
+  skillFromHistorySnapshot(scope, marker, key, state, support) {
+    if(!validKey(key)||!Object.hasOwn(state?.skills??{},key))return
+    const value=state.skills[key]
+    if(value?.active===true&&this.skillMarker(scope,key,value)===marker&&learnedSkillSupported(value,support))return value
   }
   async readSkills(scope,{key}={}){
     if(key!==undefined&&!validKey(key))throw failure('REFLECTION_SKILL_INVALID')

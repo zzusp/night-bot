@@ -181,26 +181,30 @@ export class MarkdownMemoryStore {
       return result
     })
   }
-  // One locked view of the index and exact, already-disclosed record versions.
-  async readHistoryBatch(scope, selectors){
+  // One committed view for Web history, without holding the lease during a skill directory scan.
+  async readHistoryBatch(scope, selectors,{includeSkillState=false}={}){
     return this.locked(scope,async(dir,meta)=>{
       const root=await this.rootIndex(dir,scope,meta),now=this.now()
-      const entries=root.entries.filter(row=>active(row,now)),facts=new Map(),selected=[],unique=new Map()
-      const byPath=new Map(entries.map(row=>[row.path,row]))
+      const facts=new Map(),selected=[],unique=new Map()
+      const byPath=selectors.length?new Map(root.entries.map(row=>[row.path,row])):null
       for(const [id,{row,path,topic}] of selectors){
         const descriptor=byPath.get(path??entryPath(topic,row.key))
-        if(!descriptor||descriptor.id!==row.id||descriptor.key!==row.key||descriptor.revision!==row.revision)continue
+        if(!descriptor||descriptor.id!==row.id||descriptor.key!==row.key||descriptor.revision!==row.revision||!active(descriptor,now))continue
         selected.push([id,descriptor]);unique.set(descriptor.path,descriptor)
       }
       // Join bounded, independent reads before releasing the scope lease.
       const loaded=new Map(await mapIndependentReads([...unique.values()],4,async descriptor=>[
         descriptor.path,await this.entry(dir,scope,descriptor,{includeSources:false}).catch(()=>null)
       ]))
+      // Select the latest atomic skill state after the fact reads. The index
+      // and its supporting records cannot change while we hold the scope lease.
+      const skillState=includeSkillState?await this.file(dir,'evolution/state.json').then(raw=>JSON.parse(raw??'null')).catch(()=>null):undefined
+      const checkedAt=this.now(),entries=root.entries.filter(row=>active(row,checkedAt))
       for(const [id,descriptor] of selected){
         const fact=loaded.get(descriptor.path)
-        if(fact)facts.set(id,{descriptor,text:fact.text})
+        if(fact&&active(descriptor,checkedAt))facts.set(id,{descriptor,text:fact.text})
       }
-      return {revision:root.revision,entries,facts}
+      return {revision:root.revision,entries,facts,skillState}
     })
   }
   async read(scope,{topic,key,candidates=false,includeSources=true,includePrevious=false}={}){

@@ -1043,6 +1043,11 @@ async function readPage(project,options){
   pageOptions(options)
   if(options.checkpoint?.endsWith('.r')&&!options.resourceProof)fail('SESSION_PAGE_STALE',409)
   const value=await project(options)
+  if(options.activityOnly) {
+    await finalRead(value,options)
+    if(value.status==='unavailable')fail(value.reason,503)
+    return {sessionId:value.sessionId,activeGeneration:value.activeGeneration,live:value.live??{active:false,items:[]},committing:value.reason==='SESSION_COMMIT_PENDING'}
+  }
   if(value.status!=='ready'&&options.resourceProof)fail('SESSION_PAGE_STALE',409)
   if(options.liveProof||value.status!=='ready')return finalRead(value,options)
   const page=sessionPage(value,options)

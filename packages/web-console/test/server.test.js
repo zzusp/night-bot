@@ -1419,7 +1419,7 @@ test('execution HTTP independently authorizes exact resource bodies and revokes 
   assert.equal((await f.fetchApi(continuation(rows[0],0))).status,409)
 })
 
-test('task zero-new polls time six facts, six learned and two file skills separately', async t => {
+test('task zero-new polls reauthorize six facts, six learned and two file skills with one memory lease', async t => {
   const {Context}=await import('@deepseek-ai/cordis')
   const {default:PiPersistence}=await import('../../../src/pi-session-persistence.js')
   const Authority=await import('../../../src/pi-authority.js')
@@ -1430,7 +1430,8 @@ test('task zero-new polls time six facts, six learned and two file skills separa
   await ctx.plugin(Authority)
   const paths=runtimePaths({installRoot:root,dataDir:'data'})
   await prepareRuntimePaths(paths)
-  const store=new MarkdownMemoryStore(paths.memory),scope=memoryScope({actorId:'fixture-writer'})
+  let leases=0
+  const store=new MarkdownMemoryStore(paths.memory,{onRead:name=>{if(name==='scope.json')leases++}}),scope=memoryScope({actorId:'fixture-writer'})
   const reflection=Object.assign(Object.create(Reflection.prototype),{host:{memory:{store}}})
   const persistence=new PiPersistence(ctx,{root:join(root,'journals')})
   const writer=await persistence.createNative({version:4,id:'pi-one',createdAt:Date.now(),isSeeded:false,cwd:root},{auditKinds:{'task/identity':()=>true}})
@@ -1491,17 +1492,23 @@ test('task zero-new polls time six facts, six learned and two file skills separa
     assert.match(header,/^[a-z_]+;dur=\d+\.\d(?:, [a-z_]+;dur=\d+\.\d)*$/)
     return {page:response.body,timing:Object.fromEntries([...header.matchAll(/([a-z_]+);dur=([\d.]+)/g)].map(([,key,ms])=>[key,Number(ms)]))}
   }
-  const expected=['resource_skill_scan','resource_memory_batch','resource_learned_batch','resource_memory_recheck','memory_wait','memory_lock_write','memory_lock_release']
+  // Each acquired scope lease reads its metadata once, after redo recovery.
+  const expected=['resource_skill_scan','resource_memory_batch','memory_wait','memory_lock_write','memory_lock_release']
   const readings=[]
   let page=wide.body
   for(let i=0;i<4;i++){
+    leases=0
     const empty=await poll(narrow.body,false)
+    assert.equal(leases,0)
     assert.equal(empty.timing.permissions,undefined)
     assert.ok(expected.every(key=>empty.timing[key]===undefined))
     const full=await poll(page,true);page=full.page
+    assert.equal(leases,1)
     assert.ok(expected.every(key=>Number.isFinite(full.timing[key])))
+    assert.equal(full.timing.resource_learned_batch,undefined)
+    assert.equal(full.timing.resource_memory_recheck,undefined)
     assert.ok(full.timing.permissions>=full.timing.memory_wait)
-    readings.push({withoutProof:empty.timing.request,...Object.fromEntries(['request','permissions',...expected].map(key=>[key,full.timing[key]]))})
+    readings.push({withoutProof:empty.timing.request,leases,...Object.fromEntries(['request','permissions',...expected].map(key=>[key,full.timing[key]]))})
   }
   t.diagnostic(JSON.stringify(readings))
 })

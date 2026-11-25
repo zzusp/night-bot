@@ -6,7 +6,7 @@ import {AgentSession} from '@earendil-works/pi-coding-agent'
 const readers = new WeakMap(), modelStarts = new WeakMap()
 const MAX_TEXT = 262144, MAX_TOOLS = 64, MAX_BLOCKS = 64, TTL = 120000
 const content = blocks => {let remaining=MAX_TEXT;return (Array.isArray(blocks)?blocks:[]).slice(0,MAX_BLOCKS).filter(block=>block?.type==='text'&&typeof block.text==='string').map(block=>{const text=block.text.slice(0,remaining);remaining-=text.length;return {type:'text',text}})}
-export function createPiLiveOutputBuffer(sessionId, {clock=Date.now}={}) {
+export function createPiLiveOutputBuffer(sessionId, {clock=Date.now,onExpiry}={}) {
  let active=false, revision=0, current, sequence=0, lastEvent=clock(), expiry,phase,phaseStartedAt,compaction,retry,notice
  const tools=new Map(), epoch=randomUUID()
  const setPhase=value=>{if(phase!==value){phase=value;phaseStartedAt=new Date(clock()).toISOString()}}
@@ -74,7 +74,7 @@ export function createPiLiveOutputBuffer(sessionId, {clock=Date.now}={}) {
   if(current?.message)for(const block of current.message.content){if(block.type!=='text'&&block.type!=='thinking')continue;const field=block.type==='text'?'text':'thinking';if(block[field].length>remaining){block[field]=block[field].slice(0,remaining);block.complete=false}remaining-=block[field].length}
   for(const tool of tools.values())for(const block of tool.content){if(block.text.length>remaining){block.text=block.text.slice(0,remaining);tool.complete=false}remaining-=block.text.length}
  }
- return {withdrawTool(callId){tools.delete(callId);revision++},accept(event){expire();accept(event);trim();clearTimeout(expiry);if(latched())expiry=setTimeout(clear,TTL).unref()},snapshot(){
+ return {withdrawTool(callId){if(!tools.delete(callId))return false;revision++;return true},accept(event){expire();accept(event);trim();clearTimeout(expiry);if(latched())expiry=setTimeout(()=>{clear();onExpiry?.()},TTL).unref()},snapshot(){
   expire();const waitingRetry=retry?.visible!==false?retry:undefined,visible=!!(active||compaction||waitingRetry),status=waitingRetry?.notice??notice
   return structuredClone({sessionId,active:visible,...visible?{phase:compaction?'compaction':waitingRetry?'retry':phase,phaseStartedAt:compaction?.startedAt??waitingRetry?.startedAt??phaseStartedAt}:{},...status?{notice:status}:{},revision:`${epoch}:${revision}`,assistant:current?{id:current.id,message:current.message}:null,tools:[...tools.values()]})
  },close(){clearTimeout(expiry);clear()}}
@@ -89,19 +89,20 @@ export function withdrawPiLiveTool(actor,callId){withdrawers.get(actor)?.(callId
 export function bindPiLiveOutput(actor) {
  const session=actor?.piSession
  if(!(session instanceof AgentSession)||actor.id!==session.sessionId)throw new TypeError('Official Pi session required')
- const buffer=createPiLiveOutputBuffer(actor.id)
- const observe=event=>{try{buffer.accept(event);if(event.type==='message_end'&&event.message?.role==='toolResult')validations.get(actor)?.delete(event.message.toolCallId);if(event.type==='agent_end'||event.type==='agent_settled')validations.get(actor)?.clear()}catch{buffer.close();validations.get(actor)?.clear()}}
+ const notify=()=>actor.ctx?.get('sessionPersistence')?.notifySessionView?.(actor.id,'live')
+ const buffer=createPiLiveOutputBuffer(actor.id,{onExpiry:notify})
+ const observe=event=>{try{buffer.accept(event);if(event.type==='message_end'&&event.message?.role==='toolResult')validations.get(actor)?.delete(event.message.toolCallId);if(event.type==='agent_end'||event.type==='agent_settled')validations.get(actor)?.clear()}catch{buffer.close();validations.get(actor)?.clear()}notify()}
  modelStarts.set(actor,()=>observe({type:'model_stream_start'}))
  const off=session.agent.subscribe(observe)
  const signals=new Set(['agent_settled','compaction_start','compaction_end','auto_retry_start','auto_retry_end','summarization_retry_scheduled','summarization_retry_finished'])
  const offSession=session.subscribe(event=>{if(signals.has(event.type))observe(event)})
- withdrawers.set(actor,callId=>buffer.withdrawTool(callId))
+ withdrawers.set(actor,callId=>{if(buffer.withdrawTool(callId))notify()})
  readers.set(actor,()=>{
   const snapshot=buffer.snapshot(),checks=validations.get(actor)
   for(const tool of snapshot.tools){const check=checks?.get(tool.toolCallId);if(check){let valid=false;try{valid=check()===true}catch{}if(!valid)withdrawPiLiveTool(actor,tool.toolCallId)}}
   return buffer.snapshot()
  })
- return {close(){off();offSession();buffer.close();readers.delete(actor);modelStarts.delete(actor);validations.delete(actor);withdrawers.delete(actor)}}
+ return {close(){off();offSession();buffer.close();readers.delete(actor);modelStarts.delete(actor);validations.delete(actor);withdrawers.delete(actor);notify()}}
 }
 export function readPiLiveOutput(actor) {return readers.get(actor)?.()??null}
 export function markPiLiveModelStart(actor) {modelStarts.get(actor)?.()}

@@ -668,7 +668,7 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
       {older && hasDisplayMessages && <div className="execution-history-start" role="status">{older.error ? <Notice error={older.error} onRetry={older.onLoad} /> : older.loading ? '正在载入更早记录…' : older.hasMore ? '向上滚动载入更早记录' : '已到当前上下文的开始'}</div>}
       {!hasDisplayMessages ? (live?.active || live?.notice ? null : empty ?? <EmptyState title="暂无消息" />) : (compact ? turns.map(turn => turn.kind === 'standalone'
         ? renderItem(turn.row, turn.row.kind === 'message' ? turn.row.message.id : turn.row.id)
-        : <TurnProcess key={turn.id} turn={turn} focusId={focusRecord?.id}>{() => turn.rows.map(row => renderItem(row, row.kind === 'message' ? row.message.id : row.id))}</TurnProcess>)
+        : <TurnProcess key={`process:${turn.id}`} turn={turn} focusId={focusRecord?.id}>{() => turn.rows.map(row => renderItem(row, row.kind === 'message' ? row.message.id : row.id))}</TurnProcess>)
         : keyedItems.map(({item, key}) => renderItem(item, key)))}
       {(live?.notice || live?.active && !(live.phase === 'thinking' && messages.some(message => message.transient && message.kind === 'thinking') || live.phase === 'tool' && messages.some(message => message.role === 'tool' && message.status === 'running'))) && <LivePhase live={live} />}
       {pending && <div className="thinking" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>Bot 正在处理，完成后会更新回复</div>}
