@@ -70,7 +70,7 @@ test('real official components execute, commit, cold-read and reopen with no Hos
  await active.close();active=undefined;live=false
 })
 
-async function conversationFixture(t,{sections={},getLimits,contextWindow=131072,keepRecentTokens=100}={}){
+async function conversationFixture(t,{sections={},getLimits,contextWindow=131072,keepRecentTokens=100,skills,filter,tool}={}){
  const root=await mkdtemp(join(tmpdir(),'night-compaction-review-')),agentDir=join(root,'agent');await mkdir(agentDir)
  const ctx=new Context();new NativeAgents(ctx);await ctx.plugin(Authority)
  ctx.provide('systemPrompt',{tools:()=>()=>{},section:()=>()=>{},getSectionOrder:()=>0,context:()=>()=>{},getContextOrder:()=>0});new NativeTools(ctx)
@@ -79,16 +79,18 @@ async function conversationFixture(t,{sections={},getLimits,contextWindow=131072
  const runtime=await ModelRuntime.create({credentials:new InMemoryCredentialStore(),modelsStore:new InMemoryModelsStore(),modelsPath:null,refreshOnCreate:false,allowModelNetwork:false})
  const base=runtime.getModels().find(m=>m.provider==='openai'&&m.input.includes('image')),model={...base,contextWindow}
  await runtime.setRuntimeApiKey(model.provider,'scripted-only')
- const requests=[];let failRequest=false
+ const requests=[];let failRequest=false,toolCalls=0
+ if(tool)ctx.tools.register(definition('effect',async()=>{toolCalls++;tool();return{ok:true}}))
  runtime.registerProvider(model.provider,{api:model.api,models:[model],streamSimple:(_model,context)=>{
   requests.push(context)
-  const stream=createAssistantMessageEventStream(),message={role:'assistant',content:[{type:'text',text:failRequest?'':'Preserved facts and next action.'}],api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),stopReason:failRequest?'error':'stop',...failRequest?{errorMessage:'Synthetic checkpoint failure'}:{},usage:{input:1,output:1,cacheRead:0,cacheWrite:0,totalTokens:2,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}}
+  const call=tool&&requests.length===1
+  const stream=createAssistantMessageEventStream(),message={role:'assistant',content:call?[{type:'toolCall',id:'proof-no-replay',name:'effect',arguments:{}}]:[{type:'text',text:failRequest?'':'Preserved facts and next action.'}],api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),stopReason:call?'toolUse':failRequest?'error':'stop',...failRequest?{errorMessage:'Synthetic checkpoint failure'}:{},usage:{input:1,output:1,cacheRead:0,cacheWrite:0,totalTokens:2,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}}
   queueMicrotask(()=>{stream.push(failRequest?{type:'error',reason:'error',error:message}:{type:'done',reason:'stop',message});stream.end(message)});return stream
  }})
  const admission=await createBusinessAdmission({store,authorize:()=>true}),settingsManager=SettingsManager.inMemory({packages:[],cacheWarming:'off',compaction:{keepRecentTokens},retry:{enabled:false}})
  const official=await createNightOfficialSession({ctx,store,agentDir,admission,registry:ctx.tools,maxParallelToolCalls:1,settingsManager,resolved:{modelRuntime:runtime,model,thinkingLevel:'off',...getLimits?{requestImageLimitsFor:getLimits}:{}},
   prepareActor:actor=>{actor.metadata=Object.freeze({...store.header});actor.lifecycle=Object.freeze({signal:controller.signal,isLive:()=>!controller.signal.aborted})},
-  context:{systemPrompt:{officialSections:()=>sections}},beforeRequest:()=>admission.beforeRequest(),
+  context:{systemPrompt:{officialSections:()=>sections},skills,...filter?{memory:{filter}}:{}},beforeRequest:()=>admission.beforeRequest(),
   createAudit:()=>({isLive:()=>true,isTurnOpen:()=>true,approvalPolicy:()=> 'never',append(){assert.fail('no approval expected')},flush:()=>store.commit()})})
  const detach=ctx.agents.enter(official.actor,undefined)
  t.after(async()=>{await official.close();detach();await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
@@ -99,7 +101,7 @@ async function conversationFixture(t,{sections={},getLimits,contextWindow=131072
   }
   await store.commit();official.session.refreshContext()
  }
- return {official,store,admission,controller,requests,seed,setFail:value=>{failRequest=value}}
+ return {official,store,admission,controller,requests,seed,get toolCalls(){return toolCalls},setFail:value=>{failRequest=value}}
 }
 const reviewPacket=(id,content='ordinary new business')=>({id,source:{kind:'conversation-router',conversationId:'review-room',generation:1,eventIds:[id]},content})
 
@@ -114,6 +116,35 @@ test('conversation accepts a new text packet after the previous request image po
  await f.official.deliver('text');assert.equal(f.requests.length,1);assert.equal(f.official.requestImageFailure,undefined)
  assert.equal(f.admission.status('text'),'admitted')
  assert.ok(f.store.manager.getEntries().some(entry=>entry.type==='custom_message'&&entry.details?.packetId==='image'))
+})
+
+test('next durable Router input revalidates a failed turn-end skill refresh without replaying a committed tool',async t=>{
+ const failed=Object.assign(new Error('Fixture skill catalog unavailable'),{code:'FIXTURE_SKILL_REFRESH_FAILED'})
+ let unavailable=false,refreshFailures=0
+ const f=await conversationFixture(t,{tool:()=>{unavailable=true},skills:()=>{if(unavailable){refreshFailures++;throw failed}return []}})
+ await f.admission.enqueue(reviewPacket('review'))
+ await assert.rejects(f.official.deliver('review'),error=>error===failed)
+ assert.equal(f.admission.status('review'),'admitted');assert.equal(f.toolCalls,1);assert.equal(f.requests.length,1)
+ await f.admission.enqueue(reviewPacket('next'))
+ const before=refreshFailures
+ await assert.rejects(f.official.deliver('next'),error=>error===failed)
+ assert.equal(refreshFailures,before+1);assert.deepEqual(f.admission.pending(),['next']);assert.equal(f.requests.length,1)
+ unavailable=false
+ await f.official.deliver('next')
+ assert.equal(f.admission.status('next'),'admitted');assert.equal(f.requests.length,2);assert.equal(f.toolCalls,1)
+ assert.equal(f.store.manager.getEntries().filter(entry=>entry.message?.toolCallId==='proof-no-replay').length,1)
+ assert.equal(f.store.manager.getEntries().filter(entry=>entry.customType==='night.business-input'&&entry.details?.packetId==='next').length,1)
+})
+
+test('a rejected Router context projection still fences the next pending input',async t=>{
+ const denied=Object.assign(new Error('Fixture signed content cannot be rewritten'),{code:'MEMORY_SIGNED_ASSISTANT_POLICY_CONFLICT'})
+ let checks=0
+ const f=await conversationFixture(t,{filter:()=>{checks++;throw denied}})
+ await f.admission.enqueue(reviewPacket('blocked'))
+ await assert.rejects(f.official.deliver('blocked'),error=>error===denied)
+ await f.admission.enqueue(reviewPacket('next'))
+ await assert.rejects(f.official.deliver('next'),{code:'PI_OFFICIAL_ACTOR_NOT_LIVE'})
+ assert.deepEqual(f.admission.pending(),['next']);assert.equal(checks,1);assert.equal(f.requests.length,0)
 })
 
 test('first conversation input budgets application system sections before admitting business text',async t=>{
@@ -156,14 +187,19 @@ test('immediate owner cancellation stops native preflight before any summary dis
 
 test('native preflight summaries never acquire or retain the previous business observation runId',async t=>{
  const f=await conversationFixture(t)
- await f.admission.enqueue(reviewPacket('previous'));await f.official.deliver('previous');await f.seed()
  const records=[],errors=[],observer=bindPiAgentObservation({actor:f.official.actor,emit:(_actor,record)=>records.push(record),onError:error=>errors.push(error)})
  t.after(()=>observer.close())
+ await f.admission.enqueue(reviewPacket('previous'));await f.official.deliver('previous');await f.seed()
+ assert.ok(records.some(record=>record.kind==='run-settled'&&record.runId==='previous'))
+ const start=records.length
  await f.admission.enqueue(reviewPacket('next'));await f.official.deliver('next')
- assert.ok(f.store.manager.getEntries().some(entry=>entry.type==='compaction'))
- assert.ok(records.some(record=>record.kind==='model-started'));assert.ok(records.some(record=>record.kind==='run-settled'))
- assert.deepEqual([...new Set(records.map(record=>record.runId))],['next'])
- assert.equal(records.filter(record=>record.kind==='model-started').length,1);assert.deepEqual(errors,[])
+ const next=records.slice(start),compactions=next.filter(record=>record.kind==='compaction-completed'),business=next.filter(record=>record.kind!=='compaction-completed')
+ const entry=f.store.manager.getEntries().findLast(entry=>entry.type==='compaction')
+ assert.ok(entry)
+ assert.deepEqual(compactions.map(({runId,entryId})=>[runId,entryId]),[['host-lifecycle',entry.id]])
+ assert.deepEqual([...new Set(business.map(record=>record.runId))],['next'])
+ assert.equal(business.filter(record=>record.kind==='model-started').length,1)
+ assert.equal(business.filter(record=>record.kind==='run-settled').length,1);assert.deepEqual(errors,[])
 })
 
 

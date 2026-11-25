@@ -915,6 +915,46 @@ test('Router close joins the exact native Pi cancellation during request prepara
  await h.restart();await h.service.whenIdle();assert.equal(requests,1);assert.equal((await h.query('router.get',{conversationId})).cursor,1)
 })
 
+test('the same pending task inspection advances the Router recovery backoff', {timeout:nativeTestTimeout(45000)},async t=>{
+ let stalled=false,inspectionRequests=0
+ const h=await residentRouterHost(t,body=>{
+  if(!requestTools(body).includes('resident_router_settle'))return {text:'Fixture summary'}
+  if(stalled){inspectionRequests++;return {text:'Intentionally leave inspection pending'}}
+  return settle(body,router(body))
+ })
+ const original=channelMessage('retry-backoff-original'),conversationId=h.host.ctx.channels.identity(original).sessionId
+ await h.receive(original);await h.service.whenIdle()
+ const [source]=await h.query('source.list'),taskId='retry-backoff-task'
+ const command=(kind,args)=>h.store.command({id:'retry-fixture:'+kind,kind,args})
+ await command('task.create',{taskId,conversationId,groupId:conversationId,ownerActorId:source.actorId,request:'Inspect the interrupted fixture'})
+ await initializeMemoryTaskWorkspace(h.store,h.host.ctx.runtimePaths.workspaces,taskId)
+ await command('task.claim',{taskId})
+ await command('task.inspect',{taskId,expected:inspectionVersion(await h.query('task.get',{taskId}))})
+ const [inspection]=await h.query('router.inbox',{conversationId,deliverable:true});assert.equal(inspection.kind,'task.inspection')
+ const originalRouter=await h.query('router.get',{conversationId})
+ stalled=true;t.mock.timers.enable({apis:['Date']})
+ try{
+  for(const [index,delay] of [5000,30000,300000].entries()){
+   const nextAttempts=index+1
+   const started=Date.now()
+   await h.service.recover()
+   const current=await h.query('router.get',{conversationId}),retry=current.recoveryRetry
+   assert.equal(current.activeSessionId,originalRouter.activeSessionId)
+   assert.equal(retry?.attempts,nextAttempts);assert.equal(retry.exhausted,nextAttempts===3)
+   assert.equal(Date.parse(retry.nextAttemptAt),started+delay)
+   const requests=inspectionRequests
+   await h.service.recover()
+   assert.equal(inspectionRequests,requests,'the still-cooling inspection does not run again')
+   assert.deepEqual((await h.query('router.get',{conversationId})).recoveryRetry,retry)
+   assert.equal((await h.query('router.inbox',{conversationId,deliverable:true}))[0]?.id,inspection.id)
+   t.mock.timers.tick(delay)
+  }
+ }finally{t.mock.timers.reset()}
+ assert.ok(inspectionRequests>0)
+ assert.equal((await h.query('task.get',{taskId})).inspection.pending,true)
+ assert.equal(h.sent.length,0)
+})
+
 test('Router close preserves an actually committed undelivered packet and cold recovery admits it only once',{timeout:nativeTestTimeout(40000)},async t=>{
   const entered=Promise.withResolvers();let held=false,packet,handle,modelBatches=0
   const h=await residentRouterHost(t,body=>{
