@@ -1,3 +1,4 @@
+import {currentTaskMilestone,taskMilestoneId,taskMilestonePending,taskMilestoneView} from '../../src/tasks/milestone-notification.js'
 import {blockedReplyId,completionReplyId,currentOutcomeBinding,suppressChannelOutcome} from '../../src/channels/router-task-context.js'
 import {inspectionVersion,taskInspectionReason,inspectionIsCurrent,inspectionHoldsExecution,taskProviderFailureLabels} from '../../src/tasks/inspection.js'
 import {sourceHasNewerVersion,sourceHistorySchema} from '../../src/channels/source-history.js'
@@ -958,6 +959,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if(!routerLedger.dependenciesReady(get('dynamic_tasks',a.taskId)))fail('ROUTER_DEPENDENCY_PENDING')
       if(get('dynamic_tasks',a.taskId).archiveRestore?.reviewRequired&&a.restoreReview!==true)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
       const task = get('dynamic_tasks', a.taskId)
+      if(a.dialogue!==true&&taskMilestonePending(task,id=>get('dynamic_notifications',id,true)))fail('TASK_MILESTONE_AWAITING_DELIVERY')
       assertTaskWorkspaceReady(task)
       if(task.effectReconciliations?.some(row=>row.state==='prepared'))fail('TASK_EFFECT_RECONCILIATION_PENDING')
       if (task.archivedAt) fail('DYNAMIC_TASK_ARCHIVED_CONFLICT')
@@ -1264,6 +1266,9 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'task.complete') {
       const task = currentTask(a.binding)
+      const milestone=currentTaskMilestone(task)
+      if(taskMilestonePending(task,id=>get('dynamic_notifications',id,true))
+        ||milestone&&!milestone.notificationId&&!['blocked','wait'].includes(a.result?.action))fail('TASK_MILESTONE_REQUIRED')
       if (task.humanRequests?.some(item => item.status === 'waiting-reply')) fail('DYNAMIC_HUMAN_RESPONSE_REQUIRED')
       if (task.dialogue?.some(item => !item.reply&&!item.replyError)) fail('DYNAMIC_TASK_DIALOGUE_PENDING')
       if(Object.hasOwn(task,'technicalFailure'))task.technicalFailure=null
@@ -1892,6 +1897,19 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if (body.payload.artifactFiles?.length) body.payload.deliveryId = id
       const prior = get('dynamic_notifications', id, true)
       if (prior) { if (prior.payloadDigest !== digest(body)) fail('DYNAMIC_NOTIFICATION_ID_CONFLICT'); return changed({ notification: prior }) }
+      if(a.milestoneBinding!==undefined){
+        const owner=currentTask(a.milestoneBinding), m=currentTaskMilestone(owner), p=body.payload
+        const source=get('dynamic_sources',p.sourceId)
+        if(a.kind!=='router-reply'||!m||owner.archiveRestore?.reviewRequired||m.notificationId||id!==taskMilestoneId(owner,m)
+          ||m.sourceId!==source.sourceId||m.sourceVersion!==source.version||p.sourceVersion!==m.sourceVersion||owner.conversationId!==source.groupId
+          ||!owner.sourceRefs.includes(source.sourceId)||source.channel!=='im'||source.retracted||source.triageHold||source.archiveRestoreHold
+          ||sourceHasNewerVersion(db,{groupId:source.groupId,messageId:source.messageId,messageVersion:source.version})
+          ||p.recipientActorIds?.length!==1||p.recipientActorIds[0]!==source.actorId||p.artifactFiles?.length
+          ||p.atAll||p.taskDelivery||p.completionBinding||p.blockedBinding
+          ||p.milestoneTaskId!==owner.taskId||p.replyPurpose!=='task-update')fail('TASK_MILESTONE_STALE')
+        owner.milestoneNotification={...m,notificationId:id,reachedAt:stamp,checkpointLease:owner.leaseEpoch}
+        saveTask(owner)
+      }else if(body.payload.milestoneTaskId!==undefined)fail('TASK_MILESTONE_INVALID')
       const notification = { id, notificationId: id, ...body, payloadDigest: digest(body), state: 'prepared', createdAt: stamp, updatedAt: stamp }
       if(notification.payload.taskDelivery!==undefined)assertTaskDelivery(notification,{allowArchived:false})
       const notifications = groupNotificationParts(notification, a.payload.artifactFiles)
@@ -1992,6 +2010,15 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       if (kind === 'notification.start') {
         if (notification.state !== 'prepared') return changed({ notification })
         if(notification.archiveRestoreHold)fail('TASK_ARCHIVE_RESTORE_REVIEW_REQUIRED')
+        if(notification.payload.milestoneTaskId){
+          const owner=get('dynamic_tasks',notification.payload.milestoneTaskId,true), m=currentTaskMilestone(owner)
+          const source=get('dynamic_sources',notification.payload.sourceId,true)
+          if(!m||m.notificationId!==notification.id||owner.archivedAt||owner.archiveRestore?.reviewRequired||owner.control==='cancelled'
+            ||!source||source.retracted||source.authorizationRevoked||source.triageHold||source.archiveRestoreHold){
+            notification.state='superseded'; notification.updatedAt=stamp
+            put('dynamic_notifications',notification);return {result:{notification},dispatchEligible:false}
+          }
+        }
         if(notification.payload.taskDelivery!==undefined)assertTaskDelivery(notification)
         if (notification.payload.afterNotificationId
           && get('dynamic_notifications', notification.payload.afterNotificationId, true)?.state !== 'delivered')
@@ -2410,6 +2437,10 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       else if (q.kind === 'operation.get') value = get('dynamic_operations', q.operationId, true)
       else if (q.kind === 'operation.list') value = ops(q.taskId)
       else if (q.kind === 'wake.list') value = wakes(q.taskId).filter(item => !q.state || item.state === q.state)
+      else if (q.kind === 'task.milestone') {
+        const task=get('dynamic_tasks',q.taskId,true), m=currentTaskMilestone(task)
+        value=taskMilestoneView(task,m?.notificationId?get('dynamic_notifications',m.notificationId,true):null)??null
+      }
       else if (q.kind === 'notification.get') value = get('dynamic_notifications', q.notificationId, true)
       else if (q.kind === 'notification.list') value = (q.taskId ? taskRows('dynamic_notifications', q.taskId) : all('dynamic_notifications')).filter(item => (!q.taskId || item.taskId === q.taskId) && (!q.groupId || item.payload?.conversationId === q.groupId) && (!q.state || item.state === q.state))
       else if (q.kind === 'legacy.list') value = all('dynamic_legacy_blockers')
@@ -2431,7 +2462,8 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         notifications: all('dynamic_notifications', "WHERE coalesce(json_extract(body,'$.state'),'') NOT IN ('delivered','failed')").filter(item => !['delivered','failed'].includes(item.state)), legacy: legacy() }
       else fail('DYNAMIC_QUERY_UNKNOWN', q.kind)
       if (q.kind === 'task.get' && value && restartReopenEligible(value)) value = { ...value, restartRecoveryEligible: true }
-      if (q.kind === 'task.list') value = value.map(task => ({...(restartReopenEligible(task) ? { ...task, restartRecoveryEligible: true } : task), dependenciesReady:routerLedger.dependenciesReady(task)}))
+      if (q.kind === 'task.get'&&value&&taskMilestonePending(value,id=>get('dynamic_notifications',id,true)))value={...value,milestoneDeliveryPending:true}
+      if (q.kind === 'task.list') value = value.map(task => ({...(restartReopenEligible(task) ? { ...task, restartRecoveryEligible: true } : task), dependenciesReady:routerLedger.dependenciesReady(task),...taskMilestonePending(task,id=>get('dynamic_notifications',id,true))?{milestoneDeliveryPending:true}:{}}))
       // 这些查询的全部嵌套值已由 SQLite 正文新解析；不再为隔离副本重复展开历史。
       if (['task.list', 'execution.list', 'source.list', 'recovery.pending'].includes(q.kind)) return value
       return clone(value)

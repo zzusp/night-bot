@@ -69,6 +69,7 @@ export function taskView(task, secrets = []) {
   return {
     ...(task.durations ? {durations: task.durations} : {}),
     ...displayFields(task, ['taskId', 'title', 'objective', 'request', 'state', 'status', 'controlState', 'groupId', 'createdAt', 'updatedAt', 'archivedAt', 'requirementRevision', 'controlRevision', 'cancellationReason', 'waitingReason'], secrets),
+    ...(task.milestone ? {milestone:{...pick(task.milestone,['state','waitForDelivery','deliveredAt','reachedAt']),...displayFields(task.milestone,['trigger','text'],secrets)}} : {}),
     ...(task.result ? {result: resultView(task.result, secrets)} : {}),
     ...(task.session ? {session: pick(task.session, ['role', 'sessionId', 'sessionBound', 'status'])} : {}),
     ...(task.timeline ? {timeline: timelineView(task.timeline, secrets)} : {}),

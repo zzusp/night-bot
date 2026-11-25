@@ -24,6 +24,7 @@ export interface Task {
   session?: { sessionId?: string; role?: string; status?: string };
   timeline?: { task?: TimelineTrack; executions?: TimelineTrack[]; human?: TimelineTrack; version?: number }; blockers?: TaskBlocker[];
   notifications?: Record<string, unknown>[];
+  milestone?: { trigger: string; text?: string; state: string; waitForDelivery: boolean; deliveredAt?: string };
 }
 export type ChannelConnectionState = 'starting' | 'waiting-auth' | 'ready' | 'paused' | 'recovering' | 'listening' | 'error' | 'stopped' | 'unknown' | 'pending-restart';
 export interface ChannelIngress {

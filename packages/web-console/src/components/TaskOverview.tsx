@@ -9,9 +9,11 @@ const ObjectiveMarkdown = memo(Markdown);
 
 /** Read-only inspector: duration values are supplied by the task API. */
 export function TaskOverview({ task }: { task: Task }) {
+  const notice=task.milestone;
+  const waiting=notice?.waitForDelivery && notice.state!=='delivered' && notice.state!=='not-reached' && task.controlState==='active';
   return <>
     <section className="detail-section task-summary-card">
-      <div className="task-summary-status">{task.state === 'queued' ? <Badge>待调度</Badge>
+      <div className="task-summary-status">{waiting ? <Badge tone="warning">等待通知送达</Badge> : task.state === 'queued' ? <Badge>待调度</Badge>
         : task.state === 'interrupted' ? <Badge tone="warning">中断待核实</Badge>
         : task.state === 'inactive' ? <Badge>未在执行</Badge>
         : <Status value={task.state} />}</div>
@@ -23,6 +25,9 @@ export function TaskOverview({ task }: { task: Task }) {
       <dl className="task-facts">
         <div><dt>创建时间</dt><dd><time dateTime={task.createdAt}>{dateTime(task.createdAt)}</time></dd></div>
         <div><dt>最近更新</dt><dd><time dateTime={task.updatedAt}>{dateTime(task.updatedAt)}</time></dd></div>
+        {notice && <div><dt>阶段通知</dt><dd>{notice.state === 'delivered' ? '已送达' : notice.state === 'not-reached' ? '未触发' : notice.state === 'failed' ? '发送失败' : notice.state === 'superseded' ? '通知已失效' : '送达未确认'}</dd></div>}
+        {notice?.text && notice.state !== 'delivered' && <div><dt>已完成</dt><dd>{notice.text}</dd></div>}
+        {waiting && <div><dt>后续步骤</dt><dd>通知送达后继续</dd></div>}
         {task.state === 'cancelled' && <div><dt>取消原因</dt><dd>{task.cancellationReason || '未记录'}</dd></div>}
       </dl>
     </section>

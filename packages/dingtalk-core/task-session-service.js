@@ -1,3 +1,4 @@
+import {currentTaskMilestone,taskMilestoneId} from '../../src/tasks/milestone-notification.js'
 import {createRouterReadonlyLookups} from '../../src/channels/router-readonly-lookup.js'
 import {interruptedTimingEvidence} from '../../src/tasks/observer-durations.js'
 import {mapIndependentReads} from '../../src/runtime/parallel-read.js'
@@ -288,6 +289,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       })
     }
     // 原效果终态可能晚于会话退出；释放后直接提升持久队列，不等待恢复定时器。
+    if(['notification.delivered','notification.reconcile','notification.receipt'].includes(kind)&&receipt.result?.notification?.state==='delivered'&&receipt.result.notification.payload.milestoneTaskId)void schedulePending()
     if(kind==='router.evaluate'&&receipt.result?.dependency?.state==='satisfied')void hostScheduler(()=>schedulePending())
     if (['execution.drained', 'execution.cancel', 'task.control', 'task.revise', 'task.reopen'].includes(kind)
       || kind.startsWith('operation.') && ['succeeded', 'failed', 'cancelled'].includes(receipt.result?.operation?.state)) void schedulePending()
@@ -469,7 +471,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         const pending = await query('wake.list', { taskId: id }).catch(() => [])
         const task = await query('task.get', { taskId: id }).catch(() => null)
         again = !task?.archivedAt && task?.status === 'active' && task.control === 'active' && task.drained
-          && !inspectionHoldsExecution(task) && taskWorkspaceReady(task) && retryReady(id)
+          && (!task.milestoneDeliveryPending||pendingDialogue(task)) && !inspectionHoldsExecution(task) && taskWorkspaceReady(task) && retryReady(id)
           && (pendingDialogue(task) || pendingTaskHumanReview(task, pending) || !taskHumanWait(task))
           && pending.some(item => item.state !== 'acked')
       }
@@ -505,7 +507,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         for (const task of await query('task.list')) {
           if(!taskWorkspaceReady(task)||task.effectReconciliations?.some(row=>row.state==='prepared'))continue
           if (closed) return
-          if (inspectionHoldsExecution(task) || task.dependenciesReady===false || task.archivedAt || !retryReady(task.taskId) || inflightTasks.has(task.taskId) || !task.drained || task.recovering || task.status !== 'active' || task.control !== 'active') continue
+          if (task.milestoneDeliveryPending&&!pendingDialogue(task) || inspectionHoldsExecution(task) || task.dependenciesReady===false || task.archivedAt || !retryReady(task.taskId) || inflightTasks.has(task.taskId) || !task.drained || task.recovering || task.status !== 'active' || task.control !== 'active') continue
           const pending = await query('wake.list', { taskId: task.taskId })
           if (!pendingDialogue(task) && !pendingTaskHumanReview(task, pending) && taskHumanWait(task)) continue
           if (!taskSlots.has(task.taskId) && taskSlots.size >= taskLimit()) continue
@@ -581,7 +583,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const wakes = await query('wake.list', { taskId })
     const lifecycle = await readTaskLifecycle(task, wakes, id => query('receipt.get', { id }))
     const timing = await query('observer.page', {collection: 'tasks', taskId, archived: 'all', limit: 1})
-    return { ...await taskDTO(task), durations: timing.items[0]?.durations, executions: (await taskExecutions(taskId)).executions,
+    return { ...await taskDTO(task), ...currentTaskMilestone(task)?{milestone:await query('task.milestone',{taskId})}:{}, durations: timing.items[0]?.durations, executions: (await taskExecutions(taskId)).executions,
       timeline: projectTaskTimeline(task, await query('execution.list', { taskId }), wakes, lifecycle),
       blockers: await query('task.blockers', { taskId }), notifications: await query('notification.list', { taskId }),
       }
@@ -861,9 +863,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const action={taskId:task.taskId,expectedRequirementRevision:args.expectedRequirementRevision,expectedControlRevision:args.expectedControlRevision,operationId:args.operationId,
         ...(['supplement','resume'].includes(args.kind)?{messageId:args.operationId,text:args.text??source.text}:{}),
         ...(args.kind==='resume'?{humanRequestId:args.humanRequestId,expectedContextRevision:args.expectedContextRevision,reason:args.reason}:{}),
-        ...(['revise','reopen'].includes(args.kind)?{text:args.text??source.text,...(args.request!==undefined?{request:args.request}:{}),...(args.objective!==undefined?{objective:args.objective}:{}),...(args.title!==undefined?{title:args.title}:{}),...(args.requirements!==undefined?{requirements:args.requirements}:{})}:{}),
+        ...(['revise','reopen'].includes(args.kind)?{text:args.text??source.text,...(args.request!==undefined?{request:args.request}:{}),...(args.objective!==undefined?{objective:args.objective}:{}),...(args.title!==undefined?{title:args.title}:{}),...(args.requirements!==undefined?{requirements:args.requirements}:{}),...(args.milestone!==undefined?{milestone:args.milestone}:{})}:{}),
         ...(args.kind==='control'?{control:args.control,reason:args.reason??source.text}:{}),
         ...(args.kind==='arrange'?{expectedArrangementRevision:args.expectedArrangementRevision,dependencies:args.dependencies}:{})}
+      if(args.replaceActiveGoalQuote!==undefined)action.replaceActiveGoalQuote=args.replaceActiveGoalQuote
       const hostLiveBinding=args.kind==='supplement'?taskSessions.liveBinding?.(task.taskId):undefined
       const receipt=await command('router.task-action',{conversationId:args.conversationId,generation:args.generation,sourceId:source.sourceId,messageVersion:source.version,operationId:args.operationId,kind:'task.'+args.kind,action,inputSource:args.sourceId!==undefined,...(args.handoff!==undefined?{handoff:args.handoff}:{}),...(hostLiveBinding?{hostLiveBinding}:{}),...(args.sameGoal!==undefined?{sameGoal:args.sameGoal}:{})},'router-action:'+args.operationId)
       // 重放只补排空尚未退出的原租约，不能取消后续已经合法启动的新轮次。
@@ -917,7 +920,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const replyToMessageId=standaloneMarkdown?undefined:quoteSource?source.messageId:targetedReply?args.replyToMessageId:args.replyToMessageId??source.messageId
     const replyToActorId=standaloneMarkdown?undefined:quoteSource?source.actorId:targetedReply?audience.replyToActorId:audience.replyToActorId??source.actorId
     const recipients=[...new Set(requestedRecipients??(explicitQuote||targetedReply&&!defaultQuote?[]:[source.actorId]))]
-    const bindings=clean({completionBinding:args.completionBinding,blockedBinding:args.blockedBinding})
+    const bindings=clean({completionBinding:args.completionBinding,blockedBinding:args.blockedBinding,milestoneTaskId:args.milestoneBinding?.taskId})
     const request=clean({kind,sourceId:source.sourceId,sourceVersion:source.version,text:args.text,taskDelivery:selection,...bindings,...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
       replyToMessageId,replyToActorId,recipientActorIds:recipients,...(args.atAll?{atAll:true}:{}),artifactFiles:args.artifactFiles??[]})
     if(previous){
@@ -953,16 +956,33 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const text=finalReply?prepareConversationNotification({conversationId:source.groupId,text:args.text,replyToMessageId,replyToActorId,
       recipientActorIds:recipients,atAll:args.atAll,artifactFiles,signature:legacy.getAgentConfig().replySignature,internalIds}).text:args.text
     assertConversationReply(text,internalIds)
-    if(exec){
+    if(exec||args.milestoneBinding){
       assertNoConversationReplySecrets(args.text)
-      exec.signal.throwIfAborted()
+      exec?.signal.throwIfAborted()
     }
-    const receipt=await measure('router-reply-register',()=>command('notification.prepare',{notificationId,...exec?{routerGeneration:args.generation}:{},taskId:selection?.taskId??null,requirementRevision:selection?.requirementRevision??1,kind,
+    const receipt=await measure('router-reply-register',()=>command('notification.prepare',{notificationId,...args.milestoneBinding?{milestoneBinding:args.milestoneBinding}:{},...exec?{routerGeneration:args.generation}:{},taskId:selection?.taskId??null,requirementRevision:selection?.requirementRevision??1,kind,
       payload:{text,...standaloneMarkdown?{textFormat:'markdown'}:{},...bindings,conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceMessageId:replyToMessageId,actorId:replyToActorId,
         sourceRef:{messageId:source.messageId,messageVersion:source.version,actorId:source.actorId},replyToMessageId,replyToActorId,
         recipientActorIds:recipients,...(args.atAll?{atAll:true}:{}),replyKind:'substantive',taskIds:selection?[selection.taskId]:[],topicRefs:[],replyRequest:request,...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
         ...(selection?{taskDelivery:selection}:{}),...(artifactFiles.length?{artifactFiles,deliveryId:notificationId}:{})}},'prepare-notification:'+notificationId))
     void deliverNotifications();return receipt.result
+  }
+  async function notifyTaskMilestone(binding,{text},signal){
+    if(!await currentTask(binding))fail('TASK_SESSION_STALE')
+    const task=await requireTask(binding.taskId), m=currentTaskMilestone(task)
+    if(!m)fail('TASK_MILESTONE_NOT_PLANNED')
+    if(m.notificationId){
+      const status=await query('task.milestone',{taskId:task.taskId})
+      return {state:status.state,park:m.waitForDelivery&&status.state!=='delivered'}
+    }
+    if(typeof text!=='string'||!text.trim()||text.length>1200)fail('TASK_MILESTONE_INVALID')
+    const source=await query('source.get',{sourceId:m.sourceId})
+    if(!source||source.version!==m.sourceVersion||source.groupId!==task.conversationId||source.authorizationRevoked||source.retracted)fail('TASK_MILESTONE_STALE')
+    assertConversationReply(text,await replyInternalIds(task))
+    signal.throwIfAborted()
+    const {notification}=await prepareDirectReply({source,text:text.trim(),outboundId:taskMilestoneId(task,m),
+      recipientActorIds:[source.actorId],replyPurpose:'task-update',milestoneBinding:binding})
+    return {state:notification.state,park:m.waitForDelivery&&notification.state!=='delivered'}
   }
   async function prepareDirectPlatformReply(args){
     await args.preflight?.()
@@ -1114,7 +1134,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         completionEvent:{id:event.id,kind:event.kind,taskId:event.taskId,requirementRevision:event.requirementRevision,controlRevision:event.controlRevision,recordedAt:event.recordedAt}}
     })
     if(dependencies.length&&!await query('task.dependencies-ready',{taskId:task.taskId}))fail('ROUTER_DEPENDENCY_PENDING')
-    return {...task,dependencies:inputs}
+    return {...task,dependencies:inputs,...currentTaskMilestone(task)?{milestone:await query('task.milestone',{taskId:task.taskId})}:{}}
   }
 
   function kickTask(taskId) {
@@ -1122,6 +1142,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     return track(inflightTasks, taskId, async () => {
       let task = await requireTask(taskId)
       if(!taskWorkspaceReady(task)){if(!failures.has('task-workspace:'+taskId))failures.set('task-workspace:'+taskId,{id:taskId,code:'TASK_WORKSPACE_NOT_READY'});taskSlots.delete(taskId);return}
+      if(task.milestoneDeliveryPending&&!pendingDialogue(task)){taskSlots.delete(taskId);return}
       if(task.dependenciesReady===false){taskSlots.delete(taskId);return}
       if(task.effectReconciliations?.some(row=>row.state==='prepared')){taskSlots.delete(taskId);return}
       if (task.archivedAt || task.status !== 'active' || task.control !== 'active') { taskSlots.delete(taskId); return }
@@ -1137,7 +1158,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const dialogueMessage = wakes.find(item => item.kind === 'task.dialogue')?.payload.messageId
       const dialogue = dialogueMessage ? { ...task.dialogue.find(item => item.id === dialogueMessage),
         history: task.dialogue.filter(item => item.reply && item.id !== dialogueMessage).slice(-20) } : null
-      let drained = true, submitted = false, completion, executionStarted=false
+      let drained = true, submitted = false, completion, executionStarted=false, runMilestoneParked=false
       const ordinaryRound=!dialogue&&!humanReview&&!task.archiveRestore?.reviewRequired
       try {
         const sources = (await Promise.all(task.sourceRefs.map(sourceId => query('source.get', { sourceId })))).filter(Boolean)
@@ -1170,7 +1191,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             return (await command('task.human.resolve', { binding, ...args },
               `human-review:${taskId}:${humanReview.requestId}:${binding.leaseEpoch}`)).result
           },
+          notifyMilestone:ordinaryRound?(args,version,signal)=>notifyTaskMilestone(version,args,signal):undefined,
           submit: async (decision,submittedBinding,exec) => {
+            if(ordinaryRound&&currentTaskMilestone(task)&&decision.action==='complete'){
+              const m=await query('task.milestone',{taskId})
+              if(m&&(m.state==='not-reached'||m.waitForDelivery&&m.state!=='delivered'))fail('TASK_MILESTONE_REQUIRED')
+            }
             if(Object.hasOwn(decision,'question')||Object.hasOwn(decision,'audience'))fail('TASK_QUESTION_DISABLED')
             const replyBinding={...submittedBinding}
             if (humanReview && (decision.action !== 'wait' || decision.question?.trim())) fail('DYNAMIC_HUMAN_REVIEW_READ_ONLY')
@@ -1208,6 +1234,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             submitted = true
             return { accepted: true }
           } })
+        runMilestoneParked=runResult.status==='milestone-parked'
         if(runResult.status==='finished')completion={binding,summary:runResult.decision.summary,result:runResult.decision}
         if(completion&&(runResult.status==='submitted'||runResult.status==='finished')&&await currentTask(completion.binding)){
           // A result tool accepts the conclusion; only a normally closed producer
@@ -1261,7 +1288,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         if(!closed){
           // The turn has stopped and drained; inspect its terminal evidence now.
           const current=await requireTask(taskId)
-          if(taskInspectionReason(current)){
+          if(taskInspectionReason(current)&&!runMilestoneParked){
             try{await command('task.inspect',{taskId,expected:inspectionVersion(current)})}catch(error){if(error.code!=='TASK_INSPECTION_STALE')throw error}
           }
         }
@@ -1451,7 +1478,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     for(const item of outcomes)failures.set(item.id,item)
     routerOutcomeAlerts=active
     for(const task of await query('task.list')){
-      if(!taskInspectionReason(task,{inflight:inflightTasks.has(task.taskId)}))continue
+      const m=currentTaskMilestone(task)
+      if(m?.waitForDelivery&&m.notificationId&&m.checkpointLease===task.leaseEpoch&&task.sessionFailure?.code!=='TASK_SESSION_DRAIN_FAILED'
+        ||!taskInspectionReason(task,{inflight:inflightTasks.has(task.taskId)}))continue
       try{
         await command('task.inspect',{taskId:task.taskId,expected:inspectionVersion(task)})
         // Missing registry handles do not prove a writer or external producer

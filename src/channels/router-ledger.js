@@ -1,3 +1,4 @@
+import {bindTaskMilestone} from '../tasks/milestone-notification.js'
 import {triageHandoff,routerTriageConclusion} from './triage-conclusion.js'
 import {inspectionIsCurrent,taskWaitIdentity,MIN_WAIT_RECHECK_MS} from '../tasks/inspection.js'
 import {queryTaskIndex,queryReplyHistory} from './conversation-context.js'
@@ -64,6 +65,23 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     const event=enqueue(source.groupId,`source:${source.sourceId}`,{kind:'source.message',sourceId:source.sourceId,messageVersion:source.version,directRouter:true})
     source.routed=true;source.routedAt=new Date().toISOString();source.routeReceipt={kind:'router',eventId:event.id};write('sources',source)
     return changed({source,routerEvents:[event]})
+  }
+  function sourceMessageEvent(source) {
+    if(source.routeReceipt?.kind!=='router')return
+    const event=read('router_inbox',source.routeReceipt.eventId,true)
+    return event?.kind==='source.message'&&event.sourceId===source.sourceId&&event.messageVersion===source.version&&event.conversationId===source.groupId?event:undefined
+  }
+  function markProgressOnly(source) {
+    const event=sourceMessageEvent(source)
+    if(!event||event.state!=='pending')return false
+    const existing=db.prepare("SELECT 1 FROM dynamic_source_links WHERE json_extract(body,'$.conversationId')=? AND json_extract(body,'$.sourceId')=? AND json_extract(body,'$.messageVersion')=? LIMIT 1")
+      .get(source.groupId,source.sourceId,source.version)
+    if(existing)fail('ROUTER_PROGRESS_SOURCE_ALREADY_ASSIGNED')
+    if(!event.progressOnly){event.progressOnly=true;write('router_inbox',event)}
+    return true
+  }
+  function requireWorkSource(source) {
+    if(sourceMessageEvent(source)?.progressOnly)fail('ROUTER_PROGRESS_SOURCE_READ_ONLY')
   }
   function triageConclusion(event,source){
     if(event.triageDecisionId===undefined)return undefined // Never backfill old/in-flight packets.
@@ -272,13 +290,19 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     return result
   }
   function command(kind, a, commandId) {
+    if(kind==='router.progress.mark'){
+      conversationOf(a);const source=sourceOf(a)
+      if(!markProgressOnly(source))fail('ROUTER_PROGRESS_SOURCE_NOT_PENDING')
+      return changed({readOnly:true})
+    }
     if(kind==='router.lookup.submit'){
-      conversationOf(a);sourceOf(a)
+      conversationOf(a);const source=sourceOf(a)
       return operation(a,()=>{
         if(!Array.isArray(a.taskIds)||!a.taskIds.length||a.taskIds.length>3||new Set(a.taskIds).size!==a.taskIds.length)fail('ROUTER_LOOKUP_ARGUMENT_INVALID')
         for(const taskId of a.taskIds){const task=read('tasks',required(taskId),true);if(!task||task.groupId!==a.conversationId)fail('ROUTER_LOOKUP_TASK_SCOPE')}
         const pending=rows('router_actions').filter(row=>row.result?.lookup?.state==='pending')
         if(pending.length>=2||pending.some(row=>row.conversationId===a.conversationId))fail('ROUTER_LOOKUP_CAPACITY')
+        markProgressOnly(source)
         const id=`router-action:${hash([a.conversationId,a.operationId])}`
         return changed({lookup:{id,conversationId:a.conversationId,sourceId:a.sourceId,messageVersion:a.messageVersion,taskIds:a.taskIds,state:'pending',createdAt:new Date().toISOString(),deadlineAt:new Date(Date.now()+30000).toISOString()}})
       })
@@ -397,6 +421,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if (kind === 'router.plan') return operation(a,()=>{
       conversationOf(a);const source=sourceOf(a,true)
       if(source.routeReceipt?.kind==='router')sourceOf(a)
+      requireWorkSource(source)
       if (!Array.isArray(a.tasks) || !a.tasks.length || !Array.isArray(a.dependencies ?? [])) fail('ROUTER_PLAN_INVALID')
       const created=[]
       for (const input of a.tasks) {
@@ -405,6 +430,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         if(handoff!==undefined){sourceOf(a);if(source.retracted)fail('ROUTER_SOURCE_STALE')}
         const result=reduce('task.create',{...input,...handoff===undefined?{}:{request:handoff},groupId:source.groupId,ownerActorId:source.actorId,sourceRefs:[...new Set([...(input.sourceRefs ?? []),source.sourceId])],operationId:a.operationId},`${commandId}:${input.taskId}`)
         const task=result.result.task;task.conversationId=source.groupId;task.arrangementRevision=1
+        if(input.milestone!==undefined)task.milestoneNotification=bindTaskMilestone(input.milestone,source,task.requirementRevision)
         if(handoff!==undefined)recordRouterHandoff(task,source,a.operationId,handoff)
         else sourceOnlyTask(task,source,input.quote,true)
         saveTask(task);link(task,source,'create',input.quote);created.push(task)
@@ -421,10 +447,20 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       conversationOf(a);const task=read('tasks',a.action?.taskId)
       const source=sourceOf({...a,sourceId:a.sourceId??task.sourceRefs[0],messageVersion:a.messageVersion??read('sources',a.sourceId??task.sourceRefs[0]).version},true)
       if(task.conversationId!==source.groupId)fail('ROUTER_CONVERSATION_SCOPE')
+      if(a.inputSource!==false)requireWorkSource(source)
       if(!['task.supplement','task.resume','task.revise','task.reopen','task.control','task.arrange'].includes(a.kind))fail('ROUTER_TASK_ACTION_INVALID')
       if(a.action.expectedRequirementRevision!==task.requirementRevision || a.action.expectedControlRevision!==task.controlRevision)fail('DYNAMIC_TASK_REVISION_STALE')
+      const milestoneOnly=a.action.milestone!==undefined&&!['objective','title','request','requirements'].some(key=>a.action[key]!==undefined&&digest(a.action[key])!==digest(task[key]))
+      if(['task.revise','task.reopen'].includes(a.kind)&&task.status==='active'&&task.control==='active'&&!task.drained){
+        if(!milestoneOnly){
+          const quote=a.action.replaceActiveGoalQuote
+          if(a.inputSource===false||typeof quote!=='string'||!quote.trim()||quote.length>1000||!source.text.includes(quote)||source.retracted||source.channel==='internal')fail('ROUTER_ACTIVE_GOAL_REPLACEMENT_REQUIRED')
+          sourceOf(a)
+        }
+      }
       if(a.action.request!==undefined&&!['task.revise','task.reopen'].includes(a.kind))fail('TASK_CONTEXT_CLASSIFICATION_CONFLICT')
       if(a.sameGoal===true&&(a.kind!=='task.reopen'||['objective','title','requirements'].some(key=>a.action[key]!==undefined&&digest(a.action[key])!==digest(task[key]))))fail('ROUTER_SAME_GOAL_CONFLICT')
+      if(a.action.milestone!==undefined&&(!['task.revise','task.reopen'].includes(a.kind)||!a.handoff||a.inputSource===false))fail('TASK_MILESTONE_INVALID')
       if(a.kind==='task.arrange'){const result=arrange(task,a.action,source,a.operationId,commandId);sourceOnlyTask(result.result.task,source);saveTask(result.result.task);return result}
       // Host 派生值只在未命中业务回执后计算，避免跨代重试受当前任务或 actor 变化影响。
       const action={...a.action,sourceRefs:[...new Set([...(task.sourceRefs??[]),source.sourceId])],operationId:a.operationId,sameGoal:a.sameGoal}
@@ -439,12 +475,19 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         const message=handoff??required(source.channel==='internal'?a.action.text??source.text:source.text)
         if(a.inputSource!==false||source.channel==='internal')action.currentInput={id:a.operationId,text:message,sourceId:source.sourceId,messageVersion:source.version}
         if(a.action.request!==undefined)action.request=required(a.action.request)
-        if(handoff!==undefined&&a.sameGoal!==true&&['task.revise','task.reopen'].includes(a.kind))action.request=handoff
+        if(handoff!==undefined&&!milestoneOnly&&a.sameGoal!==true&&['task.revise','task.reopen'].includes(a.kind))action.request=handoff
         if(['task.supplement','task.resume'].includes(a.kind)) {action.text=message;if(a.hostLiveBinding!==undefined)action.liveBinding=a.hostLiveBinding}
       }
       const result=a.kind==='task.resume'
         ?a.action.humanRequestId!==undefined?resume(task,action,source,a,commandId):reduce('task.control',{...action,control:'active'},commandId,{routerScheduling:true})
         :reduce(a.kind,action,commandId,{routerScheduling:true})
+      if(a.action.milestone===null)delete result.result.task.milestoneNotification
+      else if(a.action.milestone!==undefined)result.result.task.milestoneNotification=bindTaskMilestone(a.action.milestone,source,result.result.task.requirementRevision)
+      if(milestoneOnly){
+        const next=result.result.task, previous=task.metadata?.routerHandoffs??[]
+        if(previous.length)next.metadata={...next.metadata,routerHandoffs:[...previous,...previous.filter(row=>row.requirementRevision===task.requirementRevision)
+          .map(row=>({...row,requirementRevision:next.requirementRevision}))]}
+      }
       if(handoff!==undefined)recordRouterHandoff(result.result.task,source,a.operationId,handoff)
       else sourceOnlyTask(result.result.task,source,undefined,['task.revise','task.reopen'].includes(a.kind)&&a.sameGoal!==true)
       saveTask(result.result.task)
