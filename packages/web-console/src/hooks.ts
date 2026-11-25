@@ -2,36 +2,41 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './api';
 
 /** 轮询只有一个在途请求；换路由取消旧读，连续失败三次后等待刷新或网络恢复。 */
-export function useResource<T>(path: string | null, interval = 0, { pauseWhenHidden = false, refreshPath, timeoutMs }: { pauseWhenHidden?: boolean; refreshPath?: string; timeoutMs?: number } = {}) {
+export function useResource<T>(path: string | null, interval = 0, { pauseWhenHidden = false, refreshPath, timeoutMs, quiet = false, refreshKey }: { pauseWhenHidden?: boolean; refreshPath?: string; timeoutMs?: number; quiet?: boolean; refreshKey?: string } = {}) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(Boolean(path));
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [revision, setRevision] = useState(0);
   const activePath = useRef(path);
+  const lastBody = useRef<string | undefined>(undefined);
   const refreshRequested = useRef(false);
   const reload = useCallback(() => setRevision(value => value + 1), []);
   const refresh = useCallback(() => { refreshRequested.current = true; reload(); }, [reload]);
   useEffect(() => {
-    if (activePath.current !== path) { setData(null); setUpdatedAt(null); activePath.current = path; }
-    setError(null);
+    if (activePath.current !== path) { setData(null); setUpdatedAt(null); lastBody.current = undefined; activePath.current = path; setError(null); }
+    if (!quiet) setError(null);
     let requestPath = refreshRequested.current && refreshPath ? refreshPath : path;
     refreshRequested.current = false;
     if (!path || pauseWhenHidden && document.visibilityState === 'hidden') { setLoading(false); return; }
     let disposed = false, failures = 0, timer: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController();
     const read = async () => {
-      setLoading(true);
+      if (!quiet || lastBody.current === undefined) setLoading(true);
       try {
         const target = requestPath ?? path;
         requestPath = path;
         const value = await api<T>(target, { signal: controller.signal, timeoutMs });
         if (disposed) return;
-        setData(value); setError(null); setUpdatedAt(Date.now()); failures = 0;
+        const body = quiet ? JSON.stringify(value) : undefined;
+        if (!quiet || lastBody.current !== body) {
+          setData(value); setUpdatedAt(Date.now()); lastBody.current = body;
+        }
+        setError(null); failures = 0;
       } catch (err) {
         if (disposed) return;
         // A new GET must re-authorize a revoked snapshot; retries cannot flash its old data.
-        if (err instanceof ApiError && [401,403,404].includes(err.status)) setData(null);
+        if (err instanceof ApiError && [401,403,404].includes(err.status)) { setData(null); lastBody.current = undefined; }
         setError(err instanceof Error ? err : new Error('REQUEST_FAILED')); failures += 1;
       } finally {
         if (!disposed) {
@@ -42,14 +47,14 @@ export function useResource<T>(path: string | null, interval = 0, { pauseWhenHid
     };
     void read();
     return () => { disposed = true; controller.abort(); clearTimeout(timer); };
-  }, [path, interval, revision, pauseWhenHidden, refreshPath, timeoutMs]);
+  }, [path, interval, revision, pauseWhenHidden, refreshPath, timeoutMs, quiet, refreshKey]);
   useEffect(() => {
-    const visible = () => { if (interval && (document.visibilityState === 'visible' || pauseWhenHidden)) reload(); };
+    const visible = () => { if ((interval || quiet && path) && (document.visibilityState === 'visible' || pauseWhenHidden)) reload(); };
     const online = () => { if (path) reload(); };
     document.addEventListener('visibilitychange', visible);
     window.addEventListener('online', online);
     return () => { document.removeEventListener('visibilitychange', visible); window.removeEventListener('online', online); };
-  }, [path, interval, reload, pauseWhenHidden]);
+  }, [path, interval, reload, pauseWhenHidden, quiet]);
   // 路由切换的清理间隙不展示上一资源的数据、错误或读取状态。
   const current = activePath.current === path;
   return { data: current ? data : null, error: current ? error : null, loading: !!path && (!current || loading), updatedAt: current ? updatedAt : null, refresh };
