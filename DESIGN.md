@@ -611,7 +611,7 @@ GitHub Pages 文档页沿用蓝白品牌与本机字体，不更换框架、地�
 
 ### Task detail inspector (2026-11-14)
 - The right rail contains task overview, objective, context window, token usage and task review cards, with no tabs or duplicate transcript. Reuse existing Markdown/Status/Notice and task/session authorization.
-- 「上下文窗口」位于「任务目标」与「消耗 Tokens」之间，复用 Router 的堆叠条和图例，不显示图例脚注。任务窗口使用当前执行会话原生模型窗口，不套用 Router 预算；仅显示当前任务绑定、正在加载的 Pi 会话的数字。会话未开始、未运行或原生用量不可用时不填零、不替用户启动会话。可见时独立轻量刷新，不重读历史记录。
+- 「上下文窗口」位于「任务目标」与「消耗 Tokens」之间，复用 Router 的堆叠条和图例，不显示图例脚注。任务窗口使用当前执行会话原生模型窗口，不套用 Router 预算；运行中优先使用当前绑定的 Pi 原生计数；未加载时只读同一任务、同一会话的严格已提交上下文，显示保存时的占用估算，不用累计消耗代替。窗口上限若仅能从当前模型配置读取，明确标注；没有可靠上限只显示 token 数和分类，不推算百分比或可用空间。未开始或无可靠数据不填零、不启动会话。上下文仅运行状态轮询，已停止的任务按需读取。任务概览、复盘和运行中的上下文使用 15 秒轮询，后台暂停；收起侧栏只保留正文和输入所需的任务状态检查。状态变更立即重读复盘，仍以低频回读覆盖异步写入；相同卡片数据不重复提交渲染。消耗 Tokens 独立沿用执行流，只在数据变化时更新。
 - Durations come from TaskDTO. Learning counts use only task-associated applied evidence, deduplicate across updates and distinguish missing/incomplete values from proven zero.
 - The inspector owns its scroll surface. The shared transcript is centered on the whole canvas; the default narrow TODO is in a separate control band, with dismissible manual overlay.
 

@@ -70,7 +70,7 @@ async function fixture(t, options = {}) {
     }
     old.close()
   }
-  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getAgents: () => options.agents, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist})
+  let web = await createWebConsole({channels, paths, config, getApplication: () => app, getAgents: () => options.agents, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getNativeModelRoutes: () => options.modelRoutes, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist})
   t.after(async () => {await web.close(); await rm(root, {recursive: true, force: true})})
   let cookie, csrfToken
   const fetchApi = async (path, {method = 'GET', body, headers = {}} = {}) => {
@@ -89,7 +89,7 @@ async function fixture(t, options = {}) {
     return result
   }
   return {root, paths, dist, channels, received, app, fetchApi, login, get web() {return web},
-    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getAgents: () => options.agents, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist}); cookie = undefined; csrfToken = undefined},
+    async restart() {await web.close(); web = await createWebConsole({channels, paths, config, getApplication: () => app, getAgents: () => options.agents, getRedactionSecrets: options.redactionSecrets, getSchedule: () => options.schedule, getSessionPersistence: () => options.persistence, getNativeModelRoutes: () => options.modelRoutes, getMemory: () => options.memory, getChannelConfiguration: () => options.channelConfiguration, getOperatorSettings: () => options.settings, getFeedback: () => options.feedback, dist}); cookie = undefined; csrfToken = undefined},
   }
 }
 
@@ -1575,4 +1575,51 @@ test('task context window uses the bound Pi handle and returns numbers only to a
  assert.deepEqual((await f.fetchApi(path)).body,{status:'unavailable',reason:'awaiting-model-usage'})
  agents.clear()
  assert.deepEqual((await f.fetchApi(path)).body,{status:'unavailable',reason:'task-not-loaded'})
+})
+
+test('completed task context window uses the committed Pi journal without opening an agent',async t=>{
+ const {Context}=await import('@deepseek-ai/cordis')
+ const Authority=await import('../../../src/pi-authority.js')
+ const {default:PiPersistence}=await import('../../../src/pi-session-persistence.js')
+ const root=await mkdtemp(join(tmpdir(),'night-task-context-')),ctx=new Context()
+ t.after(async()=>{await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})})
+ await ctx.plugin(Authority)
+ const native=new PiPersistence(ctx,{root:join(root,'journals')})
+ const writer=await native.createNative({version:4,id:'pi-one',createdAt:Date.now(),isSeeded:false,cwd:root},{auditKinds:{'task/identity':()=>true}})
+ writer.appendAudit({version:1,domain:'task',kind:'identity',payload:{taskId:'task-one',sessionId:'pi-one'}})
+ writer.manager.appendModelChange('fixture','model')
+ writer.manager.appendMessage({role:'assistant',provider:'fixture',model:'model',stopReason:'stop',usage:{input:1200,output:100,cacheRead:200,cacheWrite:0,totalTokens:1500},content:[{type:'text',text:'PRIVATE_FIXTURE_CONTEXT'}],timestamp:Date.now()})
+ writer.manager.appendMessage({role:'user',content:[{type:'text',text:'next'}],timestamp:Date.now()})
+ await writer.close()
+ let withWindow=true,reads=0,wrongIdentity=false,changedDigest=false
+ const persistence={readNative:async(id,opts)=>{
+   assert.equal(id,'pi-one');assert.deepEqual(opts,{requireComplete:true});reads++
+   const saved=await native.readNative(id,opts)
+   return wrongIdentity?{...saved,audit:[]}:saved
+ },readNativeDigest:id=>changedDigest?'changed':native.readNativeDigest(id)}
+ const modelRoutes={describeModel:async(provider,id)=>{
+   assert.deepEqual([provider,id],['fixture','model'])
+   return withWindow?{context:{contextWindow:8000}}:null
+ }}
+ const f=await fixture(t,{persistence,modelRoutes}),path='/api/tasks/task-one/context-window'
+ const read=f.app.tasks.taskDetail
+ f.app.tasks.taskDetail=async id=>{const row=await read(id);return row&&{...row,state:'completed'}}
+ assert.equal((await f.fetchApi(path)).status,401)
+ assert.equal(reads,0)
+ await f.login()
+ const ready=(await f.fetchApi(path)).body
+ assert.equal(ready.basis,'pi-committed-context-estimate')
+ assert.equal(ready.tokens,1501)
+ assert.equal(ready.contextWindow,8000)
+ assert.equal(ready.windowBasis,'current-model-config')
+ assert.equal(ready.categories.reduce((n,row)=>n+row.tokens,0),1501)
+ assert.doesNotMatch(JSON.stringify(ready),/PRIVATE_FIXTURE_CONTEXT|fixture|pi-one/)
+ withWindow=false
+ const count=(await f.fetchApi(path)).body
+ assert.equal(count.tokens,1501)
+ assert.equal(count.contextWindow,undefined)
+ changedDigest=true
+ assert.deepEqual((await f.fetchApi(path)).body,{status:'unavailable'})
+ changedDigest=false;wrongIdentity=true
+ assert.deepEqual((await f.fetchApi(path)).body,{status:'unavailable'})
 })

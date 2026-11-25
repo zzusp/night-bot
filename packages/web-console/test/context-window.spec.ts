@@ -64,7 +64,25 @@ test('task context window follows objective and precedes consumption; no Router 
  }
  available=false;
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
- await expect(card).toContainText('任务会话未在运行');
+ await expect(card).toContainText('暂无已保存的上下文记录');
  await expect(card.locator('.context-window-bar')).toHaveCount(0);
  await expect(card).not.toContainText('387k');
 });
+
+test('completed task displays saved context with or without a known window',async({page})=>{
+ let contextWindow:number|undefined=472000
+ await page.route('**/api/tasks/task-summary/context-window',route=>route.fulfill({json:{...synthetic,basis:'pi-committed-context-estimate',contextWindow,...contextWindow?{windowBasis:'current-model-config'}:{}}}))
+ await page.goto('/#/tasks/task-summary')
+ await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN)
+ await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
+ const card=page.getByRole('region',{name:'上下文窗口',exact:true})
+ await expect(card).toContainText('387k / 472k (82%)')
+ await expect(card).toContainText('已保存上下文估算 · 上限按当前模型配置')
+ contextWindow=undefined
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')))
+ await expect(card).toContainText('387k tokens')
+ await expect(card).toContainText('未知窗口上限')
+ await expect(card).toContainText('消息与摘要')
+ await expect(card.locator('.context-window-bar')).toHaveCount(0)
+ await expect(card).not.toContainText('可用空间')
+})

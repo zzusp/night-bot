@@ -97,7 +97,7 @@ async function staticResponse(pathname, request, response, dist) {
 }
 
 // 仅作为可选适配器：不导入核心实现，不扩展领域 schema，也不引入模型调用或任务调度。
-export async function createWebConsole({channels, paths, config, getApplication, getAttachments = () => undefined, getAgents = () => undefined, getRedactionSecrets = () => [], getFeedback = () => undefined, getSchedule = () => undefined, getSessionPersistence = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, getDeploymentInventory = () => undefined, dist = defaultDist, listen = true}) {
+export async function createWebConsole({channels, paths, config, getApplication, getAttachments = () => undefined, getAgents = () => undefined, getRedactionSecrets = () => [], getFeedback = () => undefined, getSchedule = () => undefined, getSessionPersistence = () => undefined, getNativeModelRoutes = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, getDeploymentInventory = () => undefined, dist = defaultDist, listen = true}) {
   const channelId = identifier(config.channelId ?? 'web-console')
   const senderId = identifier(config.senderId)
   const operatorName = (typeof config.operatorName === 'string' ? config.operatorName.trim().slice(0, 256).trim() : '') || '本机操作者'
@@ -515,7 +515,8 @@ export async function createWebConsole({channels, paths, config, getApplication,
     if (request.method === 'GET' && contextTask) {
       if ([...url.searchParams.keys()].length) fail('PAGE_INVALID')
       const id = decodeURIComponent(contextTask[1])
-      const snapshot = await taskContextWindow(() => sessionTask(id), getAgents(), id)
+      const snapshot = await taskContextWindow(() => sessionTask(id), getAgents(), id, {persistence:getSessionPersistence(),describeModel:(provider,model)=>getNativeModelRoutes()?.describeModel(provider,model)})
+      if(sessions.require(request).key!==session.key)fail('AUTH_REQUIRED',401)
       if (!snapshot) fail('TASK_NOT_FOUND',404)
       return send(response,200,snapshot)
     }
@@ -758,7 +759,7 @@ export async function apply(ctx, config) {
       if (typeof credentials?.redactionValues !== 'function') throw new Error('Credentials unavailable')
       return [...await credentials.redactionValues(), ...launchEnvironmentOf(ctx).redactionValues()]
     },
-    getAgents: () => ctx.get('agents'), getSchedule: () => ctx.get('schedule'), getSessionPersistence: () => ctx.sessionPersistence, getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), getFeedback: () => ctx.get('errorFeedback'), getDeploymentInventory:()=>ctx.get('deploymentInventory')?.read(), listen: false})
+    getAgents: () => ctx.get('agents'), getSchedule: () => ctx.get('schedule'), getSessionPersistence: () => ctx.sessionPersistence, getNativeModelRoutes: () => ctx.get('nativeModelRoutes'), getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), getFeedback: () => ctx.get('errorFeedback'), getDeploymentInventory:()=>ctx.get('deploymentInventory')?.read(), listen: false})
   const stop = () => stopping ??= prepared.then(web => web.close(), () => undefined)
   ctx.effect(() => stop, 'optional Web console shutdown')
   ctx.on('night/stopping', stop)

@@ -1,9 +1,10 @@
+import { memo } from 'react';
 import { ApiError, type TokenUsage } from '../api';
 import { exactTokenCount as format, formatTokenCount } from '../token-format';
 import { tokenArc } from '../token-arc';
 import { Notice } from './Shared';
 const metrics = [['input','输入'],['output','输出'],['cacheWrite','缓存写入'],['cacheRead','缓存命中']] as const;
-export function TaskTokenUsage({usage,error,stale,onRetry}: {usage?:TokenUsage;error?:Error|null;stale?:boolean;onRetry:()=>void}) {
+export const TaskTokenUsage = memo(function TaskTokenUsage({usage,error,stale,onRetry}: {usage?:TokenUsage;error?:Error|null;stale?:boolean;onRetry:()=>void}) {
   const forbidden=error instanceof ApiError && ([401,403,404].includes(error.status) || /IDENTITY|SOURCE_IDENTITY|USAGE_INVALID/.test(error.code));
   const data=forbidden?undefined:usage;
   const complete=!!data && metrics.every(([key])=>format(data[key])!=='未知') && format(data.total)!=='未知';
@@ -26,4 +27,6 @@ export function TaskTokenUsage({usage,error,stale,onRetry}: {usage?:TokenUsage;e
     <dl className="task-token-values">{metrics.map(([key,label])=><div key={key}><dt><i className={`token-${key}`} aria-hidden="true" />{label}</dt><dd title={`${label}：${format(data?.[key])} Tokens`}>{formatTokenCount(data?.[key])}</dd></div>)}</dl>
     {error && <Notice error={error} stale={!forbidden && stale} onRetry={onRetry} />}
   </section>;
-}
+}, (a,b) => a.error===b.error && a.stale===b.stale && a.onRetry===b.onRetry &&
+  a.usage?.basis===b.usage?.basis && a.usage?.total===b.usage?.total &&
+  metrics.every(([key])=>a.usage?.[key]===b.usage?.[key]));
