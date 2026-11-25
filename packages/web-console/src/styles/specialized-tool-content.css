@@ -29,7 +29,14 @@
 .resident-action-copy dt, .resident-settlement dt { color: var(--board-muted); }
 .resident-action-copy dd, .resident-settlement dd { margin: 0; min-width: 0; white-space: pre-wrap; }
 .resident-action-copy ul { margin: 0; padding-inline-start: 1.3em; }
-.resident-action > .specialized-tool-fields { margin-top: 4px; }
+/* The second disclosure is for supporting information, not a nested card. */
+.resident-more { margin-top: 4px; font-size: 12px; line-height: 1.55; }
+.resident-more > summary { display: list-item; cursor: pointer; width: fit-content; max-width: 100%; padding: 3px 2px; color: var(--board-muted); border-radius: 3px; }
+.resident-more > summary:focus-visible { outline: 2px solid var(--board-focus); outline-offset: 1px; }
+.resident-more-body { margin: 2px 0 0; padding: 4px 0 4px 8px; border-inline-start: 1px solid var(--board-border); display: grid; gap: 6px; }
+.resident-more:not([open]) > .resident-more-body { display: none; }
+.resident-query-tasks { margin: 0; padding: 0; list-style: none; }
+.resident-query-tasks > li + li { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--board-border); }
 .resident-settlement p { margin: 0; }
 .resident-settlement dl { margin-top: 3px; }
 .resident-settlement ul { display: flex; flex-wrap: wrap; gap: 3px 12px; margin: 0; padding: 0; list-style: none; }

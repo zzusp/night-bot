@@ -1,8 +1,9 @@
+import type {ReactNode} from 'react';
 import {dateTime} from '../hooks';
 import {specializedToolPresentation} from '../specialized-tool-content';
 import {planStatusText, type ResidentPlan, type ResidentField} from '../resident-tool-content';
 import type {CompactToolView} from '../compact-tool-presentation';
-import type {ResidentAction, ResidentSettlement, SettleItem} from '../resident-activity-presentation';
+import type {ActionCopy, ResidentAction, ResidentSettlement, ResidentTaskQuery, SettleItem} from '../resident-activity-presentation';
 import {TaskToolDetails, TodoCountsRow} from './TaskToolDetails';
 import '../styles/specialized-tool-content.css';
 export {hasSpecializedToolContent, specializedToolLabel, specializedToolSummary} from '../specialized-tool-content';
@@ -35,6 +36,8 @@ export default function SpecializedToolContent(props: SpecializedToolContentProp
     {view.task && <TaskToolDetails view={view.task} recorded={props.todoRecorded} />}
     {view.todoReceipt && <div className="task-tool-heading"><strong>待办已更新</strong><TodoCountsRow counts={view.todoReceipt} /></div>}
     {view.taskFailure !== undefined && <p className="task-tool-failure">{view.taskFailure}</p>}
+    {view.queryParameters && <MoreToolDetails label="查询参数"><ResidentFields fields={view.queryParameters} /></MoreToolDetails>}
+    {view.taskQuery && <TaskQueryBody query={view.taskQuery} />}
     {view.compact && <CompactToolBody view={view.compact} />}
     {view.settlement && <SettlementBody settlement={view.settlement} result={props.phase==='output'} />}
     {!action && view.resident && <ResidentFields fields={view.resident} />}
@@ -58,20 +61,56 @@ function ResidentPlanBody({plan}: {plan: ResidentPlan}) {
         {dependency.condition}{dependency.state && <span className="resident-plan-note">（{dependency.state === 'pending' ? '待满足' : dependency.state === 'satisfied' ? '已满足' : dependency.state}）</span>}</li>)}</ul></div>}
   </div>;
 }
+function MoreToolDetails({children, label = '更多详情'}: {children: ReactNode; label?: string}) {
+  return <details className="resident-more"><summary>{label}</summary><div className="resident-more-body">{children}</div></details>;
+}
+function TaskStatus({state, control}: {state?: string; control?: string}) {
+  const display = [...new Set([state, control === '启用' && state ? undefined : control].filter(Boolean))].join(' · ');
+  return display ? <span className="resident-action-state">{display}</span> : null;
+}
+function ActionFields({fields}: {fields: ActionCopy[]}) {
+  return <dl className="resident-action-copy">{fields.map((item,i) =>
+      <div key={i}><dt>{item.label}</dt><dd>{item.list ? <ul>{item.list.map((line,n)=><li key={n}>{line}</li>)}</ul> : item.text}</dd></div>
+    )}</dl>;
+}
+// Keep the current task brief visible, without repeating identical text.
+function taskBrief(copy: ActionCopy[], outcome?: ActionCopy) {
+  const seen = new Set<string>();
+  return [...(outcome ? [outcome] : []), ...copy].filter(item => {
+    if (!item.text) return true;
+    const value = item.text.trim();
+    if (seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  });
+}
+function TaskQueryBody({query}: {query: ResidentTaskQuery}) {
+  return <div className="resident-action">
+    <ul className="resident-query-tasks">{query.tasks.map((task,i) => {
+      const fields = taskBrief(task.copy,task.outcome);
+      return <li key={i}>
+        <div className="resident-action-heading"><strong>{task.title}</strong><TaskStatus state={task.state} control={task.control} /></div>
+        {fields.length > 0 && <ActionFields fields={fields} />}
+      </li>;
+    })}</ul>
+    {query.notice && <p className="resident-action-notice">{query.notice}</p>}
+    {query.extra.length > 0 && <MoreToolDetails><ResidentFields fields={query.extra} /></MoreToolDetails>}
+  </div>;
+}
 function ResidentActionBody({action}: {action: ResidentAction}) {
+  const secondary = action.copy.filter(item=>item.label.startsWith('提交的'));
+  const primary = taskBrief(action.copy.filter(item=>!secondary.includes(item)),action.outcome);
   return <div className="resident-action">
     <div className="resident-action-heading">
       {(action.title || action.action) && <strong>{action.title || action.action}</strong>}
-      {(action.state || action.control) && <span className="resident-action-state">
-        {action.state}{action.control && action.control !== '启用' && <>{action.state ? ' · ' : ''}{action.control}</>}
-        {!action.state && action.control === '启用' && action.control}
-      </span>}
+      <TaskStatus state={action.state} control={action.control} />
     </div>
     {action.notice && <p className="resident-action-notice">{action.notice}</p>}
-    {action.copy.length > 0 && <dl className="resident-action-copy">{action.copy.map((item,i) =>
-      <div key={i}><dt>{item.label}</dt><dd>{item.list ? <ul>{item.list.map((line,n)=><li key={n}>{line}</li>)}</ul> : item.text}</dd></div>)}
-    </dl>}
-    {action.extra.length > 0 && <ResidentFields fields={action.extra} />}
+    {primary.length > 0 && <ActionFields fields={primary} />}
+    {(secondary.length > 0 || action.extra.length > 0) && <MoreToolDetails>
+      {secondary.length > 0 && <ActionFields fields={secondary} />}
+      {action.extra.length > 0 && <ResidentFields fields={action.extra} />}
+    </MoreToolDetails>}
   </div>;
 }
 function CompactToolBody({view}: {view: CompactToolView}) {

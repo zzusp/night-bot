@@ -72,3 +72,24 @@ test('settlement only displays allowlisted presentation fields on the appropriat
  assert.equal(event({recorded:true,kind:'task.completed',snippet:'do not show'}),undefined)
  assert.equal(event({recorded:true,kind:'source.message',snippetTruncated:true}),undefined)
 })
+
+test('task lookup prioritizes a current outcome and keeps old decisions in details',()=>{
+ const toolName='resident_task_query';
+ const task={taskId:'task-1',title:'核对发布记录',status:'completed',control:'active',objective:'核对版本',
+  requirements:['校验同一版本'],lastDecision:{action:'blocked',summary:'旧判断'},completion:{summary:'核对完成'}};
+ const input=specializedToolPresentation({toolName,phase:'input',text:JSON.stringify({taskId:task.taskId,detail:'full'})});
+ assert.deepEqual(input.queryParameters.map(field=>field.value),[task.taskId,'完整']);
+ const text=JSON.stringify({task});
+ const out=specializedToolPresentation({toolName,phase:'output',status:'completed',text});
+ assert.deepEqual(out.taskQuery.tasks[0].outcome,{label:'结论',text:'核对完成'});
+ assert.equal(out.taskQuery.tasks[0].state,'已完成');
+ assert.deepEqual(out.taskQuery.tasks[0].copy,[{label:'目标',text:'核对版本'},{label:'要求',list:['校验同一版本']}]);
+ assert.match(JSON.stringify(out.taskQuery.extra),/旧判断/);
+ assert.doesNotMatch(JSON.stringify(out.taskQuery.extra),/校验同一版本/);
+ assert.equal(specializedToolPresentation({toolName,phase:'output',status:'completed',text,complete:false}).text,text);
+ assert.equal(specializedToolPresentation({toolName,phase:'output',status:'error',text,isError:true}).text,text);
+ const running=specializedToolPresentation({toolName,phase:'output',status:'completed',text:JSON.stringify({tasks:[{...task,status:'active'}],hasMore:true})});
+ assert.equal(running.taskQuery.tasks[0].outcome,undefined);
+ assert.ok(running.taskQuery.tasks[0].copy.some(field=>field.text==='核对版本'));
+ assert.equal(running.taskQuery.notice,'还有更多任务');
+});
