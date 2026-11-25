@@ -1,5 +1,10 @@
-const kinds = {unclassified: '未分类'};
-export type ContextWindowSnapshot = {status: string; tokens?: number; contextWindow?: number; categories?: {key: string; tokens: number}[]};
+const kinds = {messages: '消息与摘要', skills: 'Skills', memory: '记忆', systemTools: '系统工具定义', system: '系统提示', tools: '其他工具返回', unclassified: '未分类'};
+const unavailableDetails = {
+  'not-started': '该会话还没有 Router 运行记录。',
+  'not-loaded': '当前进程尚未加载此 Router；加载完成后会自动更新。',
+  'awaiting-model-usage': '上下文刚压缩，等待下一次有效的模型响应。',
+};
+export type ContextWindowSnapshot = {status: string; reason?: keyof typeof unavailableDetails; tokens?: number; contextWindow?: number; categories?: {key: string; tokens: number}[]};
 const compact = (n: number) => n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${+(n / 1000).toFixed(1)}k` : String(n);
 
 export function RouterContextWindow({snapshot, loading}: {snapshot?: ContextWindowSnapshot; loading: boolean}) {
@@ -31,8 +36,8 @@ export function RouterContextWindow({snapshot, loading}: {snapshot?: ContextWind
           {rows.map((row,index) => <div className="context-window-row" key={`${row.key}-${index}`}><i className={`context-color-${row.key}`}/><span>{kinds[row.key as keyof typeof kinds]}</span><span className="context-window-tokens">{compact(row.tokens)}</span><span className="context-window-percent">{percent(row.tokens)}</span></div>)}
           <div className="context-window-row"><i className="context-color-available"/><span>可用空间</span><span className="context-window-tokens">{compact(available)}</span><span className="context-window-percent">{percent(available)}</span></div>
         </div>
-        <p className="context-window-note">Pi 估算 · 未分类部分暂无可靠明细</p>
-      </> : <p className="rail-empty">{loading ? '读取中…' : '暂无可靠的上下文计数'}</p>}
+        <p className="context-window-note">Pi 估算{rows.some(row => row.key === 'unclassified') ? ' · 未分类部分暂无可靠明细' : ''}</p>
+      </> : <p className="rail-empty">{loading ? '读取中…' : '暂无可靠的上下文计数'}{!loading && snapshot?.status === 'unavailable' && snapshot.reason && Object.hasOwn(unavailableDetails, snapshot.reason) && <><br/>{unavailableDetails[snapshot.reason]}</>}</p>}
     </div>
   </section>;
 }

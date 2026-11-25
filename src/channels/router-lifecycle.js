@@ -88,13 +88,13 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       await memory.bindSession(id,{actorId:'router-room-'+hash(conversationId),groupId:conversationId,groupWrite:false})
     }
   }
-  async function open(row,{handoff,previous}={}){
+  async function open(row,{handoff,previous,existingOnly=false}={}){
     assertOpen()
     const id=handoff?sessionId(row.id,row.generation+1):row.activeSessionId
     if(handles.has(id))return handles.get(id)
     const existing=await persistence.stat(id);assertOpen()
     const expectedGeneration=handoff?row.generation+1:row.generation
-    if(existing&&(existing.header.conversationId!==row.id||existing.header.generation!==expectedGeneration||existing.header.runtimeOwner!=='conversation-router'))fail('ROUTER_NATIVE_IDENTITY_INVALID')
+    if((existingOnly&&!existing)||existing&&(existing.header.conversationId!==row.id||existing.header.generation!==expectedGeneration||existing.header.runtimeOwner!=='conversation-router'))fail('ROUTER_NATIVE_IDENTITY_INVALID')
     await bindMemory(id,row.id,previous);assertOpen()
     const workspace=await sessionWorkspace(root,'resident');assertOpen()
     const generation=handoff?row.generation+1:row.generation
@@ -496,15 +496,37 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     void work.then(()=>errors.delete(conversationId),error=>{if(attempted)errors.set(conversationId,error)}).finally(()=>{inflight.delete(work);if(tails.get(conversationId)===work)tails.delete(conversationId)}).catch(()=>{})
     return work
   }
+  async function restoreIdle(rows,failures){
+    for(const expected of rows){
+      if(closed)return
+      const id=expected.id
+      if(handles.has(expected.activeSessionId))continue
+      const previous=tails.get(id)??Promise.resolve()
+      const work=previous.catch(()=>{}).then(async()=>{
+        assertOpen()
+        const row=await query('router.get',{conversationId:id});assertOpen()
+        if(row?.phase!=='active'||row.generation!==expected.generation||row.activeSessionId!==expected.activeSessionId)return
+        if(row.activeSessionId!==sessionId(id,row.generation))fail('ROUTER_NATIVE_IDENTITY_INVALID')
+        ctx.get('channels').assertGroupTarget(id)
+        await open(row,{existingOnly:true})
+      })
+      try{await trackTail(id,work)}catch(error){
+        if(closed)return
+        const code=error.code??'ROUTER_IDLE_RESTORE_FAILED'
+        failures.push({conversationId:id,code});ctx.logger?.warn?.(`Idle Router restore: ${code}`)
+      }
+    }
+  }
   return {schedule,inspectRouterBatch,checkRouterBatch,resumeRouterBatch,errors,hasInflight:conversationId=>tails.has(conversationId),
     async whenIdle(){for(;;){const work=[...tails.values()];await Promise.all(work);if(!tails.size)break}},
-    async recover({wait=true}={}){
+    async recover({wait=true,restoreIdleRouters=false}={}){
       const conversations=new Set((await query('router.list')).map(row=>row.id))
       for(const id of await query('router.pending-conversations'))conversations.add(id)
-      const failures=[],fatal=[],work=[]
+      const failures=[],fatal=[],work=[],idle=[]
       for(const id of conversations){
         if(tails.has(id))continue
         const row=await query('router.get',{conversationId:id}),inbox=await query('router.inbox',{conversationId:id,limit:30,deliverable:true})
+        if(restoreIdleRouters&&row?.phase==='active'&&!inbox.length){idle.push(row);continue}
         const inspection=inbox.some(event=>event.kind==='task.inspection')
         const key=hash([row?.generation,inbox.map(event=>event.id)]),retry=row?.recoveryRetry
         if(inspection&&row?.phase==='active'&&retry?.key===key&&Date.parse(retry.nextAttemptAt)>Date.now()){
@@ -516,6 +538,12 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
           if(row&&inspection)await command('router.recovery-attempt',{conversationId:id,generation:row.generation,key})
         })
         work.push(recovering)
+      }
+      if(idle.length){
+        const restoring=restoreIdle(idle,failures)
+        inflight.add(restoring)
+        void restoring.finally(()=>inflight.delete(restoring)).catch(()=>{})
+        work.push(restoring)
       }
       if(wait)await Promise.all(work)
       else void Promise.all(work).catch(error=>ctx.logger?.warn?.(error.code??'ROUTER_RECOVERY_FAILED'))

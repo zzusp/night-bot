@@ -61,6 +61,20 @@
 .context-window-tokens { color: var(--board-muted); text-align: right; }
 .context-window-percent { text-align: right; }
 .context-window-note { font-size: 10px; line-height: 16px; color: var(--board-muted); margin: 14px 0 0; }
-.context-color-unclassified { background: var(--board-info); }
+.router-context-window {
+  --context-messages: #2a78d6; --context-skills: #eb6834; --context-memory: #1baf7a;
+  --context-system-tools: #eda100; --context-system: #e87ba4; --context-tools: #008300;
+}
+:root[data-theme='dark'] .router-context-window, :root.dark .router-context-window {
+  --context-messages: #3987e5; --context-skills: #d95926; --context-memory: #199e70;
+  --context-system-tools: #c98500; --context-system: #d55181; --context-tools: #0ca30c;
+}
+.context-color-messages { background: var(--context-messages); }
+.context-color-skills { background: var(--context-skills); }
+.context-color-memory { background: var(--context-memory); }
+.context-color-systemTools { background: var(--context-system-tools); }
+.context-color-system { background: var(--context-system); }
+.context-color-tools { background: var(--context-tools); }
+.context-color-unclassified { background: repeating-linear-gradient(135deg, var(--board-muted) 0 2px, var(--board-border) 2px 4px); }
 .context-color-available { background: var(--board-border); }
 @media (forced-colors: active) { .router-context-window { border: 1px solid CanvasText; }.context-window-row > i, .context-window-bar { border: 1px solid CanvasText; } }
