@@ -15,11 +15,11 @@ async function fixture(t){
  const args={conversationId:'room',generation:1,sourceId:'source',messageVersion:1,operationId:'lookup',taskIds:['task']}
  return {command,query,args,store,root,dbPath:join(root,'tasks.sqlite')}
 }
-test('durable lookup admission is scoped, idempotent and capacity bounded without changing task state',async t=>{
+test('durable lookup admission is scoped and idempotent per source version without changing task state',async t=>{
  const f=await fixture(t),tasks=await f.query('task.list')
  for(const patch of [{taskIds:['foreign']},{conversationId:'other'},{sourceId:'missing'},{taskIds:[]},{taskIds:['task','task']}])await assert.rejects(f.command('router.lookup.submit',{...f.args,...patch}))
  const first=await f.command('router.lookup.submit',f.args),again=await f.command('router.lookup.submit',f.args);assert.deepEqual(first.result,again.result)
- await assert.rejects(f.command('router.lookup.submit',{...f.args,operationId:'second'}),{code:'ROUTER_LOOKUP_CAPACITY'})
+ await assert.rejects(f.command('router.lookup.submit',{...f.args,operationId:'second'}),{code:'ROUTER_LOOKUP_SOURCE_ALREADY_SUBMITTED'})
  assert.deepEqual(await f.query('task.list'),tasks);assert.equal((await f.query('router.lookup.pending')).length,1)
  await assert.rejects(f.command('router.lookup.complete',{conversationId:'other',lookupId:first.result.lookup.id,status:'failed'}),{code:'ROUTER_LOOKUP_SCOPE'})
 })
@@ -43,7 +43,7 @@ test('task revision changes produce stale metadata, not an obsolete successful s
  const value=await f.command('router.lookup.complete',{conversationId:'room',lookupId:lookup.id,status:'completed',summary:'Obsolete running status',limitations:[],snapshots:[{taskId:'task',requirementRevision:1,controlRevision:1,contextRevision:0,runSequence:1,status:'active',leaseEpoch:0}]})
  assert.equal(value.result.lookup.state,'stale');assert.equal(value.result.event.lookupResult.summary,undefined)
 })
-test('instance-wide lookup capacity bounds independent conversations without granting cross-conversation reads',async t=>{
+test('durable admission queues independent conversations without granting cross-conversation reads',async t=>{
  const f=await fixture(t)
  await f.command('router.lookup.submit',f.args)
  for(const room of ['other','third']){
@@ -51,10 +51,9 @@ test('instance-wide lookup capacity bounds independent conversations without gra
   await f.command('router.ensure',{conversationId:room,sessionId:room+'-router'})
   if(room==='third')await f.command('task.create',{taskId:'third-task',groupId:room,conversationId:room,ownerActorId:'alice',request:'Retained task'})
   const args={conversationId:room,generation:1,sourceId:room+'-source',messageVersion:1,operationId:room+'-lookup',taskIds:[room==='other'?'foreign':'third-task']}
-  if(room==='other')await f.command('router.lookup.submit',args)
-  else await assert.rejects(f.command('router.lookup.submit',args),{code:'ROUTER_LOOKUP_CAPACITY'})
+  await f.command('router.lookup.submit',args)
  }
- assert.equal((await f.query('router.lookup.pending')).length,2)
+ assert.equal((await f.query('router.lookup.pending')).length,3)
 })
 
 test('same-version retracted legacy source cannot deliver a late result even without an authorizationRevoked flag',async t=>{
