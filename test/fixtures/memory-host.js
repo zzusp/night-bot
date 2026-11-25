@@ -69,8 +69,8 @@ export function scriptedSkillGeneration(body){
 // never supplies admission decisions or treats these fixture judgments as proof.
 function scriptedAdmissionSelection(body){
  const input=JSON.parse(body.messages.findLast(m=>m.role==='user').content),catalog=input.catalog;
- const memoryIds=[...new Set(catalog.memories.map(e=>e.id))],skillKeys=[...new Set(catalog.skills.map(e=>e.key))];
- return {text:JSON.stringify({memoryIds,skillKeys,installedIds:[]})};
+ const refs=[...new Set([...catalog.memories,...catalog.skills].map(e=>e.ref))];
+ return {text:JSON.stringify({refs})};
 }
 function scriptedAdmissionDecisions(body,decision){
  if(!decision?.text||!JSON.stringify(body.messages).includes('NIGHT_BOT_TASK_REFLECTION'))return decision;

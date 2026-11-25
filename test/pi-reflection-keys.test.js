@@ -7,6 +7,7 @@ import {hash} from '../src/memory/format.js'
 import {memoryScope} from '../src/memory/scope.js'
 import {atomicWrite} from '../src/runtime/files.js'
 import {memoryHost,initializeMemoryTaskWorkspace} from './fixtures/memory-host.js'
+import {residentRouterHost,channelMessage,requestEnvelope,requestTools} from './fixtures/resident-router-host.js'
 import {openDynamicTaskStore} from '../packages/dingtalk-core/dynamic-task-store.js'
 
 test('semantic key collisions are rejected rather than renamed, while durable reservations stay fixed',()=>{
@@ -34,15 +35,32 @@ test('historical keys come only from explicit references and unsupported lessons
  assert.equal(reflectionRetrySupported({...historical,memoryKeyVersion:1}),false)
 })
 
-async function fixture(t,makeLessons){
+async function fixture(t,makeLessons,{routeExperience=false}={}){
  let analyses=0,detach,f,store
  const cleanups=[]
  t.after(async()=>{detach?.();try{await f?.close()}finally{try{await store?.close()}finally{for(const cleanup of cleanups.reverse())await cleanup()}}})
- f=await memoryHost({after:cleanup=>cleanups.push(cleanup)},async body=>{
+ const harness={after:cleanup=>cleanups.push(cleanup),diagnostic:message=>t.diagnostic(message)}
+ const decided=new Set(),actions=new Map(),results=new Map()
+ const decide=async body=>{
+  if(routeExperience&&requestTools(body).includes('resident_router_settle')){
+   const input=requestEnvelope(body,'Router 请求：'),source=input.events.find(row=>row.source)?.source
+   if(!source)return {text:'No user request'}
+   if(!decided.has(source.messageId)){
+    decided.add(source.messageId)
+    const {key,action,expectedRevision}=actions.get(source.messageId)
+    const args={sourceId:source.sourceId,messageVersion:source.version,sourceQuote:source.text,topic:'experience',key,expectedRevision}
+    if(action==='forget')return {tool:'resident_memory_forget',args}
+    return {tool:'resident_memory_remember',args:{...args,memory:{summary:source.text,why:'已核实的本地复查结果。',howToApply:'先核对同类本地记录。',appliesTo:{kind:'context',description:'同类本地记录复查'},evidence:[{id:'source',source:'message',sourceId:source.sourceId,messageVersion:source.version,quote:source.text}]}}}
+   }
+   if(results.has(source.messageId))return {text:'The write result was read'}
+   results.set(source.messageId,JSON.parse(body.messages.at(-1).content))
+   return {tool:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'reflection-memory:'+source.messageId}}
+  }
   if(!JSON.stringify(body).includes('NIGHT_BOT_TASK_REFLECTION'))return
   analyses++;const input=JSON.parse(body.messages.findLast(row=>row.role==='user').content)
   return {text:JSON.stringify({lessons:await makeLessons(input)})}
- })
+ }
+ f=await (routeExperience?residentRouterHost:memoryHost)(harness,decide)
  const ctx=f.host.ctx,scope=memoryScope({actorId:'owner'})
  store=await openDynamicTaskStore({dbPath:join(ctx.runtimePaths.state,'keys.sqlite'),instanceId:'keys',initialize:true})
  let seq=0
@@ -51,7 +69,15 @@ async function fixture(t,makeLessons){
  await initializeMemoryTaskWorkspace(store,ctx.runtimePaths.workspaces,'task-one')
  const binding=(await command('task.claim',{taskId:'task-one'})).result.binding
  const event=(await command('task.complete',{binding,summary:'Verified local evidence'})).completionEvent
- return {ctx,scope,store,event,command,get analyses(){return analyses},start:async()=>{detach=ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await ctx.reflection.whenIdle()},retry:async()=>{
+ return {ctx,scope,store,event,command,async routeMemory({key,action='remember',expectedRevision=0}){
+  const id='experience-'+(actions.size+1)
+  actions.set(id,{key,action,expectedRevision})
+  await f.receive(channelMessage(id,{text:action==='forget'?'请删除这条已经失效的本地复查经验。':'这条本地复查经验已经核实，请记下更新 '+id+'。'}))
+  await f.service.whenIdle()
+  const result=results.get(id)
+  assert.equal(result?.ok,true,JSON.stringify(result))
+  return result
+ },get analyses(){return analyses},start:async()=>{detach=ctx.reflection.attachStore(store,{ownerActorId:'owner',model:f.config.model});await ctx.reflection.whenIdle()},retry:async()=>{
   const state=await ctx.reflection.state(scope);state.reviews[hash(event.id)].retryAt=0
   await atomicWrite(join(ctx.reflection.directory(scope),'state.json'),JSON.stringify(state))
   ctx.reflection.scan();await ctx.reflection.whenIdle()
@@ -101,19 +127,82 @@ test('duplicate model lesson keys fail before any memory writes',async t=>{
  assert.deepEqual((await f.ctx.memory.store.read(f.scope,{topic:'experience'})).entries,[])
 })
 
-test('a Router collision during inference is fenced, refuses to rename on retry without overwriting',async t=>{
+test('first-time Router experience writes trigger fresh admission and the review writes once',async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
+ const f=await fixture(t,async input=>{entered.resolve();await release.promise;return [lesson(input,'fresh-plan')]},{routeExperience:true})
+ const memory=f.ctx.memory.store,id=hash(f.event.id),owner=f.ctx.reflection
+ const pending=f.start();await entered.promise
+ assert.equal((await f.routeMemory({key:'unrelated'})).entry.revision,1)
+ release.resolve();await pending
+ const failed=(await owner.state(f.scope)).reviews[id]
+ assert.equal(failed.code,'MEMORY_SCOPE_CHANGED');assert.equal(failed.lessons[0].memoryWrite,'not-applied')
+ assert.deepEqual((await memory.read(f.scope,{topic:'experience'})).entries.map(row=>row.key),['unrelated'])
+ assert.equal((await f.routeMemory({key:'also-unrelated'})).entry.revision,1)
+ await f.retry()
+ const report=(await owner.state(f.scope)).reviews[id]
+ assert.equal(f.analyses,2);assert.equal(report.status,'done');assert.equal(report.attempts,2)
+ const rows=(await memory.read(f.scope,{topic:'experience'})).entries
+ const saved=rows.find(row=>row.key==='fresh-plan');assert.equal(rows.length,3);assert.equal(saved.revision,1);assert.equal(saved.source.messageId,f.event.id)
+ assert.deepEqual(JSON.parse(await readFile(join(owner.directory(f.scope),'reviews',id+'.json'),'utf8')),report)
+ owner.scan();await owner.whenIdle();assert.equal(f.analyses,2)
+ assert.deepEqual((await memory.read(f.scope,{topic:'experience'})).entries,rows)
+ assert.equal((await f.store.query({kind:'task.get',taskId:f.event.taskId})).status,'completed')
+})
+
+test('fresh admission after a Router collision uses the current ownership and leaves its memory untouched',async t=>{
  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
  const f=await fixture(t,async input=>{entered.resolve();await release.promise;return [lesson(input,'same-name')]})
+ const memory=f.ctx.memory.store,id=hash(f.event.id)
  const pending=f.start();await entered.promise
- await f.ctx.memory.store.remember(f.scope,{topic:'experience',key:'same-name',text:'Concurrent Router memory',source:{sessionId:'router',messageId:'current'}})
+ await memory.remember(f.scope,{topic:'experience',key:'same-name',text:'Concurrent Router memory',source:{sessionId:'router',messageId:'current'}})
  release.resolve();await pending
- const before=(await f.ctx.memory.store.read(f.scope,{topic:'experience'})).entries[0]
- const failed=(await f.ctx.reflection.state(f.scope)).reviews[hash(f.event.id)]
+ const before=(await memory.read(f.scope,{topic:'experience'})).entries
+ const failed=(await f.ctx.reflection.state(f.scope)).reviews[id]
  assert.equal(failed.code,'MEMORY_SCOPE_CHANGED');assert.equal(failed.lessons[0].memoryWrite,'not-applied')
  await f.retry()
- const rows=(await f.ctx.memory.store.read(f.scope,{topic:'experience'})).entries
- assert.deepEqual(rows,[before]);assert.equal(f.analyses,1)
- assert.equal((await f.ctx.reflection.state(f.scope)).reviews[hash(f.event.id)].destinations[0].memory.key,'same-name')
+ assert.deepEqual((await memory.read(f.scope,{topic:'experience'})).entries,before);assert.equal(f.analyses,2)
+ const report=(await f.ctx.reflection.state(f.scope)).reviews[id]
+ assert.equal(report.status,'skipped');assert.deepEqual(report.destinations,[])
+})
+
+test('forgetting across attempts does not regenerate a stale no-write plan',async t=>{
+ const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve())
+ const f=await fixture(t,async input=>{entered.resolve();await release.promise;return [lesson(input,'forgotten-plan')]},{routeExperience:true})
+ const memory=f.ctx.memory.store,id=hash(f.event.id),owner=f.ctx.reflection
+ const pending=f.start();await entered.promise
+ await memory.remember(f.scope,{topic:'experience',key:'unrelated',text:'Concurrent Router memory',source:{sessionId:'router',messageId:'current'}})
+ release.resolve();await pending
+ assert.equal((await owner.state(f.scope)).reviews[id].code,'MEMORY_SCOPE_CHANGED')
+ const priorGeneration=(await owner.state(f.scope)).forgetGeneration??0
+ assert.equal((await f.routeMemory({key:'unrelated',expectedRevision:1})).entry.revision,2)
+ assert.equal((await owner.state(f.scope)).forgetGeneration,priorGeneration+1,'a correction revokes old derived content')
+ await f.routeMemory({key:'unrelated',action:'forget',expectedRevision:2})
+ assert.equal((await owner.state(f.scope)).forgetGeneration,priorGeneration+2,'explicit forget revokes old derived content')
+ await f.retry()
+ const report=(await owner.state(f.scope)).reviews[id]
+ assert.equal(f.analyses,1);assert.equal(report.status,'skipped');assert.equal(report.code,'REFLECTION_SCOPE_REVOKED')
+ assert.deepEqual((await memory.read(f.scope,{topic:'experience'})).entries,[])
+})
+
+test('recreating an experience through Router cannot revive leftover derived content',async t=>{
+ const key='deleted-experience'
+ const f=await fixture(t,input=>[{...lesson(input,key),skill:{steps:['Original learned step'],reason:'Verified result',applicability:'Local evidence checks',evidenceBacked:true}}],{routeExperience:true})
+ const owner=f.ctx.reflection,memory=f.ctx.memory.store,id=hash(f.event.id)
+ await f.start()
+ assert.equal((await owner.state(f.scope)).skills[key].active,true)
+ const path=join(owner.directory(f.scope),'skills',key,'SKILL.md')
+ assert.match(await readFile(path,'utf8'),/Original learned step/)
+ // Simulate an interruption after the memory delete committed but before derived cleanup.
+ await memory.forget(f.scope,{topic:'experience',key})
+ assert.equal((await owner.readSkills(f.scope,{key})).entries[0].active,false)
+ const saved=await f.routeMemory({key})
+ assert.equal(saved.entry.revision,1)
+ const state=await owner.state(f.scope)
+ assert.equal(state.skills[key],undefined)
+ assert.equal(state.reviews[id].forgotten,true)
+ assert.deepEqual(state.reviews[id].lessons,[])
+ await assert.rejects(readFile(path),{code:'ENOENT'})
+ assert.equal((await memory.read(f.scope,{topic:'experience',key})).entries.length,1)
 })
 
 test('partial retries retain rejected keys and never replay a completed skill over later Router changes',async t=>{

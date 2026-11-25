@@ -47,7 +47,7 @@ export async function officialReflectionText(resolved,input,{signal,groupRespons
  const result=await stream.result()
  signal?.throwIfAborted()
  if(oversized)throw failure('REFLECTION_TOO_LARGE')
- if(result.stopReason!=='stop'||result.content.some(part=>part.type==='toolCall'))throw failure('REFLECTION_INCOMPLETE')
+ if(result.stopReason!=='stop'||result.content.some(part=>part.type==='toolCall'))throw failure('REFLECTION_MODEL_INCOMPLETE')
  const raw=result.content.filter(part=>part.type==='text').map(part=>part.text).join('')
  if(raw.length>12000)throw failure('REFLECTION_TOO_LARGE')
  return raw

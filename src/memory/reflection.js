@@ -16,6 +16,11 @@ import {checkedText,checkedTextWithLimit,hash,renderMemoryContent} from './forma
 import {atomicWrite,readRegular,withLock,failure,privateDirectory} from '../runtime/files.js'
 const validKey=value=>typeof value==='string'&&/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)&&value.length<=60
 const brief=value=>checkedText(String(value??'').slice(0,1800))
+// Only a known pre-effect CAS conflict can release a reserved plan. Interrupted
+// or partially applied plans keep their original keys and receipt checks.
+function staleUnappliedPlan(review){
+  return ['MEMORY_SCOPE_CHANGED','REFLECTION_REVISION_CONFLICT'].includes(review?.code)&&!review.forgotten&&review.lessons?.length&&review.lessons.every(lesson=>lesson.admission&&!lesson.applied&&!lesson.skillsSnapshot&&(lesson.memoryWrite===undefined||lesson.memoryWrite==='not-applied'))
+}
 /** 任务完成后的无工具复盘；任务账本仍是权威，完成不代表渠道已送达。 */
 export default class Reflection extends Service {
   static inject=['memory','skills','agents','nativePiProvider','runtimePaths']
@@ -71,13 +76,16 @@ export default class Reflection extends Service {
       if(previous&&(previous.status==='done'||previous.status==='skipped'||!reflectionRetrySupported(previous)))return this.archiveReview(source,task.taskId,previous,scope)
       if(previous?.attempts>=3)return this.archiveReview(source,task.taskId,previous,scope)
       if(previous?.retryAt>Date.now())return false
-      const attempts=(previous?.attempts??0)+1
-      let inputRecord=previous?.input,input,snapshot,lessons=previous?.lessons,preparationError
+      const attempts=(previous?.attempts??0)+1,generation=initial.forgetGeneration??0
+      const refresh=previous?.forgetGeneration!==undefined&&staleUnappliedPlan(previous)
+      const revoked=previous?.forgetGeneration!==undefined&&previous.forgetGeneration!==generation&&(refresh||previous.lessons===undefined)
+      const forgetGeneration=previous?previous.forgetGeneration:generation
+      let inputRecord=previous?.input,input,snapshot,lessons=refresh?undefined:structuredClone(previous?.lessons),preparationError
       const signal=this.abort.signal
-      try{
+      if(!revoked)try{
         const executions=await source.store.query({kind:'execution.list',taskId:task.taskId}),operations=await source.store.query({kind:'operation.list',taskId:task.taskId})
         input=reflectionInput(task,event,executions,operations);const known=new Set(input.facts.map(f=>f.id))
-        if(!previous?.lessons)inputRecord={sha256:hash(JSON.stringify(input)),coverage:input.coverage}
+        if(!lessons)inputRecord={sha256:hash(JSON.stringify(input)),coverage:input.coverage}
         snapshot=await this.host.memory.store.index(scope,{topic:'experience',includeExpired:true})
         if(!lessons){
           const official=this.host.get('nativePiProvider')?.official
@@ -85,7 +93,9 @@ export default class Reflection extends Service {
           const resolved=await official.resolve({...source.model,signal:AbortSignal.any([signal,AbortSignal.timeout(30000)])},source.credentials===undefined?undefined:{credentials:source.credentials})
           // The configured Pi provider already bounds idle streams. A fixed
           // total deadline here also aborts healthy, progressing inference.
-          const admission=await reflectionAdmission(this,scope,initial,input,(value,instructions)=>officialReflectionText(resolved,value,{signal,groupResponsibility:source.responsibilityFor?.(task.groupId)??'',instructions:instructions??ADMISSION_PROMPT}),{fits:reflectionInputFits(resolved,source.responsibilityFor?.(task.groupId)??'')})
+          // Drop only this event's proven-unused reservations for fresh admission.
+          const admissionState=refresh?{...initial,reviews:Object.fromEntries(Object.entries(initial.reviews).filter(([key])=>key!==id))}:initial
+          const admission=await reflectionAdmission(this,scope,admissionState,input,(value,instructions)=>officialReflectionText(resolved,value,{signal,groupResponsibility:source.responsibilityFor?.(task.groupId)??'',instructions:instructions??ADMISSION_PROMPT}),{fits:reflectionInputFits(resolved,source.responsibilityFor?.(task.groupId)??'')})
           snapshot=admission.index
           const output=JSON.parse(admission.raw)
           output.lessons=admitReflectionLessons(output,admission)
@@ -116,7 +126,7 @@ export default class Reflection extends Service {
         // Forgetting or another committed review must not be overwritten by a
         // result prepared against older review state. Retry from current state.
         if(JSON.stringify(state.reviews[id])!==JSON.stringify(previous))return null
-        if((state.forgetGeneration??0)!==(initial.forgetGeneration??0)){
+        if(revoked||(state.forgetGeneration??0)!==generation){
           const revoked={memoryKeyVersion:1,input:inputRecord,status:'skipped',code:'REFLECTION_SCOPE_REVOKED',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons:[],destinations:[]}
           state.reviews[id]=revoked
           await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(revoked,null,2)+'\n')
@@ -126,7 +136,7 @@ export default class Reflection extends Service {
         if(preparationError)throw preparationError
         if(lessons?.[0]?.admission&&lessons.some(lesson=>!lesson.applied)){
           const last=lessons.filter(lesson=>lesson.memoryWrite==='committed'&&lesson.memoryScopeRevision!==undefined).at(-1)
-          const expectedScope=previous?.lessons?await confirmedAdmissionRevision(this.host.memory.store,scope,task,event,lessons):lessons[0].admission.scopeRevision
+          const expectedScope=!refresh&&previous?.lessons?await confirmedAdmissionRevision(this.host.memory.store,scope,task,event,lessons):lessons[0].admission.scopeRevision
           if(snapshot.revision!==expectedScope)throw failure('MEMORY_SCOPE_CHANGED')
           if(hash(JSON.stringify(state.skills))!==(last?.skillsSnapshot??lessons[0].admission.skillsHash))throw failure('REFLECTION_REVISION_CONFLICT')
         }
@@ -135,7 +145,7 @@ export default class Reflection extends Service {
         let scopeRevision=snapshot.revision
         // Commit key reservations before any memory/skill effects so retries use
         // the same receipt identity even after a crash or an intervening forget.
-        state.reviews[id]={memoryKeyVersion:1,input:inputRecord,status:'failed',code:'REFLECTION_INCOMPLETE',attempts,eventId:event.id,taskId:task.taskId,lessons}
+        state.reviews[id]={memoryKeyVersion:1,forgetGeneration,input:inputRecord,status:'failed',code:'REFLECTION_WRITE_PENDING',attempts,eventId:event.id,taskId:task.taskId,lessons}
         await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n')
         for(const lesson of lessons){
           signal.throwIfAborted()
@@ -177,7 +187,7 @@ export default class Reflection extends Service {
         }
         state.reviews[id]={memoryKeyVersion:1,input:inputRecord,status:lessons.length?'done':'skipped',attempts,eventId:event.id,taskId:task.taskId,recordedAt:new Date().toISOString(),lessons}
         this.host.skills.invalidateCache()
-      }catch(error){const code=typeof error.code==='string'?error.code:error.name==='TimeoutError'?'REFLECTION_MODEL_TIMEOUT':'REFLECTION_MODEL_FAILED';state.reviews[id]={...state.reviews[id],...lessons?{lessons}:{},memoryKeyVersion:1,input:inputRecord,status:'failed',attempts,eventId:event.id,taskId:task.taskId,code,retryAt:Date.now()+30000};this.lastError=code;this.host.logger.warn('reflection: '+code)}
+      }catch(error){const code=typeof error.code==='string'?error.code:error.name==='TimeoutError'?'REFLECTION_MODEL_TIMEOUT':'REFLECTION_MODEL_FAILED';state.reviews[id]={...state.reviews[id],lessons,memoryKeyVersion:1,forgetGeneration,input:inputRecord,status:'failed',attempts,eventId:event.id,taskId:task.taskId,code,retryAt:Date.now()+30000};this.lastError=code;this.host.logger.warn('reflection: '+code)}
       const report={...state.reviews[id],destinations:(state.reviews[id].lessons??[]).map(lesson=>({memory:{scope,topic:'experience',key:reflectionMemoryKey(lesson)},...lesson.skill&&state.skills[lesson.key]?.active?{skill:{scope,key:lesson.key,revision:state.skills[lesson.key].revision}}:{}}))};state.reviews[id]=report;await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(report,null,2)+'\n');await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');return report
       })
       if(!report)return false
@@ -324,13 +334,13 @@ export default class Reflection extends Service {
       })
     })
   }
-  async forget(scope,key){
+  async forget(scope,key,{onlyIfDerived=false}={}){
     const directory=this.directory(scope)
     const changedReviews=await withLock(join(directory,'.lock'),async()=>{
       const state=await this.state(scope),changedReviews=[]
-      // Fence even outstanding inference that has not reserved lesson keys yet.
-      state.forgetGeneration=(state.forgetGeneration??0)+1
+      let revokedSkill=false
       for(const [name,skill]of Object.entries(state.skills))if(skill.memoryKeys.includes(key)){
+        revokedSkill=true
         state.skillRevisions??={};state.skillRevisions[name]=Math.max(skill.revision??0,state.skillRevisions[name]??0)+1;delete state.skills[name];await privateDirectory(join(directory,'skills'));await rm(join(directory,'skills',name),{recursive:true,force:true})
       }
       for(const [id,review]of Object.entries(state.reviews)){
@@ -339,6 +349,9 @@ export default class Reflection extends Service {
         const retained=kept.length!==lessons.length||!lessons.length?destinations.filter(destination=>destination?.memory?.key!==key||destination.memory.topic&&destination.memory.topic!=='experience'):destinations
         if(kept.length!==lessons.length||retained.length!==destinations.length){if(kept.length!==lessons.length)review.lessons=kept;review.forgotten=true;if(retained.length!==destinations.length)review.destinations=retained;changedReviews.push([id,review])}
       }
+      if(onlyIfDerived&&!revokedSkill&&!changedReviews.length)return changedReviews
+      // An explicit forget or correction also fences inference without reservations.
+      state.forgetGeneration=(state.forgetGeneration??0)+1
       for(const [id,review]of changedReviews)await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(review,null,2)+'\n')
       // Commit forgetting before external archive callbacks.
       // A failed callback must never restore learned content on restart.
