@@ -334,13 +334,13 @@ export default class Reflection extends Service {
       })
     })
   }
-  async forget(scope,key){
+  async forget(scope,key,{onlyIfDerived=false}={}){
     const directory=this.directory(scope)
     const changedReviews=await withLock(join(directory,'.lock'),async()=>{
       const state=await this.state(scope),changedReviews=[]
-      // Fence even outstanding inference that has not reserved lesson keys yet.
-      state.forgetGeneration=(state.forgetGeneration??0)+1
+      let revokedSkill=false
       for(const [name,skill]of Object.entries(state.skills))if(skill.memoryKeys.includes(key)){
+        revokedSkill=true
         state.skillRevisions??={};state.skillRevisions[name]=Math.max(skill.revision??0,state.skillRevisions[name]??0)+1;delete state.skills[name];await privateDirectory(join(directory,'skills'));await rm(join(directory,'skills',name),{recursive:true,force:true})
       }
       for(const [id,review]of Object.entries(state.reviews)){
@@ -349,6 +349,9 @@ export default class Reflection extends Service {
         const retained=kept.length!==lessons.length||!lessons.length?destinations.filter(destination=>destination?.memory?.key!==key||destination.memory.topic&&destination.memory.topic!=='experience'):destinations
         if(kept.length!==lessons.length||retained.length!==destinations.length){if(kept.length!==lessons.length)review.lessons=kept;review.forgotten=true;if(retained.length!==destinations.length)review.destinations=retained;changedReviews.push([id,review])}
       }
+      if(onlyIfDerived&&!revokedSkill&&!changedReviews.length)return changedReviews
+      // An explicit forget or correction also fences inference without reservations.
+      state.forgetGeneration=(state.forgetGeneration??0)+1
       for(const [id,review]of changedReviews)await atomicWrite(join(directory,'reviews',id+'.json'),JSON.stringify(review,null,2)+'\n')
       // Commit forgetting before external archive callbacks.
       // A failed callback must never restore learned content on restart.

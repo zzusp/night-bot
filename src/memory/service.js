@@ -219,7 +219,9 @@ export default class NativeMemory extends Service {
     const entry=saved.entries.find(row=>row.key===key),row=index?.entries.find(row=>row.key===key)
     if(action==='forget'?!!entry:!entry||entry.source.messageId!==context.message.id||entry.source.actor!==scope.actor||!metadataOnly&&(entry.text!==prepared.text||!isDeepStrictEqual(entry.context,prepared.context)||!isDeepStrictEqual(entry.instructionScope,prepared.instructionScope)))throw Object.assign(failure('MEMORY_WRITE_UNCONFIRMED'),{committed:true})
     if(editingIndex&&(saved.revision!==index.revision||row?.id!==entry.id||row.revision!==args.expectedRevision+1||args.title!==undefined&&row.title!==args.title.trim()||args.indexSummary!==undefined&&row.summary!==args.indexSummary.trim()))throw Object.assign(failure('MEMORY_WRITE_UNCONFIRMED'),{committed:true})
-    if(args.topic==='experience'&&!metadataOnly)try{await this.host.get('reflection')?.forget(scope,args.key)}catch(cause){throw Object.assign(failure('MEMORY_DERIVED_CLEANUP_UNCERTAIN'),{committed:true,cause})}
+    // A first insert changes the catalog revision, not the forget generation,
+    // unless an interrupted delete left same-key derived records to revoke.
+    if(args.topic==='experience'&&!metadataOnly)try{await this.host.get('reflection')?.forget(scope,args.key,{onlyIfDerived:action==='remember'&&entry.revision===1})}catch(cause){throw Object.assign(failure('MEMORY_DERIVED_CLEANUP_UNCERTAIN'),{committed:true,cause})}
     return {...result,revision:saved.revision,...action==='remember'?{entry:row?{...entry,title:row.title,indexSummary:row.summary,path:row.path}:entry}:{},persisted:true,kind:'night-memory-result',scopeToken:scope.kind+'/'+scope.id}
   }
   async reconcileCompletion(agent,proof,args,validate){return reconcileCompletion(this,agent,proof,args,validate)}

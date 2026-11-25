@@ -129,7 +129,7 @@ cancellation. Host shutdown cancels and drains in-flight calls; learning failure
 never reverse a completed task. This does not promise exactly one vendor request
 across an unrecorded hard crash.
 
-共享记忆或学习 Skill 在复盘期间被其他操作更新时，只有确认旧计划无任何已发生或不明的效果、且遗忘代次未变，才在下一次扫描用当前索引重新判断。已提交、结果未知或部分写入的计划继续用原标识和原回执。没有代次的历史计划不扩大补偿范围；已耗尽的复盘不因升级或重启重跑。
+共享记忆或学习 Skill 在复盘期间被其他操作更新时，只有确认旧计划无任何已发生或不明的效果、且遗忘代次未变，才在下一次扫描用当前索引重新判断。已提交、结果未知或部分写入的计划继续用原标识和原回执。没有代次的历史计划不扩大补偿范围；已耗尽的复盘不因升级或重启重跑。Router 首次新增经验通常只改变目录版本；若重建同名经验时发现未清完的旧派生记录，仍将其撤销。更正经验正文或显式删除仍阻止跨遗忘重试。
 
 `REFLECTION_MODEL_INCOMPLETE` 表示 Pi 未返回可用的完整输出；`REFLECTION_WRITE_PENDING` 表示写入前已保存计划检查点，不能仅凭该码判定效果，需核对其中的逐条状态和原回执。历史 `REFLECTION_INCOMPLETE` 可能来自任一阶段，保留原样。
 
