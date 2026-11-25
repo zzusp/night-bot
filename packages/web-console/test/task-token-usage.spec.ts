@@ -46,7 +46,7 @@ test('真实原生提交→授权HTTP→未拦截UI，压缩与分支全量统�
   const full=await(await page.request.get(preview.origin+'/api/tasks/task-research/session?limit=50')).json();expect(full.tokenUsage).toEqual(dto.tokenUsage);
   for(const theme of ['light','dark'])for(const width of [1440,390]){
    await page.setViewportSize({width,height:960});await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);await card.scrollIntoViewIfNeeded();
-   const rail=page.locator('.task-info-rail');await expect(rail.locator('.detail-section').nth(2)).toHaveClass(/task-token-card/);await expect(rail.locator('.detail-section').nth(3)).toHaveClass(/task-learning-summary/);
+   const rail=page.locator('.task-info-rail');await expect(rail.locator('.detail-section').nth(3)).toHaveClass(/task-token-card/);await expect(rail.locator('.detail-section').nth(4)).toHaveClass(/task-learning-summary/);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(await card.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
    expect(await card.locator('.token-ring-segment').count()).toBe(4);
    const shares=await card.locator('.token-ring-segment').evaluateAll(elements=>elements.map(element=>parseFloat(element.getAttribute('data-share')!)));

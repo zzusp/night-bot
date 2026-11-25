@@ -10,6 +10,7 @@ import { ExecutionSearchToolbar } from './components/ExecutionSearch';
 import { TaskLearningSummary } from './components/TaskLearningSummary';
 import { taskDurationText } from './task-duration';
 import { taskConclusion, taskConclusionDuration } from './task-conclusion';
+import { ContextWindow, type ContextWindowSnapshot } from './components/ContextWindow';
 import { TaskOverview } from './components/TaskOverview';
 import { TaskInputComposer } from './components/TaskInputComposer';
 import type {TaskInputDrafts} from './task-input-drafts';
@@ -68,6 +69,8 @@ export function TaskDetail({ id, header, drafts }: { id: string; header?: ReactN
   useEffect(() => { if (forbidden) setDenied(true); }, [forbidden]);
   useEffect(() => { if (!query.error) setDenied(false); }, [query.updatedAt]);
   const task = forbidden || denied ? undefined : query.data;
+  const context = useResource<ContextWindowSnapshot>(rail && task && !query.error
+    ? `/tasks/${encodeURIComponent(id)}/context-window` : null, 10000, {pauseWhenHidden:true});
   const draft = useSyncExternalStore(drafts.subscribe, () => drafts.get(id));
   const accepted = useRef(draft.accepted);
   useEffect(() => {
@@ -100,8 +103,8 @@ export function TaskDetail({ id, header, drafts }: { id: string; header?: ReactN
         </div>}
     </ConversationFrame>
     <aside id="task-info-panel" hidden={!rail} className="task-info-rail" aria-label="任务详情">
-      <div className="task-info-content">
-        {!task ? <p className="muted">{query.loading ? '正在读取任务信息…' : '任务信息暂不可读。'}</p> : <><TaskOverview task={task} /><div ref={setTokenTarget} /><TaskLearningSummary key={id} taskId={id} /></>}
+      <div className="task-info-content" tabIndex={0} aria-label="任务信息卡片">
+        {!task ? <p className="muted">{query.loading ? '正在读取任务信息…' : '任务信息暂不可读。'}</p> : <><TaskOverview task={task} /><ContextWindow task snapshot={context.error ? undefined : context.data ?? undefined} loading={context.loading} /><div ref={setTokenTarget} /><TaskLearningSummary key={id} taskId={id} /></>}
       </div>
     </aside>
   </div>;

@@ -43,7 +43,7 @@ for(const width of [1440,1920,390]) for(const theme of ['light','dark']) {
    }
    if(rail){
     await expect(page.locator('.task-info-rail nav')).toHaveCount(0);
-    await expect(page.locator('.task-info-rail .detail-section')).toHaveClass([/task-summary-card/,/task-objective-card/,/task-token-card/,/task-learning-summary/]);
+    await expect(page.locator('.task-info-rail .detail-section')).toHaveClass([/task-summary-card/,/task-objective-card/,/task-context-window/,/task-token-card/,/task-learning-summary/]);
     await expect(page.locator('.task-learning-counts dd')).toHaveText(['—','—']);
    }
    await summary.evaluate(el=>(el as HTMLElement).blur());await page.mouse.move(0,0);await page.locator('main').evaluate(el=>el.scrollTop=0);

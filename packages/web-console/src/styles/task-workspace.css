@@ -105,3 +105,5 @@
 .task-input-dock.composer-dock { padding-inline: 0; scrollbar-gutter: stable both-edges; max-height: 55%; }
 .task-input-dock.composer-dock > div { width: 100%; max-width: calc(var(--board-content-width) + 32px); padding-inline: var(--message-inline-inset); }
 .task-input-dock .task-input-actions { padding: 6px 5px 0; }
+
+.task-info-content:focus-visible { outline: 2px solid var(--board-focus); outline-offset: -2px; }
