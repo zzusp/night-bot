@@ -2,7 +2,7 @@ import {parsePublicObject, residentPlan, residentFields, type ResidentField, typ
 
 import {taskToolPresentation, todoReceiptCounts, type TaskToolPresentation} from './task-tool-presentation.ts';
 import {compactToolPresentation, type CompactToolView} from './compact-tool-presentation.ts';
-import {residentTaskAction, residentSettlement, type ResidentAction, type ResidentSettlement} from './resident-activity-presentation.ts';
+import {residentTaskAction, residentTaskQuery, residentSettlement, type ResidentAction, type ResidentTaskQuery, type ResidentSettlement} from './resident-activity-presentation.ts';
 
 export type SpecializedToolKind = 'memory' | 'skill' | 'lookup' | 'resident' | 'structured' | 'task';
 type Descriptor = {kind: SpecializedToolKind; label: string};
@@ -104,6 +104,8 @@ export interface SpecializedToolPresentation {
   compact?: CompactToolView;
   settlement?: ResidentSettlement;
   resident?: ResidentField[];
+  taskQuery?: ResidentTaskQuery;
+  queryParameters?: ResidentField[];
   text?: string;
 }
 /** Only pass the current public MessageBody page, never raw tool arguments/details. */
@@ -134,6 +136,15 @@ export function specializedToolPresentation({toolName, phase, text, offset = 0, 
   }
   const value = parsePublicObject(text);
   if (!value) return plain;
+  if (toolName === 'resident_task_query') {
+    if (phase === 'input') {
+      const queryParameters = residentFields(value);
+      if (queryParameters.length) return {...descriptor, fields:[], queryParameters};
+    } else if (status === 'completed') {
+      const taskQuery = residentTaskQuery(value);
+      if (taskQuery) return {...descriptor, fields:[], taskQuery};
+    }
+  }
   if (toolName === 'resident_task_plan') {
     const plan = phase === 'input' ? residentPlan(value,false) : status === 'completed' ? residentPlan(value,true) : null;
     if (plan) return {...descriptor, fields:[], plan};

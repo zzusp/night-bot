@@ -20,6 +20,47 @@ const taskKeys = ['title','objective','requirements','handoff','status','state',
 const receiptKeys = ['task','result'];
 const sections = (key: string, fields: ResidentField[]): ResidentField[] => fields.length ? [{label:key,groups:[fields]}] : [];
 
+type TaskSummary = {title: string; state?: string; control?: string; copy: ActionCopy[]; outcome?: {label: string; text: string}};
+export type ResidentTaskQuery = {tasks: TaskSummary[]; notice?: string; extra: ResidentField[]};
+
+function taskOutcome(task: Data): TaskSummary['outcome'] {
+  const state = task.status ?? task.state;
+  if (state === 'completed' || state === 'done') {
+    const completion = objectValue(task.completion) ? task.completion : {};
+    const result = objectValue(completion.result) ? completion.result : objectValue(task.result) ? task.result : {};
+    const summary = text(completion.summary) ?? text(result.summary);
+    if (summary) return {label:'结论', text:summary};
+  }
+  if (state === 'blocked' || state === 'waiting' || state === 'failed' || state === 'error') {
+    const decision = objectValue(task.lastDecision) ? task.lastDecision : {};
+    const summary = text(decision.question) ?? text(decision.summary);
+    if (summary) return {label:'最近判断', text:summary};
+  }
+}
+
+export function residentTaskQuery(value: Data): ResidentTaskQuery | null {
+  if (value.task !== undefined && value.tasks !== undefined) return null;
+  const rows = value.task !== undefined ? [value.task] : Array.isArray(value.tasks) ? value.tasks : null;
+  if (!rows) return null;
+  const tasks: TaskSummary[] = [];
+  const records: ResidentField[][] = [];
+  for (const row of rows) {
+    if (!objectValue(row)) return null;
+    const title=text(row.title);
+    if (!title) return null;
+    const outcome=taskOutcome(row);
+    const control=row.control === 'active' ? undefined : label('control',row.control);
+    tasks.push({title,state:label('status',row.status) ?? label('state',row.state),
+      control,copy:actionCopy({},row),outcome});
+    const details = residentFields(omit(row,['title','status','objective','requirements','handoff',...(control ? ['control'] : []),
+      ...(row.status === undefined || row.status === row.state ? ['state'] : [])]));
+    if (details.length) records.push(rows.length > 1 ? [{label:title,groups:[details]}] : details);
+  }
+  const extra = [...records.flat(), ...residentFields(omit(value,['task','tasks']))];
+  const notice = text(value.reason) ?? (!tasks.length ? '未查到任务' : value.hasMore === true ? '还有更多任务' : undefined);
+  return {tasks,notice,extra};
+}
+
 export type ActionCopy = {label: string; text?: string; list?: string[]};
 export type ResidentAction = {
   title?: string;
@@ -27,6 +68,7 @@ export type ResidentAction = {
   state?: string;
   control?: string;
   notice?: string;
+  outcome?: TaskSummary['outcome'];
   copy: ActionCopy[];
   extra: ResidentField[];
 };
@@ -74,7 +116,7 @@ export function residentTaskAction(request?: Data, receipt?: Data): ResidentActi
     ...sections('提交',residentFields(inputExtra)),
   ];
   const notice=output.accepted===false||output.received===false?'操作未接纳':output.replayed===true?'沿用原回执':undefined;
-  return {title,action:label('kind',input.kind),state,control,notice,copy:actionCopy(input,task),extra};
+  return {title,action:label('kind',input.kind),state,control,notice,outcome:taskOutcome(task),copy:actionCopy(input,task),extra};
 }
 
 export function residentTaskActionLabel(call?:Message) {
