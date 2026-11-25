@@ -846,7 +846,9 @@ async function projection({base, identity, persistence, validIdentity, notStarte
   }
   let snapshot
   try {snapshot = await measure(requestTiming,'journal',()=>persistence.readNative(sessionId, {requireComplete: true}))} catch (error) {
-    if (error.code === 'PI_SESSION_CHANGED' || error.code === 'PI_SESSION_UNCOMMITTED_TAIL' || error.code === 'PI_SESSION_COMMIT_REQUIRED') return {...base, status: 'pending', reason: 'SESSION_COMMIT_PENDING'}
+    if (error.code === 'PI_SESSION_CHANGED' || error.code === 'PI_SESSION_UNCOMMITTED_TAIL' || error.code === 'PI_SESSION_COMMIT_REQUIRED') {
+      return {...base, status: 'pending', reason: 'SESSION_COMMIT_PENDING', [historyData]:{scoped,authority}}
+    }
     if (error.name === 'SessionPersistenceNotFoundError' && notStarted) return {...base, status: 'pending', reason: 'SESSION_NOT_STARTED'}
     return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
   }
@@ -886,14 +888,22 @@ function readExposure(token,context){
   if(!entry||entry.expires<=Date.now()||entry.scope!==context?.scoped||entry.authority!==context?.authority)fail('SESSION_PAGE_STALE',409)
   return entry.loaded
 }
+function resourceFields(body,candidate,secrets){
+  const safe=visibleText(body.text,secrets,{maxLength:Infinity})
+  if(['filesystem','learned'].includes(candidate.kind)&&typeof body.skillName==='string'&&!visibleText(body.skillName,secrets).redacted)safe.skillName=body.skillName
+  return safe
+}
 async function authorizeHistory(value,options,selected){
   const context=value[historyData]
   const {resourceProof,readResourceContents,requestTiming,secrets=[]}=options
   const loaded=readExposure(resourceProof,context)
   if(!context){return {value,selected}}
-  const selectedIds=new Set(selected.map(row=>row.id))
-  const ids=[...new Set([...selectedIds,...loaded.keys()])]
-  const candidates=ids.flatMap(id=>context.candidates.has(id)?[{id,candidate:context.candidates.get(id)}]:[])
+  const pending=value.reason==='SESSION_COMMIT_PENDING'
+  // No uncommitted journal rows are eligible. Previously disclosed references
+  // let us recheck the old bodies while the committed projection is unavailable.
+  const candidateFor=id=>pending?loaded.get(id)?.candidate:context.candidates.get(id)
+  const ids=new Set([...selected.map(row=>row.id),...loaded.keys()])
+  const candidates=[...ids].flatMap(id=>{const candidate=candidateFor(id);return candidate?[{id,candidate}]:[]})
   const granted=candidates.length&&readResourceContents?await measure(requestTiming,'permissions',()=>requestTiming?observeMemoryLock((name,ms)=>{
     requestTiming[name]=(requestTiming[name]??0)+ms
   },()=>readResourceContents(candidates,(name,work)=>measure(requestTiming,name,work))):readResourceContents(candidates)):new Map()
@@ -901,25 +911,20 @@ async function authorizeHistory(value,options,selected){
   const items=selected.map(row=>{
     const body=granted.get(row.id)
     if(!body)return row
-    const next={...row,...visibleText(body.text,secrets,{maxLength:Infinity}),resourceContent:true}
+    const candidate=candidateFor(row.id)
+    const next={...row,...resourceFields(body,candidate,secrets),resourceContent:true}
     delete next.detailState
-    if(row.toolName==='skill'&&typeof body.skillName==='string'&&!visibleText(body.skillName,secrets).redacted)next.skillName=body.skillName
-    current.set(row.id,resourceHash(next))
+    current.set(row.id,{hash:resourceHash(next),candidate})
     return next
   })
   if(options.messageId&&context.candidates.has(options.messageId)&&!granted.has(options.messageId))fail('SESSION_PAGE_STALE',409)
-  if(loaded.size){
-    for(const [id,hash] of loaded){
-      const body=granted.get(id),row=value.items[context.positions.get(id)]
-      if(!body||!row)fail('SESSION_PAGE_STALE',409)
-      const safe=visibleText(body.text,secrets,{maxLength:Infinity})
-      const skillName=row.toolName==='skill'&&typeof body.skillName==='string'&&!visibleText(body.skillName,secrets).redacted?body.skillName:undefined
-      if(resourceHash({...safe,skillName})!==hash)fail('SESSION_PAGE_STALE',409)
-      current.set(id,hash)
-    }
+  for(const [id,{hash}] of loaded){
+    const body=granted.get(id),candidate=candidateFor(id)
+    if(!body||!candidate||resourceHash(resourceFields(body,candidate,secrets))!==hash)fail('SESSION_PAGE_STALE',409)
+    current.set(id,{hash,candidate})
   }
   let next
-  if(options.stream&&current.size){
+  if(!pending&&options.stream&&current.size){
     // A viewer that has accumulated too many independently revocable bodies
     // must reload its window, not keep unverified bodies indefinitely.
     if(current.size>512)fail('SESSION_PAGE_STALE',409)
@@ -1048,8 +1053,13 @@ async function readPage(project,options){
     if(value.status==='unavailable')fail(value.reason,503)
     return {sessionId:value.sessionId,activeGeneration:value.activeGeneration,live:value.live??{active:false,items:[]},committing:value.reason==='SESSION_COMMIT_PENDING'}
   }
-  if(value.status!=='ready'&&options.resourceProof)fail('SESSION_PAGE_STALE',409)
-  if(options.liveProof||value.status!=='ready')return finalRead(value,options)
+  if(value.status!=='ready'){
+    if(!options.resourceProof)return finalRead(value,options)
+    if(value.reason!=='SESSION_COMMIT_PENDING')fail('SESSION_PAGE_STALE',409)
+    const {value:pending}=await authorizeHistory(value,options,[])
+    return finalRead(pending,options)
+  }
+  if(options.liveProof)return finalRead(value,options)
   const page=sessionPage(value,options)
   const {value:output,selected}=await authorizeHistory(value,options,page.items)
   const result={...page,...output.resourceProof?{resourceProof:output.resourceProof}:{},items:selected.map(row=>({...row,text:row.text.slice(0,16000),textTotal:row.text.length,

@@ -3,7 +3,7 @@ import {runtimePaths,prepareRuntimePaths} from '../../../src/runtime/paths.js'
 import {createFeedbackService} from '../../../src/feedback/service.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp, mkdir, readFile, writeFile, rm, link, readdir} from 'node:fs/promises'
+import {mkdtemp, mkdir, readFile, writeFile, rm, link, readdir, truncate, appendFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {createHash} from 'node:crypto'
@@ -1368,7 +1368,8 @@ test('execution HTTP independently authorizes exact resource bodies and revokes 
   append('skill','skill',{name:skill.name},skill,renderSkillContent(skill))
   append('private-skill','skill',{name:skill.name},privateSkill,renderSkillContent(privateSkill))
   append('orphan-skill','skill',{name:skill.name},skill,renderSkillContent(skill),{orphan:true})
-  await writer.close()
+  await writer.commit()
+  t.after(()=>writer.close())
 
   let actorId='operator', redactionSecrets=['ROTATINGPRIVATEVALUE']
   const memory={store,host:{runtimePaths:paths, get:()=>undefined}}
@@ -1376,7 +1377,7 @@ test('execution HTTP independently authorizes exact resource bodies and revokes 
   const endpoint='/api/tasks/task-one/session'
   assert.equal((await f.fetchApi(endpoint)).status,401)
   await f.login()
-  const page=await f.fetchApi(endpoint+'?stream=1')
+  let page=await f.fetchApi(endpoint+'?stream=1')
   assert.equal(page.status,200)
   assert.equal(page.body.liveProof,undefined)
   const rows=page.body.items.filter(row=>row.kind==='tool-result')
@@ -1394,6 +1395,42 @@ test('execution HTTP independently authorizes exact resource bodies and revokes 
   const next=await f.fetchApi(continuation(rows[5],16000))
   assert.equal(next.status,200);assert.equal(next.body.resourceContent,true)
   assert.equal(rows[5].text+next.body.text,body.replace('ROTATINGPRIVATEVALUE','[已隐藏]'))
+  await t.test('带资源正文的续读在真实提交窗口等待，完成后用原游标续读', async () => {
+    const text='New message becomes visible only after commit.'
+    writer.manager.appendMessage({role:'assistant',content:[{type:'text',text}],timestamp:Date.now()})
+    await writer.close()
+    const journal=persistence.path(writer.id), complete=await readFile(journal)
+    // Pause the fixture at a partial commit marker, using real Pi writer bytes.
+    const split=complete.lastIndexOf(10,complete.length-2)+2
+    await truncate(journal,split)
+    const query=endpoint+'?'+new URLSearchParams({stream:'1',limit:'200',checkpoint:page.body.checkpoint})
+    const poll=(resourceProof=page.body.resourceProof,options)=>f.fetchApi(query+'&resources='+resourceProof,options)
+    try {
+      await assert.rejects(persistence.readNative(writer.id,{requireComplete:true}),{code:'PI_SESSION_UNCOMMITTED_TAIL'})
+      const pending=await poll()
+      assert.equal(pending.status,200)
+      assert.equal(pending.body.status,'pending')
+      assert.equal(pending.body.reason,'SESSION_COMMIT_PENDING')
+      assert.deepEqual(pending.body.items,[])
+      assert.equal(pending.body.resourceProof,undefined)
+      assert.match(pending.response.headers.get('server-timing'),/permissions;dur=.*final_guard;dur=/)
+      assert.equal((await f.fetchApi(query)).status,409)
+      assert.equal((await poll('00000000-0000-4000-8000-000000000001')).status,409)
+      assert.equal((await poll(undefined,{headers:{cookie:''}})).status,401)
+      redactionSecrets=[...redactionSecrets,skill.name]
+      assert.equal((await poll()).status,409)
+      redactionSecrets=['ROTATINGPRIVATEVALUE']
+      await writeFile(file,skillDoc('public-check',body,'disable-model-invocation: true\n'))
+      assert.deepEqual((await poll()).body,{error:'SESSION_PAGE_STALE'})
+      await writeFile(file,skillDoc('public-check',body))
+      assert.deepEqual(await readFile(journal),complete.subarray(0,split),'Web does not publish or repair the partial journal')
+    } finally {await appendFile(journal,complete.subarray(split))}
+    const resumed=await poll()
+    assert.equal(resumed.status,200)
+    assert.deepEqual(resumed.body.items.map(row=>row.text),[text])
+    assert.ok(resumed.body.resourceProof)
+    page=await f.fetchApi(endpoint+'?stream=1')
+  })
   redactionSecrets=[...redactionSecrets,skill.name]
   const hiddenName=await f.fetchApi(endpoint+'?stream=1')
   const sameBody=hiddenName.body.items.find(row=>row.id===rows[5].id)
