@@ -260,9 +260,9 @@ test('cold Router isolates a persisted zero-progress event and actually dispatch
  assert.equal(h.sent.length,0)
 })
 
-for(const decision of ['continue','processed','defer','progress'])test(`recovered Router actively reviews a held source: ${decision}`,{timeout:nativeTestTimeout(90000)},async t=>{
- const cold=decision==='processed'||decision==='progress'
- const ordinary=[],reviews=[];let attempts=0,notificationId,reviewTried=false,reviewReady=!cold
+for(const decision of ['continue','processed','defer','progress','late'])test(`recovered Router actively reviews a held source: ${decision}`,{timeout:nativeTestTimeout(90000)},async t=>{
+ const cold=decision==='processed'||decision==='progress',late=decision==='late'
+ const ordinary=[],reviews=[];let attempts=0,notificationId,reviewTried=false,reviewReady=!cold,visible=!late
  const id='held-for-'+decision
  const h=await residentRouterHost(t,async body=>{
   const tools=requestTools(body),last=body.messages.at(-1)
@@ -277,6 +277,14 @@ for(const decision of ['continue','processed','defer','progress'])test(`recovere
     return {text:'Review complete'}
    }
    reviews.push(input)
+   if(late){
+    const reply=input.evidence.replies[0]
+    assert.equal(reply?.eligible,reviews.length===2)
+    assert.equal(reply?.state,reviews.length===2?'delivered':'starting')
+    if(reviews.length===2)assert.equal(reply.notificationId,reviews[0].evidence.replies[0].notificationId)
+    return {tool:'resident_review_held_source',args:{eventId:input.eventId,...reply.eligible
+      ?{decision:'processed',evidenceId:reply.notificationId,coverage:'The visible original answer covers the requested result.'}:{decision:'defer'}}}
+   }
    if(cold){
     const reply=input.evidence.replies[0]
     notificationId=reply?.notificationId
@@ -299,12 +307,13 @@ for(const decision of ['continue','processed','defer','progress'])test(`recovere
   ordinary.push(...events.map(event=>event.source?.messageId))
   if(original&&++attempts===1){
    if(decision==='continue')return {text:'Original round ended before any action'}
-   if(cold)return {tool:'resident_router_reply',args:{operationId:'old-reply',sourceId:original.sourceId,messageVersion:original.messageVersion,replyPurpose:decision==='progress'?'task-update':'direct-answer',text:decision==='progress'?'Only finished the first check':'Existing answer'}}
+   if(cold||late)return {tool:'resident_router_reply',args:{operationId:'old-reply',sourceId:original.sourceId,messageVersion:original.messageVersion,replyPurpose:decision==='progress'?'task-update':'direct-answer',text:decision==='progress'?'Only finished the first check':'Existing answer'}}
    return {tool:'resident_router_settle',args:{operationId:'refused-first',eventIds:[original.id],noTaskDispositions:[{eventId:original.id,outcome:'context-only',sourceQuote:'incorrect quote',reason:'Leave the input unhandled'}]}}
   }
   if(original&&decision==='continue')return {tool:'resident_router_reply',args:{operationId:'continued-reply',sourceId:original.sourceId,messageVersion:original.messageVersion,replyPurpose:'direct-answer',text:'Answer from the safely continued source'}}
   return {tool:'resident_router_settle',args:{operationId:'settle-'+events[0].id,eventIds:events.map(event=>event.id),noTaskDispositions:events.map(event=>({eventId:event.id,outcome:'context-only',sourceQuote:event.source.text,reason:'Fixture has no further external work'}))}}
- },{wrapStore:store=>({...store,query:q=>!reviewReady&&q.kind==='router.held-review.next'?Promise.resolve(null):store.query(q)})})
+ },{...late?{readback:()=>visible?{messageId:'visible-1',visible:true}:null}:{},
+  wrapStore:store=>({...store,query:q=>!reviewReady&&q.kind==='router.held-review.next'?Promise.resolve(null):store.query(q)})})
  await h.receive(channelMessage(id))
  await assert.rejects(h.service.whenIdle(),{code:'ROUTER_BATCH_UNSETTLED'})
  const original=(await h.query('source.list')).find(source=>source.messageId===id),conversationId=original.groupId
@@ -331,14 +340,38 @@ for(const decision of ['continue','processed','defer','progress'])test(`recovere
  assert.deepEqual(await h.query('router.inbox',{conversationId,deliverable:true}),[])
  const eventId=original.routeReceipt.eventId
  const [final]=await h.query('router.batch-events',{conversationId,eventIds:[eventId]})
- assert.equal(final.heldReviews.at(-1).decision,decision==='progress'?'defer':decision)
+ assert.equal(final.heldReviews.at(-1).decision,['progress','late'].includes(decision)?'defer':decision)
  if(decision==='progress')assert.ok(h.results.some(r=>r.name==='resident_review_held_source'&&r.result.error?.message==='ROUTER_HELD_REVIEW_EVIDENCE_REQUIRED'))
- assert.equal(final.state,['defer','progress'].includes(decision)?'pending':'consumed')
+ assert.equal(final.state,['defer','progress','late'].includes(decision)?'pending':'consumed')
  const expectedSends=decision==='defer'?0:1
  if(expectedSends)await eventually(()=>h.sent.length===expectedSends,'one reply through the fake transport')
  if(decision==='defer'){
   assert.ok(h.results.some(r=>r.name==='resident_review_held_source'&&r.result.error?.message==='ROUTER_HELD_REVIEW_EFFECT_UNKNOWN'))
   assert.ok(reviews.includes('forbidden'))
+ }
+ if(late){
+  const replyId=reviews[0].evidence.replies[0].notificationId
+  const notice=()=>h.query('notification.get',{notificationId:replyId})
+  assert.notEqual((await notice()).state,'delivered')
+  assert.ok(h.readbacks.length>0)
+  visible=true
+  await eventually(async()=>{
+   await h.service.whenIdle()
+   return (await notice()).state==='delivered'
+  },'existing reply confirmed after defer',t.signal)
+  await h.service.recover({waitForRouter:false});await h.service.whenIdle()
+  assert.equal(reviews.length,1,'ordinary recovery polling does not revisit prior decisions')
+  await h.restart({waitForRouter:false,restoreIdleRouters:true});await h.service.whenIdle()
+  const current=await h.query('router.get',{conversationId})
+  const [settled]=await h.query('router.batch-events',{conversationId,eventIds:[eventId]})
+  assert.equal(current.activeSessionId,next.activeSessionId)
+  assert.equal(current.generation,next.generation)
+  assert.equal(settled.state,'consumed')
+  assert.deepEqual(settled.heldReviews.map(review=>review.decision),['defer','processed'])
+  assert.equal(settled.heldReviews[1].evidenceId,replyId)
+  assert.equal(reviews.length,2)
+  assert.equal(h.sent.length,1)
+  return
  }
  await h.restart();await h.service.whenIdle()
  assert.equal(reviews.filter(input=>input.eventId).length,1)

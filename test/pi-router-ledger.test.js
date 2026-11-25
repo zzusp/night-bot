@@ -688,6 +688,51 @@ test('legacy Router task handoff binds original sources and strips subjective su
  await assert.rejects(f.command('router.plan',{conversationId:f.conversationId,generation:f.generation,sourceId:f.sourceId,messageVersion:1,operationId:'foreign-context',tasks:[{taskId:'foreign-task',request:'No',sourceRefs:['other-room']}],dependencies:[]}),/CONVERSATION_SCOPE/)
 })
 
+test('held review shows both the original arrangement and changed live dependencies',async t=>{
+  const f=await fixture(t,{channel:'chat-room'}),{command,query,conversationId,generation,sourceId}=f
+  await f.plan({tasks:['a','b','c'].map(taskId=>({taskId,request:'Check '+taskId,ownerActorId:'alice',groupId:conversationId})),dependencies:[]})
+  const seed=await query('source.get',{sourceId})
+  await command('router.settle',{conversationId,generation,operationId:'settle-seed',eventIds:[seed.routeReceipt.eventId]})
+  const addSource=async(id,text)=>(await command('source.record-direct',{routeDirect:true,source:{sourceId:id,groupId:conversationId,messageId:id,actorId:'alice',version:1,channel:'chat-room',text}})).result.source
+  const original=await addSource('original-order','B waits for A'),eventId=original.routeReceipt.eventId,handoffId='hold-arrangement'
+  const arrange=(source,generation,expectedArrangementRevision,prerequisiteTaskId)=>command('router.task-action',{
+    conversationId,generation,sourceId:source.sourceId,messageVersion:1,operationId:'arrange-'+source.sourceId,kind:'task.arrange',
+    action:{taskId:'b',expectedArrangementRevision,expectedRequirementRevision:1,expectedControlRevision:1,dependencies:[{prerequisiteTaskId,condition:'Verification accepted'}]}
+  })
+  await arrange(original,generation,1,'a')
+  const fresh=await addSource('revised-order','B now waits for C')
+  const {activeSessionId}=await query('router.get',{conversationId})
+  await command('router.handoff.recover',{conversationId,generation,sessionId:activeSessionId,handoffId,reason:'ROUTER_BATCH_NO_PROGRESS',unknownEventIds:[eventId],freshEventId:fresh.routeReceipt.eventId})
+  const nextSessionId='router-generation-two'
+  await command('router.candidate.commit',{conversationId,generation,handoffId,sessionId:nextSessionId,commitProof:{sessionId:nextSessionId,commitId:'fixture-commit'}})
+  await command('router.publish',{conversationId,generation,handoffId})
+  const candidate=()=>query('router.held-review.next',{conversationId,eventId,includeReviewed:true})
+  const before=await candidate(),task=before.evidence.tasks[0]
+  assert.equal(task.eligible,true)
+  assert.equal(task.arrangementRevision,2)
+  assert.equal(task.dependencies[0].prerequisiteTaskId,'a')
+  assert.equal(task.sourceArrangement.arrangementRevision,2)
+  assert.deepEqual(task.sourceArrangement.dependencies,task.dependencies)
+  const review={conversationId,generation:generation+1,eventId,handoffId,sourceId:original.sourceId,messageVersion:1,reviewCount:before.reviewCount}
+  await command('router.held-review.record',{...review,decision:'defer'})
+  await assert.rejects(command('router.held-review.record',{...review,decision:'defer'}),/ROUTER_HELD_REVIEW_STALE/)
+  await arrange(fresh,generation+1,2,'c')
+  const after=await candidate(),updated=after.evidence.tasks[0]
+  assert.equal(updated.arrangementRevision,3)
+  assert.equal(updated.dependencies[0].prerequisiteTaskId,'c')
+  assert.equal(updated.dependencies[0].authorizationSourceId,fresh.sourceId)
+  assert.deepEqual(updated.sourceArrangement,task.sourceArrangement)
+  const processed={...review,reviewCount:after.reviewCount,decision:'processed',evidenceId:'b',coverage:'The original arrangement matched A; C is a later authorized change.'}
+  const {createHash}=await import('node:crypto')
+  const evidenceHash=evidence=>createHash('sha256').update(JSON.stringify(evidence)).digest('hex')
+  await assert.rejects(command('router.held-review.record',{...processed,evidenceHash:evidenceHash(before.evidence)}),/ROUTER_HELD_REVIEW_STALE/)
+  await command('router.held-review.record',{...processed,evidenceHash:evidenceHash(after.evidence)})
+  const [event]=await query('router.batch-events',{conversationId,eventIds:[eventId]})
+  assert.equal(event.state,'consumed')
+  assert.deepEqual(event.heldReviews.map(item=>item.decision),['defer','processed'])
+  assert.equal((await query('task.get',{taskId:'b'})).status,'active')
+})
+
 for(const kind of ['task.resume','task.revise','task.reopen','task.control','task.arrange'])test('source-only execution projection covers Router '+kind,async t=>{
  const {executionContext}=await import('../src/tasks/execution-context.js')
  const f=await fixture(t);await f.plan({tasks:[{taskId:'a',request:'ROUTER_GUESS',objective:'ROUTER_GUESS',requirements:['ROUTER_GUESS']}],dependencies:[]})

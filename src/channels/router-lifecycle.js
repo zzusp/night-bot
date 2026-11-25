@@ -98,15 +98,17 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     })
   }
   function recordHeldReview(packet,decision,evidenceId,coverage){
-    const {conversationId,generation,eventId,sourceId,messageVersion,handoffId,noEffect,evidenceHash}=packet.source
-    return command('router.held-review.record',{conversationId,generation,eventId,sourceId,messageVersion,handoffId,decision,noEffect,...evidenceId===undefined?{}:{evidenceId},...coverage===undefined?{}:{coverage,evidenceHash}})
+    const {conversationId,generation,eventId,sourceId,messageVersion,handoffId,reviewCount,noEffect,evidenceHash}=packet.source
+    return command('router.held-review.record',{conversationId,generation,eventId,sourceId,messageVersion,handoffId,reviewCount,decision,noEffect,...evidenceId===undefined?{}:{evidenceId},...coverage===undefined?{}:{coverage,evidenceHash}})
   }
-  async function reviewHeldSource(row,handle,persisted){
-    const candidate=await query('router.held-review.next',{conversationId:row.id,...persisted?{eventId:persisted.source.eventId}:{}});assertOpen()
+  const nextHeldReview=(conversationId,reviewed)=>query('router.held-review.next',{conversationId,...reviewed?{includeReviewed:true,excludeEventIds:[...reviewed]}:{}})
+  const heldReviewForEvent=(conversationId,eventId)=>query('router.held-review.next',{conversationId,eventId,includeReviewed:true})
+  async function reviewHeldSource(row,handle,persisted,reviewed){
+    const candidate=await (persisted?heldReviewForEvent(row.id,persisted.source.eventId):nextHeldReview(row.id,reviewed));assertOpen()
     if(!candidate){if(persisted)await handle.retireHeldReview(persisted.id);return !!persisted}
-    const {row:event,source,evidence,mayRelease}=candidate
+    const {row:event,source,evidence,mayRelease,reviewCount}=candidate
     const noEffect=!evidence.tasks.length&&!evidence.replies.length&&mayRelease&&await heldSourceNoEffect(event)
-    const identity={kind:reviewKind,conversationId:row.id,generation:row.generation,eventId:event.id,sourceId:source.sourceId,messageVersion:source.version,handoffId:event.deliveryHold.handoffId,noEffect,evidenceHash:hash(evidence)}
+    const identity={kind:reviewKind,conversationId:row.id,generation:row.generation,eventId:event.id,sourceId:source.sourceId,messageVersion:source.version,handoffId:event.deliveryHold.handoffId,reviewCount,noEffect,evidenceHash:hash(evidence)}
     const body={eventId:event.id,source:routerModelEvent({...event,source}).source,evidence,noEffect}
     const packet={id:'router-held-review:'+hash([identity,body]),source:identity,content:[{type:'text',text:'Router 挂起来源复查：'+JSON.stringify(body)}]}
     if(persisted&&!isDeepStrictEqual(packet,persisted)){await handle.retireHeldReview(persisted.id);return true}
@@ -122,8 +124,9 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       }
     }
     // 模型未给出有效判断时保留原挂起，不让该轮占住普通消息队列。
-    const remaining=await query('router.held-review.next',{conversationId:row.id,eventId:event.id});assertOpen()
-    if(remaining?.row.deliveryHold.handoffId===identity.handoffId)await recordHeldReview(packet,'no-decision')
+    const remaining=await heldReviewForEvent(row.id,event.id);assertOpen()
+    if(remaining?.row.deliveryHold.handoffId===identity.handoffId&&remaining.reviewCount===reviewCount)await recordHeldReview(packet,'no-decision')
+    reviewed?.add(event.id)
     return true
   }
   async function bindMemory(id,conversationId,previous){
@@ -157,8 +160,8 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       const current=await query('router.get',{conversationId:row.id});assertOpen()
       if(actor.id!==id||current?.activeSessionId!==id||current.generation!==generation||current.phase!=='active'||!isDeepStrictEqual(packets.get(packet.id),packet))return false
       if(packet.source.kind!==reviewKind)return true
-      const candidate=await query('router.held-review.next',{conversationId:row.id,eventId:packet.source.eventId});assertOpen()
-      return candidate?.row.deliveryHold.handoffId===packet.source.handoffId&&candidate.source.sourceId===packet.source.sourceId&&candidate.source.version===packet.source.messageVersion
+      const candidate=await heldReviewForEvent(row.id,packet.source.eventId);assertOpen()
+      return candidate?.row.deliveryHold.handoffId===packet.source.handoffId&&candidate.source.sourceId===packet.source.sourceId&&candidate.source.version===packet.source.messageVersion&&candidate.reviewCount===packet.source.reviewCount
     }
     const options={agentOptions:typeof models==='function'?models():models,authorizeInput,
       beforeRequest:async actor=>{
@@ -225,7 +228,8 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     row=await query('router.get',{conversationId:row.id});await recoverConversation(row)
     return query('router.get',{conversationId:row.id})
   }
-  async function drain(conversationId){
+  async function drain(conversationId,reviewDeferred){
+    const reviewed=reviewDeferred?new Set():undefined
     assertOpen();ctx.get('channels').assertGroupTarget(conversationId)
     let row=await query('router.get',{conversationId})
     const events=await query('router.inbox',{conversationId,limit:30,deliverable:true});assertOpen()
@@ -238,7 +242,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     let handle,reviewTurn=false
     for(;;){
       const inbox=await query('router.inbox',{conversationId,limit:30,deliverable:true});assertOpen()
-      if(!inbox.length&&!await query('router.held-review.next',{conversationId}))break
+      if(!inbox.length&&!await nextHeldReview(conversationId,reviewed))break
       const startedAt=new Date().toISOString()
       if(!handle)try{handle=await open(row)}catch(error){
         // No active old owner may be abandoned. Failed opens clean up their own
@@ -251,7 +255,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       const queued=pendingBusinessInputs(handle.agent)[0]
       if(queued?.source.kind===reviewKind||!queued&&(!inbox.length||reviewTurn)){
         reviewTurn=false
-        if(await reviewHeldSource(row,handle,queued)){row=await query('router.get',{conversationId});continue}
+        if(await reviewHeldSource(row,handle,queued,reviewed)){row=await query('router.get',{conversationId});continue}
       }
       if(!inbox.length)break
       const admittedInput=handle.session.sessionManager.getBranch().findLast(entry=>entry.type==='custom_message'&&entry.customType==='night.business-input')
@@ -419,11 +423,11 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     // recoverConversation above still completes a pre-upgrade committed handoff.
 
   }
-  function schedule(conversationId){
+  function schedule(conversationId,reviewDeferred=false){
     if(closed)return Promise.reject(closeError)
     try{ctx.get('channels').assertGroupTarget(conversationId)}catch(error){return Promise.reject(error)}
     const previous=tails.get(conversationId)??Promise.resolve()
-    const work=previous.catch(()=>{}).then(()=>drain(conversationId))
+    const work=previous.catch(()=>{}).then(()=>drain(conversationId,reviewDeferred))
     return trackTail(conversationId,work)
   }
   function trackTail(conversationId,work){
@@ -605,13 +609,13 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       for(const id of conversations){
         if(tails.has(id))continue
         const row=await query('router.get',{conversationId:id}),inbox=await query('router.inbox',{conversationId:id,limit:30,deliverable:true})
-        if(restoreIdleRouters&&row?.phase==='active'&&!inbox.length&&!await query('router.held-review.next',{conversationId:id})){idle.push(row);continue}
+        if(restoreIdleRouters&&row?.phase==='active'&&!inbox.length&&!await nextHeldReview(id,new Set())){idle.push(row);continue}
         const inspection=inbox.some(event=>event.kind==='task.inspection')
         const key=hash([row?.generation,inbox.map(event=>event.id)]),retry=row?.recoveryRetry
         if(inspection&&row?.phase==='active'&&retry?.key===key&&Date.parse(retry.nextAttemptAt)>Date.now()){
           failures.push({conversationId:id,code:retry.exhausted?'ROUTER_RECOVERY_EXHAUSTED':'ROUTER_RECOVERY_BACKOFF'});continue
         }
-        const recovering=schedule(id).catch(async error=>{
+        const recovering=schedule(id,restoreIdleRouters).catch(async error=>{
           failures.push({conversationId:id,code:error.recoveryReason??error.code??error.message})
           if(error.code!=='ROUTER_BATCH_UNSETTLED')fatal.push(error)
           if(row&&inspection)await command('router.recovery-attempt',{conversationId:id,generation:row.generation,key})
