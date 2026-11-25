@@ -258,6 +258,19 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       event.operatorReply??={text:a.text,actorId:event.operator.actorId,createdAt:new Date().toISOString()};write('router_inbox',event)
       return changed({accepted:true,webOnly:true,reused,text:event.operatorReply.text})
     }
+    if(kind==='router.timeout.defer'){
+      const row=conversationOf(a)
+      if(a.sessionId!==row.activeSessionId)fail('ROUTER_GENERATION_STALE')
+      const {eventIds}=a
+      if(!Array.isArray(eventIds)||!eventIds.length||eventIds.length>30||new Set(eventIds).size!==eventIds.length)fail('ROUTER_EVENTS_REQUIRED')
+      for(const id of eventIds){
+        const event=read('router_inbox',id)
+        if(event.conversationId!==row.id||event.state!=='pending'||event.deliveryHold)fail('ROUTER_RESUME_BATCH_STALE')
+      }
+      const checkpoint={packetId:required(a.packetId),failedEntryId:required(a.failedEntryId),eventIds}
+      if(row.timeoutContinuation&&digest(row.timeoutContinuation)!==digest(checkpoint))fail('ROUTER_RESUME_BATCH_STALE')
+      row.timeoutContinuation=checkpoint;write('conversations',row);return changed({conversation:row})
+    }
     if(kind==='router.recovery-attempt'){
       const row=read('conversations',a.conversationId)
       if(row.generation!==a.generation)fail('ROUTER_GENERATION_STALE')
@@ -452,6 +465,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         }
         row.state='consumed';row.operationId=a.operationId;row.processedGeneration=conversation.generation;row.processedCursor=++conversation.cursor;write('router_inbox',row)
       }
+      if(conversation.timeoutContinuation?.eventIds.every(id=>read('router_inbox',id,true)?.state==='consumed'))delete conversation.timeoutContinuation
       write('conversations',conversation);return changed({conversation})
     })
     if(kind==='router.handoff.recover'){
@@ -507,7 +521,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         rotation.candidateSessionId=required(a.sessionId);if(a.commitProof.sessionId!==a.sessionId)fail('ROUTER_CANDIDATE_PROOF_REQUIRED');rotation.candidateCommit=a.commitProof;rotation.state='candidate-committed'
       }else if(kind==='router.publish'){
         if(rotation.state!=='candidate-committed')fail('ROUTER_CANDIDATE_PROOF_REQUIRED')
-        row.activeSessionId=rotation.candidateSessionId;row.generation++;row.phase='active';row.holderVersion++;row.lastHandoffCursor=rotation.cutoff;delete row.rotationId;rotation.state='published'
+        row.activeSessionId=rotation.candidateSessionId;row.generation++;row.phase='active';row.holderVersion++;row.lastHandoffCursor=rotation.cutoff;delete row.rotationId;delete row.timeoutContinuation;rotation.state='published'
       }else{if(rotation.state!=='handoff')fail('ROUTER_ROTATION_STALE');if(a.safeToResume!==true)fail('ROUTER_RECOVERY_PROOF_REQUIRED');row.phase='active';delete row.rotationId;rotation.state='aborted';rotation.error=a.error}
       write('router_rotations',rotation);write('conversations',row);return changed({conversation:row,rotation})
     }
