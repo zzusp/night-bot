@@ -97,16 +97,16 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       return entry.type!=='custom'||entry.customType!=='night.audit'||!['task','job'].includes(entry.data?.domain)
     })
   }
-  function recordHeldReview(packet,decision,evidenceId){
-    const {conversationId,generation,eventId,sourceId,messageVersion,handoffId,noEffect}=packet.source
-    return command('router.held-review.record',{conversationId,generation,eventId,sourceId,messageVersion,handoffId,decision,noEffect,...evidenceId===undefined?{}:{evidenceId}})
+  function recordHeldReview(packet,decision,evidenceId,coverage){
+    const {conversationId,generation,eventId,sourceId,messageVersion,handoffId,noEffect,evidenceHash}=packet.source
+    return command('router.held-review.record',{conversationId,generation,eventId,sourceId,messageVersion,handoffId,decision,noEffect,...evidenceId===undefined?{}:{evidenceId},...coverage===undefined?{}:{coverage,evidenceHash}})
   }
   async function reviewHeldSource(row,handle,persisted){
     const candidate=await query('router.held-review.next',{conversationId:row.id,...persisted?{eventId:persisted.source.eventId}:{}});assertOpen()
     if(!candidate){if(persisted)await handle.retireHeldReview(persisted.id);return !!persisted}
     const {row:event,source,evidence,mayRelease}=candidate
     const noEffect=!evidence.tasks.length&&!evidence.replies.length&&mayRelease&&await heldSourceNoEffect(event)
-    const identity={kind:reviewKind,conversationId:row.id,generation:row.generation,eventId:event.id,sourceId:source.sourceId,messageVersion:source.version,handoffId:event.deliveryHold.handoffId,noEffect}
+    const identity={kind:reviewKind,conversationId:row.id,generation:row.generation,eventId:event.id,sourceId:source.sourceId,messageVersion:source.version,handoffId:event.deliveryHold.handoffId,noEffect,evidenceHash:hash(evidence)}
     const body={eventId:event.id,source:routerModelEvent({...event,source}).source,evidence,noEffect}
     const packet={id:'router-held-review:'+hash([identity,body]),source:identity,content:[{type:'text',text:'Router 挂起来源复查：'+JSON.stringify(body)}]}
     if(persisted&&!isDeepStrictEqual(packet,persisted)){await handle.retireHeldReview(persisted.id);return true}
@@ -169,10 +169,10 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       setup:async(agentCtx,agent)=>{
         await agentCtx.get('agentPresets').mount(agentCtx,agentPreset)
         await setupBusiness(agentCtx,{conversationId:row.id,generation,sessionId:id,
-          reviewHeld:async(packet,{eventId,decision,evidenceId})=>{
+          reviewHeld:async(packet,{eventId,decision,evidenceId,coverage})=>{
             assertOpen();ctx.get('channels').assertGroupTarget(row.id)
             if(packet.source.kind!==reviewKind||packet.source.eventId!==eventId||!isDeepStrictEqual(packet,packets.get(packet.id)))fail('ROUTER_HELD_REVIEW_SCOPE')
-            return recordHeldReview(packet,decision,evidenceId)
+            return recordHeldReview(packet,decision,evidenceId,coverage)
           }})
       }}
     const handle=existing?await agents.resume({...options,resumeSessionId:id}):await agents.create({...options,sessionId:id,meta:{cwd:workspace,runtimeOwner:'conversation-router',agentPreset,conversationId:row.id,generation},...(handoff?{routerHandoff:{...handoff,conversationId:row.id}}:{})})
@@ -605,7 +605,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       for(const id of conversations){
         if(tails.has(id))continue
         const row=await query('router.get',{conversationId:id}),inbox=await query('router.inbox',{conversationId:id,limit:30,deliverable:true})
-        if(restoreIdleRouters&&row?.phase==='active'&&!inbox.length){idle.push(row);continue}
+        if(restoreIdleRouters&&row?.phase==='active'&&!inbox.length&&!await query('router.held-review.next',{conversationId:id})){idle.push(row);continue}
         const inspection=inbox.some(event=>event.kind==='task.inspection')
         const key=hash([row?.generation,inbox.map(event=>event.id)]),retry=row?.recoveryRetry
         if(inspection&&row?.phase==='active'&&retry?.key===key&&Date.parse(retry.nextAttemptAt)>Date.now()){

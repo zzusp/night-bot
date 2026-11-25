@@ -83,14 +83,29 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(source?.groupId===row.conversationId&&source.version===row.messageVersion&&source.channel!=='internal'
       &&!source.retracted&&!source.authorizationRevoked&&!source.triageHold&&!source.archiveRestoreHold&&latest(source))return source
   }
+  const evidenceText=(value,limit)=>typeof value==='string'?value.slice(0,limit):''
   function heldEvidence(row){
     const args=[row.conversationId,row.sourceId,row.messageVersion]
     return {
       tasks:sourceLinks.all(...args).map(({body})=>JSON.parse(body)).flatMap(link=>{
         const task=read('tasks',link.taskId,true)
-        return task?.groupId===row.conversationId?[{taskId:task.taskId,relation:link.relation,status:task.status}]:[]
+        if(task?.groupId!==row.conversationId)return []
+        const title=evidenceText(task.title,512),objective=evidenceText(task.objective,4096),request=evidenceText(task.request,4096),anchor=evidenceText(link.anchor,4096)
+        const requirements=Array.isArray(task.requirements)?task.requirements:[]
+        const requirementPreviews=requirements.slice(0,20).map(value=>evidenceText(value,512))
+        const truncated=(task.title?.length??0)>title.length||(task.objective?.length??0)>objective.length||(task.request?.length??0)>request.length
+          ||(link.anchor?.length??0)>anchor.length||requirements.length!==requirementPreviews.length||requirements.some((item,index)=>item!==requirementPreviews[index])
+        const eligible=!truncated&&!!(request.trim()||objective.trim())&&!task.archivedAt&&!task.archiveRestoreHold&&!task.archiveRestore?.reviewRequired
+          &&!['failed','cancelled'].includes(task.status)&&['create','task.supplement','task.revise','task.reopen','task.resume','task.arrange','task.control'].includes(link.relation)
+        return [{taskId:task.taskId,relation:link.relation,status:task.status,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,
+          title,objective,request,sourceExcerpt:anchor,requirements:requirementPreviews,truncated,eligible}]
       }),
-      replies:heldReplies.all(...args).map(({body})=>JSON.parse(body)).map(n=>({notificationId:n.id,kind:n.kind,state:n.state,purpose:n.payload.replyPurpose}))
+      replies:heldReplies.all(...args).map(({body})=>JSON.parse(body)).map(n=>{
+        const {text:stored,replyPurpose:purpose,completionBinding,taskDelivery}=n.payload
+        const text=evidenceText(stored,8000),truncated=(stored?.length??0)>text.length
+        const eligible=n.state==='delivered'&&n.kind==='router-reply'&&purpose==='direct-answer'&&!completionBinding&&!taskDelivery&&!!text.trim()&&!truncated
+        return {notificationId:n.id,kind:n.kind,state:n.state,purpose,text,truncated,eligible}
+      })
     }
   }
   function mayReleaseHold(row){
@@ -446,9 +461,10 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(row.heldReviews?.some(review=>review.handoffId===a.handoffId&&review.generation===a.generation))fail('ROUTER_HELD_REVIEW_STALE')
       const evidence=heldEvidence(row)
       if(a.decision==='processed'){
-        const task=evidence.tasks.find(task=>task.taskId===a.evidenceId)
-        const reply=evidence.replies.find(reply=>reply.notificationId===a.evidenceId&&reply.state==='delivered'
-          &&reply.purpose!=='acknowledgement'&&reply.kind!=='triage-reply')
+        if(typeof a.coverage!=='string'||!a.coverage.trim()||a.coverage.length>1000)fail('ROUTER_HELD_REVIEW_COVERAGE_REQUIRED')
+        if(a.evidenceHash!==hash(evidence))fail('ROUTER_HELD_REVIEW_STALE')
+        const task=evidence.tasks.find(task=>task.taskId===a.evidenceId&&task.eligible)
+        const reply=evidence.replies.find(reply=>reply.notificationId===a.evidenceId&&reply.eligible)
         if(!task&&!reply)fail('ROUTER_HELD_REVIEW_EVIDENCE_REQUIRED')
         row.state='consumed';row.processedGeneration=conversation.generation;row.processedCursor=++conversation.cursor
         write('conversations',conversation)
@@ -456,7 +472,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         if(a.noEffect!==true||!mayReleaseHold(row)||evidence.tasks.length||evidence.replies.length)fail('ROUTER_HELD_REVIEW_EFFECT_UNKNOWN')
         delete row.deliveryHold
       }else if(!['defer','no-decision'].includes(a.decision))fail('ROUTER_ARGUMENT_INVALID')
-      const review={handoffId:a.handoffId,generation:a.generation,decision:a.decision,...a.decision==='processed'?{evidenceId:a.evidenceId}:{},recordedAt:new Date().toISOString()}
+      const review={handoffId:a.handoffId,generation:a.generation,decision:a.decision,...a.decision==='processed'?{evidenceId:a.evidenceId,coverage:a.coverage.trim()}:{},recordedAt:new Date().toISOString()}
       ;(row.heldReviews??=[]).push(review)
       write('router_inbox',row);return changed({review})
     }

@@ -260,8 +260,9 @@ test('cold Router isolates a persisted zero-progress event and actually dispatch
  assert.equal(h.sent.length,0)
 })
 
-for(const decision of ['continue','processed','defer'])test(`recovered Router actively reviews a held source: ${decision}`,{timeout:nativeTestTimeout(90000)},async t=>{
- const ordinary=[],reviews=[];let attempts=0,notificationId,reviewTried=false,reviewReady=decision!=='processed'
+for(const decision of ['continue','processed','defer','progress'])test(`recovered Router actively reviews a held source: ${decision}`,{timeout:nativeTestTimeout(90000)},async t=>{
+ const cold=decision==='processed'||decision==='progress'
+ const ordinary=[],reviews=[];let attempts=0,notificationId,reviewTried=false,reviewReady=!cold
  const id='held-for-'+decision
  const h=await residentRouterHost(t,async body=>{
   const tools=requestTools(body),last=body.messages.at(-1)
@@ -270,15 +271,22 @@ for(const decision of ['continue','processed','defer'])test(`recovered Router ac
    const input=requestEnvelope(body,'Router 挂起来源复查：')
    assert.equal(input.source.messageId,id)
    if(last.role==='tool'){
+    if(decision==='progress')return {tool:'resident_review_held_source',args:{eventId:input.eventId,decision:'defer'}}
     if(decision==='defer'&&reviewTried&&reviews.length===1){reviews.push('rejected');return {tool:'resident_router_reply',args:{operationId:'review-must-not-reply',sourceId:input.source.sourceId,messageVersion:input.source.version,replyPurpose:'direct-answer',text:'This must not be sent'}}}
     if(decision==='defer'&&reviews.length===2){reviews.push('forbidden');return {tool:'resident_review_held_source',args:{eventId:input.eventId,decision:'defer'}}}
     return {text:'Review complete'}
    }
    reviews.push(input)
-   if(decision==='processed'){notificationId=input.evidence.replies[0]?.notificationId;assert.equal(input.evidence.replies[0]?.state,'delivered')}
+   if(cold){
+    const reply=input.evidence.replies[0]
+    notificationId=reply?.notificationId
+    assert.equal(reply?.state,'delivered')
+    assert.equal(reply?.text,decision==='progress'?'Only finished the first check':'Existing answer')
+    assert.equal(reply?.eligible,decision==='processed')
+   }
    if(decision==='defer'){reviewTried=true;assert.equal(input.noEffect,false)}
    if(decision==='continue')assert.equal(input.noEffect,true)
-   return {tool:'resident_review_held_source',args:{eventId:input.eventId,decision:decision==='defer'?'continue':decision,...notificationId?{evidenceId:notificationId}:{}}}
+   return {tool:'resident_review_held_source',args:{eventId:input.eventId,decision:decision==='defer'?'continue':decision==='progress'?'processed':decision,...notificationId?{evidenceId:notificationId,coverage:'The cited reply covers the original request.'}:{}}}
   }
   if(!tools.includes('resident_router_settle'))return {text:'No work'}
   const events=requestEnvelope(body,'Router 请求：').events
@@ -291,7 +299,7 @@ for(const decision of ['continue','processed','defer'])test(`recovered Router ac
   ordinary.push(...events.map(event=>event.source?.messageId))
   if(original&&++attempts===1){
    if(decision==='continue')return {text:'Original round ended before any action'}
-   if(decision==='processed')return {tool:'resident_router_reply',args:{operationId:'old-reply',sourceId:original.sourceId,messageVersion:original.messageVersion,replyPurpose:'direct-answer',text:'Existing answer'}}
+   if(cold)return {tool:'resident_router_reply',args:{operationId:'old-reply',sourceId:original.sourceId,messageVersion:original.messageVersion,replyPurpose:decision==='progress'?'task-update':'direct-answer',text:decision==='progress'?'Only finished the first check':'Existing answer'}}
    return {tool:'resident_router_settle',args:{operationId:'refused-first',eventIds:[original.id],noTaskDispositions:[{eventId:original.id,outcome:'context-only',sourceQuote:'incorrect quote',reason:'Leave the input unhandled'}]}}
   }
   if(original&&decision==='continue')return {tool:'resident_router_reply',args:{operationId:'continued-reply',sourceId:original.sourceId,messageVersion:original.messageVersion,replyPurpose:'direct-answer',text:'Answer from the safely continued source'}}
@@ -300,20 +308,20 @@ for(const decision of ['continue','processed','defer'])test(`recovered Router ac
  await h.receive(channelMessage(id))
  await assert.rejects(h.service.whenIdle(),{code:'ROUTER_BATCH_UNSETTLED'})
  const original=(await h.query('source.list')).find(source=>source.messageId===id),conversationId=original.groupId
- if(decision==='processed')await eventually(async()=>{
+ if(cold)await eventually(async()=>{
   const result=await h.query('router.reply-history',{conversationId,sourceId:original.sourceId})
   return result.replies.some(reply=>reply.state==='delivered')
  },'original fake transport reply received')
  const previous=await h.query('router.get',{conversationId})
  await h.receive(channelMessage('fresh-after-'+decision));await h.service.whenIdle()
- if(decision==='processed'){
+ if(cold){
   // 模拟发布恢复代际后停止，旧留置已经落盘，但尚未进入复查。
   assert.equal(reviews.length,0)
   const [held]=await h.query('router.inbox',{conversationId})
   assert.equal(held?.sourceId,original.sourceId);assert.ok(held.deliveryHold)
   assert.deepEqual(await h.query('router.inbox',{conversationId,deliverable:true}),[])
   reviewReady=true
-  await h.restart();await h.service.whenIdle()
+  await h.restart({waitForRouter:false,restoreIdleRouters:true});await h.service.whenIdle()
  }
  const next=await h.query('router.get',{conversationId})
  assert.ok(h.results.some(r=>r.name==="resident_review_held_source"&&!r.result.isError),JSON.stringify(h.results.filter(r=>r.name==="resident_review_held_source")))
@@ -323,8 +331,9 @@ for(const decision of ['continue','processed','defer'])test(`recovered Router ac
  assert.deepEqual(await h.query('router.inbox',{conversationId,deliverable:true}),[])
  const eventId=original.routeReceipt.eventId
  const [final]=await h.query('router.batch-events',{conversationId,eventIds:[eventId]})
- assert.equal(final.heldReviews.at(-1).decision,decision)
- assert.equal(final.state,decision==='defer'?'pending':'consumed')
+ assert.equal(final.heldReviews.at(-1).decision,decision==='progress'?'defer':decision)
+ if(decision==='progress')assert.ok(h.results.some(r=>r.name==='resident_review_held_source'&&r.result.error?.message==='ROUTER_HELD_REVIEW_EVIDENCE_REQUIRED'))
+ assert.equal(final.state,['defer','progress'].includes(decision)?'pending':'consumed')
  const expectedSends=decision==='defer'?0:1
  if(expectedSends)await eventually(()=>h.sent.length===expectedSends,'one reply through the fake transport')
  if(decision==='defer'){
