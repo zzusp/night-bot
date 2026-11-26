@@ -27,7 +27,16 @@ test('actual Host legacy non-Router human review and dialogue stay read-only, re
   if(['dialogue','followup','answer'].includes(stage))for(const name of ['write',shell,'memory_remember'])assert.ok(body.tools.some(tool=>tool.function.name===name),'review must deny an actual available tool: '+name)
   const n=step++
   if(stage==='initial')return wait('Historical-session scaffold, no question capability.')
-  if(stage==='dialogue')return [call('write',{path:'work/dialogue-forbidden.txt',content:'forbidden'}),forbiddenShell('work/dialogue-shell-forbidden.txt'),remember(),wait('Current facts only; the original business question remains pending.')][n]
+  if(stage==='dialogue'){
+    const prompt=JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role)))
+    assert.match(prompt,/summary 直接作为用户看见的回复/u)
+    assert.match(prompt,/未明确要求明细，只写结论和下一步/u)
+    if(n===1){
+      assert.match(JSON.stringify(body.messages.at(-1)),/禁止防御性内容/u)
+      assert.doesNotMatch(JSON.stringify(body.messages.at(-1)),/TASK_DIALOGUE_REPLY_ONLY/u)
+    }
+    return [call('communication_guidance_read',{}),call('write',{path:'work/dialogue-forbidden.txt',content:'forbidden'}),forbiddenShell('work/dialogue-shell-forbidden.txt'),remember(),wait('Current facts only; the original business question remains pending.')][n]
+  }
   if(stage==='followup')return [call('write',{path:'work/review-forbidden.txt',content:'forbidden'}),forbiddenShell('work/review-shell-forbidden.txt'),remember(),wait('A fact reply cannot resolve the original business approval.',{replySourceId:'foreign-source'}),wait('Read evidence is necessary.',{replySourceId:candidate,evidence:[]}),wait('Only existing local evidence is known; no implementation approval was inferred.',{replySourceId:candidate})][n]
   if(stage==='answer')return [call('task_human_resolve',{requestId:'foreign-request',sourceId:candidate,reason:'not the current question',evidence:['not authority']}),call('task_human_resolve',{requestId,sourceId:'foreign-source',reason:'not a candidate',evidence:['not authority']}),call('task_human_resolve',{requestId,sourceId:candidate,reason:'empty evidence cannot authorize',evidence:[]}),call('task_human_resolve',{requestId,sourceId:candidate,reason:'business-person is designated by the original objective; the full reply answers this question and preserves the UAT2-only condition.',evidence:['business-person: UAT2 only; edits must persist on save. No other environment is approved.']}),call('write',{path:'work/after-resolve-forbidden.txt',content:'forbidden'}),remember(),wait('The original reply and all conditions were recorded; this review remains read-only.')][n]
   if(stage==='normal')return n===0?call('write',{path:'work/authorized.txt',content:'original authorized local work'}):call('task_result',{decision:{action:'complete',summary:'Original local work verified.',evidence:['work/authorized.txt'],limitations:[]}})

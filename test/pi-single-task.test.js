@@ -1,4 +1,3 @@
-import {assertSharedCommunicationGuidance} from './fixtures/communication-guidance.js'
 import {symlink} from './fixtures/filesystem-link.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {tmpdir} from 'node:os'
@@ -356,26 +355,28 @@ test('comparison: a passed intermediate check is followed by a real final artifa
   assert.equal(step,calls.length)
 })
 
-for(const output of ['channel reply','Issue comment','PR review reply'])test(`official task ${output} request carries public communication and execution boundaries`,{timeout:nativeTestTimeout(15000)},async t=>{
+for(const output of ['channel reply','Issue comment','PR review reply'])test(`official task ${output} can read scoped public writing rules without publishing`,{timeout:nativeTestTimeout(15000)},async t=>{
   t=cleanupContext(t)
   let h;t.after(()=>h?.close())
-  let reads=0
-  const f=await memoryHost(t,body=>{if(!requestTools(body).includes('task_result'))return;if(reads++===0)return {tool:'communication_guidance_read',args:{}};return result})
+  let guidanceRead=false
+  const f=await memoryHost(t,body=>{
+    if(!requestTools(body).includes('task_result'))return
+    if(!guidanceRead){guidanceRead=true;return {tool:'communication_guidance_read',args:{}}}
+    const guidance=JSON.stringify(body.messages.at(-1))
+    assert.match(guidance,/未明确要求明细，只写结论和下一步/u)
+    assert.match(guidance,/写草稿不等于获准发送/u)
+    assert.match(guidance,/内部任务结果、证据、限制和会话交接不适用/u)
+    return result
+  })
   h=await serviceFor(f)
   const task=await h.service.createTask({requestId:'public-communication-prompt',objective:`Draft a ${output} asking the reader to choose one of two display names; do not publish`})
   await until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.status==='completed'&&row.drained})
   const request=f.requests.find(body=>requestTools(body).includes('task_result'))
   assert.ok(request,'execution must reach the local provider with task_result')
   const prompt=taskSystemPrompt(request)
-  assert.match(prompt,/沟通规范索引/)
-  assert.doesNotMatch(prompt,/NIGHT_NATURAL_CHANNEL_REPLY|NIGHT_TASK_PUBLIC_COMMUNICATION|好，我看看是什么原因/)
-  const loaded=f.requests.find(body=>body.messages.some(message=>message.role==='tool'&&JSON.stringify(message.content).includes('NIGHT_TASK_PUBLIC_COMMUNICATION')))
-  assert.ok(loaded,'native tool result reaches the same execution session on demand')
-  assertSharedCommunicationGuidance(request,loaded)
-  const content=JSON.stringify(loaded.messages.filter(message=>message.role==='tool'))
-  assert.match(content,/Issue\/PR 描述和评论、代码审查回复/)
-  assert.match(content,/写草稿不等于获准发送/)
-  assert.match(content,/未知提交结果先回读原效果/)
+  assert.match(prompt,/沟通规范索引.*交给 Router 的内部 task_result 不适用/u)
+  assert.doesNotMatch(prompt,/默认 ELI5|禁止防御性内容/u)
+  assert.ok(requestTools(request).includes('communication_guidance_read'))
   assert.match(prompt,/Do not rely on the Router to direct the investigation or decide when to stop/)
   assert.match(prompt,/已批准且对象、范围和条件不变时，不重复要求批准/)
   assert.match(prompt,/不跳过实际权限或真实审批/)
