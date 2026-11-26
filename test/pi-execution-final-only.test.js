@@ -14,7 +14,7 @@ for(const action of ['complete','detailed','blocked','wait','natural-stop','poli
  const summary=multi?'清单上的 6 份材料都已核对。':investigation?'发出中断提示的 9 次，都是最后一次模型请求超时。':'Verified synthetic outcome'
  const evidence=multi?['逐项回读清单，6 份材料均存在。']:investigation?['13:37 和 15:19 的最后一条模型请求日志都记录超时，未返回输出。','这批总共 27 次模型超时，其中 9 次发出中断提示。','已逐项排除排队、工具和投递。']:['Synthetic material checked']
  const limitations=multi?['没有收件方的确认记录，尚不能确定未确认的原因。','TASK_EFFECT_UNCERTAIN_NO_REPLAY']:investigation?['缺网关日志，无法定位超时发生在哪一段。','本次只读，未改代码、重启或重跑。']:[]
- const replyText=technical?'模型服务拒绝了这轮请求，核验尚未完成。':multi?'1. 6 份材料都齐了。\n2. 收件方没留确认记录，原因还不清楚。':investigation?summary+(detailed?evidence.slice(0,2).join(''):'')+'下一步对照网关日志查超时发生在哪一段。':'这份测试材料已核对。'
+ const replyText=technical?'模型服务拒绝了这轮请求，核验尚未完成。':multi?'1. 6 份材料都齐了。\n2. 收件方没留确认记录，原因还不清楚。':investigation?(detailed?summary+evidence.slice(0,2).join(''):'这些任务都中断在最后一次模型请求超时。')+'下一步对照网关日志查超时发生在哪一段。':'这份测试材料已核对。'
  h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
   if(requestText(body).some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION')))return {text:'{"lessons":[]}'}
@@ -59,6 +59,9 @@ for(const action of ['complete','detailed','blocked','wait','natural-stop','poli
    assert.doesNotMatch(prompt,/复杂问题把关键依据说透|有帮助的依据不要省/u)
    if(investigation){
     assert.match(prompt,/内部结果不走对外回复规则/u)
+    const text=body.tools.find(tool=>tool.function.name==='resident_router_reply').function.parameters.properties.text
+    assert.match(text.description,/除非会改变结论或下一步，不列附带统计/u)
+    assert.match(text.description,/确有可查的事实缺口，写清下一步核对什么/u)
     assert.ok(requestText(body).some(text=>text.includes(request)))
     assert.deepEqual(outcome.taskEvent.result.evidence,evidence)
     assert.deepEqual(outcome.taskEvent.result.limitations,limitations)
