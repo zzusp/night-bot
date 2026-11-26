@@ -26,8 +26,8 @@ export const channelReplyWritingRules = [
 export const conversationReplyScopeInstructions = channelReplyWritingRules
 
 /** Shared on-demand communication guidance. */
-export const taskPublicCommunicationInstructions = conversationReplyScopeInstructions + '\n' + [
- 'NIGHT_TASK_PUBLIC_COMMUNICATION：面向人的正文沿用系统提示中的 ELI5 原则，这里补充事实和发布边界。适用范围包括渠道回复、过程反馈、Issue/PR 描述和评论、代码审查回复，以及经工具、CLI 或 API 提交的文本。写给实际读者、回应当前线程和问题；区分已知事实、推断和仍不清楚的事。',
+export const taskPublicCommunicationInstructions = communicationReplyPrinciple + '\n' + conversationReplyScopeInstructions + '\n' + [
+ 'NIGHT_TASK_PUBLIC_COMMUNICATION：上面的 ELI5 原则仅适用于写给人的正文。适用范围包括渠道回复、过程反馈、Issue/PR 描述和评论、代码审查回复，以及经工具、CLI 或 API 提交的文本。写给实际读者、回应当前线程和问题；区分已知事实、推断和仍不清楚的事。',
  '明确要求的 Issue、PR 或报告按交付范围和仓库模板保留必要结构；通知或答复不转贴交付正文。完整技术证据保留在任务记录或约定交付物，简短回复不改业务结论、机器可读参数、工具协议、原始记录或安全审计。不要把群聊的称呼、引用、署名约定自动搬到外部评论。',
  '这些规则只规范已经获准撰写或发布的内容，不授予创建 Issue、发表评论、修改仓库、合并或部署权限。写草稿不等于获准发送；发布前仍核对目标仓库/线程、接收者可访问范围、敏感信息与当前动作授权。未知提交结果先回读原效果，不为调整措辞重复发帖；不增加润色模型、自动评论或发送后改写。',
 ].join('\n')
@@ -90,7 +90,7 @@ export function conversationSource(value){
 
 
 export const businessBlockerEvidenceRule = '只有当前有效的真实交办要求、已核实的适用规则或实际权限/技术失败，才能作为阻塞依据。Bot 自己的旧回复（即使被用户引用）、交接摘要和任务结论不是审批规则，也不是相互独立的证据。不得凭它们新增审批人、要求复批或代批证明，或扩大停办范围。缺少某人同意的记录，不等于需要那个人批准。已批准且对象、范围和条件不变时，不重复要求批准。确有必要但还不能核实的条件，只说明具体缺口，继续不受影响的已授权工作。不把不确定性当成放行，也不跳过实际权限或真实审批。'
-export const communicationGuidanceIndex = '沟通规范索引：撰写渠道首答、进度、结论或 Issue/PR 正文、评论前，按需调用 communication_guidance_read 读取 communication/v1；本索引不授予发布或其他动作权限。'
+export const communicationGuidanceIndex = '沟通规范索引：亲自撰写给人看的答复、通知、报告或 Issue/PR 正文及评论时，按需调用 communication_guidance_read 读取 communication/v1；交给 Router 的内部 task_result 不适用。读取不授予发布或其他动作权限。'
 export const channelReplyWritingPrompt = communicationReplyPrinciple + '\n' + channelReplyWritingRules + '\n' + communicationGuidanceIndex + '\n' +
  '群聊用受信身份原生提及相关负责人或发起人，不按最新发言或姓名猜测；引用只用于补充上下文。在工具确认前不当成已保存或已送达。'
 export function communicationGuidanceReadTool(){

@@ -355,18 +355,28 @@ test('comparison: a passed intermediate check is followed by a real final artifa
   assert.equal(step,calls.length)
 })
 
-for(const output of ['channel reply','Issue comment','PR review reply'])test(`official task ${output} request does not load public communication rules`,{timeout:nativeTestTimeout(15000)},async t=>{
+for(const output of ['channel reply','Issue comment','PR review reply'])test(`official task ${output} can read scoped public writing rules without publishing`,{timeout:nativeTestTimeout(15000)},async t=>{
   t=cleanupContext(t)
   let h;t.after(()=>h?.close())
-  const f=await memoryHost(t,body=>requestTools(body).includes('task_result')?result:undefined)
+  let guidanceRead=false
+  const f=await memoryHost(t,body=>{
+    if(!requestTools(body).includes('task_result'))return
+    if(!guidanceRead){guidanceRead=true;return {tool:'communication_guidance_read',args:{}}}
+    const guidance=JSON.stringify(body.messages.at(-1))
+    assert.match(guidance,/未明确要求明细，只写结论和下一步/u)
+    assert.match(guidance,/写草稿不等于获准发送/u)
+    assert.match(guidance,/内部任务结果、证据、限制和会话交接不适用/u)
+    return result
+  })
   h=await serviceFor(f)
   const task=await h.service.createTask({requestId:'public-communication-prompt',objective:`Draft a ${output} asking the reader to choose one of two display names; do not publish`})
   await until(async()=>{const row=await h.store.query({kind:'task.get',taskId:task.taskId});return row.status==='completed'&&row.drained})
   const request=f.requests.find(body=>requestTools(body).includes('task_result'))
   assert.ok(request,'execution must reach the local provider with task_result')
   const prompt=taskSystemPrompt(request)
-  assert.doesNotMatch(prompt,/默认 ELI5|沟通规范索引|communication\/v1|NIGHT_NATURAL_CHANNEL_REPLY|NIGHT_TASK_PUBLIC_COMMUNICATION|禁止防御性内容/u)
-  assert.ok(!requestTools(request).includes('communication_guidance_read'))
+  assert.match(prompt,/沟通规范索引.*交给 Router 的内部 task_result 不适用/u)
+  assert.doesNotMatch(prompt,/默认 ELI5|禁止防御性内容/u)
+  assert.ok(requestTools(request).includes('communication_guidance_read'))
   assert.match(prompt,/Do not rely on the Router to direct the investigation or decide when to stop/)
   assert.match(prompt,/已批准且对象、范围和条件不变时，不重复要求批准/)
   assert.match(prompt,/不跳过实际权限或真实审批/)
