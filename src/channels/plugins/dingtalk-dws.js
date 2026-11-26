@@ -12,7 +12,7 @@ import {prepareSecrets} from '../../runtime/paths.js'
 import {resolveDingtalkBinding,verifyDingtalkBinding} from './dingtalk-binding.js'
 import {dingtalkChannelPaths,openDingtalkIngress,assertDingtalkStoragePath,assertDingtalkTargetSwitch,readDingtalkBinding} from './dingtalk-storage.js'
 import {hash} from '../../memory/format.js'
-import {dingtalkIngressAdapter,dingtalkInputFingerprint,retainedDingtalkDuplicate,readPausedDeferred} from './dingtalk-ingress.js'
+import {dingtalkIngressAdapter,dingtalkInputFingerprint,isBoundPrivateAuthor,retainedDingtalkDuplicate,readExactDingtalkMessages} from './dingtalk-ingress.js'
 import {observeDwsLogin} from './dingtalk-auth.js'
 export {validateConfig} from './dingtalk-config.js'
 export const name='night-channel-dingtalk-dws',inject=['channels','runtimePaths']
@@ -81,9 +81,11 @@ export async function apply(ctx,config={},dependencies={}){
       return ctx.channels.trackChannelCall(channelId,()=>invoke(...args))
     }
   }
+  const inBoundScope=context=>readyBound&&context?.channelId===channelId&&context.type===config.conversationType&&context.conversationId===config.binding.conversationId
   unregister=ctx.channels.registerTransport(channelId,{canSend:()=>readyBound&&!closed&&config.enabled&&config.writesAuthorized===true,
+    privatePeer:input=>inBoundScope(input)&&input.type==='chat'&&isBoundPrivateAuthor(config.binding,input.senderId)?config.binding.peerId:undefined,
     capabilities:{account:accountPolicy,privateSubscription:{scope:'explicit-peers',peerCount:privatePeers.length+(config.conversationType==='chat'?1:0)},conversationTypes:[config.conversationType],files:config.conversationType==='chat-room'?['chat-room']:[],quotedReplies:[config.conversationType],standaloneMarkdown:true},
-    send:(envelope,notification)=>{requireSend();assertTarget(envelope.conversationId,envelope.type);return envelope.type==='chat'?adapter.sendDirectIntent({openDingTalkId:config.binding.peerId,text:envelope.text,textFormat:notification.payload.textFormat,idempotencyKey:notification.id,conversationId:envelope.conversationId,replyToMessageId:envelope.replyToMessageId,replyToSenderId:config.binding.peerId}):notifications.send(typed(notification,envelope))},
+    send:(envelope,notification)=>{requireSend();assertTarget(envelope.conversationId,envelope.type);return envelope.type==='chat'?adapter.sendDirectIntent({openDingTalkId:config.binding.peerId,text:envelope.text,textFormat:notification.payload.textFormat,idempotencyKey:notification.id,conversationId:envelope.conversationId,replyToMessageId:envelope.replyToMessageId,replyToSenderId:envelope.replyToParticipantId??envelope.senderId??config.binding.peerId}):notifications.send(typed(notification,envelope))},
     readback:async(envelope,notification)=>{
       assertTarget(envelope.conversationId,envelope.type)
       if(envelope.type!=='chat')return notifications.readback(typed(notification,envelope))
@@ -117,11 +119,13 @@ export async function apply(ctx,config={},dependencies={}){
   const deferredResult=()=>({accepted:false,processing:'deferred',reason:'CHANNEL_NOTIFICATION_IDENTITY_PENDING'})
   const receiveHistoryMessage=async(raw,{type=config.conversationType,recheck=false,preserveRecorded=false}={})=>{
     const message=normalize(raw,raw.groupId??raw.conversationId)
-    if(type!==config.conversationType||type==='chat'&&message.senderOpenDingTalkId!==config.binding.peerId)throw failure('DWS_CHAT_NOT_AUTHORIZED')
+    if(type!==config.conversationType||type==='chat'&&!isBoundPrivateAuthor(config.binding,message.senderOpenDingTalkId))throw failure('DWS_CHAT_NOT_AUTHORIZED')
     if(message?.groupId!==config.binding.conversationId||!message.messageId||!message.senderOpenDingTalkId)throw failure('DWS_PLUGIN_AUTHENTICATED_IDENTITY_REQUIRED')
+    const sameAccountPrivate=type==='chat'&&message.senderOpenDingTalkId===config.binding.actorId
     if(recheck&&!ingressStore.snapshot().deferredMessages?.some(row=>row.messageId===message.messageId))return
     if(raw.retraction){
-      if(typeof raw.retraction.senderId!=='string'||!raw.retraction.senderId||typeof raw.retraction.at!=='string'||!Number.isFinite(Date.parse(raw.retraction.at)))throw failure('DINGTALK_RECALL_IDENTITY_INVALID')
+      if(typeof raw.retraction.senderId!=='string'||!raw.retraction.senderId||typeof raw.retraction.at!=='string'||!Number.isFinite(Date.parse(raw.retraction.at))
+        ||sameAccountPrivate&&(message.senderIdentityVerified===false||raw.retraction.senderId!==config.binding.actorId))throw failure('DINGTALK_RECALL_IDENTITY_INVALID')
     }
     const retraction=raw.retraction?{retracted:true,retractedBy:ctx.channels.identity({...channelInputFor(message),senderId:raw.retraction.senderId}).principal,retractedAt:raw.retraction.at}:undefined
     let channelInput=channelInputFor(message,retraction),identity=ctx.channels.identity(channelInput),verifiedSender=message.senderIdentityVerified!==false
@@ -129,6 +133,12 @@ export async function apply(ctx,config={},dependencies={}){
     return ctx.channels.withInputTarget(identity.envelope,async()=>{
       const consumed=(result,{retracted=channelInput.platformFlags?.retracted===true}={})=>writeCursor(ingressStore.consumed(message,{retracted})).then(()=>result)
       if(app.tasks.isOwnNotification({groupId:identity.sessionId,messageId:message.messageId}))return consumed({accepted:false,processing:'ignored',reason:'own-notification',channelType:type,conversationId:message.groupId})
+      if(sameAccountPrivate&&!verifiedSender){
+        // 历史投影没有 open ID；用原消息回读证明同账号作者，再继续接纳。
+        const [proof]=await readExactDingtalkMessages(runner,config.binding,[message])
+        if(proof.senderOpenDingTalkId!==config.binding.actorId)throw failure('DINGTALK_HISTORY_IDENTITY_INVALID')
+        verifiedSender=true
+      }
       const {deferredMessages=[],pendingRecalls=[]}=ingressStore.snapshot()
       // 已记录的撤回优先于历史旧正文。
       if(!retraction&&pendingRecalls.some(row=>row.messageId===message.messageId))return deferredResult()
@@ -162,7 +172,7 @@ export async function apply(ctx,config={},dependencies={}){
             // 差异事件可能迟到；只以同账号精确回读的当前版本接纳修订。
             const latest=normalize(await adapter.readMessage(config.binding.conversationId,message.messageId),config.binding.conversationId)
             if(latest.groupId!==message.groupId||latest.messageId!==message.messageId||latest.senderOpenDingTalkId!==message.senderOpenDingTalkId)throw failure('DINGTALK_MESSAGE_REVISION_IDENTITY_INVALID')
-            verifiedSender=latest.senderIdentityVerified!==false
+            verifiedSender=sameAccountPrivate||latest.senderIdentityVerified!==false
             channelInput={...channelInputFor(latest),messageVersion:prior.version??1}
             identity=ctx.channels.identity(channelInput)
             if(retainedDingtalkDuplicate(identity,prior,source,options))return retained()
@@ -263,7 +273,7 @@ export async function apply(ctx,config={},dependencies={}){
       const pending=(state.deferredMessages??[]).filter(within)
       const recalls=new Set((state.pendingRecalls??[]).map(row=>row.messageId))
       await verifyDingtalkBinding(config,{runner})
-      const rows=await readPausedDeferred(runner,config.binding,pending.filter(row=>!recalls.has(row.messageId)),pausedAt)
+      const rows=await readExactDingtalkMessages(runner,config.binding,pending.filter(row=>!recalls.has(row.messageId)),{before:pausedAt})
       snapshot()
       const report={pausedAt,checkOnly,selected:pending.length,verified:rows.length,sameAccount:rows.filter(row=>row.senderOpenDingTalkId===config.binding.actorId).length,accepted:0,deduplicated:0,remaining:pending.length}
       if(checkOnly)return report
@@ -313,9 +323,9 @@ export async function apply(ctx,config={},dependencies={}){
       if(settings.name!==undefined)config.name=settings.name
       if(settings.prompt!==undefined)config.prompt=settings.prompt
       return {enabled:config.enabled,name:config.name??channelId,promptConfigured:!!config.prompt}
-    }),accountPolicy,get adapter(){return adapter},notifications,acceptHistoryMessage,conversationDisplayName:context=>readyBound&&!closed&&context.type===config.conversationType&&context.channelId===channelId&&context.conversationId===config.binding.conversationId?config.conversationName:undefined,responsibility:context=>readyBound&&context.type===config.conversationType&&context.channelId===channelId&&context.conversationId===config.binding.conversationId?config.prompt:undefined,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:options=>createNativeDwsObserver({...options,resolveNotificationScope:notification=>{
+    }),accountPolicy,get adapter(){return adapter},notifications,acceptHistoryMessage,conversationDisplayName:context=>!closed&&inBoundScope(context)?config.conversationName:undefined,responsibility:context=>inBoundScope(context)?config.prompt:undefined,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:options=>createNativeDwsObserver({...options,resolveNotificationScope:notification=>{
     const context=ctx.channels.groupContext(notification.payload?.conversationId)
-    if(!readyBound||context?.channelId!==channelId||context.type!=='chat-room'||context.conversationId!==config.binding.conversationId)return
+    if(!inBoundScope(context)||context.type==='chat'&&!ctx.channels.targetMatches(context,{type:'chat',conversationId:config.binding.conversationId,peerId:config.binding.peerId}))return
     return {channelId,conversationId:context.conversationId,senderId:config.binding.actorId,querySendStatus:id=>adapter.querySendStatus(id)}
   }}),get health(){const {groups,...value}=health,deferredCount=ingressStore?.snapshot().deferredMessages?.length??0;return {...value,deferredCount,...deferredCount&&deferredReadError?{deferredReadError}:{},...groups?{conversations:groups.map(({groupId,...entry})=>({conversationId:groupId,...entry}))}:{}}},get accountDirectory(){return accountPolicy.mode==='private'?privateHome:undefined}}
   unregisterPlugin=ctx.channels.registerPlugin(channelId,plugin)

@@ -265,7 +265,7 @@ Windows 默认 `dingtalk_account_mode:"system"`，使用当前 OS 用户受 DPAP
 
 资源读取保留图片、UTF-8 文本、XLSX、在线 adoc 的既有返回形态；其它可下载附件（如 PDF、Word、未知二进制）返回完整 `file: {data: Uint8Array, name, mediaType}`，不把平台 ID 当路径或公开链接。Host 校验名称、MIME、大小与完整性，在本任务 materials 发布安全哈希名原件，计算字节数/SHA-256，并将 `{name,mediaType,path,bytes,sha256}` 传给任务。文件描述符不携带账号、签名链接、下载目录或内联二进制；临时文件在返回字节后清理。单资源上限 8 MiB，文件不可读时明确 unavailable，不以静默文本降级掩盖错误。该形态不增加格式解析器，不自动执行文件，不覆盖历史 unavailable 快照。Router 准备和执行器领取同时请求本任务的同一材料快照时，共用一次首次下载与发布；等待方读回并校验已发布快照，后续续办仍核对绑定和哈希。
 
-群消息不会仅因发送者与当前账号相同、显示名相同或带通用 DWS 标记就被视为本实例回声；Host 使用同 conversation 下精确消息 ID 与持久 outbox / send ACK / receipt 识别自己的发送。对于 Router/任务队列的通知，关闭 `dingtalk_operator_notifications` 仍使用该 DWS 插件自身 adapter 查询发送身份，经持久渠道 context 将内部 conversation 映射为原生会话并精确核对，再在消息事实和来源持久登记之前过滤自己的消息；身份回读不改变附件交付状态，也不替代文件字节验证。
+钉钉群聊和已绑定的业务私聊都不会仅因发送者与当前账号相同、显示名相同或带通用 DWS 标记就把消息当作回声。业务私聊只接纳原会话内的绑定对端和登录账号，仍用原对端定位 Router 和记忆范围，分别保留实际作者和引用身份。历史只有投影 `senderId` 时，登录账号侧的候选须精确回读验证作者。Host 使用同会话下精确消息 ID 与持久 outbox / send ACK / receipt 识别自己的发送。对于 Router/任务队列的通知，关闭 `dingtalk_operator_notifications` 仍使用该 DWS 插件自身 adapter 查询发送身份，经持久渠道 context 将内部 conversation 映射为原生会话并精确核对，再在消息事实和来源持久登记之前过滤自己的消息；身份回读不改变附件交付状态，也不替代文件字节验证。
 
 同会话队列通知为 `starting` / `unknown` 且消息身份未决时，当前消息的明确 OpenDingTalkId 与已绑定发信身份不同时可直接接纳。DWS 的通用 `senderId` 投影可能来自不同身份命名空间；仅有该值、同账号、同名或通用 DWS 标记均不能证明不是回声。仍无法排除回声的消息与直接引用已知待核对消息的来源，在同一 `ingress.json` 中以消息 ID、发生时间和必要的引用 ID 占位，不保存正文，不登记为来源。原通知的状态探针由原观察器持有和排空，不占用 typed 入站串行队列；未知外发仍可见，不重发。此改动针对 Router/任务队列通知，不扩展原生 shell 外发识别或旁路 CLI 的排空承诺。
 

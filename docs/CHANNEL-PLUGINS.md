@@ -155,7 +155,7 @@ installed binary or a live account):
 
 钉钉公开配置以 `dingtalk_*` 为唯一入口，完整目标字段见 [渠道职责配置](CHANNELS.md#渠道职责配置)。每个实例必须有独立 `channelId`，并用 `dingtalk_conversation_type` 选择一个群聊或一个私聊目标。群名/姓名仅用于显式查找；实际登录资料、组织、userId/open ID 与 conversation 须完整解析并耐久绑定，未找到、多候选或身份变化拒绝。`dingtalk_binding` 可提供版本 1 的固定身份约束，但不得手工猜造身份；正常运行由插件保存安装内绑定，重新启动也须核对。
 
-私聊用 `dingtalk_conversation_type:"chat"` 和 `dingtalk_user_id` 或 `dingtalk_user_name` 显式选择对端。内部 `directPeers`、`assistantActorId` 由绑定派生，`directChats` 不是公开开关。实时订阅沿用 `event consume user_im_message_receive_o2o --open-dingtalk-id PEER --flatten --format ndjson`，不使用 all-direct 或泛发送人订阅；此 specific-conversation 事件及 target/flatten 参数由官方 `internal/event/personal/registry.go`、`internal/app/event_command.go` 定义。
+私聊用 `dingtalk_conversation_type:"chat"` 和 `dingtalk_user_id` 或 `dingtalk_user_name` 显式选择对端。内部 `directPeers`、`assistantActorId` 由绑定派生，`directChats` 不是公开开关。业务私聊使用 `event +listen-im --kind sender --events message,recall --open-dingtalk-id PEER --format ndjson`，不增加 `all-direct` 订阅；插件按原生会话和两侧绑定身份接纳消息。供应商若未推送登录账号侧的消息，由现有范围历史补拉接纳；只有投影 `senderId` 时，先按原消息 ID 回读同会话、同时间的 open ID，不将未验证的作者登记为来源。
 
 额外 operator 回复只在 `dingtalk_operator_notifications:true` 且提供非空 `dingtalk_operator_peers` 时启用；可选 `dingtalk_human_user_id`、`dingtalk_current_user_name` 供已有 operator 适配路径使用，不替代业务对端绑定或授权。operator 和业务私聊是两条路径，不希望双路处理时不要配置同一对端。只列 peers 不开启功能不会订阅；订阅、事件和恢复均限制在明确对端/会话，不能收集任意私聊。原始字段名及 vendor 命令继续留在插件，Host 使用中性身份。
 
