@@ -75,11 +75,11 @@ and real local Pi-protocol tests. Neither test category proves live vendor acces
 
 ## 会话执行中的安全并行与等待
 
-所有具备原生工具的官方会话共用 `runtime/parallel-read.js` 的短规则：以数据与资源依赖安排同批调用，不按工具名推断安全性。Pi 仍负责工具批次；Host 原有 `ToolLeases` 按真实注册定义的 `isConcurrencySafe`、FIFO 写屏障和 `maxParallelToolCalls` 控制执行，不新增执行会话或调度底座。短命令前台；长作业仅在能与其他已授权步骤重叠时后台，提交后先做独立工作，依赖结果时再等通知或阻塞读取，不忙轮询。后台 ID 不等于完成。既有 bash 默认 `enableRunInBackground=true`、`promoteOnTimeout=true`（后者还受前者约束），本轮不改开关；明确关闭仍拒绝后台参数。真实脚本夹具使用显式 full 权限，只验证作业生命周期与重叠，不证明 ask/auto 的 OS 隔离。
+所有具备原生工具的官方会话共用 `runtime/parallel-read.js` 的短规则：以数据与资源依赖安排同批调用，不按工具名推断安全性。Pi 仍负责工具批次；Host 原有 `ToolLeases` 按真实注册定义的 `isConcurrencySafe`、FIFO 写屏障和 `maxParallelToolCalls` 控制工具调用，并行规则本身不新增会话或调度底座。短命令前台；长作业仅在能与其他已授权步骤重叠时后台，提交后先做独立工作，依赖结果时再等通知或阻塞读取，不忙轮询。后台 ID 不等于完成。既有 bash 默认 `enableRunInBackground=true`、`promoteOnTimeout=true`（后者还受前者约束），本轮不改开关；明确关闭仍拒绝后台参数。真实脚本夹具使用显式 full 权限，只验证作业生命周期与重叠，不证明 ask/auto 的 OS 隔离。
 
 | 路径 | 实际能力与本轮处理 |
 |---|---|
-| Router、普通原生会话、任务执行 | 共用官方 context 注入；没有原生工具时不注入，不增加工具。Router 动作/回执和任务结果仍互斥；任务仍为唯一执行会话，原禁止 subagent/委派/子执行的工具限制不变。 |
+| Router、普通原生会话、任务执行 | 共用官方 context 注入；没有原生工具时不注入，不增加工具。Router 动作/回执和任务结果仍互斥；任务仍只有一个执行所有者；普通执行轮可用 [临时只读子代理](SINGLE-TASK.md#临时只读子代理)，旧委派与子执行工具不恢复。 |
 | Router 只读工具 | 明确声明任务、来源、回复、当前配置与排期列表可并行；每调用仍校验会话身份/当前 generation。`platform_task_query` 会更新分页消费状态，继续互斥；记忆/Skill 读取、加载或维护也不凭名称放开。 |
 | 普通文件/网页工具 | 原生文件只读与 web_search/web_fetch 本来已有安全声明。内置 HTTP 抓取的传输失败报告所在环节和已识别的底层错误码，不暴露底层原文，也不自动切换协议或路径。write/edit、shell、job_output/job_list/job_kill 等未因此自动放开。job_output 会消费读游标，wait 可能持有独占租约，取消/终态/通知/模型结果的原守卫保留。 |
 | 诊断 | 独立官方 Pi 会话复用同一规则，只有原来的 diagnosis_evidence；证据别名、缓存和调查预算共享，未证明可重入，仍按 SDK 默认串行，不另建 Host 工具或放宽证据范围。 |

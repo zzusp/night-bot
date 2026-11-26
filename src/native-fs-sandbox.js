@@ -3,7 +3,9 @@ import { LocalFileSystem } from "./native-fs-local.js";
 import { FsError } from "./native-fs-protocol.js";
 import { writableRoots } from "./native-sandbox-protocol.js";
 import { stat } from "node:fs/promises";
-import { dirname, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
+import {inside} from "./runtime/paths.js";
+import {isTaskSubagent} from "./runtime/task-subagent-scope.js";
 //#region lib/types/containment.js
 /**
 * Path-containment mechanics for the filesystem sandbox. Canonical spellings
@@ -109,6 +111,15 @@ var SandboxedFileSystem = class NativeSandboxedFileSystem extends LocalFileSyste
 		this.defaultMode = ctx.sandboxPolicy.defaultMode;
 	}
 	/** The deployment default mode — the capability fact the tool layer reads to advertise escalation. */
+	async resolve(path, options) {
+		const target = await super.resolve(path, options);
+		const actor = this.ctx.get('agents')?.currentInitiator();
+		if (isTaskSubagent(actor)) {
+			const root = actor.metadata.cwd, physical = String(target.targetKey);
+			if (physical !== root && !['work','tmp','materials','outputs'].some(name => inside(join(root,name),physical))) throw new FsError('Child file access is limited to this task’s work, materials, outputs and temporary files.', 'FS_SANDBOX_DENIED');
+		}
+		return target;
+	}
 	get sandboxMode() {
 		return this.defaultMode;
 	}

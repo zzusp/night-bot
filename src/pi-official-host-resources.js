@@ -11,6 +11,7 @@ import {memoryWriteAuthorization} from './memory/tools.js'
 import {scopeOf} from './native-scope.js'
 import {inside} from './runtime/paths.js'
 import {atomicWrite,privateDirectory,readRegular} from './runtime/files.js'
+import {isTaskSubagent} from './runtime/task-subagent-scope.js'
 
 const fail=code=>{throw Object.assign(new Error(code),{code})}
 const hash=value=>createHash('sha256').update(value).digest('hex')
@@ -31,6 +32,7 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
  const primary=structuredClone(route(model)),extraction=structuredClone(route(memoryModel)),instructionsConfig=structuredClone(instructionOptions)
  return async function resolveResources({actor,options={},header,store,mode}){
   if(!actor?.id||actor.session||!actor.ctx||scopeOf(actor.ctx)!==actor||header?.id!==actor.id||!isAbsolute(header?.cwd??''))fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED')
+  const taskHelper=isTaskSubagent(actor)
   const actorCtx=actor.ctx,cwd=header.cwd,signal=actor.lifecycle?.signal?AbortSignal.any([actor.lifecycle.signal,...options.signal?[options.signal]:[]]):options.signal
   const scopedService=name=>service(actorCtx,'agentPresets')?.serviceFor?.(actor,name)??service(actorCtx,name)
   const assertCurrent=()=>{signal?.throwIfAborted();if(actor.ctx!==actorCtx||scopeOf(actorCtx)!==actor||!isLive(actor))fail('PI_OFFICIAL_RESOURCE_OWNER_CLOSED')}
@@ -153,7 +155,7 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
   }
   const context={systemPrompt,
    currentDirectory:async current=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();return scopedService('workingDirectory').get(actor)},
-   instructions:async current=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();if(!isAbsolute(paths?.agentsHome??'')||!isAbsolute(paths?.harnessHome??''))fail('PI_OFFICIAL_INSTRUCTION_ROOTS_REQUIRED');const currentCwd=scopedService('workingDirectory').get(actor),discoveredPaths=scopedService('nativeAgentInstructions')?.officialDiscoveredPaths?.(actor)??[];const result=await withActor(()=>officialInstructionFiles({...instructionsConfig,discoveredPaths,maxBytes:instructionsConfig.maxBytes??65536,cwd:currentCwd,projectRoot:cwd,agentsHome:paths.agentsHome,instructionHome:paths.harnessHome,signal},fs));
+   instructions:async current=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();if(taskHelper)return [];if(!isAbsolute(paths?.agentsHome??'')||!isAbsolute(paths?.harnessHome??''))fail('PI_OFFICIAL_INSTRUCTION_ROOTS_REQUIRED');const currentCwd=scopedService('workingDirectory').get(actor),discoveredPaths=scopedService('nativeAgentInstructions')?.officialDiscoveredPaths?.(actor)??[];const result=await withActor(()=>officialInstructionFiles({...instructionsConfig,discoveredPaths,maxBytes:instructionsConfig.maxBytes??65536,cwd:currentCwd,projectRoot:cwd,agentsHome:paths.agentsHome,instructionHome:paths.harnessHome,signal},fs));
     if(paths.mode==='portable'&&header.agentPreset==='night-bot-task'){
      const {text}=await readExecutionPrinciples(paths);if(text.trim())result.push({path:'night-bot://execution/AGENTS.md',content:text})
     }
@@ -163,8 +165,8 @@ export function createOfficialHostResourceResolver(ctx,{paths=service(ctx,'runti
     const {text}=await readRouterPrinciples(paths);assertCurrent()
     return text.trim()?[{path:'night-bot://router/AGENTS.md',content:text}]:[]
    }}:{},
-   skills:skillResources,
-   ...memory?{memory:memory.official({authorizeWrite:memoryWriteAuthorization(actorCtx),isLive:current=>current===actor&&isLive(actor),resolveExtractionModel:async(current,{signal:extractionSignal}={})=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();return provider.resolve({...extraction,...extractionSignal?{signal:extractionSignal}:{}},{credentials})}})}:{},
+   ...taskHelper?{}:{skills:skillResources},
+   ...memory&&!taskHelper?{memory:memory.official({authorizeWrite:memoryWriteAuthorization(actorCtx),isLive:current=>current===actor&&isLive(actor),resolveExtractionModel:async(current,{signal:extractionSignal}={})=>{if(current!==actor)fail('PI_OFFICIAL_RESOURCE_ACTOR_REQUIRED');assertCurrent();return provider.resolve({...extraction,...extractionSignal?{signal:extractionSignal}:{}},{credentials})}})}:{},
   }
   return {resolved,settingsManager,agentDir,registry,maxParallelToolCalls,context}
  }
