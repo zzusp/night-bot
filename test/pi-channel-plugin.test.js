@@ -619,10 +619,13 @@ async function defaultDwsEcho(t,statusMode='success',{direct=false}={}){
     recall(message,extra={}){streams.get(message.groupId).onStdoutLine(JSON.stringify({type:'user_im_message_recall_group',conversation_id:message.groupId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,recaller_open_dingtalk_id:message.senderOpenDingTalkId,event_time:Date.now(),...extra}))},
     emit(message){streams.get(message.groupId).onStdoutLine(JSON.stringify({conversation_id:message.groupId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,sender_id:message.senderId,content:message.text,quotedMessage:message.quotedMessage,event_time:Date.parse(message.occurredAt)}))},
     release(){ready=true;statusGate.resolve();contentGate.resolve()},
-    async restart(messages,{deferred=[],holdHistory}={}){
+    async restart(messages,{deferred=[],holdHistory,coldMessages=[]}={}){
       const paths=f.host.ctx.runtimePaths;await f.close();streams.clear();history=messages;historyGate=holdHistory
+      const coldReadStart=detailReads.length
+      for(const message of coldMessages)currentMessages.set(message.messageId,message)
       if(deferred.length){const ingress=await openDingtalkIngress(paths,'dingtalk-dws');for(const message of deferred)await ingress.deferred(message);await ingress.drain()}
       await f.boot();await mount({recovering:true})
+      return coldReadStart
     },
   }
 }
@@ -630,6 +633,7 @@ async function defaultDwsEcho(t,statusMode='success',{direct=false}={}){
 test('bound private DWS defers unresolved echoes, retains human authors after readback, and never resends',{timeout:nativeTestTimeout(45000)},async t=>{
   const h=await defaultDwsEcho(t,'processing',{direct:true})
   const cursor=async()=>JSON.parse(await readFile(h.ingressFile,'utf8'))
+  const inboxCount=()=>h.app.tasks.store.query({kind:'router.inbox-count',conversationId:h.identity.sessionId})
   try{
     await h.receive(h.raw);await eventually(()=>h.statusStarted,'原私聊通知已进入精确回查',t.signal)
     const echo={...h.raw,messageId:'race-visible',senderOpenDingTalkId:'same-account',text:h.sent[0].text,messageAiSendFlag:'DWS'}
@@ -645,11 +649,20 @@ test('bound private DWS defers unresolved echoes, retains human authors after re
     const projection={...human,messageId:'unproven-author',senderOpenDingTalkId:undefined,senderId:'same-account'}
     await assert.rejects(h.receive(projection),{code:'DINGTALK_DEFERRED_HISTORY_INCOMPLETE'})
     await h.absent({...projection,senderOpenDingTalkId:'same-account'})
-    h.current(human);h.release()
+    await eventually(async()=>h.routed.includes(peer.messageId)&&await inboxCount()===0,'关机前对端消息已由 Router 结清',t.signal)
+    h.release()
     await eventually(async()=>h.app.tasks.isOwnNotification({groupId:h.identity.sessionId,messageId:echo.messageId}),'原通知已按精确原生 ID 识别',t.signal)
     assert.equal((await h.receive(echo)).reason,'own-notification')
-    await h.restart([])
-    await eventually(()=>h.routed.includes(human.messageId),'暂缓的真人消息恢复到原 Router',t.signal)
+    assert.deepEqual((await cursor()).deferredMessages.map(row=>row.messageId),[human.messageId])
+    await h.absent(human)
+    // 正文只在旧 Host 关闭后可读，避免热补拉误满足冷恢复断言。
+    const coldReadStart=await h.restart([],{coldMessages:[human]})
+    await eventually(()=>h.detailReads.slice(coldReadStart).includes(human.messageId),'重启后按原消息 ID 补读真人消息',t.signal)
+    await eventually(async()=>{
+      const sources=await h.app.tasks.store.query({kind:'source.list'})
+      return sources.some(row=>row.messageId===human.messageId&&row.groupId===h.identity.sessionId&&row.routed)
+    },'冷恢复把真人消息登记到原会话',t.signal)
+    await eventually(async()=>h.routed.includes(human.messageId)&&await inboxCount()===0,'暂缓的真人消息由原 Router 结清',t.signal)
     await h.app.tasks.whenIdle()
     await h.absent(echo)
     const rows=(await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId===human.messageId)
@@ -657,6 +670,18 @@ test('bound private DWS defers unresolved echoes, retains human authors after re
     assert.equal(rows[0].actorId,h.channels.identity(h.input(human)).principal);assert.notEqual(rows[0].actorId,h.identity.principal)
     assert.equal(h.routed.filter(id=>id===human.messageId).length,1)
     assert.equal((await cursor()).deferredMessages,undefined);assert.equal(h.sent.length,1)
+  }catch(error){
+    try{
+      const store=h.app.tasks.store
+      const sources=await store.query({kind:'source.list'})
+      const notifications=await store.query({kind:'notification.list'})
+      const router=await store.query({kind:'router.get',conversationId:h.identity.sessionId})
+      t.diagnostic(JSON.stringify({cursor:await cursor(),health:h.plugin.health,detailReads:h.detailReads,routed:h.routed,
+        sources:sources.map(({messageId,routed,processingPending})=>({messageId,routed,processingPending})),
+        notifications:notifications.map(({state,nextAttemptAt,ack,receipt})=>({state,nextAttemptAt,ack,receipt})),
+        router,inbox:await inboxCount(),errors:h.f.errors.map(failure=>failure?.code??failure?.message)}))
+    }catch(diagnosticError){t.diagnostic(`无法读取冷恢复诊断：${diagnosticError.message}`)}
+    throw error
   }finally{h.release();await h.f.close()}
 })
 
