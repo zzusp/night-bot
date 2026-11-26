@@ -20,6 +20,9 @@ async function fixture(t,{beforeReply,replyText}={}) {
   const boot=async()=>{
     h=await nativeRuntimeHost(root,async request=>{
       assert.ok(request.tools.some(tool=>tool.name==='platform_task_query'))
+      const prompt=JSON.stringify(request.messages.filter(row=>['system','developer'].includes(row.role)))
+      assert.match(prompt,/未明确要求明细，只写结论和下一步/u)
+      assert.match(prompt,/禁止防御性内容，不只是避开某些词/u)
       const last=request.messages.at(-1)
       if(last?.role==='toolResult'&&last.toolName==='platform_task_query'){
         const page=modelToolValues(request).findLast(value=>Array.isArray(value.items)&&value.asOf)
