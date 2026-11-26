@@ -16,6 +16,7 @@ import {bindBusinessNotices} from './runtime/pi-business-notices.js'
 import {assertPlatformScheduleSource} from './runtime/pi-platform-source.js'
 import {bindPiAgentObservation,createAgentPhaseTimer} from './runtime/pi-agent-observation.js'
 import {officialRetrySettings} from './runtime/pi-official-settings.js'
+import {isTaskSubagent} from './runtime/task-subagent-scope.js'
 
 const fail=code=>Object.assign(new Error(code),{code})
 const mergeKinds=(...sources)=>{
@@ -163,7 +164,7 @@ export class OfficialAgentFactory {
    unbindNotices=bindBusinessNotices(actor,{enqueue:publishInternal,isLive:live,finishTaskRun:()=>admission.finishTaskRun(bundle.session)})
    options.signal.throwIfAborted();await measurePhase('session-publish',async()=>{await store.commit();detach=ownerCtx.agents.enter(actor,options.parentAgent);published=true})
    await measurePhase('session-bind-names',()=>ownerCtx.get('sessionNames')?.bind(actor,{automatic:false,...options.sessionNaming}))
-   skillRefresh=await measurePhase('session-skills-bind',()=>installSessionSkillRefresh(actor.ctx,actor,{cwd:actor.metadata.cwd,signal:actor.lifecycle.signal}))
+   if(!isTaskSubagent(actor))skillRefresh=await measurePhase('session-skills-bind',()=>installSessionSkillRefresh(actor.ctx,actor,{cwd:actor.metadata.cwd,signal:actor.lifecycle.signal}))
    // One-shot triage has no interactive loader consumer before its custom input.
    // Keep memory registration; defer only resource reads. Other owners stay eager.
    if(options.resourceLoading==='before-run')await bundle.bridge.bindActor()

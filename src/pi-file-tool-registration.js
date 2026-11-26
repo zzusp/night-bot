@@ -37,7 +37,7 @@ export function isPiFileMutationNotStarted(exec,definition){
  * Factory-owned budgets and awaited scope close are mandatory integration
  * capabilities. Registration alone does not claim a complete Host migration.
  */
-export function registerPiFileTools({ctx,actor,sourceConfig,services,imageBudget,transportBudget,timeoutMs,onlyMissing=false}={}){
+export function registerPiFileTools({ctx,actor,sourceConfig,services,imageBudget,transportBudget,timeoutMs,onlyMissing=false,readOnly=false}={}){
  const original=value=>value?.[symbols.original]??value
  if(!ctx||scopeOf(ctx)!==actor||original(ctx.get('agents'))!==original(actor.ctx?.get('agents')))throw fail('PI_FILE_ACTOR_SCOPE_REQUIRED')
  if(typeof imageBudget?.accept!=='function'||typeof transportBudget?.accept!=='function')throw fail('PI_FILE_FACTORY_BUDGETS_REQUIRED')
@@ -47,6 +47,7 @@ export function registerPiFileTools({ctx,actor,sourceConfig,services,imageBudget
  if(typeof registry?.register!=='function'||typeof registry.executionIdentity!=='function')throw fail('PI_FILE_NATIVE_REGISTRY_REQUIRED')
  const bundle=createPiFileTools({ctx,actor,sourceConfig,services,imageBudget,transportBudget}),definitions=[],contents=new WeakMap()
  for(const native of bundle.tools){
+  if(readOnly&&['write','edit'].includes(native.name))continue
   if(onlyMissing&&registry.get(native.name,actor)!==undefined)continue
   // Pi Schema includes non-enumerable ~kind construction metadata. Its public
   // JSON schema representation is the enumerable JSON value; capture that

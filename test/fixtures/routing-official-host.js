@@ -51,8 +51,10 @@ export async function nativeTaskHost(root,decide,options={}){
       else calls=auxiliary?topicTaskCalls(request):await decide(request,h,callOptions.signal)
       callOptions.signal?.throwIfAborted()
      }
+     const responseText=typeof calls?.text==='string'?calls.text:handoffText
+     if(responseText!==undefined)calls=[]
      const failure=options.providerError?.(request)
-     result={role:'assistant',provider:model.provider,model:model.id,api:model.api,content:failure?[]:handoffText?[{type:'text',text:handoffText}]:calls.map(call=>({type:'toolCall',id:'routing-call-'+(++sequence),name:call.name,arguments:call.args})),usage,timestamp:Date.now(),stopReason:failure?'error':calls.length?'toolUse':'stop',...failure?{errorMessage:failure.message??String(failure)}:{}}
+     result={role:'assistant',provider:model.provider,model:model.id,api:model.api,content:failure?[]:responseText!==undefined?[{type:'text',text:responseText}]:calls.map(call=>({type:'toolCall',id:'routing-call-'+(++sequence),name:call.name,arguments:call.args})),usage,timestamp:Date.now(),stopReason:failure?'error':calls.length?'toolUse':'stop',...failure?{errorMessage:failure.message??String(failure)}:{}}
      }
     }catch(error){if(process.env.NIGHT_BOT_TEST_DEBUG)console.error('ROUTING_MODEL_ERROR',error);result={role:'assistant',provider:model.provider,model:model.id,api:model.api,content:[],usage,timestamp:Date.now(),stopReason:callOptions.signal?.aborted?'aborted':'error',errorMessage:error.stack??error.message}}
     if(options.estimateUsage===true){

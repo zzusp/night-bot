@@ -2,9 +2,9 @@
 
 In the portable Night Bot kit, a task has one durable Pi execution session. It
 uses native file, shell, web, memory and skill tools directly, and commits
-`task_result`. There is no task coordinator/owner conversation, delegate tool,
-execution team or child-execution driver. The default portable preset also omits
-subagent tools. New channel messages go straight to the durable Router. It
+`task_result`. There is no separate task coordinator, business execution team or child-execution
+driver. A normal execution round may use temporary read-only Pi helpers, never as
+additional task owners. New channel messages go straight to the durable Router. It
 decides what needs work, relays the request and sends the result; it is not
 another task execution session. Topic is no longer an active routing
 entity. A retrospective is a separate tool-free
@@ -15,6 +15,12 @@ model request after completion, not another execution session.
 - **先对齐结果。** 从当前要求和已有材料确定要交付什么、实际对象和限制、什么证据能证明做完。改动前先看现状；默认猜测、历史线索和其他版本的结果不当成当前事实。
 - **按复杂度规划。** 简单任务直接做；有多个环节、依赖或明显不确定性的任务，在同一会话用短计划记下各环节的结果、先后依赖和验法。优先核实会让后续返工或扩大影响的假设；新证据改变了判断，只调整剩余计划。续办沿当前要求和已核实证据，从首个未完成的环节接着做。不要求提交计划、建子任务或新增审批。
 - **取证后推进。** 用现有工具做能推进结果、验证结果或解除阻塞的最小一步。够用就行动，不旁查无关问题。用实际结果或可靠回执验证用户要的结果；已调度、已接纳和中间环节通过不等于最终成功。若现有信息已足够回答且不需行动或验证，直接提交 `task_result`。
+
+## 临时只读子代理
+
+大量互不依赖的文件定位、阅读和核对，可交给 `task_subagent`。每个助手只拿一个目标和必要背景，不复制父会话记录、不自动装载记忆和 Skills。一个调用最多并行三个；短检查直接做。下一步依赖结论时用 `run`，还有别的事能做时用 `start` 先派发，真正需要结论时用 `wait` 一次等待，不反复查询。只回简短结论、证据位置和限制，写入、命令、外发和最终结果仍由主执行会话负责。
+
+仅普通执行轮可用；Router、只读对话、人工答复复核和助手本身不获得工具。助手只读当前任务的工作、材料、产物和临时文件；不能跨任务、读原始日志或触发业务动作。会话终止、取消或进入必须等送达的里程碑时，未用助手会取消并排空。临时 Pi 日志只供本轮运行，不归入常规会话或任务归档，重启后不恢复、不自动重跑；已采纳的简短结果留在主执行会话工具回执。
 
 ## 排查和补问
 

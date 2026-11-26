@@ -15,8 +15,9 @@ optional plugin. Historical audit and receipts remain traceable to source/vendor
 fields and are not mechanically renamed or migrated; retained compatibility
 helpers for historical message/receipt formatting do not mean DWS is loaded or
 running, and other static-loading claims require test evidence.
-Each task has one execution session; no separate task Owner/coordinator or split
-execution team. New authenticated channel messages go directly to their
+Each task has one execution owner/session; no separate task Owner/coordinator or split
+execution team. The owner may run scoped temporary read-only subagents that do not
+create business tasks, effect claims or final results. New authenticated channel messages go directly to their
 conversation Router; no first-tier model or automatic acknowledgement runs.
 Historical triage sessions remain read-only. Each authenticated conversation has one durable Router identity for task arrangement and result
 assessment, separate from task execution and tool-free retrospectives. Router is

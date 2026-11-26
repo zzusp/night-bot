@@ -8,6 +8,7 @@ import OfficialAgentFactory from './pi-official-agent-factory.js'
 import {createOfficialHostResourceResolver} from './pi-official-host-resources.js'
 import {installOfficialProcessOwnership} from './runtime/pi-process-ownership.js'
 import {createOfficialBusinessDrain} from './runtime/pi-business-drain.js'
+import {isTaskSubagent} from './runtime/task-subagent-scope.js'
 
 export const name='night-pi-official-runtime'
 export const inject=['agents','sessionPersistence','nativePiProvider','runtimePaths','agentPresets','permissionPresets','systemPrompt','tools','jobs','subprocess','agentDefaultModel']
@@ -46,7 +47,7 @@ export async function apply(ctx,config={}){
    if(!presets.serviceFor(actor,'fs'))return
    const services=Object.fromEntries(['fs','workingDirectory','sandboxPolicy','approval','attachments'].map(name=>[name,presets.serviceFor(actor,name)??actorCtx.get(name)]))
    const budgets=createPiFileToolBudgets({actor,maxBatchTransportBytes:config.fileTools?.maxTransportBytes??33554432})
-   const files=registerPiFileTools({ctx:actorCtx,actor,services,sourceConfig:config.fileTools,onlyMissing:true,...budgets})
+   const files=registerPiFileTools({ctx:actorCtx,actor,services,sourceConfig:config.fileTools,onlyMissing:true,readOnly:isTaskSubagent(actor),...budgets})
    actorCtx.effect(()=>async()=>{await files.close();budgets.close()},'official Pi file capability ownership')
   },
   validatePreparedActor(actor){
