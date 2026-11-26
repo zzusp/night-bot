@@ -116,6 +116,8 @@ test('Router sends directly while rejecting a draft containing credentials',{tim
   const tools=requestTools(body),input=requestEnvelope(body,'Router 请求：');
   assert.ok(!tools.includes('channel_triage_submit'));
   if(!tools.includes('resident_router_reply'))return {text:'Settled'};
+  const text=body.tools.find(tool=>tool.function.name==='resident_router_reply').function.parameters.properties.text
+  assert.match(text.description,/不复述对方已给的依据/u)
   const prompt=body.messages.filter(row=>row.role==='system').map(row=>row.content).join('\n');
   assert.match(prompt,/沟通规范索引/);assert.match(prompt,/NIGHT_NATURAL_CHANNEL_REPLY/);assert.doesNotMatch(prompt,/NIGHT_TASK_PUBLIC_COMMUNICATION/);
   if(step===0){initial=body;step++;return {tool:'communication_guidance_read',args:{}}}

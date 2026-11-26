@@ -6,8 +6,8 @@ import {communicationReplyPrinciple,communicationGuidanceIndex,taskPublicCommuni
 export function assertSharedCommunicationGuidance(initial,loaded) {
   assert.ok(initial.tools.some(tool=>tool.function.name==='communication_guidance_read'),'native reader is available to each role')
   const prompt=initial.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
-  assert.equal(prompt.split(communicationGuidanceIndex).length-1,1,'one shared index per role')
-  assert.equal(prompt.split(communicationReplyPrinciple).length-1,1,'one shared static principle per role')
+  assert.equal(prompt.split(communicationGuidanceIndex).length-1,1,'one shared index in the Router system prompt')
+  assert.equal(prompt.split(communicationReplyPrinciple).length-1,1,'one shared principle in the Router system prompt')
   assert.match(prompt,/默认 ELI5：先直接回答对方问的事/u)
   assert.match(prompt,/未明确要求明细，只写结论和下一步/u)
   assert.match(prompt,/不因问题复杂、正式排查、结果交付或多个问题而例外/u)
@@ -17,7 +17,7 @@ export function assertSharedCommunicationGuidance(initial,loaded) {
   const values=loaded.messages.filter(message=>message.role==='tool').flatMap(message=>typeof message.content==='string'?[message.content]:(message.content??[]).filter(part=>part.type==='text').map(part=>part.text))
   const guidance=values.map(text=>{try{return JSON.parse(text)}catch{return null}}).find(value=>value?.id==='communication/v1')
   assert.deepEqual(guidance,{id:'communication/v1',content:taskPublicCommunicationInstructions},'each role reads exactly the same current guideline version')
-  assert.ok(!guidance.content.includes(communicationReplyPrinciple),'reader does not duplicate the static principle')
+  assert.equal(guidance.content.split(communicationReplyPrinciple).length-1,1,'reader includes one full principle for execution sessions that only load the index')
   const combined=prompt+'\n'+guidance.content
   const loadedPrompt=loaded.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
   assert.equal(loadedPrompt.split(communicationReplyPrinciple).length-1,1,'subsequent request retains a single static principle')
@@ -29,7 +29,7 @@ export function assertSharedCommunicationGuidance(initial,loaded) {
   assert.doesNotMatch(guidance.content,/#452|SimaPro|ILCD/,'acceptance particulars do not become prompt rules')
   assert.doesNotMatch(guidance.content,/承接纠正的取舍示例|找错 Pod|UAT2|已收到您的需求|要我顺手修掉吗/,'examples remain test data only')
   assert.match(guidance.content,/只有确实会在恢复后接续且授权允许时才承诺接续/)
-  assert.match(guidance.content,/沿用系统提示中的 ELI5 原则/u)
+  assert.match(guidance.content,/上面的 ELI5 原则仅适用于写给人的正文/u)
   assert.doesNotMatch(guidance.content,/只报告有对应版本及证据/, 'supplemental guidance does not require test evidence for all replies')
   assert.match(guidance.content,/不授予创建 Issue、发表评论、修改仓库、合并或部署权限/)
 }
