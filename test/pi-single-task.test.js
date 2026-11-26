@@ -377,6 +377,8 @@ for(const output of ['channel reply','Issue comment','PR review reply'])test(`of
   assert.match(content,/写草稿不等于获准发送/)
   assert.match(content,/未知提交结果先回读原效果/)
   assert.match(prompt,/Do not rely on the Router to direct the investigation or decide when to stop/)
+  assert.match(prompt,/已批准且对象、范围和条件不变时，不重复要求批准/)
+  assert.match(prompt,/不跳过实际权限或真实审批/)
   const tool=request.tools.find(tool=>tool.function.name==='task_result').function
   assert.equal(tool.parameters.properties.decision.properties.question,undefined)
   assert.equal(tool.parameters.properties.decision.properties.audience,undefined)
