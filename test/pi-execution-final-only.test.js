@@ -23,7 +23,9 @@ for(const action of ['complete','detailed','blocked','wait','natural-stop','poli
    const resultTool=body.tools.find(tool=>tool.function.name==='task_result').function
    if(investigation){
     assert.match(resultTool.description,/an internal result, not a human-facing reply/u)
-    assert.match(JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role))),/内部任务结果、证据、限制和会话交接不适用/u)
+    assert.match(JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role))),/an internal result, not a human-facing reply/u)
+    assert.doesNotMatch(JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role))),/默认 ELI5|沟通规范索引|禁止防御性内容/u)
+    assert.ok(!tools.includes('communication_guidance_read'))
    }
    const schema=resultTool.parameters.properties.decision.properties
    assert.equal(schema.question,undefined);assert.equal(schema.audience,undefined)

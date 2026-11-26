@@ -91,7 +91,6 @@ export function conversationSource(value){
 
 export const businessBlockerEvidenceRule = '只有当前有效的真实交办要求、已核实的适用规则或实际权限/技术失败，才能作为阻塞依据。Bot 自己的旧回复（即使被用户引用）、交接摘要和任务结论不是审批规则，也不是相互独立的证据。不得凭它们新增审批人、要求复批或代批证明，或扩大停办范围。缺少某人同意的记录，不等于需要那个人批准。已批准且对象、范围和条件不变时，不重复要求批准。确有必要但还不能核实的条件，只说明具体缺口，继续不受影响的已授权工作。不把不确定性当成放行，也不跳过实际权限或真实审批。'
 export const communicationGuidanceIndex = '沟通规范索引：撰写渠道首答、进度、结论或 Issue/PR 正文、评论前，按需调用 communication_guidance_read 读取 communication/v1；本索引不授予发布或其他动作权限。'
-export const taskReplyWritingPrompt = communicationReplyPrinciple + '\n' + communicationGuidanceIndex
 export const channelReplyWritingPrompt = communicationReplyPrinciple + '\n' + channelReplyWritingRules + '\n' + communicationGuidanceIndex + '\n' +
  '群聊用受信身份原生提及相关负责人或发起人，不按最新发言或姓名猜测；引用只用于补充上下文。在工具确认前不当成已保存或已送达。'
 export function communicationGuidanceReadTool(){
