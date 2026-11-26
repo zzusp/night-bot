@@ -13,6 +13,10 @@ test('real readonly lookup returns asynchronously to same Router after second me
   if(!requestTools(body).includes('resident_router_settle'))return {text:'No work'}
   const packet=input(body);if(done(body))return {text:'Settled'}
   const result=packet.events.find(event=>event.kind==='router.lookup.completed')
+  if(result&&!completion){
+   const prompt=body.messages.filter(row=>['system','developer'].includes(row.role)).map(row=>row.content).join('\n')
+   assert.match(prompt,/结合当前可见的新消息判断快照是否仍适用。仍适用就短答，已过时不要当现状转达/u)
+  }
   if(result){assert.equal(secondHandled,true,JSON.stringify(result));assert.equal(result.sourceId,undefined);assert.equal(result.source,undefined);if(!completion){completion=result;return call('resident_router_reply',{operationId:'answer-result',sourceId:result.lookupResult.sourceId,messageVersion:result.lookupResult.messageVersion,text:'The retained task is paused; no execution was started.',replyPurpose:'task-update'})}return call('resident_router_settle',{operationId:'settle-result',eventIds:packet.events.map(event=>event.id)})}
   const event=packet.events.find(event=>event.source)
   if(event?.source.messageId==='lookup'&&!requested){assert.match(JSON.stringify(body),/线上排查、需查\/分析代码/);requested=true;return call('resident_task_lookup_async',{operationId:'lookup-existing',sourceId:event.sourceId,messageVersion:event.messageVersion,taskIds:['existing-task']})}
