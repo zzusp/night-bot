@@ -4,6 +4,7 @@ import {hash} from '../../memory/format.js'
 import {messageTimestamp,normalizeResourceRefs} from '../../../packages/dingtalk-core/dws-bridge.js'
 
 const present=value=>typeof value==='string'&&value.trim()!==''
+export const isBoundPrivateAuthor=(binding,sender)=>present(sender)&&(sender===binding.peerId||sender===binding.actorId)
 // 与 Host 冻结指纹一致；兼容识别不能改写该事实。
 export function dingtalkInputFingerprint({principal,envelope:e}){
   return hash(JSON.stringify([principal,e.text,e.resourceRefs??[],e.quotedMessage??null,e.mentionedAgent??null,e.mentions??[],e.platformFlags??{}]))
@@ -43,11 +44,11 @@ export function retainedDingtalkDuplicate(identity,prior,source,{quoteSenderIds=
   return flags.some(platformFlags=>resourceVariants.some(resourceRefs=>quotes.some(quotedMessage=>
     dingtalkInputFingerprint({...identity,envelope:{...e,text:source.text,resourceRefs,quotedMessage,platformFlags}})===prior.payloadHash)))
 }
-/** Recover the original IDs using the raw response, which preserves the author namespace. */
-export async function readPausedDeferred(runner,binding,rows,end){
+/** 原始回读保留作者的 open ID；不能用投影 senderId 代替。 */
+export async function readExactDingtalkMessages(runner,binding,rows,{before}={}){
   const ids=new Set(rows.map(row=>row.messageId)),messages=[]
   if(ids.size!==rows.length||[...ids].some(id=>!present(id)||/[\s,\u0000-\u001f]/u.test(id)))throw failure('DINGTALK_DEFERRED_IDENTITY_INVALID')
-  const cutoff=Date.parse(end)
+  const cutoff=before===undefined?Infinity:Date.parse(before)
   for(let offset=0;offset<rows.length;offset+=50){
     const expected=new Map(rows.slice(offset,offset+50).map(row=>[row.messageId,row]))
     const value=await dwsReadJson(runner,['chat','message','list-by-ids','--msg-ids',[...expected.keys()].join(',')],binding.profile)
@@ -73,10 +74,9 @@ function historyMessages(value,config){
   for(const message of value.messages){
     const sender=message.senderOpenDingTalkId??message.senderId
     if(!present(message.messageId)||message.conversationId!==binding.conversationId||!present(sender)||!Number.isFinite(messageTimestamp(message.createTime)))throw failure('DINGTALK_HISTORY_IDENTITY_INVALID')
-    if(config.conversationType==='chat'&&sender!==binding.peerId&&sender!==binding.actorId)throw failure('DINGTALK_HISTORY_PEER_MISMATCH')
+    if(config.conversationType==='chat'&&!isBoundPrivateAuthor(binding,sender))throw failure('DINGTALK_HISTORY_PEER_MISMATCH')
   }
-  // 私聊仅接收绑定对端；群回声交给 Host 按精确消息 ID 和持久回执识别。
-  return config.conversationType==='chat'?value.messages.filter(message=>(message.senderOpenDingTalkId??message.senderId)===binding.peerId):value.messages
+  return value.messages
 }
 /** 复用 bridge 已有的暂停、恢复、补拉和 drain；原生 ID 留在插件内部。 */
 export function dingtalkIngressAdapter(adapter,config,{runner,getFromAt=()=>undefined,completeGroupRange,retryDeferredIngress,onRecall,beforeRangeRead=async()=>{}}={}){
@@ -86,7 +86,7 @@ export function dingtalkIngressAdapter(adapter,config,{runner,getFromAt=()=>unde
       const accept=event=>{
         if(event.conversation_id!==conversationId||isCurrent?.()===false)return
         const sender=event.sender_open_dingtalk_id??event.sender_id
-        if(config.conversationType==='chat'&&sender!==config.binding.peerId)return
+        if(config.conversationType==='chat'&&!isBoundPrivateAuthor(config.binding,sender))return
         if(['user_im_message_recall_group','user_im_message_recall_o2o'].includes(event.type)){
           const expected=config.conversationType==='chat'?'user_im_message_recall_o2o':'user_im_message_recall_group'
           const at=messageTimestamp(event.recall_time??event.event_time??event.timestamp)

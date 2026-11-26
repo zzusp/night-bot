@@ -132,11 +132,11 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
   async function bindMemory(id,conversationId,previous){
     const memory=ctx.get('memory')
     if(!memory)return
-    const channel=ctx.get('channels')?.groupContext(conversationId)
+    const channels=ctx.get('channels'),channel=channels?.groupContext(conversationId)
     if(channel?.type==='chat'){
-      const principals=Object.keys(channel.participants??{})
-      if(principals.length!==1)fail('ROUTER_PRIVATE_IDENTITY_INVALID')
-      await memory.bindSession(id,{actorId:principals[0]})
+      const actorId=channels.privateScopeActor(channel,conversationId)
+      if(!actorId)fail('ROUTER_PRIVATE_IDENTITY_INVALID')
+      await memory.bindSession(id,{actorId})
     }else if(channel?.type==='chat-room'){
       if(!channel.memoryGroupId)fail('ROUTER_ROOM_IDENTITY_INVALID')
       await memory.bindSession(id,{actorId:'channel-room-actor-'+hash([channel.channelId,channel.conversationId]),groupId:channel.memoryGroupId,groupWrite:false})

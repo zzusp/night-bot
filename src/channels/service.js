@@ -6,6 +6,8 @@ import {notificationAudience} from '../../packages/dingtalk-core/group-notificat
 import {isDeepStrictEqual} from 'node:util'
 import {failure,privateDirectory,readRegular,atomicWrite,withLock} from '../runtime/files.js'
 const envelopeSchema=z.object({type:z.enum(['chat','chat-room']),channelId:z.string().min(1).max(128),conversationId:z.string().min(1).max(256),senderId:z.string().min(1).max(256),senderName:z.string().trim().min(1).max(256).optional(),conversationName:z.string().trim().min(1).max(256).optional(),messageId:z.string().min(1).max(256),messageVersion:z.number().int().positive().optional(),text:z.string().min(1).max(32000),sentAt:z.string().optional(),mentionedAgent:z.boolean().optional(),mentions:z.array(z.string().min(1).max(256)).max(256).optional(),platformFlags:z.record(z.string(),z.union([z.string(),z.boolean(),z.number()])).optional(),resourceRefs:z.array(z.record(z.string(),z.unknown())).max(32).optional(),quotedMessage:z.object({messageId:z.string(),senderId:z.string().optional(),text:z.string().optional()}).strict().optional()}).strict()
+const channelActor=(channelId,senderId)=>'channel-actor-'+hash(JSON.stringify([channelId,senderId]))
+const conversationKey=({type,channelId,conversationId},peer)=>hash(JSON.stringify([type,channelId,conversationId,...type==='chat'?[peer]:[]]))
 /** 仅解析可信插件配置；职责不来自入站消息。 */
 export function channelGroupResponsibilities(groups=[],responsibility){
   if(!Array.isArray(groups)||responsibility!==undefined&&typeof responsibility!=='string')throw failure('CHANNEL_GROUP_CONFIGURATION_INVALID')
@@ -26,7 +28,23 @@ export default class Channels extends Service {
   groupContext(id){const context=this.contexts.get(id);if(!context)return;const plugin=this.plugins.get(context.channelId),responsibility=plugin?.responsibility?.(context),conversationName=plugin?.conversationDisplayName?.(context);return {...context,...conversationName?{conversationName}:{},...responsibility!==undefined?{responsibility}:{}}}
   responsibility(id){return this.groupContext(id)?.responsibility}
   replySurface(id){return this.transports.get(this.contexts.get(id)?.channelId)?.capabilities?.replySurface}
-  targetMatches(context,target){return context.type===target.type&&context.conversationId===target.conversationId&&(target.type!=='chat'||Object.values(context.participants??{}).includes(target.peerId)||context.senderId===target.peerId)}
+  boundPrivatePeer(input){return input.type==='chat'?this.transports.get(input.channelId)?.privatePeer?.(input):undefined}
+  privateScopeActor(context,id){
+    const participants=context.participants??{}
+    const matches=(actorId,senderId)=>typeof senderId==='string'&&senderId.length>0
+      &&actorId===channelActor(context.channelId,senderId)&&id==='conversation-'+conversationKey(context,senderId)
+    // 早期上下文未保存记忆绑定；只认能还原原会话身份的参与者。
+    if(context.memoryBinding===undefined)return Object.entries(participants).find(([actorId,senderId])=>matches(actorId,senderId))?.[0]
+    const actorId=context.memoryBinding?.actorId
+    return Object.hasOwn(participants,actorId)&&matches(actorId,participants[actorId])?actorId:undefined
+  }
+  targetMatches(context,target){
+    if(context.type!==target.type||context.conversationId!==target.conversationId)return false
+    if(target.type!=='chat')return true
+    if(typeof target.peerId!=='string'||!target.peerId)return false
+    const peer=this.boundPrivatePeer(context)??context.participants?.[context.memoryBinding?.actorId]??context.senderId
+    return peer===undefined?Object.values(context.participants??{}).includes(target.peerId):peer===target.peerId
+  }
   assertInputTarget(input){
     this.assertLifecycle(input.channelId)
     const hold=this.targetHolds.get(input.channelId),active=this.activeTargets.get(input.channelId)
@@ -46,7 +64,7 @@ export default class Channels extends Service {
       activate:()=>{if(this.targetHolds.get(channelId)!==hold)throw failure('DINGTALK_CHANNEL_SWITCH_BLOCKED');this.activeTargets.set(channelId,target)},
       release:()=>{if(this.targetHolds.get(channelId)===hold)this.targetHolds.delete(channelId)}}
   }
-  registerConversation(input){const identity=this.identity(input);return this.withInputTarget(identity.envelope,async()=>{await this.ready;this.assertInputTarget(input);const e=identity.envelope,path=join(this.host.runtimePaths.state,'channels','contexts.json');await withLock(path+'.lock',async()=>{this.assertInputTarget(input);const saved=JSON.parse(await readRegular(path)??'{}'),prior=saved[identity.sessionId],payloadHash=hash(JSON.stringify([identity.principal,e.text,e.resourceRefs??[],e.quotedMessage??null,e.mentionedAgent??null,e.mentions??[],e.platformFlags??{}])),priorMessage=prior?.messageFacts?.[e.messageId];const version=e.messageVersion??1;if(priorMessage&&(priorMessage.version??1)>version)throw failure('CHANNEL_MESSAGE_VERSION_STALE');if(priorMessage&&(priorMessage.version??1)===version&&priorMessage.payloadHash!==payloadHash)throw failure('CHANNEL_MESSAGE_ID_CONFLICT');const fact=priorMessage&&(priorMessage.version??1)===version?priorMessage:{payloadHash,version,actorId:identity.principal,occurredAt:e.sentAt??new Date().toISOString(),...e.senderName?{senderName:e.senderName}:{},...e.platformFlags?.retracted===true?{retracted:true,retraction:e.platformFlags}:{}};saved[identity.sessionId]={type:e.type,channelId:e.channelId,conversationId:e.conversationId,...(e.conversationName??prior?.conversationName)?{conversationName:e.conversationName??prior.conversationName}:{},participantNames:{...prior?.participantNames,...e.senderName?{[identity.principal]:e.senderName}:{}},updatedAt:fact.occurredAt>=(prior?.updatedAt??'')?fact.occurredAt:prior.updatedAt,memoryBinding:identity.binding,...identity.binding.groupId?{memoryGroupId:identity.binding.groupId}:{},messageFacts:{...prior?.messageFacts,[e.messageId]:fact},participants:{...prior?.participants,[identity.principal]:e.senderId}};await atomicWrite(path,JSON.stringify(saved,null,2)+'\n');this.contexts.set(identity.sessionId,saved[identity.sessionId])});return identity})}
+  registerConversation(input){const identity=this.identity(input);return this.withInputTarget(identity.envelope,async()=>{await this.ready;this.assertInputTarget(input);const e=identity.envelope,path=join(this.host.runtimePaths.state,'channels','contexts.json');await withLock(path+'.lock',async()=>{this.assertInputTarget(input);const saved=JSON.parse(await readRegular(path)??'{}'),prior=saved[identity.sessionId],payloadHash=hash(JSON.stringify([identity.principal,e.text,e.resourceRefs??[],e.quotedMessage??null,e.mentionedAgent??null,e.mentions??[],e.platformFlags??{}])),priorMessage=prior?.messageFacts?.[e.messageId];const version=e.messageVersion??1;if(priorMessage&&(priorMessage.version??1)>version)throw failure('CHANNEL_MESSAGE_VERSION_STALE');if(priorMessage&&(priorMessage.version??1)===version&&priorMessage.payloadHash!==payloadHash)throw failure('CHANNEL_MESSAGE_ID_CONFLICT');const fact=priorMessage&&(priorMessage.version??1)===version?priorMessage:{payloadHash,version,actorId:identity.principal,occurredAt:e.sentAt??new Date().toISOString(),...e.senderName?{senderName:e.senderName}:{},...e.platformFlags?.retracted===true?{retracted:true,retraction:e.platformFlags}:{}};saved[identity.sessionId]={type:e.type,channelId:e.channelId,conversationId:e.conversationId,...(e.conversationName??prior?.conversationName)?{conversationName:e.conversationName??prior.conversationName}:{},participantNames:{...prior?.participantNames,...e.senderName?{[identity.principal]:e.senderName}:{}},updatedAt:fact.occurredAt>=(prior?.updatedAt??'')?fact.occurredAt:prior.updatedAt,memoryBinding:identity.binding,...identity.binding.groupId?{memoryGroupId:identity.binding.groupId}:{},messageFacts:{...prior?.messageFacts,[e.messageId]:fact},participants:{...prior?.participants,...identity.boundParticipants,[identity.principal]:e.senderId}};await atomicWrite(path,JSON.stringify(saved,null,2)+'\n');this.contexts.set(identity.sessionId,saved[identity.sessionId])});return identity})}
   attachIngress(handler){this.ingress=handler;return ()=>{if(this.ingress===handler)this.ingress=undefined}}
   assertLifecycle(channelId,{read=false}={}){const hold=this.lifecycleHolds?.get(channelId);if(hold&&(!read||hold.sealReads))throw Object.assign(failure('CHANNEL_RECONFIGURING'),{knownNotSent:true})}
   trackChannelCall(channelId,work){
@@ -200,7 +218,13 @@ export default class Channels extends Service {
 
   canDeliver(notification){const context=this.groupContext(notification.payload?.conversationId);if(!context)return true;if(this.lifecycleHolds?.has(context.channelId))return false;const transport=this.transports.get(context.channelId);return !!transport&&(!transport.capabilities?.conversationTypes||transport.capabilities.conversationTypes.includes(context.type))&&(!notification.payload?.artifact||typeof transport.sendFile==='function'&&(!transport.capabilities?.files||transport.capabilities.files.includes(context.type)))&&(['unknown','starting'].includes(notification.state)||!transport.canSend||transport.canSend(notification))}
   async transportCall(method,notification,...args){const envelope=this.deliveryEnvelope(notification),transport=envelope&&this.transports.get(envelope.channelId);if(!transport)throw failure('CHANNEL_TRANSPORT_UNAVAILABLE');if(typeof transport[method]!=='function')throw failure('CHANNEL_CAPABILITY_UNAVAILABLE');this.assertLifecycle(envelope.channelId,{read:!['send','sendFile'].includes(method)});return this.trackChannelCall(envelope.channelId,()=>{this.assertLifecycle(envelope.channelId,{read:!['send','sendFile'].includes(method)});return transport[method](envelope,notification,...args)})}
-  identity(input){const e=envelopeSchema.parse(input),principal='channel-actor-'+hash(JSON.stringify([e.channelId,e.senderId])),conversation=hash(JSON.stringify([e.type,e.channelId,e.conversationId,...e.type==='chat'?[e.senderId]:[]]));return {envelope:e,sessionId:'conversation-'+conversation,workspace:join(this.host.runtimePaths.workspaces,'conversations',conversation),binding:{actorId:e.type==='chat'?principal:'channel-room-actor-'+hash(JSON.stringify([e.channelId,e.conversationId])),...e.type==='chat-room'?{groupId:'channel-room-'+hash(JSON.stringify([e.channelId,e.conversationId])),groupWrite:true}:{}},principal}}
+  identity(input){
+    const e=envelopeSchema.parse(input)
+    // A trusted adapter can anchor both authors of a direct chat to the existing peer scope.
+    const peer=this.boundPrivatePeer(e),principal=channelActor(e.channelId,e.senderId),scopeActor=peer===undefined?principal:channelActor(e.channelId,peer)
+    const conversation=conversationKey(e,peer??e.senderId)
+    return {envelope:e,sessionId:'conversation-'+conversation,workspace:join(this.host.runtimePaths.workspaces,'conversations',conversation),binding:{actorId:e.type==='chat'?scopeActor:'channel-room-actor-'+hash(JSON.stringify([e.channelId,e.conversationId])),...e.type==='chat-room'?{groupId:'channel-room-'+hash(JSON.stringify([e.channelId,e.conversationId])),groupWrite:true}:{}},principal,...peer===undefined?{}:{boundParticipants:{[scopeActor]:peer}}}
+  }
   receive(input,admission){
     if(this.closed)throw failure('CHANNELS_CLOSED')
     this.assertInputTarget(input)

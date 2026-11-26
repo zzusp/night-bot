@@ -140,11 +140,11 @@ test('real policy rejection already in flight is not rewritten to cancellation',
  await f.session.prompt('retain original refusal').catch(()=>{})
  assert.equal(f.bridge.policyFailure,policy);assert.equal(f.requests.length,0)
 })
-test('turn-end cancellation does not reopen resource reads after memory completion',async t=>{
- const lifecycle=new AbortController(),reason=new Error('owner cancelled');let reads=0
- const f=await fixture(t,{instructions:async()=>{reads++;return []},memory:{turnEnd:async()=>lifecycle.abort(reason)}});f.actor.lifecycle={signal:lifecycle.signal}
- await f.session.prompt('complete then close').catch(()=>{})
- assert.equal(f.bridge.policyFailure,reason);assert.equal(f.requests.length,1);assert.equal(reads,1)
+test('turn-end cancellation does not reopen resource reads or schedule settled memory work',async t=>{
+ const lifecycle=new AbortController(),reason=new Error('owner cancelled');let reads=0,settled=0
+ const f=await fixture(t,{instructions:async()=>{reads++;return []},memory:{turnEnd:async()=>lifecycle.abort(reason),settled:()=>settled++}});f.actor.lifecycle={signal:lifecycle.signal}
+ await f.session.prompt('complete then close').catch(()=>{});await f.session.agent.waitForIdle()
+ assert.equal(f.bridge.policyFailure,reason);assert.equal(f.requests.length,1);assert.equal(reads,1);assert.equal(settled,0)
  await assert.rejects(f.bridge.refreshResources(),error=>error===reason);assert.equal(reads,1)
 })
 

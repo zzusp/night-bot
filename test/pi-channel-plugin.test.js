@@ -81,8 +81,16 @@ test('discovered third-party plugins load only enabled instances and release tra
 test('real DWS runner -> adapter -> bridge -> plugin -> unified application -> durable store preserves quoted identity and metadata',{timeout:20000},async t=>{
   const f=await memoryHost(t)
   const streams=new Map(),calls=[]
+  const history={conversationId:'private',messageId:'private-history-self',senderId:'self',text:'A human wrote from the signed-in account',createTime:new Date(Date.now()-1000).toISOString()}
   const runner={
-    async run(args){calls.push(args);return {exitCode:0,stdout:JSON.stringify(args.includes('+messages-query-send-status')?{result:{sendStatus:'SUCCESS',openConversationId:'private',openMessageId:'sent-private'}}:(args.includes('+messages-send')||args.includes('+messages-reply'))?{sendReceipt:{openTaskId:'send-task'}}:completeHistory([])),stderr:''}},
+    async run(args){
+      calls.push(args)
+      const value=args.includes('+messages-query-send-status')?{result:{sendStatus:'SUCCESS',openConversationId:'private',openMessageId:'sent-private'}}
+        :args.includes('+messages-send')||args.includes('+messages-reply')?{sendReceipt:{openTaskId:'send-task'}}
+        :args.includes('list-by-ids')?{success:true,decryptFailedCount:0,result:{messages:[{...history,senderOpenDingTalkId:'self'}]}}
+        :completeHistory(args.includes('--open-dingtalk-id')?[history]:[])
+      return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
+    },
     spawn(args,callbacks){const done=Promise.withResolvers(),kind=args.includes('user_im_message_receive_o2o')||args.includes('sender')?'private:'+args[args.indexOf('--open-dingtalk-id')+1]:args[args.indexOf('--kind')+1];streams.set(kind,callbacks);queueMicrotask(()=>callbacks.onStderrLine('[event] ready'));return {done:done.promise,terminate(){done.resolve()}}},
   }
   await f.host.ctx.plugin({inject:['channels','runtimePaths'],apply:ctx=>applyDws(ctx,pluginConfig('dingtalk-dws',{dingtalk_group_id:'room',dingtalk_writes_authorized:true,dingtalk_listen:true}),pluginDependencies(f,runner))})
@@ -106,16 +114,46 @@ test('real DWS runner -> adapter -> bridge -> plugin -> unified application -> d
   streams.get('private:peer').onStdoutLine(JSON.stringify({...event,sender_open_dingtalk_id:'outsider',conversation_id:'foreign-private',message_id:'foreign-message'}))
   await new Promise(r=>setTimeout(r,25));assert.ok(![...channels.contexts.values()].some(context=>context.conversationId==='foreign-private'))
   assert.ok([...streams.keys()].every(key=>key!=='all-direct'))
-  streams.get('private:peer').onStdoutLine(JSON.stringify({...event,conversation_id:'private',message_id:'private-message'}))
-  const directId=channels.identity({...input,type:'chat',channelId:'private-dws',conversationId:'private',messageId:'private-message'}).sessionId
-  await until(()=>app.store.getGroup(directId)?.messages.length)
+  const directInput={...input,type:'chat',channelId:'private-dws',conversationId:'private',messageId:'private-message'}
+  const directId='conversation-'+hash(JSON.stringify(['chat','private-dws','private','peer']))
+  const peerActor=channels.identity(directInput).principal,selfIdentity=channels.identity({...directInput,senderId:'self'})
+  assert.equal(selfIdentity.sessionId,directId);assert.notEqual(selfIdentity.principal,peerActor)
+  const hold=channels.holdChannelTarget('private-dws',{type:'chat',conversationId:'private',peerId:'peer'});hold.activate();hold.release()
+  await until(()=>app.store.getGroup(directId)?.messages.some(row=>row.messageId===history.messageId))
+  const first=channels.groupContext(directId)
+  assert.equal(first.memoryBinding.actorId,peerActor);assert.deepEqual(first.participants,{[peerActor]:'peer',[selfIdentity.principal]:'self'})
+  const {memoryBinding,...legacy}=first
+  assert.equal(channels.privateScopeActor({...legacy,participants:{[peerActor]:'peer'}},directId),peerActor)
+  assert.equal(channels.privateScopeActor({...first,memoryBinding:{...memoryBinding,actorId:selfIdentity.principal}},directId),undefined,'参与者身份不能替换原私聊的持久绑定')
+  const wrongPeer={type:'chat',conversationId:'private',peerId:'self'}
+  assert.equal(channels.targetMatches(first,wrongPeer),false,'登录账号虽是参与者，不能替代原绑定对端')
+  assert.equal(channels.targetMatches({...directInput,senderId:'self'},wrongPeer),false)
+  assert.equal(first.messageFacts[history.messageId].actorId,selfIdentity.principal)
+  assert.ok(calls.some(args=>args.includes('list-by-ids')&&args[args.indexOf('--msg-ids')+1]===history.messageId))
+  const privateEvent={...event,conversation_id:'private'}
+  streams.get('private:peer').onStdoutLine(JSON.stringify({...privateEvent,sender_open_dingtalk_id:'outsider',message_id:'foreign-peer'}))
+  streams.get('private:peer').onStdoutLine(JSON.stringify({...privateEvent,sender_open_dingtalk_id:'self',message_id:'private-live-self'}))
+  streams.get('private:peer').onStdoutLine(JSON.stringify({...privateEvent,message_id:'private-message'}))
+  await until(()=>app.store.getGroup(directId)?.messages.some(row=>row.messageId==='private-message'))
   assert.notEqual(directId,groupId)
-  const notification={id:'private-send-key',payload:{conversationId:directId,actorId:channels.identity({...input,channelId:'private-dws'}).principal,text:'private answer',sourceMessageId:'private-message'}}
+  const facts=channels.groupContext(directId).messageFacts
+  assert.equal(facts['private-live-self'].actorId,selfIdentity.principal);assert.equal(facts['private-message'].actorId,peerActor)
+  assert.ok(![...channels.contexts.values()].some(context=>context.messageFacts?.['foreign-peer']))
+  const notification={id:'private-send-key',payload:{conversationId:directId,actorId:peerActor,text:'private answer',sourceMessageId:'private-message'}}
   const ack=await channels.transportCall('send',notification)
   const send=calls.find(args=>args.includes('+messages-reply'));assert.ok(send,'actual quoted direct send must exist independently of private history reads');assert.equal(send[send.indexOf('--open-dingtalk-id')+1],'peer');assert.ok(!send.includes('--group'));assert.ok(send.includes('+messages-reply'));assert.equal(send[send.indexOf('--conversation-id')+1],'private');assert.equal(send[send.indexOf('--message-id')+1],'private-message')
   assert.equal((await channels.transportCall('readback',{...notification,ack})).messageId,'sent-private')
+  const reply={id:'private-reply-self',payload:{conversationId:directId,text:'Reply to the human author',replyToMessageId:history.messageId,replyToActorId:selfIdentity.principal}}
+  await channels.transportCall('send',reply)
+  const selfQuote=calls.find(args=>args.includes('+messages-reply')&&args.includes(history.messageId))
+  assert.ok(selfQuote);assert.equal(selfQuote[selfQuote.indexOf('--ref-sender')+1],'self');assert.equal(selfQuote[selfQuote.indexOf('--open-dingtalk-id')+1],'peer')
   assert.equal(await channels.transportCall('readback',notification),undefined)
   assert.equal(channels.canDeliver({...notification,payload:{...notification.payload,artifact:{}}}),false)
+  streams.get('private:peer').onStdoutLine(JSON.stringify({type:'user_im_message_recall_o2o',conversation_id:'private',message_id:'private-live-self',sender_open_dingtalk_id:'self',recaller_open_dingtalk_id:'self',event_time:Date.now()}))
+  await eventually(async()=>{
+    const sources=await app.tasks.store.query({kind:'source.list'}),versions=sources.filter(source=>source.messageId==='private-live-self')
+    return versions.length===2&&versions.every(source=>source.groupId===directId&&source.actorId===selfIdentity.principal&&source.authorizationRevoked)
+  },'同账号真人撤回在同一私聊内撤销原来源授权',t.signal)
   await app.close()
   // The store schema and persisted projection retain the quote sender and automation flags.
   const {openResidentStore}=await import('../packages/dingtalk-core/store.js')
@@ -496,18 +534,21 @@ for(const quoteMode of ['other-recipient','explicit','default'])test('default ap
   t.diagnostic(JSON.stringify({case:'default-neutral-tools',quoteMode,disabledColdTerminalUnchanged:true,pendingTransportFailureRetained:true,taskStatus:task.status,drained:task.drained,sourceAclRejections:rejected.length+schemaRejected.size,resourceReads:resourceReads.length,visibleText:1,visibleFrozenFile:1,recipientNativeIds:sent.map(value=>value.recipientIds),literalUserVendorTextPreserved:true,realVendorExecuted:false}))
 })
 
-async function defaultDwsEcho(t,statusMode='success'){
+async function defaultDwsEcho(t,statusMode='success',{direct=false,beforeRouter}={}){
+  const raceConversationId=direct?'private':'race-room'
   const stages=new Map(),sent=[],routed=[],historyReads=[],detailReads=[],streams=new Map(),statusGate=Promise.withResolvers(),contentGate=Promise.withResolvers()
   const currentMessages=new Map(),observedVersions=new Set();let detailFailure=false
   let app,plugin,otherPlugin,channels,ready=statusMode==='success',contentStarted=false,statusStarted=false,history=[],historyGate
   t.signal.addEventListener('abort',()=>{statusGate.resolve();contentGate.resolve()},{once:true})
   t.after(()=>{statusGate.resolve();contentGate.resolve()})
-  const f=await memoryHost(t,body=>{
+  const f=await memoryHost(t,async body=>{
     const tools=requestTools(body),triage=requestEnvelope(body,'一级分诊请求：'),handoff=requestEnvelope(body,'Router 交接请求：')
     assert.ok(!tools.includes('channel_triage_submit'))
     if(handoff)return {text:JSON.stringify({currentIntent:'Preserve exact delivery identity',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
     if(!tools.includes('resident_router_reply'))return {text:'No further action'}
-    const input=requestEnvelope(body,'Router 请求：'),key=input.events.map(event=>event.id).join(','),step=stages.get(key)??0;stages.set(key,step+1)
+    const input=requestEnvelope(body,'Router 请求：')
+    if(beforeRouter)await beforeRouter(input)
+    const key=input.events.map(event=>event.id).join(','),step=stages.get(key)??0;stages.set(key,step+1)
     for(const event of input.events.filter(event=>event.source)){const key=event.source.sourceId+':'+event.source.version;if(!observedVersions.has(key)){observedVersions.add(key);routed.push(event.source.messageId)}}
     const source=input.events.find(event=>event.source?.messageId==='race-request')?.source
     if(source&&step===0)return {tool:'resident_router_reply',args:{operationId:'race-reply',sourceId:source.sourceId,messageVersion:source.version,text:'Exactly one visible reply',recipientActorIds:[]}}
@@ -530,7 +571,7 @@ async function defaultDwsEcho(t,statusMode='success'){
       assert.equal(flag(args,'--open-task-id'),'fixture-send');statusStarted=true
       if(!ready&&statusMode==='timeout')await statusGate.promise
       if(!ready&&statusMode==='error')return {exitCode:1,stdout:'',stderr:'fixture status unavailable'}
-      value={contractVersion:'im.message-send-status.v1',success:true,openTaskId:'fixture-send',result:{sendStatus:ready?'SUCCESS':'PROCESSING',...(ready?{openConversationId:'race-room',openMessageId:'race-visible'}:{})},...(ready?{messageRef:{openConversationId:'race-room',openMessageId:'race-visible'}}:{})}
+      value={contractVersion:'im.message-send-status.v1',success:true,openTaskId:'fixture-send',result:{sendStatus:ready?'SUCCESS':'PROCESSING',...(ready?{openConversationId:raceConversationId,openMessageId:'race-visible'}:{})},...(ready?{messageRef:{openConversationId:raceConversationId,openMessageId:'race-visible'}}:{})}
     }else if(args.includes('list-by-ids')){
       const messages=flag(args,'--msg-ids').split(',').map(id=>currentMessages.get(id)).filter(Boolean)
       value={success:true,decryptFailedCount:0,result:{messages:messages.reverse().map(message=>({...message,conversationId:message.groupId,createTime:message.occurredAt}))}}
@@ -543,29 +584,32 @@ async function defaultDwsEcho(t,statusMode='success'){
         value=page(message?[{...message,conversationId:message.groupId,createTime:message.occurredAt}]:[])
       }
     }else if(args.includes('+chat-messages')){
-      const range={conversationId:flag(args,'--group'),start:flag(args,'--start'),end:flag(args,'--end')};historyReads.push(range)
+      const range={conversationId:flag(args,'--open-dingtalk-id')===undefined?flag(args,'--group'):raceConversationId,start:flag(args,'--start'),end:flag(args,'--end')};historyReads.push(range)
       await historyGate?.promise
       value=page(history.filter(message=>message.groupId===range.conversationId&&Date.parse(message.occurredAt)>=Date.parse(range.start)&&Date.parse(message.occurredAt)<=Date.parse(range.end)).map(message=>({...message,conversationId:message.groupId,createTime:message.occurredAt})))
     }else throw Error('Unexpected fixture DWS command: '+args.slice(0,3).join(' '))
     return {exitCode:0,stdout:JSON.stringify(value),stderr:''}
   },spawn(args,callbacks){
-    const group=flag(args,'--chat-id')??flag(args,'--group'),done=Promise.withResolvers();assert.ok(group)
-    streams.set(group,callbacks);queueMicrotask(()=>callbacks.onStderrLine('[event] ready'))
+    const conversation=flag(args,'--open-dingtalk-id')===undefined?flag(args,'--chat-id')??flag(args,'--group'):raceConversationId,done=Promise.withResolvers();assert.ok(conversation)
+    streams.set(conversation,callbacks);queueMicrotask(()=>callbacks.onStderrLine('[event] ready'))
     return {done:done.promise,terminate(){done.resolve({exitCode:0})}}
   }}
   async function mount({recovering=false}={}){
     const ctx=f.host.ctx;channels=ctx.channels
-    for(const channelId of ['dingtalk-dws','other-dws','other-room-dws'])await ctx.plugin({inject:['channels','runtimePaths'],apply:child=>applyDws(child,pluginConfig(channelId,{dingtalk_group_id:channelId==='other-room-dws'?'other-room':'race-room',dingtalk_account_mode:'system',dingtalk_writes_authorized:true,dingtalk_listen:channelId==='dingtalk-dws'}),pluginDependencies(f,runner,{actorId:'same-account'}))})
+    for(const channelId of direct?['dingtalk-dws']:['dingtalk-dws','other-dws','other-room-dws']){
+      const target=direct?{dingtalk_conversation_type:'chat',dingtalk_group_id:undefined,dingtalk_user_id:'peer-user'}:{dingtalk_group_id:channelId==='other-room-dws'?'other-room':raceConversationId}
+      await ctx.plugin({inject:['channels','runtimePaths'],apply:child=>applyDws(child,pluginConfig(channelId,{...target,dingtalk_account_mode:'system',dingtalk_writes_authorized:true,dingtalk_listen:channelId==='dingtalk-dws'}),pluginDependencies(f,runner,{actorId:'same-account',peerId:'alice'}))})
+    }
     await ctx.plugin({inject,apply:child=>applyApplication(child,{...f.config,resident:{host:'127.0.0.1',port:0,taskSessions:{instanceId:'default-echo',ownerActorId:'owner',webActorId:'owner',initialize:true,reasoningMode:'inherit',ingressEpoch:'2026-01-01T00:00:00Z'}}})})
     app=ctx.get('application');plugin=channels.plugins.get('dingtalk-dws');otherPlugin=channels.plugins.get('other-dws')
     assert.equal(channels.operatorNotifications,undefined)
     await eventually(()=>plugin.health.conversations?.length===1&&plugin.health.conversations.every(group=>group.listener?.state==='ready'&&(recovering||group.backfill?.state==='ok')),'real optional bridge ready with initial history',t.signal)
   }
   await mount()
-  const raw={groupId:'race-room',messageId:'race-request',senderOpenDingTalkId:'alice',text:'Please send one bounded reply',occurredAt:new Date().toISOString()}
-  const input=message=>({type:'chat-room',channelId:'dingtalk-dws',conversationId:message.groupId,senderId:message.senderOpenDingTalkId,messageId:message.messageId,text:message.text})
+  const raw={groupId:raceConversationId,messageId:'race-request',senderOpenDingTalkId:'alice',text:'Please send one bounded reply',occurredAt:new Date().toISOString()}
+  const input=message=>({type:direct?'chat':'chat-room',channelId:'dingtalk-dws',conversationId:message.groupId,senderId:message.senderOpenDingTalkId,messageId:message.messageId,text:message.text})
   const identity=channels.identity(input(raw));assert.notEqual(identity.sessionId,raw.groupId)
-  const ingressFile=dingtalkChannelPaths(f.host.ctx.runtimePaths,'dingtalk-dws').ingressFile
+  const paths=f.host.ctx.runtimePaths,ingressFile=dingtalkChannelPaths(paths,'dingtalk-dws').ingressFile
   async function absent(message){
     assert.equal(channels.groupContext(channels.identity(input(message)).sessionId)?.messageFacts?.[message.messageId],undefined,'no channel fact may precede identity resolution')
     assert.equal((await app.tasks.store.query({kind:'source.list'})).filter(source=>source.messageId===message.messageId&&source.groupId===identity.sessionId).length,0)
@@ -577,16 +621,160 @@ async function defaultDwsEcho(t,statusMode='success'){
     receive:message=>plugin.acceptHistoryMessage(message),
     current(...messages){for(const message of messages)currentMessages.set(message.messageId,message)},
     failDetails(value){detailFailure=value},
-    recall(message,extra={}){streams.get(message.groupId).onStdoutLine(JSON.stringify({type:'user_im_message_recall_group',conversation_id:message.groupId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,recaller_open_dingtalk_id:message.senderOpenDingTalkId,event_time:Date.now(),...extra}))},
+    recall(message,extra={}){streams.get(message.groupId).onStdoutLine(JSON.stringify({type:direct?'user_im_message_recall_o2o':'user_im_message_recall_group',conversation_id:message.groupId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,recaller_open_dingtalk_id:message.senderOpenDingTalkId,event_time:Date.now(),...extra}))},
     emit(message){streams.get(message.groupId).onStdoutLine(JSON.stringify({conversation_id:message.groupId,message_id:message.messageId,sender_open_dingtalk_id:message.senderOpenDingTalkId,sender_id:message.senderId,content:message.text,quotedMessage:message.quotedMessage,event_time:Date.parse(message.occurredAt)}))},
     release(){ready=true;statusGate.resolve();contentGate.resolve()},
-    async restart(messages,{deferred=[],holdHistory}={}){
-      const paths=f.host.ctx.runtimePaths;await f.close();streams.clear();history=messages;historyGate=holdHistory
+    async restart(messages,{deferred=[],holdHistory,coldMessages=[]}={}){
+      await f.close();streams.clear();history=messages;historyGate=holdHistory
+      const coldReadStart=detailReads.length
+      for(const message of coldMessages)currentMessages.set(message.messageId,message)
       if(deferred.length){const ingress=await openDingtalkIngress(paths,'dingtalk-dws');for(const message of deferred)await ingress.deferred(message);await ingress.drain()}
       await f.boot();await mount({recovering:true})
+      return coldReadStart
     },
   }
 }
+
+test('bound private DWS defers unresolved echoes, retains human authors after readback, and never resends',{timeout:nativeTestTimeout(45000)},async t=>{
+  const h=await defaultDwsEcho(t,'processing',{direct:true})
+  const cursor=async()=>JSON.parse(await readFile(h.ingressFile,'utf8'))
+  const inboxCount=()=>h.app.tasks.store.query({kind:'router.inbox-count',conversationId:h.identity.sessionId})
+  try{
+    await h.receive(h.raw);await eventually(()=>h.statusStarted,'原私聊通知已进入精确回查',t.signal)
+    const echo={...h.raw,messageId:'race-visible',senderOpenDingTalkId:'same-account',text:h.sent[0].text,messageAiSendFlag:'DWS'}
+    const human={...echo,messageId:'same-account-human',text:'真人用登录账号发的独立消息'}
+    const peer={...h.raw,messageId:'verified-peer',text:'对端在回查期间仍可进来'}
+    assert.equal((await h.receive(echo)).processing,'deferred')
+    assert.equal((await h.receive(human)).processing,'deferred')
+    assert.equal((await h.receive(peer)).accepted,true)
+    await h.absent(echo);await h.absent(human)
+    assert.deepEqual((await cursor()).deferredMessages.map(row=>row.messageId).sort(),[echo.messageId,human.messageId].sort())
+    await assert.rejects(h.receive({...human,messageId:'foreign-peer',senderOpenDingTalkId:'outsider'}),{code:'DWS_CHAT_NOT_AUTHORIZED'})
+    await assert.rejects(h.receive({...human,messageId:'foreign-chat',groupId:'another-chat'}),{code:'DWS_PLUGIN_AUTHENTICATED_IDENTITY_REQUIRED'})
+    const projection={...human,messageId:'unproven-author',senderOpenDingTalkId:undefined,senderId:'same-account'}
+    await assert.rejects(h.receive(projection),{code:'DINGTALK_DEFERRED_HISTORY_INCOMPLETE'})
+    await h.absent({...projection,senderOpenDingTalkId:'same-account'})
+    await eventually(async()=>h.routed.includes(peer.messageId)&&await inboxCount()===0,'关机前对端消息已由 Router 结清',t.signal)
+    h.release()
+    await eventually(async()=>h.app.tasks.isOwnNotification({groupId:h.identity.sessionId,messageId:echo.messageId}),'原通知已按精确原生 ID 识别',t.signal)
+    assert.equal((await h.receive(echo)).reason,'own-notification')
+    assert.deepEqual((await cursor()).deferredMessages.map(row=>row.messageId),[human.messageId])
+    await h.absent(human)
+    // 正文只在旧 Host 关闭后可读，避免热补拉误满足冷恢复断言。
+    const coldReadStart=await h.restart([],{coldMessages:[human]})
+    await eventually(()=>h.detailReads.slice(coldReadStart).includes(human.messageId),'重启后按原消息 ID 补读真人消息',t.signal)
+    await eventually(async()=>{
+      const sources=await h.app.tasks.store.query({kind:'source.list'})
+      return sources.some(row=>row.messageId===human.messageId&&row.groupId===h.identity.sessionId&&row.routed)
+    },'冷恢复把真人消息登记到原会话',t.signal)
+    await eventually(async()=>h.routed.includes(human.messageId)&&await inboxCount()===0,'暂缓的真人消息由原 Router 结清',t.signal)
+    await h.app.tasks.whenIdle()
+    await h.absent(echo)
+    const rows=(await h.app.tasks.store.query({kind:'source.list'})).filter(row=>row.messageId===human.messageId)
+    assert.equal(rows.length,1);assert.equal(rows[0].groupId,h.identity.sessionId)
+    assert.equal(rows[0].actorId,h.channels.identity(h.input(human)).principal);assert.notEqual(rows[0].actorId,h.identity.principal)
+    assert.equal(h.routed.filter(id=>id===human.messageId).length,1)
+    assert.equal((await cursor()).deferredMessages,undefined);assert.equal(h.sent.length,1)
+  }catch(error){
+    try{
+      const store=h.app.tasks.store
+      const sources=await store.query({kind:'source.list'})
+      const notifications=await store.query({kind:'notification.list'})
+      const router=await store.query({kind:'router.get',conversationId:h.identity.sessionId})
+      t.diagnostic(JSON.stringify({cursor:await cursor(),health:h.plugin.health,detailReads:h.detailReads,routed:h.routed,
+        sources:sources.map(({messageId,routed,processingPending})=>({messageId,routed,processingPending})),
+        notifications:notifications.map(({state,nextAttemptAt,ack,receipt})=>({state,nextAttemptAt,ack,receipt})),
+        router,inbox:await inboxCount(),errors:h.f.errors.map(failure=>failure?.code??failure?.message)}))
+    }catch(diagnosticError){t.diagnostic(`无法读取冷恢复诊断：${diagnosticError.message}`)}
+    throw error
+  }finally{h.release();await h.f.close()}
+})
+
+test('bound private DWS resumes a queued source in the original Router after both humans spoke',{timeout:nativeTestTimeout(45000)},async t=>{
+  const pendingId='private-pending-before-restart',release=Promise.withResolvers()
+  let holding=true,entered=false
+  const h=await defaultDwsEcho(t,'success',{direct:true,beforeRouter:async input=>{
+    if(holding&&input.events.some(event=>event.source?.messageId===pendingId)){
+      entered=true;await release.promise
+    }
+  }})
+  const conversationId=h.identity.sessionId,peerActor=h.identity.principal
+  const query=(kind,args={})=>h.app.tasks.store.query({kind,conversationId,...args})
+  const settled=async id=>h.routed.includes(id)&&await query('router.inbox-count')===0
+  try{
+    const peer={...h.raw,messageId:'private-peer-before-restart',text:'对端先发一条消息'}
+    const human={...peer,messageId:'private-human-before-restart',senderOpenDingTalkId:'same-account',text:'登录账号随后发一条真人消息'}
+    const humanActor=h.channels.identity(h.input(human)).principal
+    assert.notEqual(humanActor,peerActor)
+    assert.equal((await h.receive(peer)).accepted,true)
+    await eventually(()=>settled(peer.messageId),'关机前对端消息已结清',t.signal)
+    assert.equal((await h.receive(human)).accepted,true)
+    await eventually(()=>settled(human.messageId),'关机前登录账号的真人消息已结清',t.signal)
+    const before=await query('router.get')
+    const context=h.channels.groupContext(conversationId)
+    assert.deepEqual(context.participants,{[peerActor]:'alice',[humanActor]:'same-account'})
+    assert.equal(context.memoryBinding.actorId,peerActor)
+    assert.equal(context.messageFacts[peer.messageId].actorId,peerActor)
+    assert.equal(context.messageFacts[human.messageId].actorId,humanActor)
+    assert.equal((await h.receive({...human,messageId:pendingId,text:'重启前已入库、尚未结清的真人消息'})).accepted,true)
+    await eventually(()=>entered,'待处理消息已进入原 Router 的在途轮次',t.signal)
+    const [pending]=await query('router.inbox')
+    assert.equal(pending.source.messageId,pendingId)
+    assert.equal(pending.source.actorId,humanActor)
+    assert.equal(await query('router.inbox-count'),1)
+    assert.equal(h.routed.includes(pendingId),false)
+
+    // 不补投历史、不发新消息，只让 Host 恢复已经持久登记的队列。
+    holding=false
+    await h.restart([])
+    await eventually(()=>settled(pendingId),'重启后原 Router 结清已入库消息',t.signal)
+    const after=await query('router.get')
+    assert.equal(after.activeSessionId,before.activeSessionId)
+    assert.equal(after.generation,before.generation)
+    const memory=h.f.host.ctx.memory,agent=h.f.host.ctx.agents.get(after.activeSessionId)
+    assert.equal((await memory.binding(agent)).actorId,peerActor)
+    const [event]=await query('router.batch-events',{eventIds:[pending.id]})
+    assert.equal(event.state,'consumed')
+    const sources=(await query('source.list')).filter(row=>row.messageId===pendingId)
+    assert.equal(sources.length,1);assert.equal(sources[0].sourceId,pending.source.sourceId)
+    assert.equal(sources[0].actorId,humanActor);assert.equal(h.sent.length,0)
+  }catch(error){
+    t.diagnostic(JSON.stringify({alerts:h.app.tasks.listAlerts(),router:await query('router.get'),inbox:await query('router.inbox-count')}))
+    throw error
+  }finally{release.resolve();h.release();await h.f.close()}
+})
+
+test('bound private DWS shuts down when recall overlaps a Router memory read',{timeout:nativeTestTimeout(45000)},async t=>{
+  const h=await defaultDwsEcho(t,'success',{direct:true})
+  const original={...h.raw,messageId:'private-recall-during-memory',senderOpenDingTalkId:'same-account',text:'撤回前已接纳的真人消息'}
+  const conversationId=h.identity.sessionId,memory=h.f.host.ctx.memory,release=Promise.withResolvers()
+  const binding=memory.binding.bind(memory)
+  let actor
+  memory.binding=async current=>{
+    if(!actor&&current.metadata.conversationId===conversationId&&current.admission.current()?.messages.some(packet=>packet.source.kind==='conversation-router')){
+      actor=current
+      current.lifecycle.signal.addEventListener('abort',release.resolve,{once:true})
+      await release.promise
+    }
+    return binding(current)
+  }
+  const versions=async()=> (await h.app.tasks.store.query({kind:'source.list',conversationId})).filter(row=>row.messageId===original.messageId).sort((a,b)=>a.version-b.version)
+  try{
+    assert.equal((await h.receive(original)).accepted,true)
+    await eventually(()=>actor,'原 Router 正在读取记忆',t.signal)
+    h.recall(original)
+    await eventually(async()=> (await versions()).some(row=>row.retracted),'撤回墓碑已持久登记',t.signal)
+    // 不等 Router 空闲；读取留在途中，收到真实停机取消才继续。
+    await h.f.close()
+    assert.equal(actor.lifecycle.signal.aborted,true)
+    assert.equal(h.f.requests.length,0,'关闭后不能发起原轮模型请求')
+    assert.equal(h.sent.length,0)
+    await h.restart([])
+    const sources=await versions()
+    assert.deepEqual(sources.map(row=>[row.version,row.authorizationRevoked,!!row.retracted]),[[1,true,false],[2,true,true]])
+    assert.ok(sources.every(row=>row.groupId===conversationId&&row.actorId===h.channels.identity(h.input(original)).principal))
+  }finally{release.resolve();h.release();await h.f.close()}
+})
 
 test('default optional DWS filters exact echo before registration while content readback is pending',{timeout:nativeTestTimeout(45000)},async t=>{
   const h=await defaultDwsEcho(t)

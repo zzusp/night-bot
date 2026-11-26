@@ -37,7 +37,12 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
  }
  // Pi reports extension errors and continues other handlers. Security policy
  // failures must additionally abort the official run, never merely throw.
- const guarded=handler=>async(event,ctx)=>{try{return await handler(event,ctx)}catch(cause){lastPolicyFailure=cause;ctx.abort();throw cause}}
+ // Pi may call another hook after a rejection. Its cancellation must not
+ // replace a real policy failure, and a later real failure must still surface.
+ const guarded=handler=>async(event,ctx)=>{try{return await handler(event,ctx)}catch(cause){
+  if(lastPolicyFailure===undefined||lastPolicyFailure===getActor()?.lifecycle?.signal?.reason)lastPolicyFailure=cause
+  ctx.abort();throw cause
+ }}
  const extensionFactory=pi=>{
   pi.on('before_agent_start',guarded((event,ctx)=>measurePhase('before-run',async()=>{
    const current=actor();lastOutcome=undefined;lastPolicyFailure=undefined;turnEndResourceFailure=undefined;assertActive(current)
@@ -55,11 +60,13 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
    event.systemPromptOptions.skills=resources.skills
   })))
   pi.on('context',guarded(async(event,ctx)=>{
-   if(['channel-triage','conversation-router'].includes(compactionRole))await measurePhase('memory-before-request',()=>memory?.refreshPrompt?.(actor()))
+   const current=actor();assertActive(current)
+   if(['channel-triage','conversation-router'].includes(compactionRole)){
+    await measurePhase('memory-before-request',()=>memory?.refreshPrompt?.(current));assertActive(current)
+   }
    if(!memory?.filter)return compactionRole==='conversation-router'?{messages:projectInterruptedRouterCalls(event.messages)}:undefined
-   const current=actor(),projection=ctx.sessionManager.buildSessionProjection()
-   const request=createPiProjectionRequest(projection,event.messages)
-   const result=await measurePhase('context-projection',()=>memory.filter(current,request,ctx))
+   const projection=ctx.sessionManager.buildSessionProjection(),request=createPiProjectionRequest(projection,event.messages)
+   const result=await measurePhase('context-projection',()=>memory.filter(current,request,ctx));assertActive(current)
    return {messages:compactionRole==='conversation-router'?projectInterruptedRouterCalls(result.messages):result.messages}
   }))
   pi.on('context_with_system',guarded(async event=>{
@@ -109,7 +116,10 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
    try{await refreshTurnEndResources(current)}catch(cause){if(!lastPolicyFailure)turnEndResourceFailure=cause;throw cause}
    if(runPromptOptions){runPromptOptions.contextFiles=resources.agentsFiles;runPromptOptions.skills=resources.skills;if(currentDirectory)runPromptOptions.cwd=await currentDirectory(current)}
   }))
-  pi.on('agent_settled',async(event,ctx)=>{await memory?.settled?.(actor(),{...event,outcome:lastOutcome},ctx)})
+  pi.on('agent_settled',async(event,ctx)=>{
+   const current=actor()
+   if(!current.lifecycle?.signal.aborted)await memory?.settled?.(current,{...event,outcome:lastOutcome},ctx)
+  })
  }
  const roleExtension=roleCompactionExtension({role:compactionRole,getSession:()=>actor().piSession})
  const resourceLoader=new DefaultResourceLoader({cwd,agentDir,settingsManager,extensionFactories:[{name:'night-business-context',factory:extensionFactory},...roleExtension?[roleExtension]:[]],noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,systemPrompt:'',appendSystemPrompt:[],agentsFilesOverride:()=>({agentsFiles:resources.agentsFiles}),skillsOverride:()=>({skills:resources.skills,diagnostics:[]})})
