@@ -143,7 +143,7 @@ Invoke-RestMethod 'http://127.0.0.1:19198/state/supervisor/alerts?limit=10&type=
 
 标准入口的 `transport` 为 `channels`。当前兼容 `/health` 的 `inboundConfigured` 只识别旧 `dws` 模式，`outboundAuthorized` 只反映是否注册了 transport，不能据此判断插件监听状态或 `dingtalk_writes_authorized`。`status:ok` 也不证明 DWS 已登录、指定群已订阅或消息已送达。
 
-前台停止使用 Ctrl+C，等待 launcher 正常退出。Node 父进程托管时，必须保留 IPC 通道并发送 `{type:'night-bot-shutdown'}`；launcher 会转发给服务，等现有关闭路径排空后退出。Windows 的 `Stop-Process` 或 `child.kill('SIGTERM')` 是强制终止，不能当成优雅排空证据。本机验收的临时监督器仅管理它自己启动的实例，不是正式 Windows 服务管理器。
+前台停止使用 Ctrl+C，等待 launcher 正常退出。Node 父进程托管时，必须保留 IPC 通道并发送 `{type:'night-bot-shutdown'}`；launcher 会转发给服务，等现有关闭路径排空后退出。收到钉钉撤回后不需要额外等待 Router 空闲；正常停机会取消在途记忆读取，保留已登记的撤回，真实排空或写盘失败仍报告。Windows 的 `Stop-Process` 或 `child.kill('SIGTERM')` 是强制终止，不能当成优雅排空证据。本机验收的临时监督器仅管理它自己启动的实例，不是正式 Windows 服务管理器。
 
 启动工作区只枚举一次受信会话目录；每份 Pi 日志仍完整校验提交链、身份和上下文，路径及链接检查保留，小批并行读取失败会先排空本批再报错。共享 cwd 只在同次索引内复用解析，后续索引重新核验，不使用跨次启动缓存或只读 header 绕过日志校验。完整重启计时应从正常停机请求直到 Web、resident 和全部启用渠道实际就绪，分别记录停机与启动恢复，不能仅记录停机耗时。
 

@@ -219,7 +219,7 @@ Host 经公开 Pi 生命周期接口先持久消费原失败 checkpoint 的非�
 
 ### 正常关闭
 
-正常关闭先拒绝新的 Router 工作，通过同 generation/actor 的 Host-only `interrupt` 中断官方 Pi 当前推理，再等待全部在途 work、工具/Job 真实排空和 Pi 提交，最后由原 `dispose` 释放 owner。等待范围包括被同会话后继 tail 覆盖但尚未结束的旧 work；只豁免本次真实取消的原错误对象，在途维护、持久化及排空错误仍聚合上报。关闭期间不续批、换代或发布迟到 owner，不使用会取消待输入的业务 `cancel` 代替正常停机；耐久 pending 和 unknown 保留，推理中断不表示任务完成，也不重放已提交或未知的副作用。
+正常关闭先拒绝新的 Router 工作，通过同 generation/actor 的 Host-only `interrupt` 中断官方 Pi 当前推理，再等待全部在途 work、工具/Job 真实排空和 Pi 提交，最后由原 `dispose` 释放 owner。等待范围包括被同会话后继 tail 覆盖但尚未结束的旧 work；在途记忆读取遇到这次取消时传回同一个取消原因，取消后不启动新一轮记忆收尾。只豁免本次真实取消的原错误对象，未取消的身份拒绝、在途维护、持久化及排空错误仍上报。关闭期间不续批、换代或发布迟到 owner，不使用会取消待输入的业务 `cancel` 代替正常停机；耐久 pending 和 unknown 保留，推理中断不表示任务完成，也不重放已提交或未知的副作用。
 
 Router service 与官方 Pi factory 专项之外，第16/17轮本地隔离镜像 `be1ffc45` 已验证正式 CLI 活动请求取消、精确确认批，以及同卷冷启第二次关闭后任务步骤和 Pi 日志全文不变。该两轮由 node harness 启动 CLI 子进程；第20轮镜像 `82b96bd4` 进一步保留默认 CMD/tini/PID1，实际 `docker stop -t -1` 使在途官方 Pi HTTP 请求断连，launcher/容器自然退出0、PID归零、安装锁缺席。两镜像分别绑定各自491源封包，第20轮包含 Host `2f7b8047` / Application `72e47641` / NativeJobs `deee4fd4`，不追认后续源码、Windows Native、厂商或生产。正常关闭不能代替下节异常路径的依赖保留证据；版本和最新边界见[当前验收检查点](acceptance/resident-conversation-routing/goal.md#当前检查点)。
 
