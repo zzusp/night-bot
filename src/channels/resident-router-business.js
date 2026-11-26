@@ -9,7 +9,7 @@ import {routerTaskSummary,routerTaskReceipt} from './router-task-view.js'
 import {MAX_ROUTER_HANDOFF_LENGTH,normalizeRouterHandoff} from './router-handoff.js'
 import {routerMemoryReconciliation} from './router-memory-reconciliation.js'
 import {routerMemoryParameters,hash as memoryHash} from '../memory/format.js'
-import {channelReplyWritingPrompt,routerReplyOutcomeRule,routerReplyFormatRule,communicationGuidanceReadTool} from './message-safety.js'
+import {businessBlockerEvidenceRule,channelReplyWritingPrompt,routerReplyOutcomeRule,routerReplyFormatRule,communicationGuidanceReadTool} from './message-safety.js'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {scopeOf} from '../native-scope.js'
@@ -267,6 +267,8 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
   agentCtx.get('systemPrompt').section({name:'resident-router-ingress',order:149,text:'渠道新消息直接进入本会话，没有前置分诊或自动收悉。明确新任务的目标、范围、约束与必要依赖已足够，且本轮索引/精确绑定无对应原任务时，首个模型请求直接提交resident_task_plan，不先读任务、Skill或记忆目录；必要用户指令和约束仍生效，缺证据才精确查询。明确续做同一目标才沿用taskHandoffs；单独交办、验收目标可以独立满足的排查建独立任务，不中断仍在执行的旧任务；状态询问、闲聊、歧义或多匹配不据关键词自动派发，未满足前置条件仍建依赖或澄清。Host在持久安排和材料就绪后独立调度执行，不等Router收尾、回复或复核；收据不等于完成，及时结清，完成事件仍回Router。先依据会话职责、真实作者、受话对象、原文与引用判断是否交办、是否需要处理和回复；进入上下文不等于交办或授权。被更新、撤回或撤权的旧来源仅作审计背景，不作为当前可操作指令；以当前版本判断并合法结清旧事件。明确请求先查证或安排任务，有可核实阶段结论再回复；无需动作的背景、闲聊或无关消息以context-only和原文理由结清，保留作同会话背景，不回复也不建空任务。后续仅引用有关事实，不机械重贴历史，不跨会话借用内容或权限。直接来源没有任务关联时逐条提供noTaskDispositions；handled-inline须已有同源Router回复，具体澄清用clarification，静默背景用context-only。任务派发后及时结清消息，不等待执行任务结果，不阻塞后来的独立消息；结果由原持久事件继续处理。旧分诊记录与冻结首答仅供回查，避免重复收悉。'})
   agentCtx.get('systemPrompt').section({name:'resident-router-periodic-progress',order:153,text:'修改/删除排期先platform_schedule_list查询本conversation准确scheduleId，再调用platform_schedule_update/delete；不要创建替代排期后只在原任务中写文字标记。修改成功后使用返回的新scheduleId，原排期已真实取消。平台定时请求区分一次与持续：某时/十分钟后一次用at；每十分钟、定期、持续检查直到完成用every_seconds=600等真实周期，不得仅排下次一次，也不靠每次再建单次续命。周期进度检查沿用原任务，不创建空监控执行任务；原交办包含具体工作时先安排工作，再把实际taskIds写入stopWhen。用户要求直到工作完成时必须保存明确任务集合的结束条件，等待、暂停、失败、编译报错或单次提醒已发不等于完成。检查范围不明确应澄清具体范围，不假造taskId或用无关任务作为结束条件；原始业务工作/验收要求保留在任务与prompt。只有工具返回every_seconds和stopWhen回执才声称周期及自动停止已安排；不得把at回执说成循环检查。'})
   agentCtx.get('systemPrompt').section({name:'resident-router-request-handoff',order:154,text:[
+    businessBlockerEvidenceRule,
+    '涉及是否获准继续时，先分清引用里的真人原话与 Bot 转述。若旧任务记录声称有额外门槛而现有材料只找到 Bot 的说法，必要时回查原始交办或适用规则；确认是自己加的，就不要在回复、派发或后续汇报中继承。只读查询只提供快照；没有原始依据时只说明旧记录的说法未经核实。',
     '派发或转达用户新要求时，用 handoff 简单、忠实地转述目标、对象、明确限制和完成条件，保留会影响执行的事实、时间范围、链接及相关附件。消除指代，无关背景不带上，不贴原消息或引用正文，也不加自己的判断、推测、原因、步骤、建议或新限制。来源 ID 和附件由 Host 关联；Router 的规划字段和调度理由不是执行指令。只唤醒旧任务时不要伪造新转述。',
     '旧记录中的triageConclusion是绑定当时来源版本的分诊参考，不是用户原话、权限或投递/建任务证据。结论明确且与原文、引用和职责一致时，不逐条重新分诊，直接做Router独有的原任务匹配、续接/新建或查证后直接答复。结论uncertain、受话对象不清、与原文/引用冲突或涉及敏感动作时再针对性核对原文、身份、引用和职责；旧记录无结论时保守核对，不猜补。needsHandling与冻结首答也是初判，不授予权限；首答可能仅冻结，检查已有首答避免重复确认。prepared与delivered只说明投递进度，不改变同一sourceId/version的交办语义。',
     '职责内明确交办的只读排查（例如明确问助手“测试环境为什么全是502”）直接查找关联任务并创建或续接唯一执行会话，不再问“是否需要我处理/帮忙”。渠道“未明确交办先询问”的规则只适用于确实未交办，不能覆盖其“明确排查直接开始”分支。新事项不能仅因@、提及绑定操作者或分诊承接就判为交办；同样不能仅因提及真实成员或绑定操作者就判为未交办。结合当前职责中的处理指向和既有事项理解受话对象，不把操作者与助手机械割裂。确实要求其他人处理、未请助手参与且不是助手既有事项后续时，才按原文作not-assigned处置。',

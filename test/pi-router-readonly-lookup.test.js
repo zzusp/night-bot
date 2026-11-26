@@ -4,18 +4,19 @@ import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestTe
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 const call=(tool,args)=>({tool,args})
 const input=body=>requestEnvelope(body,'Router 请求：')
+const system=body=>body.messages.filter(row=>['system','developer'].includes(row.role)).map(row=>row.content).join('\n')
 const done=body=>body.messages.at(-1)?.role==='tool'&&body.messages.findLast(row=>row.role==='assistant')?.tool_calls?.at(-1)?.function?.name==='resident_router_settle'
 
 test('real readonly lookup returns asynchronously to same Router after second message; no task execution or direct subagent send',{timeout:nativeTestTimeout(45000)},async t=>{
  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve());let h,requested=false,lookupCalls=0,secondHandled=false,completion,lookupId
  h=await residentRouterHost(t,async body=>{
-  if(requestText(body).some(text=>text.includes('NIGHT_ROUTER_TASK_LOOKUP'))){lookupCalls++;assert.deepEqual(requestTools(body),[]);assert.doesNotMatch(JSON.stringify(body),/PRIVATE_OTHER_ROOM|PRIVATE_USER_SOURCE/);entered.resolve();await release.promise;return {text:JSON.stringify({summary:'The retained task is paused; no execution was started.',limitations:[]})}}
+  if(requestText(body).some(text=>text.includes('NIGHT_ROUTER_TASK_LOOKUP'))){lookupCalls++;assert.match(system(body),/快照没有原始依据时，不写成已确认的门槛/);assert.deepEqual(requestTools(body),[]);assert.doesNotMatch(JSON.stringify(body),/PRIVATE_OTHER_ROOM|PRIVATE_USER_SOURCE/);entered.resolve();await release.promise;return {text:JSON.stringify({summary:'The retained task is paused; no execution was started.',limitations:[]})}}
   if(!requestTools(body).includes('resident_router_settle'))return {text:'No work'}
   const packet=input(body);if(done(body))return {text:'Settled'}
   const result=packet.events.find(event=>event.kind==='router.lookup.completed')
   if(result){assert.equal(secondHandled,true,JSON.stringify(result));assert.equal(result.sourceId,undefined);assert.equal(result.source,undefined);if(!completion){completion=result;return call('resident_router_reply',{operationId:'answer-result',sourceId:result.lookupResult.sourceId,messageVersion:result.lookupResult.messageVersion,text:'The retained task is paused; no execution was started.',replyPurpose:'task-update'})}return call('resident_router_settle',{operationId:'settle-result',eventIds:packet.events.map(event=>event.id)})}
   const event=packet.events.find(event=>event.source)
-  if(event?.source.messageId==='lookup'&&!requested){assert.match(JSON.stringify(body),/线上排查、需查\/分析代码/);requested=true;return call('resident_task_lookup_async',{operationId:'lookup-existing',sourceId:event.sourceId,messageVersion:event.messageVersion,taskIds:['existing-task']})}
+  if(event?.source.messageId==='lookup'&&!requested){assert.match(system(body),/线上排查、需查\/分析代码/);assert.match(system(body),/缺少某人同意的记录，不等于需要那个人批准/);assert.match(system(body),/不要在回复、派发或后续汇报中继承/);requested=true;return call('resident_task_lookup_async',{operationId:'lookup-existing',sourceId:event.sourceId,messageVersion:event.messageVersion,taskIds:['existing-task']})}
   if(event?.source.messageId==='lookup'){
    const value=JSON.parse(body.messages.at(-1).content);lookupId=value.lookupId
    return call('resident_router_settle',{operationId:'settle-request',eventIds:packet.events.map(event=>event.id),noTaskDispositions:[{eventId:event.id,outcome:'async-query',lookupId,sourceQuote:event.source.text,reason:'Accepted durable read-only lookup; result follows separately'}]})
