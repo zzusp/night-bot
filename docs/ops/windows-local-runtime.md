@@ -296,6 +296,8 @@ node bin/night-bot-dingtalk.js $config list
 4. 观察同任务唯一执行 session、正式 `task_result`、`completed` 且排空，以及实际冻结文件 descriptor/字节哈希。Router 必须选用本任务当前完成版本的 `taskDelivery`，说明父通知送达后再发文件子件；Host 从本次 `sourceId` / `messageVersion` 默认绑定原消息与作者；若显式受众不含原作者，父说明不引用。仅父说明带引用，文件子件不继承原生 quote/@。验收需分别核对首答、进展和结果父说明的实际原生引用，以及受众和附件。核对指定群内实际可见消息、附件原名/内容与持久 readback/receipt。`unknown` 只回读，不重授发送；检查回声命中本实例精确收据，不重新进入业务或造新任务。不能把同账号消息一律当回声过滤。
 5. 独立核对带原完成事件引用的持久复盘报告及该群范围内的经验目的地；合法空经验可为 `skipped`，不能仅以已调度或任务完成代替报告。复盘无工具、保持原记忆范围，不能依据 `task.completed` 声称附件已送达。最后正常停止并冷恢复，核同一任务/会话/产物和发送收据没有重放；未核或阻断的环节逐项报告。
 
+已绑定私聊的双方都发过消息后，正常重启仍应沿用原 Router 和原对端的记忆身份，并结清已入库的待处理消息。遇到 `ROUTER_PRIVATE_IDENTITY_INVALID`，先核对原会话 ID 和持久对端绑定，不要删除参与者、换绑或重投历史来绕过。
+
 登记前回声保护覆盖 Router/任务队列通知，与 `dingtalk_operator_notifications` 开关无关。若原发送身份未知，明确是其他发送者的消息照常入站；仅同账号或身份命名空间不明的候选及其已知直接引用单独暂缓。查看该渠道现有 `data/state/channels/.../ingress.json`：`backfillThroughAt` 是完整历史水位，`deferredMessages` 是未接纳的单条记录；精确读取失败会记录 `DINGTALK_DEFERRED_READ_FAILED`，不会清记录、推断未发送或触发重发。不要手工删记录、补写回执或注入旧消息。原生 shell 外发回声能力不在本次范围，见 [渠道合同](../CHANNELS.md)。
 
 核查 Router 只读查询时，区分原来源已接纳、查询收据终态、内部结果已消费、以及用户答复已送达。全实例同时执行两条，其余后台等待；30 秒包含等待，超时或重启中断不代表业务任务失败。此变更无需迁移或配置，不手改账本或重放中断查询。见[只读查询契约](../CHANNELS.md#router-的临时任务只读查询)。

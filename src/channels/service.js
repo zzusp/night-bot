@@ -6,6 +6,8 @@ import {notificationAudience} from '../../packages/dingtalk-core/group-notificat
 import {isDeepStrictEqual} from 'node:util'
 import {failure,privateDirectory,readRegular,atomicWrite,withLock} from '../runtime/files.js'
 const envelopeSchema=z.object({type:z.enum(['chat','chat-room']),channelId:z.string().min(1).max(128),conversationId:z.string().min(1).max(256),senderId:z.string().min(1).max(256),senderName:z.string().trim().min(1).max(256).optional(),conversationName:z.string().trim().min(1).max(256).optional(),messageId:z.string().min(1).max(256),messageVersion:z.number().int().positive().optional(),text:z.string().min(1).max(32000),sentAt:z.string().optional(),mentionedAgent:z.boolean().optional(),mentions:z.array(z.string().min(1).max(256)).max(256).optional(),platformFlags:z.record(z.string(),z.union([z.string(),z.boolean(),z.number()])).optional(),resourceRefs:z.array(z.record(z.string(),z.unknown())).max(32).optional(),quotedMessage:z.object({messageId:z.string(),senderId:z.string().optional(),text:z.string().optional()}).strict().optional()}).strict()
+const channelActor=(channelId,senderId)=>'channel-actor-'+hash(JSON.stringify([channelId,senderId]))
+const conversationKey=({type,channelId,conversationId},peer)=>hash(JSON.stringify([type,channelId,conversationId,...type==='chat'?[peer]:[]]))
 /** 仅解析可信插件配置；职责不来自入站消息。 */
 export function channelGroupResponsibilities(groups=[],responsibility){
   if(!Array.isArray(groups)||responsibility!==undefined&&typeof responsibility!=='string')throw failure('CHANNEL_GROUP_CONFIGURATION_INVALID')
@@ -27,6 +29,15 @@ export default class Channels extends Service {
   responsibility(id){return this.groupContext(id)?.responsibility}
   replySurface(id){return this.transports.get(this.contexts.get(id)?.channelId)?.capabilities?.replySurface}
   boundPrivatePeer(input){return input.type==='chat'?this.transports.get(input.channelId)?.privatePeer?.(input):undefined}
+  privateScopeActor(context,id){
+    const participants=context.participants??{}
+    const matches=(actorId,senderId)=>typeof senderId==='string'&&senderId.length>0
+      &&actorId===channelActor(context.channelId,senderId)&&id==='conversation-'+conversationKey(context,senderId)
+    // 早期上下文未保存记忆绑定；只认能还原原会话身份的参与者。
+    if(context.memoryBinding===undefined)return Object.entries(participants).find(([actorId,senderId])=>matches(actorId,senderId))?.[0]
+    const actorId=context.memoryBinding?.actorId
+    return Object.hasOwn(participants,actorId)&&matches(actorId,participants[actorId])?actorId:undefined
+  }
   targetMatches(context,target){
     if(context.type!==target.type||context.conversationId!==target.conversationId)return false
     if(target.type!=='chat')return true
@@ -208,10 +219,10 @@ export default class Channels extends Service {
   canDeliver(notification){const context=this.groupContext(notification.payload?.conversationId);if(!context)return true;if(this.lifecycleHolds?.has(context.channelId))return false;const transport=this.transports.get(context.channelId);return !!transport&&(!transport.capabilities?.conversationTypes||transport.capabilities.conversationTypes.includes(context.type))&&(!notification.payload?.artifact||typeof transport.sendFile==='function'&&(!transport.capabilities?.files||transport.capabilities.files.includes(context.type)))&&(['unknown','starting'].includes(notification.state)||!transport.canSend||transport.canSend(notification))}
   async transportCall(method,notification,...args){const envelope=this.deliveryEnvelope(notification),transport=envelope&&this.transports.get(envelope.channelId);if(!transport)throw failure('CHANNEL_TRANSPORT_UNAVAILABLE');if(typeof transport[method]!=='function')throw failure('CHANNEL_CAPABILITY_UNAVAILABLE');this.assertLifecycle(envelope.channelId,{read:!['send','sendFile'].includes(method)});return this.trackChannelCall(envelope.channelId,()=>{this.assertLifecycle(envelope.channelId,{read:!['send','sendFile'].includes(method)});return transport[method](envelope,notification,...args)})}
   identity(input){
-    const e=envelopeSchema.parse(input),actor=senderId=>'channel-actor-'+hash(JSON.stringify([e.channelId,senderId]))
+    const e=envelopeSchema.parse(input)
     // A trusted adapter can anchor both authors of a direct chat to the existing peer scope.
-    const peer=this.boundPrivatePeer(e),principal=actor(e.senderId),scopeActor=peer===undefined?principal:actor(peer)
-    const conversation=hash(JSON.stringify([e.type,e.channelId,e.conversationId,...e.type==='chat'?[peer??e.senderId]:[]]))
+    const peer=this.boundPrivatePeer(e),principal=channelActor(e.channelId,e.senderId),scopeActor=peer===undefined?principal:channelActor(e.channelId,peer)
+    const conversation=conversationKey(e,peer??e.senderId)
     return {envelope:e,sessionId:'conversation-'+conversation,workspace:join(this.host.runtimePaths.workspaces,'conversations',conversation),binding:{actorId:e.type==='chat'?scopeActor:'channel-room-actor-'+hash(JSON.stringify([e.channelId,e.conversationId])),...e.type==='chat-room'?{groupId:'channel-room-'+hash(JSON.stringify([e.channelId,e.conversationId])),groupWrite:true}:{}},principal,...peer===undefined?{}:{boundParticipants:{[scopeActor]:peer}}}
   }
   receive(input,admission){

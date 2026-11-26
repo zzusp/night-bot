@@ -122,6 +122,9 @@ test('real DWS runner -> adapter -> bridge -> plugin -> unified application -> d
   await until(()=>app.store.getGroup(directId)?.messages.some(row=>row.messageId===history.messageId))
   const first=channels.groupContext(directId)
   assert.equal(first.memoryBinding.actorId,peerActor);assert.deepEqual(first.participants,{[peerActor]:'peer',[selfIdentity.principal]:'self'})
+  const {memoryBinding,...legacy}=first
+  assert.equal(channels.privateScopeActor({...legacy,participants:{[peerActor]:'peer'}},directId),peerActor)
+  assert.equal(channels.privateScopeActor({...first,memoryBinding:{...memoryBinding,actorId:selfIdentity.principal}},directId),undefined,'参与者身份不能替换原私聊的持久绑定')
   const wrongPeer={type:'chat',conversationId:'private',peerId:'self'}
   assert.equal(channels.targetMatches(first,wrongPeer),false,'登录账号虽是参与者，不能替代原绑定对端')
   assert.equal(channels.targetMatches({...directInput,senderId:'self'},wrongPeer),false)
@@ -531,19 +534,21 @@ for(const quoteMode of ['other-recipient','explicit','default'])test('default ap
   t.diagnostic(JSON.stringify({case:'default-neutral-tools',quoteMode,disabledColdTerminalUnchanged:true,pendingTransportFailureRetained:true,taskStatus:task.status,drained:task.drained,sourceAclRejections:rejected.length+schemaRejected.size,resourceReads:resourceReads.length,visibleText:1,visibleFrozenFile:1,recipientNativeIds:sent.map(value=>value.recipientIds),literalUserVendorTextPreserved:true,realVendorExecuted:false}))
 })
 
-async function defaultDwsEcho(t,statusMode='success',{direct=false}={}){
+async function defaultDwsEcho(t,statusMode='success',{direct=false,beforeRouter}={}){
   const raceConversationId=direct?'private':'race-room'
   const stages=new Map(),sent=[],routed=[],historyReads=[],detailReads=[],streams=new Map(),statusGate=Promise.withResolvers(),contentGate=Promise.withResolvers()
   const currentMessages=new Map(),observedVersions=new Set();let detailFailure=false
   let app,plugin,otherPlugin,channels,ready=statusMode==='success',contentStarted=false,statusStarted=false,history=[],historyGate
   t.signal.addEventListener('abort',()=>{statusGate.resolve();contentGate.resolve()},{once:true})
   t.after(()=>{statusGate.resolve();contentGate.resolve()})
-  const f=await memoryHost(t,body=>{
+  const f=await memoryHost(t,async body=>{
     const tools=requestTools(body),triage=requestEnvelope(body,'一级分诊请求：'),handoff=requestEnvelope(body,'Router 交接请求：')
     assert.ok(!tools.includes('channel_triage_submit'))
     if(handoff)return {text:JSON.stringify({currentIntent:'Preserve exact delivery identity',unresolvedQuestions:[],referents:[],assumptions:[],evidenceRefs:handoff.requiredSourceIds.map(sourceId=>({sourceId})),cutoff:handoff.cutoff})}
     if(!tools.includes('resident_router_reply'))return {text:'No further action'}
-    const input=requestEnvelope(body,'Router 请求：'),key=input.events.map(event=>event.id).join(','),step=stages.get(key)??0;stages.set(key,step+1)
+    const input=requestEnvelope(body,'Router 请求：')
+    if(beforeRouter)await beforeRouter(input)
+    const key=input.events.map(event=>event.id).join(','),step=stages.get(key)??0;stages.set(key,step+1)
     for(const event of input.events.filter(event=>event.source)){const key=event.source.sourceId+':'+event.source.version;if(!observedVersions.has(key)){observedVersions.add(key);routed.push(event.source.messageId)}}
     const source=input.events.find(event=>event.source?.messageId==='race-request')?.source
     if(source&&step===0)return {tool:'resident_router_reply',args:{operationId:'race-reply',sourceId:source.sourceId,messageVersion:source.version,text:'Exactly one visible reply',recipientActorIds:[]}}
@@ -683,6 +688,60 @@ test('bound private DWS defers unresolved echoes, retains human authors after re
     }catch(diagnosticError){t.diagnostic(`无法读取冷恢复诊断：${diagnosticError.message}`)}
     throw error
   }finally{h.release();await h.f.close()}
+})
+
+test('bound private DWS resumes a queued source in the original Router after both humans spoke',{timeout:nativeTestTimeout(45000)},async t=>{
+  const pendingId='private-pending-before-restart',release=Promise.withResolvers()
+  let holding=true,entered=false
+  const h=await defaultDwsEcho(t,'success',{direct:true,beforeRouter:async input=>{
+    if(holding&&input.events.some(event=>event.source?.messageId===pendingId)){
+      entered=true;await release.promise
+    }
+  }})
+  const conversationId=h.identity.sessionId,peerActor=h.identity.principal
+  const query=(kind,args={})=>h.app.tasks.store.query({kind,conversationId,...args})
+  const settled=async id=>h.routed.includes(id)&&await query('router.inbox-count')===0
+  try{
+    const peer={...h.raw,messageId:'private-peer-before-restart',text:'对端先发一条消息'}
+    const human={...peer,messageId:'private-human-before-restart',senderOpenDingTalkId:'same-account',text:'登录账号随后发一条真人消息'}
+    const humanActor=h.channels.identity(h.input(human)).principal
+    assert.notEqual(humanActor,peerActor)
+    assert.equal((await h.receive(peer)).accepted,true)
+    await eventually(()=>settled(peer.messageId),'关机前对端消息已结清',t.signal)
+    assert.equal((await h.receive(human)).accepted,true)
+    await eventually(()=>settled(human.messageId),'关机前登录账号的真人消息已结清',t.signal)
+    const before=await query('router.get')
+    const context=h.channels.groupContext(conversationId)
+    assert.deepEqual(context.participants,{[peerActor]:'alice',[humanActor]:'same-account'})
+    assert.equal(context.memoryBinding.actorId,peerActor)
+    assert.equal(context.messageFacts[peer.messageId].actorId,peerActor)
+    assert.equal(context.messageFacts[human.messageId].actorId,humanActor)
+    assert.equal((await h.receive({...human,messageId:pendingId,text:'重启前已入库、尚未结清的真人消息'})).accepted,true)
+    await eventually(()=>entered,'待处理消息已进入原 Router 的在途轮次',t.signal)
+    const [pending]=await query('router.inbox')
+    assert.equal(pending.source.messageId,pendingId)
+    assert.equal(pending.source.actorId,humanActor)
+    assert.equal(await query('router.inbox-count'),1)
+    assert.equal(h.routed.includes(pendingId),false)
+
+    // 不补投历史、不发新消息，只让 Host 恢复已经持久登记的队列。
+    holding=false
+    await h.restart([])
+    await eventually(()=>settled(pendingId),'重启后原 Router 结清已入库消息',t.signal)
+    const after=await query('router.get')
+    assert.equal(after.activeSessionId,before.activeSessionId)
+    assert.equal(after.generation,before.generation)
+    const memory=h.f.host.ctx.memory,agent=h.f.host.ctx.agents.get(after.activeSessionId)
+    assert.equal((await memory.binding(agent)).actorId,peerActor)
+    const [event]=await query('router.batch-events',{eventIds:[pending.id]})
+    assert.equal(event.state,'consumed')
+    const sources=(await query('source.list')).filter(row=>row.messageId===pendingId)
+    assert.equal(sources.length,1);assert.equal(sources[0].sourceId,pending.source.sourceId)
+    assert.equal(sources[0].actorId,humanActor);assert.equal(h.sent.length,0)
+  }catch(error){
+    t.diagnostic(JSON.stringify({alerts:h.app.tasks.listAlerts(),router:await query('router.get'),inbox:await query('router.inbox-count')}))
+    throw error
+  }finally{release.resolve();h.release();await h.f.close()}
 })
 
 test('default optional DWS filters exact echo before registration while content readback is pending',{timeout:nativeTestTimeout(45000)},async t=>{
