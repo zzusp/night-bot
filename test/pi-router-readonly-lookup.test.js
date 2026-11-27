@@ -427,3 +427,81 @@ test('cancelling a live lookup writes its result and immediately wakes only the 
  assert.equal((await h.query('router.inbox',{conversationId})).filter(e=>e.lookupResult?.lookupId===receipt.lookupId).length,1)
  assert.equal(wakes.length,1)
 })
+
+test('date-based arrangement question without a task reference uses the durable readonly lookup',{timeout:nativeTestTimeout(45000)},async t=>{
+ const completions=new Map(),replied=new Set();let workers=0
+ const timezone='Asia/Shanghai',localDay=new Intl.DateTimeFormat('en-CA',{timeZone:timezone,dateStyle:'short'}).format(new Date())
+ const h=await residentRouterHost(t,body=>{
+  if(system(body).includes('NIGHT_ROUTER_ARRANGEMENT_LOOKUP')){
+   workers++
+   const facts=JSON.parse(requestText(body).at(-1))
+   assert.deepEqual(requestTools(body),[])
+   assert.deepEqual(facts.range,{day:localDay,through:localDay,timezone})
+   assert.deepEqual(facts.records.map(row=>row.title),facts.question.includes('归档核对')||facts.question.includes('还有巡检')?['客户巡检安排','另一个任务']:['客户巡检安排'])
+   assert.equal(facts.records[0].kind,'created')
+   return {text:JSON.stringify({matches:facts.question.includes('巡检')?[1]:[],uncertain:false})}
+  }
+  if(!requestTools(body).includes('resident_router_settle'))return {text:'No work'}
+  const packet=input(body);if(done(body))return {text:'Settled'}
+  const result=packet.events.find(event=>event.kind==='router.lookup.completed')?.lookupResult
+  if(result&&!replied.has(result.sourceId)){
+   completions.set(result.sourceId,result);replied.add(result.sourceId)
+   return call('resident_router_reply',{operationId:'arrangement-answer:'+result.sourceId,sourceId:result.sourceId,messageVersion:result.messageVersion,text:result.summary,replyPurpose:'task-update'})
+  }
+  const event=packet.events.find(event=>['today-matching','today-no-match','today-partial','empty-day','today-restricted'].includes(event.source?.messageId))
+  if(event){
+   const last=body.messages.at(-1)
+   if(last.role==='tool'){
+    const {lookupId}=JSON.parse(last.content)
+    return call('resident_router_settle',{operationId:'arrangement-settle:'+event.sourceId,eventIds:packet.events.map(row=>row.id),noTaskDispositions:[{eventId:event.id,outcome:'async-query',lookupId,sourceQuote:event.source.text,reason:'Read arrangement records without task dispatch.'}]})
+   }
+   assert.match(system(body),/按日期|日期范围/)
+   return call('resident_task_lookup_async',{operationId:'arrangement:'+event.sourceId,sourceId:event.sourceId,messageVersion:event.messageVersion,arrangement:{day:event.source.messageId==='empty-day'?'2020-01-01':'today'}})
+  }
+  return call('resident_router_settle',{operationId:'settle-date:'+packet.events.map(event=>event.id).join(','),eventIds:packet.events.map(event=>event.id),noTaskDispositions:packet.events.filter(event=>event.source).map(event=>({eventId:event.id,outcome:'context-only',sourceQuote:event.source.text,reason:'Setup message not requesting work.'}))})
+ },{config:{timezone},strictModelDecisions:true})
+
+ await h.receive(channelMessage('register-date'));await h.service.whenIdle()
+ const conversationId=h.host.ctx.channels.identity(channelMessage('register-date')).sessionId
+ for(const [taskId,groupId,title] of [['arranged-task',conversationId,'客户巡检安排'],['other-room','private-room','PRIVATE_OTHER_ROOM']]){
+  await h.store.command({id:'seed-'+taskId,kind:'task.create',args:{taskId,groupId,ownerActorId:'alice',request:title}})
+  await h.store.command({id:'pause-'+taskId,kind:'task.control',args:{taskId,control:'paused',expectedControlRevision:1}})
+ }
+ await h.service.whenIdle()
+ const tasks=await h.query('task.list'),executions=await h.query('execution.list')
+ await h.receive(channelMessage('today-matching',{text:'今天有没有安排过巡检？'}))
+ await eventually(()=>h.sent.length===1,'matching arrangement response')
+ await h.receive(channelMessage('today-no-match',{text:'今天有没有安排过费用汇总？'}))
+ await eventually(()=>h.sent.length===2,'nonmatching arrangement response')
+ await h.service.whenIdle()
+ assert.deepEqual(await h.query('task.list'),tasks);assert.deepEqual(await h.query('execution.list'),executions)
+ await h.store.command({id:'seed-clipped',kind:'task.create',args:{taskId:'clipped',groupId:conversationId,ownerActorId:'alice',title:'另一个任务',request:'不完整的目标。'.repeat(100)}})
+ await h.store.command({id:'pause-clipped',kind:'task.control',args:{taskId:'clipped',control:'paused',expectedControlRevision:1}})
+ await h.service.whenIdle()
+ const moreTasks=await h.query('task.list'),moreExecutions=await h.query('execution.list')
+ await h.receive(channelMessage('today-partial',{text:'今天有没有安排过归档核对？'}))
+ await eventually(()=>h.sent.length===3,'partial arrangement response')
+ await h.receive(channelMessage('empty-day',{text:'2020年1月1日有没有安排过任务？'}))
+ await eventually(()=>h.sent.length===4,'empty date response')
+ await h.service.whenIdle()
+ assert.deepEqual(await h.query('task.list'),moreTasks);assert.deepEqual(await h.query('execution.list'),moreExecutions)
+ await h.store.command({id:'seed-restricted',kind:'task.create',args:{taskId:'restricted',groupId:conversationId,ownerActorId:'alice',title:'不应披露的任务',request:'x'.repeat(233)+' sk-'+'X'.repeat(24)}})
+ await h.store.command({id:'pause-restricted',kind:'task.control',args:{taskId:'restricted',control:'paused',expectedControlRevision:1}})
+ await h.service.whenIdle()
+ const restrictedTasks=await h.query('task.list'),restrictedExecutions=await h.query('execution.list')
+ await h.receive(channelMessage('today-restricted',{text:'今天还有巡检安排吗？'}))
+ await eventually(()=>h.sent.length===5,'safe records still match when one arrangement is excluded')
+ await h.service.whenIdle()
+ assert.equal(workers,4,'a date with no records is answered from the store without a model call')
+ assert.deepEqual(await h.query('task.list'),restrictedTasks);assert.deepEqual(await h.query('execution.list'),restrictedExecutions)
+ const results=[...completions.values()]
+ assert.deepEqual(results.map(result=>result.state),['completed','completed','completed','completed','completed'])
+ assert.match(results[0].summary,/查到1条.*客户巡检安排/)
+ assert.match(results[1].summary,/没有查到匹配/)
+ assert.match(results[2].summary,/已查记录没有明确匹配，不能确认没有安排/)
+ assert.match(results[2].limitations[0],/缺少完整/)
+ assert.match(results[3].summary,/2020-01-01.*本渠道没有记录到任务安排/)
+ assert.match(results[4].summary,/查到1条.*客户巡检安排/)
+ assert.match(results[4].limitations.join(' '),/含敏感信息/)
+ assert.deepEqual([results[0],results[1],results[3]].map(result=>result.limitations),[[],[],[]])
+})

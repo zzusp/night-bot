@@ -1,6 +1,7 @@
 import {bindTaskMilestone} from '../tasks/milestone-notification.js'
 import {triageHandoff,routerTriageConclusion} from './triage-conclusion.js'
 import {inspectionIsCurrent,taskWaitIdentity,MIN_WAIT_RECHECK_MS} from '../tasks/inspection.js'
+import {checkArrangementRange,queryArrangementHistory} from './router-arrangement-history.js'
 import {queryTaskIndex,queryReplyHistory} from './conversation-context.js'
 import {createHash} from 'node:crypto'
 import {blockedReplyId,completionReplyId,currentOutcomeBinding,isOutcomeChannelSource,isTaskOutcome,outcomeOriginId,suppressChannelOutcome} from './router-task-context.js'
@@ -303,6 +304,8 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       conversationOf(a);const source=sourceOf(a)
       return operation(a,()=>{
         if(a.taskIds!==undefined&&(!Array.isArray(a.taskIds)||!a.taskIds.length||a.taskIds.length>3||new Set(a.taskIds).size!==a.taskIds.length))fail('ROUTER_LOOKUP_ARGUMENT_INVALID')
+        const arrangement=a.arrangement===undefined?undefined:checkArrangementRange(a.arrangement)
+        if(arrangement&&a.taskIds!==undefined)fail('ROUTER_LOOKUP_ARGUMENT_INVALID')
         for(const taskId of a.taskIds??[]){const task=read('tasks',required(taskId),true);if(!task||task.groupId!==a.conversationId)fail('ROUTER_LOOKUP_TASK_SCOPE')}
         const duplicate=db.prepare(`SELECT 1 FROM dynamic_router_actions WHERE json_extract(body,'$.conversationId')=?
           AND json_extract(body,'$.result.lookup.sourceId')=? AND json_extract(body,'$.result.lookup.messageVersion')=? LIMIT 1`)
@@ -312,7 +315,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
           if(!sourceLinks.get(a.conversationId,source.sourceId,source.version))fail('ROUTER_LOOKUP_WORK_RECEIPT_REQUIRED')
         }else markProgressOnly(source)
         const id=`router-action:${hash([a.conversationId,a.operationId])}`
-        return changed({lookup:{id,conversationId:a.conversationId,sourceId:a.sourceId,messageVersion:a.messageVersion,taskIds:a.taskIds??[],state:'pending',createdAt:new Date().toISOString(),deadlineAt:new Date(Date.now()+30000).toISOString()}})
+        return changed({lookup:{id,conversationId:a.conversationId,sourceId:a.sourceId,messageVersion:a.messageVersion,taskIds:a.taskIds??[],...arrangement?{arrangement}:{},state:'pending',createdAt:new Date().toISOString(),deadlineAt:new Date(Date.now()+30000).toISOString()}})
       })
     }
     if(kind==='router.lookup.complete'){
@@ -688,6 +691,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       }
       return null
     }
+    if(q.kind==='router.arrangement-history')return queryArrangementHistory(db,q)
     if(q.kind==='router.task-index')return queryTaskIndex(db,q,{dependenciesReady})
     if(q.kind==='router.reply-history')return queryReplyHistory(db,q)
     if(q.kind==='router.source-history')return querySourceHistory(db,q)
