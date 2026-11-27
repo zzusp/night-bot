@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {nativeLifecycle,nativeLifecycleTimeout,nativeTemporaryDirectory as mkdtemp,nativeRemove as rm} from './fixtures/native-lifecycle.js'
 import {nativeRuntimeHost,modelToolValues,latestInput,waitUntil} from './fixtures/runtime-official-host.js'
+import {eventually} from './fixtures/resident-router-host.js'
 import {openResidentStore} from '../packages/dingtalk-core/store.js'
 import {fixedUnitRequestId,platformScheduleOutboundId} from '../packages/dingtalk-core/fixed-topics.js'
 import {createPlatformSchedules} from '../packages/dingtalk-core/platform-schedule.js'
@@ -97,46 +98,81 @@ test('native platform checks repeat at the accepted interval, survive restart, a
   assert.deepEqual(f.errors,[])
 }))
 
-test('real Router tool preserves periodic user intent as an every schedule bound to the actual task',
+test('real Router tool preserves periodic user intent, reports a running task and stops after completion',
  {timeout:nativeLifecycleTimeout(40000)},nativeLifecycle(40000,async t=>{
-  const root=await mkdtemp(join(tmpdir(),'router-periodic-'));let h,scheduled=false,settled=false
+  const root=await mkdtemp(join(tmpdir(),'router-periodic-'));let h
+  const taskId='router-observed-task',interval=600,execution=Promise.withResolvers()
   t.mock.timers.enable({apis:['Date'],now:Date.now()})
   t.after(async()=>{await h?.close();await rm(root,{recursive:true,force:true})})
   await t.beginBusiness()
   h=await nativeRuntimeHost(root,async request=>{
-    const names=request.tools.map(tool=>tool.name),input=latestInput(request)
-    if(names.includes('channel_triage_submit'))return [{name:'channel_triage_submit',args:{dispositions:input.messages.map(source=>({sourceId:source.sourceId,messageVersion:source.version,needsHandling:true,reason:'明确交办工作并要求周期进展检查'}))}}]
-    if(names.includes('task_result'))return [{name:'task_result',args:{decision:{action:'wait',summary:'Synthetic deployment is waiting for an external build',evidence:['fixture:build-pending'],limitations:['Build not complete']}}}]
+    const names=request.tools.map(tool=>tool.name),last=request.messages.at(-1)
+    if(names.includes('task_result')){
+      await execution.promise
+      return [{name:'task_result',args:{decision:{action:'complete',summary:'Synthetic build and service checked',evidence:['fixture:verified'],limitations:[]}}}]
+    }
     if(names.includes('resident_router_settle')){
-      const source=input.events.find(event=>event.source)?.source
-      if(!source)return []
-      const task=await h.query('task.get',{taskId:'router-observed-task'})
-      if(!task)return [{name:'resident_task_plan',args:{operationId:'deployment-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId:'router-observed-task',title:'Synthetic deployment',objective:'Observe synthetic build progress',requirements:['Do not claim complete until build and service are verified']}],dependencies:[]}}]
-      if(!scheduled){scheduled=true;return [{name:'platform_schedule_submit',args:{operationId:'periodic-progress',sourceId:source.sourceId,messageVersion:source.version,title:'Deployment progress',prompt:'每10分钟检查部署进展，直到任务完成。',every_seconds:600,stopWhen:{taskIds:[task.taskId]}}}]}
-      if(!settled){settled=true;return [{name:'resident_router_settle',args:{eventIds:input.events.map(event=>event.id),operationId:'settle-periodic-request'}}]}
+      const {events}=latestInput(request),source=events.find(event=>event.source)?.source
+      if(!source||last?.isError)return []
+      if(last?.toolName==='resident_task_plan')return [{name:'platform_schedule_submit',args:{operationId:'periodic-progress',sourceId:source.sourceId,messageVersion:source.version,title:'Deployment progress',prompt:'每10分钟检查部署进展，直到任务完成。',every_seconds:interval,stopWhen:{taskIds:[taskId]}}}]
+      if(last?.toolName==='platform_schedule_submit')return [{name:'resident_router_settle',args:{eventIds:events.map(event=>event.id),operationId:'settle-periodic-request'}}]
+      if(last?.toolName==='resident_router_settle')return []
+      return [{name:'resident_task_plan',args:{operationId:'deployment-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId,title:'Synthetic deployment',objective:'Observe synthetic build progress',handoff:'Verify the synthetic build and service before reporting completion.',requirements:['Do not claim complete until build and service are verified']}],dependencies:[]}}]
     }
     if(names.includes('platform_reply_submit')){
-      if(request.messages.at(-1)?.toolName==='platform_task_query')return [{name:'platform_reply_submit',args:{recipientActorIds:['native-user'],text:'当前部署仍在等待构建完成，尚未完成上线。'}}]
+      if(last?.toolName==='platform_task_query'){
+        const page=modelToolValues(request).findLast(value=>Array.isArray(value.items)&&value.asOf)
+        const task=page?.items.find(item=>item.taskId===taskId)
+        assert.ok(task,'scheduled model must have the bound task in its current query result')
+        return [{name:'platform_reply_submit',args:{recipientActorIds:['native-user'],text:task.state==='completed'?'已核验构建和服务，任务已完成。':'部署任务仍在执行，尚未完成。'}}]
+      }
       return [{name:'platform_task_query',args:{state:'all'}}]
     }
     return []
   })
-  await h.service.ingest({groupId:'native-group',messageId:'periodic-deploy',senderOpenDingTalkId:'native-user',text:'上线包括合并、构建镜像、验证服务。每10分钟检查一次进展，直到任务完成。',occurredAt:new Date().toISOString(),mentionedAgent:true})
-  await h.service.whenIdle()
-  const result=h.toolResults.find(row=>row.name==='platform_schedule_submit')
-  assert.ok(result);assert.equal(result.result.isError,false,JSON.stringify(result))
-  const [record]=await h.ctx.schedule.catalog()
-  assert.equal(record.kind,'every');assert.equal(record.everySeconds,600);assert.equal(record.status,'active')
-  const binding=h.residentStore.getPlatformSchedule(record.sessionId)
-  assert.deepEqual(binding.stopWhen,{taskIds:['router-observed-task']})
-  assert.equal(binding.sourceMode,'direct');assert.equal(binding.messageId,'periodic-deploy')
-  const task=await h.query('task.get',{taskId:'router-observed-task'});assert.ok(task);assert.notEqual(task.status,'completed')
-  assert.equal(h.sent.length,0,'creation alone must not send a report or claim deployment complete')
-  t.mock.timers.tick(600001);h.ctx.schedule.start()
-  await waitUntil(()=>h.sent.length===1,'direct-source periodic report reaches real notification ledger')
-  assert.equal(h.sent[0].payload.sourceRef.messageId,'periodic-deploy')
-  assert.match(h.sent[0].payload.text,/尚未完成/)
-  assert.equal((await h.ctx.schedule.catalog())[0].status,'active')
+  const wait=(read,description)=>eventually(read,description,t.signal)
+  const reports=()=>h.sent.filter(row=>row.kind==='platform-reply')
+  const schedule=h.ctx.schedule
+  async function tick(){t.mock.timers.tick(interval*1000+1);schedule.start();await schedule.runtime.running}
+  try{
+    await h.service.ingest({groupId:'native-group',messageId:'periodic-deploy',senderOpenDingTalkId:'native-user',text:'上线包括合并、构建镜像、验证服务。每10分钟检查一次进展，直到任务完成。',occurredAt:new Date().toISOString(),mentionedAgent:true})
+    const submission=await wait(()=>h.toolResults.find(row=>row.name==='platform_schedule_submit'),'Router submits the recurring schedule')
+    assert.equal(submission.result.isError,false,JSON.stringify(submission))
+    const [record]=await schedule.catalog()
+    assert.deepEqual([record.id,record.kind,record.everySeconds,record.status],[submission.result.value.scheduleId,'every',interval,'active'])
+    const binding=h.residentStore.getPlatformSchedule(record.sessionId)
+    assert.deepEqual(binding.stopWhen,{taskIds:[taskId]})
+    assert.equal(binding.sourceMode,'direct');assert.equal(binding.messageId,'periodic-deploy')
+    const task=await wait(async()=>{
+      const row=await h.query('task.get',{taskId})
+      return row?.status==='active'&&row.drained===false&&h.requests.some(request=>request.tools.some(tool=>tool.name==='task_result'))&&row
+    },'the bound task reaches its real in-flight execution')
+    assert.equal(reports().length,0,'creation alone must not send a periodic report')
+    const pages=()=>h.toolResults.filter(row=>row.sessionId===record.sessionId&&row.name==='platform_task_query').map(row=>row.result.value)
+    await tick()
+    await wait(()=>reports().length===1,'running task report reaches the channel')
+    await wait(()=>h.residentStore.getPlatformSchedule(record.sessionId).lastOccurrenceAt,'running occurrence settles')
+    assert.deepEqual(pages().map(page=>[page.items[0]?.state,page.stopConditionMet]),[['running',false]])
+    assert.equal(reports()[0].payload.sourceRef.messageId,'periodic-deploy')
+    assert.match(reports()[0].payload.text,/尚未完成/)
+    assert.equal((await schedule.catalog())[0].status,'active')
+
+    execution.resolve();await h.service.whenIdle()
+    const completed=await h.query('task.get',{taskId})
+    assert.equal(completed.status,'completed')
+    assert.equal(completed.sessionId,task.sessionId)
+    assert.deepEqual(['requirementRevision','controlRevision','runSequence'].map(key=>completed.completion?.[key]),['requirementRevision','controlRevision','runSequence'].map(key=>completed[key]))
+    await tick()
+    await wait(()=>reports().length===2,'completed task report reaches the channel')
+    await wait(async()=>(await schedule.catalog()).length===0,'completed schedule is removed from the native ledger')
+    assert.equal(h.residentStore.getPlatformSchedule(record.sessionId).outcome,'completed')
+    assert.deepEqual(pages().map(page=>[page.items[0]?.state,page.stopConditionMet]),[['running',false],['completed',true]])
+    assert.notEqual(pages()[0].asOf,pages()[1].asOf)
+    assert.equal(reports()[1].payload.sourceRef.messageId,'periodic-deploy')
+    assert.match(reports()[1].payload.text,/已完成/)
+    await tick();await h.service.whenIdle()
+    assert.equal(reports().length,2);assert.equal(pages().length,2)
+  }finally{execution.resolve()}
 }))
 
 test('superseding the original source ends its recurring schedule without another report',
