@@ -1,0 +1,17 @@
+id,场景,判据,round-1,round-2,round-3
+web-auth,认证 Web 入口,认证 200 与无认证 401,PASS,PASS,PASS
+baseline-brief,旧版默认短答对照,给出所问结论和具体下一步且不复述排除清单,FAIL,NOT-RUN,NOT-RUN
+local-completion,执行完成后 Router 单独写可见回复,内部证据和限制保留且短答明细受阻三种均按来源送达,PASS,NOT-RUN,NOT-RUN
+local-direct-writing,执行会话直接给人写正文,渠道草稿和 Issue 及 PR 回复可按需读规则且不产生发布,PASS,NOT-RUN,NOT-RUN
+local-task-dialogue,用户可见的任务对话摘要,直接使用短答规则并保留内部证据和只读边界,PASS,NOT-RUN,NOT-RUN
+local-web-delivery,真实 Web 插件和 Host,认证提交后按来源回读且重启不重复送达,PASS,NOT-RUN,NOT-RUN
+local-recurring,定时来源被替换,旧来源不再继续发送汇报,PASS,NOT-RUN,NOT-RUN
+brief,新版调查默认短答,有真实完工绑定和内部证据且对外只讲所问结论与网关日志下一步,PENDING,FAIL,PASS
+detail,新版明确要明细,列出所问样本和数量差异且不重跑原任务,PENDING,PASS,PASS
+progress,新版接续追问进展,简答所问进度与实质下一步且不创建或再次执行原任务,PENDING,FAIL,PASS
+multi,新版同一消息多问,两问都答且区分入库完成与部署验收进度,PENDING,PASS,PASS
+blocker,新版具体权限卡点,给出对象和所缺权限及已知负责岗,PENDING,PASS,PASS
+only-conclusion,新版没有后续事项,只给结论不凑下一步,PENDING,PASS,PASS
+silent,新版纯纠正,来源已处理且无新任务和通知,PENDING,PASS,PASS
+correction-question,新版纠正加明确提问,答另一个问题且不复述反馈或已给依据,PENDING,FAIL,PASS
+correct-fact,新版有新证据的更正,直接纠正为八行已写入,PENDING,PASS,PASS
