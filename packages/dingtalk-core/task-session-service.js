@@ -189,7 +189,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
     if(failure)throw failure
   }
-  const targetCommandKinds=new Set(['source.record','source.record-direct','source.acceptHistory','task.create','task.reopen','task.revise','task.supplement','task.claim','task.dialogue.add','router.plan','router.task-action','router.operator.enqueue','router.operator.reply','notification.prepare','notification.start'])
+  const targetCommandKinds=new Set(['source.record','source.record-direct','source.acceptHistory','task.create','task.reopen','task.revise','task.supplement','task.claim','task.dialogue.add','router.plan','router.task-action','router.operator.enqueue','router.operator.reply','router.follow-up.enqueue','notification.prepare','notification.start'])
   const command = async (kind,args,id) => {
     if(!targetCommandKinds.has(kind))return commitCommand(kind,args,id)
     const groupId=args.groupId??args.conversationId??args.source?.groupId??args.conversation?.conversationId??args.payload?.conversationId??taskCache.get(args.taskId)?.groupId??(args.taskId?(await query('task.get',{taskId:args.taskId}))?.groupId:undefined)??(args.notificationId?(notificationCache.get(args.notificationId)??await query('notification.get',{notificationId:args.notificationId}))?.payload?.conversationId:undefined)
@@ -1027,14 +1027,43 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }).slice(-5):[]
     return {...task,state:taskBoardState(task,executions,pendingWake),completedAt:task.completion?.at??null,...includeEvidence?{reportStages:stages}:{}}
   }))
-  const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,
+  const followUpGrantActive=wake=>{
+    const binding=residentStore.getPlatformSchedule(wake.grantSessionId)
+    return !!binding&&!!binding.routerFollowUp&&!binding.managementKey&&!['cancelled','superseded','expired'].includes(binding.outcome)
+      &&binding.sourceId===wake.grantSourceId&&binding.messageVersion===wake.grantVersion&&binding.groupId===wake.grantGroupId&&binding.actorId===wake.actorId
+  }
+  const dispatchFollowUp=async(binding,grant,occurrenceAt,scheduleId)=>{
+    const channels=ctx.get('channels'),origin=await query('source.get',{sourceId:grant.sourceId})
+    if(!origin||origin.groupId!==grant.groupId||origin.version!==grant.messageVersion||origin.actorId!==grant.actorId
+      ||origin.retracted||origin.authorizationRevoked||origin.triageHold||origin.archiveRestoreHold
+      ||!await query('router.source-latest',{conversationId:grant.groupId,sourceId:grant.sourceId,messageVersion:grant.messageVersion}))return false
+    const groups=binding.routerFollowUp==='authorized'?residentStore.listGroups().map(row=>row.groupId):[binding.groupId]
+    for(const conversationId of new Set(groups)){
+      if(closed)return
+      const group=channels.groupContext(conversationId)
+      if(!group||!Object.hasOwn(group.participants??{},binding.actorId))continue
+      try{channels.assertGroupTarget(conversationId)}catch{continue}
+      const existing=await query('router.follow-up.wake',{conversationId,scheduleId,occurrenceAt})
+      if(existing){if(existing.state==='pending')void kickGroup(conversationId).catch(()=>{});continue}
+      const anchor=conversationId===binding.groupId?{sourceId:binding.sourceId,version:binding.messageVersion}
+        :await query('router.follow-up.anchor',{conversationId,actorId:binding.actorId})
+      if(!anchor)continue
+      const wake={grantSessionId:grant.sessionId,grantSourceId:grant.sourceId,grantVersion:grant.messageVersion,grantGroupId:grant.groupId,
+        scheduleId,occurrenceAt,actorId:binding.actorId,sourceId:anchor.sourceId,sourceVersion:anchor.version,
+        instruction:conversationId===binding.groupId?binding.prompt:'查看本渠道原发起人已有授权的任务，判断是否有需要继续推进或询问的事项。'}
+      if(!followUpGrantActive(wake))return false
+      const receipt=await command('router.follow-up.enqueue',{conversationId,wake},'router-follow-up:'+hash([conversationId,scheduleId,occurrenceAt]))
+      if(receipt.result?.status==='queued')void kickGroup(conversationId).catch(()=>{})
+    }
+  }
+  const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,dispatchFollowUp,
     readTasks:readPlatformTasks,appendOutbox:prepareDirectPlatformReply,
     notify:undefined})
   readonlyLookups=createRouterReadonlyLookups({ctx,query,command,models:()=>roleModels('router'),schedule:groupId=>kickGroup(groupId)})
   residentRouter=await openRouterLifecycle({ctx,store,root,settle:(args,id)=>command('router.settle',args,id),recordStage:recordResidentStage,models:()=>roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
     const platformPages=new Map()
     return registerResidentRouterTools(agentCtx,binding,{
-    query,command,responsibilityFor,startLookup:args=>readonlyLookups.submit(args),applyTaskAction:applyDirectTaskAction,prepareReply:(args,exec)=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args,exec)},
+    query,command,responsibilityFor,followUpGrantActive,startLookup:args=>readonlyLookups.submit(args),applyTaskAction:applyDirectTaskAction,prepareReply:(args,exec)=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args,exec)},
     platformQuery:async(groupId,args)=>{
       const key=JSON.stringify([args.state??'all',args.day??null,args.limit??50])
       let snapshot=platformPages.get(key)
@@ -1048,7 +1077,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     platformScheduleList:groupId=>platformSchedules.list(groupId),
     platformScheduleUpdate:args=>platformSchedules.update({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},{scheduleId:args.scheduleId,change:args.change}),
     platformScheduleDelete:args=>platformSchedules.delete({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},{scheduleId:args.scheduleId}),
-    platformSchedule:args=>platformSchedules.submit({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},args),
+    platformSchedule:args=>platformSchedules.submit({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,...args.followUpParent?{followUpParent:args.followUpParent}:{},timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},args),
   })}})
   function kickGroup(groupId){
     if(closed)return Promise.resolve()

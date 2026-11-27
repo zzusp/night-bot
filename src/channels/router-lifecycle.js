@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {sessionWorkspace} from '../../packages/dingtalk-core/session-workspaces.js'
 import {conversationSource} from './message-safety.js'
-import {routerModelBody,routerModelBatch,routerModelEvent} from './router-model-input.js'
+import {routerModelBody,routerModelBatch,routerModelEvent,followUpSettlementArgs} from './router-model-input.js'
 import {pendingBusinessInputs} from '../runtime/pi-business-inputs.js'
 import {residentOperationId} from './resident-router-business.js'
 import {unresolvedRouterCalls} from '../runtime/pi-router-recovery-view.js'
@@ -40,7 +40,7 @@ function buildRouterPacketViews(row,batch,legacyProgressIdentity=false){
       const {progressOnly,...input}=original
       return {...legacyProgressIdentity?original:input,...event.source?{source:withoutTiming(event.source)}:{}}
     })}
-    const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id),...(batch.every(event=>event.kind==='operator.message')?{webOnly:true}:{}),...traceSourcesMetadata(batch.filter(event=>event.kind==='source.message'&&event.source).map(event=>event.source)),...traceTaskEventsMetadata(batch)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:body.events.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
+    const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id),...(batch.every(event=>event.kind==='operator.message')?{webOnly:true}:{}),...(batch[0]?.kind==='router.follow-up'?{followUpOnly:true}:{}),...traceSourcesMetadata(batch.filter(event=>event.kind==='source.message'&&event.source).map(event=>event.source)),...traceTaskEventsMetadata(batch)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:body.events.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
     // Bind the compact view to every immutable ledger field, including fields
     // omitted from model text. Delivery progress alone may change during recovery.
     const identityBody={...body,events:body.events.map(event=>({...event,...event.triageReply?{triageReply:triageReplyIdentity(event.triageReply)}:{}}))}
@@ -296,7 +296,9 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
             }
           }
           await validate()
-          const receipt=await settle({conversationId,generation:row.generation,...args,...admittedPacket.source.webOnly?{webOnly:true}:{},operationId},'router-settle-recovery:'+hash([row.activeSessionId,call.callEntryId,call.callId]))
+          const scoped=admittedPacket.source.followUpOnly?followUpSettlementArgs(admittedPacket.source,args):args
+          if(!scoped)fail('ROUTER_PACKET_ID_CONFLICT')
+          const receipt=await settle({conversationId,generation:row.generation,...scoped,...admittedPacket.source.webOnly?{webOnly:true}:{},operationId},'router-settle-recovery:'+hash([row.activeSessionId,call.callEntryId,call.callId]))
           await validate();return receipt
         })}catch(error){
           try{await handle.dispose()}catch(cleanup){throw new AggregateError([error,cleanup],'Router settlement recovery cleanup failed')}

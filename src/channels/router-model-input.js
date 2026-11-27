@@ -4,12 +4,21 @@ import {conversationSource} from './message-safety.js'
 
 const pick=(value,keys)=>Object.fromEntries(keys.filter(key=>value[key]!==undefined).map(key=>[key,value[key]]))
 
+// Live and interrupted settlements must commit the same idempotency request.
+export function followUpSettlementArgs(packetSource,args){
+  const id=packetSource.eventIds?.[0]
+  if(packetSource.kind!=='conversation-router'||packetSource.eventIds?.length!==1||!id||
+    args.eventIds.length!==1||args.eventIds[0]!==id||args.inspectionReviews?.length||args.noTaskDispositions?.length)return null
+  return {eventIds:[id],followUpEventId:id}
+}
+
 /** Model input is a business view, never a replacement for the durable inbox.
  * Keep user text, quotes and attachments exact. Delivery receipts, retry tokens,
  * duplicate identifiers and source-processing bookkeeping stay with the Host.
  */
 export function routerModelEvent(event,{compactCompletion=false}={}){
   const view=pick(event,['id','kind','sourceId','messageVersion','taskId','taskEventId','directRouter','suppressChannelOutcome'])
+  if(event.kind==='router.follow-up')view.followUp=pick(event.wake,['occurrenceAt','sourceId','sourceVersion','actorId','instruction'])
   if(event.kind==='router.lookup.completed')view.lookupResult=pick(event.lookupResult,['lookupId','sourceId','messageVersion','state','completedAt','summary','limitations'])
   if(event.kind==='operator.message')view.operator=pick(event.operator,['requestId','actorId','text','destination'])
   if(event.source){
@@ -40,6 +49,7 @@ export function routerModelBatch(row,inbox){
   const batch=[]
   let users=0
   for(const event of inbox){
+    if(batch.length&&(event.kind==='router.follow-up'||batch[0].kind==='router.follow-up'))break
     if(batch.length&&(event.kind==='operator.message')!==(batch[0].kind==='operator.message'))break
     if(batch.length&&(event.suppressChannelOutcome===true)!==(batch[0].suppressChannelOutcome===true))break
     if(['source.message','operator.message'].includes(event.kind)&&users>=15)break

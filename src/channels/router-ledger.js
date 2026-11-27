@@ -46,6 +46,15 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if (a.conversationId !== undefined && source.groupId !== a.conversationId) fail('ROUTER_CONVERSATION_SCOPE')
     return source
   }
+  function followUpSource(sourceId,version,group,actor){
+    const row=read('sources',sourceId,true)
+    return row?.channel==='im'&&row.actorId===actor&&row.groupId===group&&row.version===version
+      &&!row.retracted&&!row.authorizationRevoked&&!row.triageHold&&!row.archiveRestoreHold&&latest(row)
+  }
+  function validFollowUp(wake,conversationId){
+    return !!wake&&followUpSource(wake.grantSourceId,wake.grantVersion,wake.grantGroupId,wake.actorId)
+      &&followUpSource(wake.sourceId,wake.sourceVersion,conversationId,wake.actorId)
+  }
   function conversationOf(a, business = true) {
     const row = read('conversations', required(a.conversationId))
     if (a.generation !== undefined && row.generation !== a.generation || business && row.phase !== 'active') fail('ROUTER_GENERATION_STALE')
@@ -323,6 +332,15 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       const event=fresh?enqueue(a.conversationId,'lookup:'+lookup.id,{kind:'router.lookup.completed',lookupResult:{lookupId:lookup.id,sourceId:lookup.sourceId,messageVersion:lookup.messageVersion,state:lookup.state,completedAt:lookup.completedAt,...lookup.result??{}}}):undefined
       return changed({lookup,...event?{event}:{}})
     }
+    if(kind==='router.follow-up.enqueue'){
+      const {conversationId,wake}=a
+      if(!validFollowUp(wake,required(conversationId)))return changed({status:'revoked'})
+      const {scheduleId,occurrenceAt}=wake
+      if(!Number.isFinite(Date.parse(occurrenceAt))||typeof wake.instruction!=='string'||wake.instruction.length>8000)fail('ROUTER_FOLLOW_UP_INVALID')
+      const event=enqueue(conversationId,'follow-up:'+hash([required(scheduleId),occurrenceAt]),{kind:'router.follow-up',wake})
+      if(digest(event.wake)!==digest(wake))fail('ROUTER_FOLLOW_UP_CONFLICT')
+      return changed({status:'queued',eventId:event.id})
+    }
     if(kind==='router.operator.enqueue'){
       const requestId=required(a.requestId),actorId=required(a.actorId)
       if(typeof a.text!=='string'||!a.text.trim()||a.text.length>8000)fail('ROUTER_OPERATOR_TEXT_INVALID')
@@ -538,6 +556,11 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(kind==='router.settle')return operation(a,()=>{
       const conversation=conversationOf(a)
       if(!Array.isArray(a.eventIds)||!a.eventIds.length)fail('ROUTER_EVENTS_REQUIRED')
+      if(a.followUpEventId!==undefined){
+        const admitted=read('router_inbox',a.followUpEventId,true)
+        if(a.eventIds.length!==1||a.eventIds[0]!==a.followUpEventId||admitted?.kind!=='router.follow-up'
+          ||admitted.conversationId!==conversation.id||a.inspectionReviews?.length||a.noTaskDispositions?.length)fail('ROUTER_FOLLOW_UP_BATCH_SCOPE')
+      }
       for(const eventId of new Set(a.eventIds)){
         const row=rows('router_inbox').find(item=>item.conversationId===a.conversationId&&(item.id===eventId||item.eventId===eventId))
         if(!row)fail('ROUTER_EVENT_SCOPE')
@@ -649,6 +672,22 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     }
   }
   function query(q) {
+    if(q.kind==='router.follow-up.wake'){
+      const key='follow-up:'+hash([q.scheduleId,q.occurrenceAt])
+      return read('router_inbox','router-event:'+hash([q.conversationId,key]),true)??null
+    }
+    if(q.kind==='router.follow-up.valid'){
+      const event=read('router_inbox',q.eventId,true)
+      return event?.kind==='router.follow-up'&&event.conversationId===q.conversationId&&event.state==='pending'&&!!validFollowUp(event.wake,event.conversationId)
+    }
+    if(q.kind==='router.follow-up.anchor'){
+      const candidates=db.prepare("SELECT body FROM dynamic_sources WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.actorId')=? AND json_extract(body,'$.channel')='im' ORDER BY json_extract(body,'$.timestamp') DESC,id DESC").iterate(q.conversationId,q.actorId)
+      for(const candidate of candidates){
+        const row=JSON.parse(candidate.body)
+        if(followUpSource(row.sourceId,row.version,q.conversationId,q.actorId))return {sourceId:row.sourceId,version:row.version}
+      }
+      return null
+    }
     if(q.kind==='router.task-index')return queryTaskIndex(db,q,{dependenciesReady})
     if(q.kind==='router.reply-history')return queryReplyHistory(db,q)
     if(q.kind==='router.source-history')return querySourceHistory(db,q)
