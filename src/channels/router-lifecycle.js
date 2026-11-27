@@ -7,7 +7,7 @@ import {conversationSource} from './message-safety.js'
 import {routerModelBody,routerModelBatch,routerModelEvent,followUpSettlementArgs} from './router-model-input.js'
 import {pendingBusinessInputs} from '../runtime/pi-business-inputs.js'
 import {residentOperationId} from './resident-router-business.js'
-import {unresolvedRouterCalls} from '../runtime/pi-router-recovery-view.js'
+import {independentRouterFileEffect,unresolvedRouterCalls} from '../runtime/pi-router-recovery-view.js'
 import {classifyPiFailure} from '../pi-provider-events.js'
 
 const fail=(code,recoveryReason)=>{throw Object.assign(new Error(code),{code,...recoveryReason?{recoveryReason}:{}})}
@@ -89,6 +89,16 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
     if(!commit||native.header.id!==id)fail('ROUTER_NATIVE_COMMIT_INVALID')
     if(handoffId&&!native.entries.some(entry=>entry.type==='custom_message'&&entry.customType==='night.router-handoff'&&entry.details?.handoffId===handoffId))fail('ROUTER_NATIVE_HANDOFF_MISSING')
     return native
+  }
+  async function independentFileEffect(conversationId,rotation,name,args,signal){
+    if(rotation.state!=='published'||rotation.conversationId!==conversationId||agents.get(rotation.oldSessionId))return false
+    let native
+    try{native=await persistence.readNative(rotation.oldSessionId,{requireComplete:true,signal})}
+    catch(error){signal?.throwIfAborted();ctx.logger?.warn?.(`router file recovery evidence unavailable: ${error.code??error.name}`);return false}
+    assertOpen();signal?.throwIfAborted()
+    if(agents.get(rotation.oldSessionId)||native.header.id!==rotation.oldSessionId||native.header.runtimeOwner!=='conversation-router'
+      ||native.header.conversationId!==conversationId||native.header.generation!==rotation.oldGeneration)return false
+    return independentRouterFileEffect(native,{name,args})
   }
   const reviewKind='conversation-router-held-review',reviewTool='resident_review_held_source'
   async function heldSourceNoEffect(event){
@@ -187,6 +197,7 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
       setup:async(agentCtx,agent)=>{
         await agentCtx.get('agentPresets').mount(agentCtx,agentPreset)
         await setupBusiness(agentCtx,{conversationId:row.id,generation,sessionId:id,
+          independentFileEffect:(...args)=>independentFileEffect(row.id,...args),
           reviewHeld:async(packet,{eventId,decision,evidenceId,coverage})=>{
             assertOpen();ctx.get('channels').assertGroupTarget(row.id)
             if(packet.source.kind!==reviewKind||packet.source.eventId!==eventId||!isDeepStrictEqual(packet,packets.get(packet.id)))fail('ROUTER_HELD_REVIEW_SCOPE')

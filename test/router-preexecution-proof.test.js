@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {independentRouterFileEffect} from '../src/runtime/pi-router-recovery-view.js'
 import {recordRouterNotStarted,routerCallNotStarted,routerPreexecutionFailure,isRouterPreexecutionFailure} from '../src/runtime/router-preexecution-proof.js'
 
 function fixture(){
@@ -31,4 +32,24 @@ test('ordinary errors, absent/late proofs and ambiguous prepare calls cannot cle
  f.record();assert.equal(f.check(),false,'proof after result cannot authorize recovery')
  const ambiguous=fixture();ambiguous.assistant.message.content.push({...ambiguous.call,id:'other-call'});ambiguous.record({callId:undefined});assert.equal(ambiguous.entries.length,1)
  const foreign=fixture();foreign.owner.ctx.get=()=>new Map();foreign.record();assert.equal(foreign.entries.length,1)
+})
+
+
+test('a new file request does not replace overlapping unknown effects in a retired Router',()=>{
+ const f=fixture()
+ const {entries,call,result,assistant}=f
+ const sourceId='original-source',tool='resident_router_shared_import'
+ const current={name:tool,args:{taskId:'existing',sourceId:'fresh-source',messageVersion:1}}
+ const inspect=()=>independentRouterFileEffect({header:{id:f.owner.id},entries},current)
+ assert.equal(inspect(),true,'an unknown ordinary task action is not an import')
+ call.name=tool;Object.assign(call.arguments,{sourceId,messageVersion:1});result.message.toolName=tool
+ assert.equal(inspect(),false,'an unpaired import on the original task must not be replaced')
+ call.arguments.taskId='different-task';assert.equal(inspect(),true);call.arguments.taskId='existing'
+ entries.push(result);assert.equal(inspect(),false,'an error alone proves no outcome')
+ result.message.details={nativeResult:{value:{verified:true}}};assert.equal(inspect(),false,'an error with a verification flag is not a success')
+ result.message.isError=false;result.parentId=assistant.id;assert.equal(inspect(),true,'a verified committed import is no longer unknown')
+ current.args.sourceId=sourceId;assert.equal(inspect(),false,'the original source cannot be reused')
+ current.name='resident_router_reply';current.args={sourceId:'fresh-send',messageVersion:1,taskDelivery:{taskId:'existing'}}
+ call.name=current.name;call.arguments={sourceId,messageVersion:1,taskDelivery:{taskId:'existing'}};result.message.toolName=current.name
+ assert.equal(inspect(),false,'a successful reply that only queued an attachment is not a delivery proof')
 })

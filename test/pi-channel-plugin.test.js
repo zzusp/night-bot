@@ -148,7 +148,17 @@ test('real DWS runner -> adapter -> bridge -> plugin -> unified application -> d
   const selfQuote=calls.find(args=>args.includes('+messages-reply')&&args.includes(history.messageId))
   assert.ok(selfQuote);assert.equal(selfQuote[selfQuote.indexOf('--ref-sender')+1],'self');assert.equal(selfQuote[selfQuote.indexOf('--open-dingtalk-id')+1],'peer')
   assert.equal(await channels.transportCall('readback',notification),undefined)
-  assert.equal(channels.canDeliver({...notification,payload:{...notification.payload,artifact:{}}}),false)
+  const file={directory:f.root,fileName:'private-fixture.txt'}
+  await writeFile(join(file.directory,file.fileName),'private delivery fixture')
+  const attachment={id:'private-file-key',payload:{...notification.payload,artifact:{fileName:file.fileName}}}
+  assert.equal(channels.canDeliver(attachment),true)
+  const accepted=await channels.transportCall('sendFile',attachment,file)
+  assert.equal(accepted.sendReceipt.openTaskId,'send-task')
+  const upload=calls.find(args=>args.includes('--file'))
+  assert.ok(upload)
+  assert.equal(upload[upload.indexOf('--file')+1],'./private-fixture.txt')
+  assert.equal(upload[upload.indexOf('--open-dingtalk-id')+1],'peer')
+  assert.ok(!upload.includes('--group'))
   streams.get('private:peer').onStdoutLine(JSON.stringify({type:'user_im_message_recall_o2o',conversation_id:'private',message_id:'private-live-self',sender_open_dingtalk_id:'self',recaller_open_dingtalk_id:'self',event_time:Date.now()}))
   await eventually(async()=>{
     const sources=await app.tasks.store.query({kind:'source.list'}),versions=sources.filter(source=>source.messageId==='private-live-self')
