@@ -228,6 +228,7 @@ const platformScheduleFields = {
   stopWhen: z.strictObject({taskIds:z.array(z.string().min(1)).min(1).max(30)}).optional(),
   lastOccurrenceAt:z.string().datetime().optional(), scheduleId: z.string().optional(),
   reportEveryOccurrence:z.literal(true).optional(),
+  deliveryMode:z.literal('silent').optional(),
   routerFollowUp:z.enum(['local','authorized']).optional(),
   followUpParent:z.strictObject({sessionId:z.string().min(1),sourceId:z.string().min(1),sourceVersion:z.number().int().positive(),groupId:z.string().min(1)}).optional(),
   reportFingerprints:z.array(z.strictObject({outboundId:z.string().min(1),digest:z.string().regex(/^[a-f0-9]{64}$/),verificationIncomplete:z.literal(true).optional()})).max(20).optional(),

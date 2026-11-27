@@ -1,3 +1,4 @@
+import {workRoleLabels} from './WorkOrigin';
 import {useReadFailure} from './ReadErrors';
 import {useAssistantBrand, brandGlyph} from './AssistantBrand';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -641,7 +642,7 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
         const message = item.message;
         if (message.kind === 'router-packet-boundary') return null;
         if (compact && message.kind === 'compaction') return <CompactionRecord key={key} message={message} history={history} onUnavailable={() => onRecordUnavailable?.(message.id)} />;
-        return <article data-message-id={message.id} className={`message message-${message.role}${message.kind === 'scheduled-trigger' ? ' message-scheduled' : message.kind === 'task-result' || message.kind === 'router-reply' ? ' execution-result' : ''}${message.transient ? ' pi-live-message' : ''}${message.transient && live?.active && ((message.kind === 'thinking' && live.phase === 'thinking') || (message.kind !== 'thinking' && live.phase === 'text')) ? ' pi-model-streaming' : ''}${onInspect ? ' message-inspectable' : ''}`} key={key} onClick={onInspect ? event => {
+        return <article data-message-id={message.id} className={`message message-${message.role}${['scheduled-trigger','router-trigger','peer-handoff'].includes(message.kind || '') ? ' message-scheduled' : message.kind === 'task-result' || message.kind === 'router-reply' ? ' execution-result' : ''}${message.transient ? ' pi-live-message' : ''}${message.transient && live?.active && ((message.kind === 'thinking' && live.phase === 'thinking') || (message.kind !== 'thinking' && live.phase === 'text')) ? ' pi-model-streaming' : ''}${onInspect ? ' message-inspectable' : ''}`} key={key} onClick={onInspect ? event => {
           // Markdown contains links and disclosures: preserve their actions and text selection.
           // The visually hidden native button makes the bubble keyboard accessible without adding a separate action label.
           const target = event.target as HTMLElement;
@@ -654,6 +655,8 @@ export function MessageList({ messages, pending, empty, footer, footerVersion, u
             {message.createdAt && <time dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}
             {message.status && message.status !== 'delivered' && message.status !== 'sent' && <Status value={message.status} />}
           </div>}
+          {message.kind === 'peer-handoff' && <div className="scheduled-message-origin"><span>协作消息{message.workRole ? ` · ${workRoleLabels[message.workRole]}` : ''}</span></div>}
+          {message.kind === 'router-trigger' && <div className="scheduled-message-origin"><span>Router 事件</span></div>}
           {message.kind === 'scheduled-trigger' && <div className="scheduled-message-origin" aria-label="定时触发"><RiTimeLine size={12} aria-hidden="true" /><span>由已安排任务发送</span></div>}
           <div className="message-body">{message.kind === 'context-summary' && <div className="message-origin-label">上下文摘要</div>}{onInspect && <button type="button" className="message-process-trigger sr-only" aria-haspopup="dialog" aria-expanded={inspectedId === message.id} aria-label={`查看消息处理过程：${message.text.slice(0, 40) || '无正文消息'}`} onClick={event => onInspect(message, event.currentTarget)}>处理过程</button>}{message.kind === 'thinking' ? <ThinkingMessage message={message} history={history} compact={compact} live={live} onUnavailable={() => onRecordUnavailable?.(message.id)} /> : <MessageBody key={message.id} message={message} history={history} showSource={!compact} onUnavailable={() => onRecordUnavailable?.(message.id)} />}</div>
           {compact && message.createdAt && ['source','instruction','task-result','router-reply'].includes(message.kind || '') && <time className="execution-message-time" dateTime={message.createdAt}>{dateTime(message.createdAt)}</time>}

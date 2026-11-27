@@ -37,6 +37,8 @@ import {roleModelSelection} from '../../src/role-models.js'
 import { createStartupMetrics, createCloseObservation, observeClose } from './startup-metrics.js'
 import { createTaskSessionObservability, createTaskObservationQueue } from './task-session-observability.js'
 import { activeFixedUnits, fixedTopicIds, fixedUnitRequestId, platformScheduleSessionId, platformScheduleOutboundId } from './fixed-topics.js'
+import {ROUTER_SELF_CHECK_INTERVAL,selfCheckTaskScope} from '../../src/channels/router-self-check.js'
+import {GLOBAL_ROUTER_SESSION,openGlobalRouterLifecycle} from '../../src/channels/global-router.js'
 import {openRouterLifecycle} from '../../src/channels/router-lifecycle.js'
 import {registerResidentRouterTools,residentOperationId} from '../../src/channels/resident-router-business.js'
 import {createPlatformSchedules} from './platform-schedule.js'
@@ -153,6 +155,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const admissions = new Map(), admissionHolds = new Set(), admissionGroups = new Map(), targetCommands = new Map()
   const materializationFlights = new Map()
   const sourceProjections = new Set(), notificationSends = new Set(), notificationReadbacks = new Set()
+  const routerLiveDeliveries = new Map()
   const failures = new Map(), taskSlots = new Set(), messageRecoveryFlights = new Set()
   const pendingDialogue = task => task.dialogue?.some(item => !item.reply&&!item.replyError)
   const taskLimit = () => legacy.getAgentConfig().maxConcurrentTasks ?? config.maxConcurrentTasks ?? 5
@@ -178,9 +181,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const query = (kind, args = {}) => store.query({ kind, ...args })
   if((await query('execution.list')).length)fail('TASK_SPLIT_EXECUTION_DATA_UNSUPPORTED')
   const archives=new TaskArchives({paths:ctx.get('runtimePaths'),store,routes:ctx.get('taskSessionRoutes'),onSuccess:taskId=>failures.delete('task-archive:'+taskId),onFailure:(taskId,error)=>{failures.set('task-archive:'+taskId,{id:taskId,code:error.code??'TASK_ARCHIVE_CAPTURE_FAILED'});ctx.logger?.warn?.('task archive '+taskId+': '+(error.code??'TASK_ARCHIVE_CAPTURE_FAILED'))}})
-  const responsibilityFor=conversationId=>ctx.get('channels').responsibility(conversationId)??residentStore.getGroup(conversationId)?.responsibility??''
+  const responsibilityFor=()=>''
   const reflection=ctx.get?.('reflection')
-  const stopReflection=reflection?.attachStore(store,{ownerActorId:config.ownerActorId,responsibilityFor,onReview:archives?(taskId,report)=>archives.recordReview(taskId,report):undefined,model:{provider:config.provider,model:config.model,...config.reasoningEffort?{reasoningEffort:config.reasoningEffort}:{}}})
+  const selfCheckCuration=new Map()
+  let nextSelfCheckAt=0,selfCheckFlight
+  const stopReflection=config.globalRouter===true?undefined:reflection?.attachStore(store,{ownerActorId:config.ownerActorId,responsibilityFor,onReview:archives?(taskId,report)=>archives.recordReview(taskId,report):undefined,model:{provider:config.provider,model:config.model,...config.reasoningEffort?{reasoningEffort:config.reasoningEffort}:{}}})
 
   if (residentStore.retireIndependentCoordination)
     await residentStore.retireIndependentCoordination(await query('coordination.retirement'))
@@ -207,10 +212,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
     if(failure)throw failure
   }
-  const targetCommandKinds=new Set(['source.record','source.record-direct','source.acceptHistory','task.create','task.reopen','task.revise','task.supplement','task.claim','task.dialogue.add','router.plan','router.task-action','router.operator.enqueue','router.operator.reply','router.follow-up.enqueue','notification.prepare','notification.start'])
+  const targetCommandKinds=new Set(['source.record','source.record-direct','source.acceptHistory','task.create','task.reopen','task.revise','task.supplement','task.claim','task.dialogue.add','task.peer.send','task.peer.request','router.plan','router.task-action','router.operator.enqueue','router.operator.reply','router.follow-up.enqueue','notification.prepare','notification.start'])
   const command = async (kind,args,id) => {
     if(!targetCommandKinds.has(kind))return commitCommand(kind,args,id)
-    const groupId=args.groupId??args.conversationId??args.source?.groupId??args.conversation?.conversationId??args.payload?.conversationId??taskCache.get(args.taskId)?.groupId??(args.taskId?(await query('task.get',{taskId:args.taskId}))?.groupId:undefined)??(args.notificationId?(notificationCache.get(args.notificationId)??await query('notification.get',{notificationId:args.notificationId}))?.payload?.conversationId:undefined)
+    const groupId=args.groupId??args.conversationId??args.source?.groupId??args.conversation?.conversationId??args.payload?.conversationId??(args.binding?.taskId?(await query('task.get',{taskId:args.binding.taskId}))?.groupId:undefined)??taskCache.get(args.taskId)?.groupId??(args.taskId?(await query('task.get',{taskId:args.taskId}))?.groupId:undefined)??(args.notificationId?(notificationCache.get(args.notificationId)??await query('notification.get',{notificationId:args.notificationId}))?.payload?.conversationId:undefined)
     ctx.get('channels').assertGroupTarget(groupId)
     const flight={};targetCommands.set(flight,groupId)
     try{return await commitCommand(kind,args,id,groupId)}finally{targetCommands.delete(flight)}
@@ -263,6 +268,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       receipt={...receipt,result:{...receipt.result,...(receipt.result?.task?{task:await query('task.get',{taskId:receipt.result.task.taskId})}:{}),
         ...(receipt.result?.tasks?{tasks:await Promise.all(receipt.result.tasks.map(task=>query('task.get',{taskId:task.taskId})))}:{})}}
     }
+    if(kind==='router.plan'&&receipt.result?.peerWake&&!receipt.replayed)dispatchPeer(receipt.result.peerWake)
     const archiveTaskIds=new Set([...(receipt.result?.tasks??[]).map(task=>task.taskId),receipt.result?.task?.taskId??receipt.result?.operation?.taskId??receipt.result?.notification?.taskId??args.binding?.taskId??args.taskId].filter(Boolean))
     if(archives)for(const taskId of archiveTaskIds){
       const current=await query('task.get',{taskId})
@@ -272,7 +278,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if(kind==='task.claim'){archives.schedule(taskId);continue}
       try{await archives.register(current);archives.schedule(taskId)}catch(error){archives.errors.set(taskId,error.code??'TASK_ARCHIVE_NOT_READY');archives.onFailure(taskId,error);receipt.archiveMaintenance={pending:true,taskId,code:error.code??'TASK_ARCHIVE_NOT_READY'}}
     }
-    if(receipt.completionEvent)ctx.get?.('reflection')?.scan()
+    if(receipt.completionEvent&&config.globalRouter!==true)ctx.get?.('reflection')?.scan()
     observerGroupPage?.sourceChanged(receipt.result?.source ?? args.source)
     for(const row of receipt.result?.dispositions??[]){const source=await query('source.get',{sourceId:row.sourceId});observerGroupPage?.sourceChanged(source)}
     for(const event of settledEvents)if(event.source)observerGroupPage?.sourceChanged(event.source)
@@ -385,6 +391,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     try{
       // 在可信实时 actor 仍存在时捕获身份；排队写入不得依赖 dispose 后的查找。
       let identity=['channel-triage','conversation-router'].includes(actor.metadata.runtimeOwner)?{runtimeOwner:actor.metadata.runtimeOwner,groupId:actor.metadata.conversationId,...Number.isInteger(actor.metadata.generation)&&actor.metadata.generation>0?{generation:actor.metadata.generation}:{}}:undefined
+      if(actor.id===GLOBAL_ROUTER_SESSION){
+        const source=actor.admission.current?.()?.messages?.[0]?.source
+        if(source?.kind==='conversation-router'&&typeof source.conversationId==='string')identity={runtimeOwner:'conversation-router',groupId:source.conversationId,generation:source.generation}
+      }
       // Startup precedes task.sessionBound. Capture only the current ledger
       // session plus its committed task identity; never infer from a path/name.
       if(!identity&&record.kind==='phase-completed'){
@@ -996,7 +1006,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   async function applyDirectTaskAction(args){
     if(args.kind==='materialize'){
-      for(const entry of args.tasks){const task=await requireTask(entry.taskId);taskCache.set(task.taskId,topicTaskView(task));await materializeSource(task.taskId,args.source)}
+      // The Work claim loads its own authorized source materials; the Router only publishes the plan.
+      for(const entry of args.tasks){const task=await requireTask(entry.taskId);taskCache.set(task.taskId,topicTaskView(task))}
       void hostScheduler(()=>schedulePending());return
     }
     return admitTask(args.taskId,async(oldTask,oldExecutions)=>{
@@ -1018,12 +1029,22 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const originalLease=!task.drained&&task.leaseEpoch===receipt.result.task.leaseEpoch&&task.requirementRevision===receipt.result.task.requirementRevision&&task.controlRevision===receipt.result.task.controlRevision
       if(!(args.kind==='supplement'||args.kind==='resume'&&args.humanRequestId!==undefined)&&(!receipt.replayed||originalLease))await cancelLiveTask(task.taskId,oldTask,oldExecutions)
       if(!receipt.replayed)failures.delete(task.taskId)
-      await materializeSource(task.taskId,source)
-      const current=await requireTask(task.taskId)
-      if(args.kind==='supplement'&&taskSessions.liveBinding?.(task.taskId)){
-        const sources=(await Promise.all(current.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean)
-        const materials=await Promise.all(sources.map(source=>materializeSource(task.taskId,source)))
-        await taskSessions.supplement({task:await taskInputWithDependencies(current),sources,materials})
+      if(args.kind==='supplement'&&hostLiveBinding){
+        // The durable supplement is committed already. Live delivery is a
+        // tracked Host job; if it cannot steer, the pending wake survives.
+        const delivery=(routerLiveDeliveries.get(task.taskId)??Promise.resolve()).catch(()=>{}).then(()=>hostScheduler(async()=>{
+          const current=await requireTask(task.taskId),live=taskSessions.liveBinding?.(task.taskId)
+          if(closed||live?.leaseEpoch!==hostLiveBinding.leaseEpoch||current.requirementRevision!==hostLiveBinding.requirementRevision)return
+          const sources=(await Promise.all(current.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean)
+          const materials=await Promise.all(sources.map(source=>materializeSource(task.taskId,source)))
+          if(!closed)await taskSessions.supplement({task:await taskInputWithDependencies(current),sources,materials})
+        }))
+        routerLiveDeliveries.set(task.taskId,delivery)
+        sourceProjections.add(delivery)
+        void delivery.catch(error=>ctx.logger?.warn?.(error.code??'ROUTER_SUPPLEMENT_DELIVERY_FAILED')).finally(()=>{
+          sourceProjections.delete(delivery)
+          if(routerLiveDeliveries.get(task.taskId)===delivery)routerLiveDeliveries.delete(task.taskId)
+        })
       }
       void hostScheduler(()=>schedulePending());return receipt
     })
@@ -1229,10 +1250,54 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     notify:undefined})
   const lookupTimezone=groupId=>residentStore.getGroup(groupId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone
   readonlyLookups=createRouterReadonlyLookups({ctx,query,command,timezone:lookupTimezone,models:()=>roleModels('router'),schedule:groupId=>kickGroup(groupId)})
-  residentRouter=await openRouterLifecycle({ctx,store,root,settle:(args,id)=>command('router.settle',args,id),recordStage:recordResidentStage,models:()=>roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
+  async function learnFromSelfCheck({conversationId,taskId,kind,name,body,indexPath}){
+    const task=await query('task.get',{taskId}),event=await query('router.self-check.completion',{conversationId,taskId})
+    if(!event||selfCheckTaskScope(task)!==conversationId||event.commandId!==task.completion?.commandId)fail('ROUTER_SELF_CHECK_COMPLETION_STALE')
+    if(kind==='knowledge'){
+      if(!shared||!name?.trim()||!body?.trim())fail('ROUTER_SELF_CHECK_KNOWLEDGE_INVALID')
+      if((await query('router.self-check.completion',{conversationId,taskId}))?.id!==event.id)fail('ROUTER_SELF_CHECK_COMPLETION_STALE')
+      return shared.execute({actorId:task.ownerActorId??config.ownerActorId,conversationId},
+        {action:'publish',kind:'knowledge',name,body,...indexPath?{indexPath}:{}},
+        {source:{kind:'router-self-check',taskId,eventId:event.id},operation:'self-check-knowledge:'+hash([event.id,name])}).result
+    }
+    if(kind!=='memory-skill'||!reflection||reflection.config?.enabled===false)fail('ROUTER_SELF_CHECK_LEARNING_UNAVAILABLE')
+    if(selfCheckCuration.has(event.id))return {status:'queued'}
+    if(selfCheckCuration.size>=2)return {status:'busy'}
+    const job=hostScheduler(async()=>{
+      if((await query('router.self-check.completion',{conversationId,taskId}))?.id!==event.id)return
+      await reflection.review({store,ownerActorId:config.ownerActorId,model:roleModels('router'),
+        validate:async()=>!closed&&(await query('router.self-check.completion',{conversationId,taskId}))?.id===event.id,
+        onReview:archives?(id,report)=>archives.recordReview(id,report):undefined},event)
+    })
+    selfCheckCuration.set(event.id,job);void job.catch(error=>ctx.logger?.warn?.(error.code??'ROUTER_SELF_CHECK_LEARNING_FAILED'))
+      .finally(()=>selfCheckCuration.delete(event.id)).catch(()=>{})
+    return {status:'queued'}
+  }
+  function continueStandaloneSelfCheck(args){
+    return admitTask(args.taskId,async()=>{
+      const receipt=await command('router.self-check.continue',args,'router-self-check-continue:'+args.operationId)
+      if(!receipt.replayed)failures.delete(args.taskId)
+      void hostScheduler(()=>schedulePending())
+      return receipt
+    })
+  }
+  function routerSelfCheck(now=Date.now()){
+    if(closed||config.globalRouter!==true||now<nextSelfCheckAt)return Promise.resolve()
+    return selfCheckFlight??=(async()=>{
+      const prev=await query('router.self-check.clock')
+      if(closed)return
+      if(prev?.nextAt>now){nextSelfCheckAt=prev.nextAt;return}
+      const result=(await command('router.self-check.tick',{now},'router-self-check:'+String(prev?.nextAt??now))).result
+      nextSelfCheckAt=result.nextAt??now+ROUTER_SELF_CHECK_INTERVAL
+      for(const id of result.conversations)void kickGroup(id).catch(()=>{})
+    })().finally(()=>{selfCheckFlight=undefined})
+  }
+  residentRouter=await (config.globalRouter===true?openGlobalRouterLifecycle:openRouterLifecycle)({ctx,store,root,settle:(args,id)=>command('router.settle',args,id),recordStage:recordResidentStage,models:()=>roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
     const platformPages=new Map()
     return registerResidentRouterTools(agentCtx,binding,{
-    query,command,responsibilityFor,followUpGrantActive,startLookup:args=>readonlyLookups.submit(args),applyTaskAction:applyDirectTaskAction,importShared:shared?importReportedWorkFile:undefined,forwardShared:(source,exec,validate)=>routerForwardShared(source,binding,exec,validate),prepareReply:(args,exec)=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args,exec)},
+    query,command,responsibilityFor,followUpGrantActive,startLookup:args=>readonlyLookups.submit(args),
+    ...binding.global?{startSelfCheck:args=>readonlyLookups.submit({...args,operationId:'self-check-review:'+hash([args.selfCheckEventId,[...args.taskIds].sort()])}),learnFromSelfCheck,continueStandaloneSelfCheck}:{},
+    applyTaskAction:applyDirectTaskAction,importShared:shared?importReportedWorkFile:undefined,forwardShared:(source,exec,validate)=>routerForwardShared(source,binding,exec,validate),prepareReply:(args,exec)=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args,exec)},
     platformQuery:async(groupId,args)=>{
       const key=JSON.stringify([args.state??'all',args.day??null,args.limit??50])
       let snapshot=platformPages.get(key)
@@ -1353,6 +1418,15 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     return {...task,dependencies:inputs,...currentTaskMilestone(task)?{milestone:await query('task.milestone',{taskId:task.taskId})}:{}}
   }
 
+  function dispatchPeer(wake) {
+    if(wake.state!=='pending')return
+    void hostScheduler(async()=>{
+      try{if(await taskSessions.deliverPeer(wake))return}
+      catch(error){ctx.logger?.warn?.(`Work peer live delivery deferred: ${error.code??error.name}`)}
+      await kickTask(wake.taskId)
+    }).catch(()=>{})
+  }
+
   function kickTask(taskId) {
     if (closed || admissionHolds.has(taskId) || !retryReady(taskId) || !reserveTask(taskId)) return Promise.resolve()
     return track(inflightTasks, taskId, async () => {
@@ -1388,7 +1462,16 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
           operations,
           operationCounts: Object.fromEntries(Object.entries(Object.groupBy(operations, operation => operation.state)).map(([state, items]) => [state, items.length])),
           blockers: await query('task.blockers', { taskId }) }, ...roleModels('task'), agentPreset: legacy.getAgentConfig().agentPreset,
-          groupResponsibility: responsibilityFor(task.groupId),
+          peer:ordinaryRound&&task.metadata?.work?async(kind,args,current)=>{
+            if(kind==='list')return {peers:await query('task.peer.list',{taskId:task.taskId,...args})}
+            try{
+              const receipt=await command('task.peer.'+kind,{...args,binding:current},
+                'task-peer-tool:'+hash([kind,current.taskId,current.leaseEpoch,args]))
+              if(kind==='send'&&receipt.result.peerWake){const {peerWake,...result}=receipt.result;dispatchPeer(peerWake);return result}
+              else if(kind==='request')void hostScheduler(()=>kickGroup(receipt.result.conversationId)).catch(()=>{})
+              return receipt.result
+            }catch(error){if(kind!=='wait'&&/^TASK_PEER_/.test(error.code??''))return {status:'not-queued',code:error.code};throw error}
+          }:undefined,
           readDecisions: (args, current) => query('task.decisions', { ...args, taskId: current.taskId }),
           onSupplementAdmitted:async({messageId,entryId,packetId,binding:nextBinding})=>{
             await command('task.supplement.admitted',{binding:nextBinding,messageId,entryId,packetId},`task-supplement-admitted:${taskId}:${messageId}`)
@@ -1456,7 +1539,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         if(completion&&(runResult.status==='submitted'||runResult.status==='finished')&&await currentTask(completion.binding)){
           // A result tool accepts the conclusion; only a normally closed producer
           // can make it the business terminal result of this lease.
-          await command('task.complete',completion,`complete:${taskId}:${binding.requirementRevision}`)
+          try{await command('task.complete',completion,`complete:${taskId}:${binding.requirementRevision}`)}
+          catch(error){
+            if(error.code!=='TASK_PEER_INPUT_PENDING')throw error
+            // The old owner is drained below; its durable peer wake starts a
+            // continuation, not a failed or externally reported result.
+            await command('wake.ack',{binding,wakeIds},`wake-ack:${taskId}:${binding.leaseEpoch}`)
+            return
+          }
           submitted=true
         }
         if (!submitted && runResult.status === 'no_submission') {
@@ -1473,7 +1563,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
             limitations: [runResult.reason ?? 'TASK_SESSION_NO_SUBMISSION'], ...(humanReview ? { reviewFailureCode: runResult.reason } : {}) }, `task-technical-block:${taskId}:${binding.leaseEpoch}`)
           submitted = !humanReview
         }
-        if (submitted) await command('wake.ack', { binding, wakeIds }, `wake-ack:${taskId}:${binding.leaseEpoch}`)
+        if (submitted||runResult.status==='peer-parked') await command('wake.ack', { binding, wakeIds }, `wake-ack:${taskId}:${binding.leaseEpoch}`)
       } catch (error) {
         drained = error.taskSessionDrained !== false
         if (!drained) {
@@ -1505,8 +1595,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         if(!closed){
           // The turn has stopped and drained; inspect its terminal evidence now.
           const current=await requireTask(taskId)
-          if(taskInspectionReason(current)&&!runMilestoneParked){
-            try{await command('task.inspect',{taskId,expected:inspectionVersion(current)})}catch(error){if(error.code!=='TASK_INSPECTION_STALE')throw error}
+          if(taskInspectionReason(current,{standalone:config.globalRouter===true})&&!runMilestoneParked){
+            try{
+              const receipt=await command('task.inspect',{taskId,expected:inspectionVersion(current),standalone:config.globalRouter===true})
+              if(receipt.result?.inspected&&!current.conversationId&&!current.groupId)void kickGroup(selfCheckTaskScope(current)).catch(()=>{})
+            }catch(error){if(error.code!=='TASK_INSPECTION_STALE')throw error}
           }
         }
         if (!closed) void deliverNotifications()
@@ -1683,7 +1776,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   async function syncRouterFailures(){
     for(const [id,error]of residentRouter.errors)recordRouterFailure(id,error)
     for(const [id,error]of failures)if(id==='router:'+error.conversationId&&!residentRouter.errors.has(error.conversationId))failures.delete(id)
-    for(const conversationId of await query('router.delivery-holds')){
+    const holds=new Set(await query('router.delivery-holds'))
+    for(const [id,error]of failures)if(id==='router-delivery-held:'+error.conversationId&&!holds.has(error.conversationId))failures.delete(id)
+    for(const conversationId of holds){
       const id='router-delivery-held:'+conversationId
       failures.set(id,{id,conversationId,code:'ROUTER_EVENT_DELIVERY_HELD'})
     }
@@ -1703,9 +1798,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     for(const task of await query('task.list')){
       const m=currentTaskMilestone(task)
       if(m?.waitForDelivery&&m.notificationId&&m.checkpointLease===task.leaseEpoch&&task.sessionFailure?.code!=='TASK_SESSION_DRAIN_FAILED'
-        ||!taskInspectionReason(task,{inflight:inflightTasks.has(task.taskId)}))continue
+        ||!taskInspectionReason(task,{inflight:inflightTasks.has(task.taskId),standalone:config.globalRouter===true}))continue
       try{
-        await command('task.inspect',{taskId:task.taskId,expected:inspectionVersion(task)})
+        await command('task.inspect',{taskId:task.taskId,expected:inspectionVersion(task),standalone:config.globalRouter===true})
         // Missing registry handles do not prove a writer or external producer
         // drained. Inspection records the incident; existing drain proofs own it.
       }
@@ -1747,9 +1842,13 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (closed) return { failures: [] }
     // Inspection must keep recording incidents while a previous recovery waits
     // on a busy Router. Its cadence guard is claimed before the first await.
+    // Periodic Router wake and Host mismatch inspection are independent:
+    // a failed inspection must not suppress a due background wake.
+    const periodicWake=!restoreIdleRouters?routerSelfCheck().catch(error=>ctx.logger?.warn?.(error.code??'ROUTER_SELF_CHECK_FAILED')):undefined
     await inspectTasks()
+    if(periodicWake)await periodicWake
     if (recovering) return recovering
-    ctx.get?.('reflection')?.scan()
+    if(config.globalRouter!==true)ctx.get?.('reflection')?.scan()
     return recovering = (async () => {
       await disableSingleProviderRetries()
       for(const task of await query('task.list'))for(const row of task.effectReconciliations??[])if(row.state==='prepared'){
@@ -1800,6 +1899,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       }
       await readonlyLookups.recover()
       await residentRouter.recover({wait:waitForRouter,restoreIdleRouters})
+      if(restoreIdleRouters)await routerSelfCheck()
       await syncRouterFailures()
 
 
@@ -2187,6 +2287,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       return settled
     },
     observerGroupPage,
+    scheduleDeliveryBindings(records){
+      return new Map(records.flatMap(record=>{
+        if(typeof record.sessionId!=='string'||typeof record.id!=='string')return []
+        const binding=residentStore.getPlatformSchedule(record.sessionId)
+        if(!binding||binding.scheduleId!==record.id)return []
+        return [[record.id,{mode:binding.deliveryMode==='silent'?'silent':binding.routerFollowUp?'router':'origin',groupId:binding.groupId}]]
+      }))
+    },
     listObserverGroups:()=>residentStore.listGroups().map(({groupId,name,responsibility,residentSessionId})=>({groupId,name,responsibility,residentSessionId})),
     listAuthorizationRequests: listHumanRequests, respondHumanRequest, respondPrivateHumanReply,
     taskArchiveStatus:taskId=>({pending:archives?.tails.has(taskId)??false,error:archives?.errors.get(taskId)??null}),
@@ -2325,6 +2433,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       await cancelLiveTask(task.taskId,inflightTasks.get(task.taskId),inflightExecutions);return taskDTO(await requireTask(task.taskId))
     },
     hasPendingTopicFacts: groupId => query('topic.fact.unsettled', { groupId }),
+    routerSelfCheck,
     async whenIdle() {
       const notificationAttempts = new Set()
       await schedulePending()
@@ -2343,6 +2452,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const attempt=async action=>{try{await action()}catch(error){errors.push(error)}}
       await attempt(()=>stopReflection?.())
       await attempt(()=>detachIngress?.())
+      await attempt(()=>Promise.allSettled([...selfCheckCuration.values(),...selfCheckFlight?[selfCheckFlight]:[]]))
       await attempt(()=>reflection?.whenIdle())
       await attempt(()=>nativeDws.close())
       await attempt(()=>readonlyLookups.close())

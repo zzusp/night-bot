@@ -1,3 +1,4 @@
+import {GLOBAL_ROUTER_SCOPE,GLOBAL_ROUTER_SESSION} from '../../../src/channels/router-identity.js'
 import {nativeTokenUsage} from './token-usage.js'
 import {observeMemoryLock} from '../../../src/memory/lock-observation.js'
 import {randomUUID} from 'node:crypto'
@@ -488,6 +489,17 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
     items.push(row)
     if(timeline)timeline.set(row,nativeEntries.get(entry.id)?.index??Number.MAX_SAFE_INTEGER)
   }
+  const peerIds=new Set(),peerRoles=new Set(['development','verification','investigation','general'])
+  const showPeers=(entry,index,message,rows)=>{
+    if(!Array.isArray(rows)||!isOriginalRouterPacket(entry,message))return
+    for(const [n,row] of rows.slice(0,32).entries()){
+      if(!row||typeof row.text!=='string'||!row.text.trim()||!peerRoles.has(row.senderRole)||typeof row.senderTaskId!=='string'||typeof row.messageId!=='string')continue
+      const id=JSON.stringify([row.senderTaskId,row.messageId])
+      if(peerIds.has(id))continue
+      peerIds.add(id)
+      add(entry,'peer-'+index+'-'+n,'user',row.text,{kind:'peer-handoff',workRole:row.senderRole},message)
+    }
+  }
   const sourceText = (entry, suffix, row) => {
     if (typeof row?.text !== 'string') return
     const key = JSON.stringify([row.sourceId, row.version, row.text])
@@ -594,6 +606,13 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
       } else if (message.role === 'custom' && message.customType === 'night.business-input') {
         const source = message.details?.source
         if (taskId) {
+          if(source?.kind==='task-peer-message'){
+            if(source.taskId!==taskId)fail('SESSION_SOURCE_IDENTITY_INVALID',503)
+            let body
+            try{body=JSON.parse(texts(message.content))}catch{fail('SESSION_SOURCE_INVALID',503)}
+            showPeers(entry,index,message,body?.peerMessages)
+            continue
+          }
           if (source?.kind !== 'task-input' && source?.kind !== 'task-supplement') continue
           if (source.taskSession?.taskId !== taskId || source.taskSession?.sessionId !== sessionId) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
           let input
@@ -601,6 +620,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           const {instruction,direct} = inputsById.size ? taskInputInstructions(input, source.taskSession, inputsById, inputsBySource)
             : {instruction:taskInstruction(input),direct:[]}
           if (instruction) add(entry, 'instruction-' + index, 'user', instruction, {kind: 'instruction'}, message)
+          showPeers(entry,index,message,input?.peerMessages)
           for (const [requestId,row] of direct) {
             if (seenTaskInputs.has(requestId)) continue
             seenTaskInputs.add(requestId)
@@ -611,6 +631,9 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           const content = texts(message.content)
           const prompts = scheduledPrompts(content, source)
           ;(prompts ?? [content]).forEach((prompt, n) => add(entry, 'scheduled-' + index + '-' + n, 'user', prompt, {kind: 'scheduled-trigger'}, message))
+        } else if (source?.kind === 'conversation-router-held-review') {
+          if(source.conversationId!==conversationId||source.generation!==generation)fail('SESSION_SOURCE_IDENTITY_INVALID',503)
+          if(isOriginalRouterPacket(entry,message))add(entry,'held-review-'+index,'user','复查挂起消息',{kind:'router-trigger'},message)
         } else if (source?.kind === 'conversation-router') {
           if (source.conversationId !== conversationId || source.generation !== generation) fail('SESSION_SOURCE_IDENTITY_INVALID', 503)
           const content = texts(message.content), prefix = 'Router 请求：'
@@ -629,6 +652,11 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           if (verifiedPacket && Array.isArray(source.eventIds) && source.eventIds.length <= 30
             && isDeepStrictEqual(source.eventIds,input.events.map(event=>event.id))) {
             for (const [n,event] of input.events.entries()) {
+              const label={
+                'router.self-check':'定时自检','router.self-check.completed':'自检结果已返回',
+                'task.peer.request':'执行会话请求协作成员','router.follow-up':'定时跟进',
+              }[event.kind]
+              if(typeof label==='string')add(entry,'router-trigger-'+index+'-'+n,'user',label,{kind:'router-trigger'},message)
               const safe = safeRouterSettlementEvent(event)
               if (!safe || typeof event.id !== 'string' || !event.id) continue
               if (safe.kind==='source.message' && event.sourceId===event.source?.sourceId
@@ -794,7 +822,7 @@ function cachedHistory(authority,key,read){
 const resourceHash=row=>digest(JSON.stringify([row.text,row.redacted,row.skillName]))
 
 const proofTTL = 10000, proofLimit = 64
-async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = [], liveProof, proofScope, guard, includeTaskUsage = false, readTaskInputIds, executionActivity = false, readExecutionTiming, readResourceContents, readRouterTasks, resourceProof, requestTiming}) {
+async function projection({base, identity, persistence, validIdentity, notStarted, revision, secrets = [], liveProof, proofScope, guard, includeTaskUsage = false, readTaskInputIds, executionActivity = false, readExecutionTiming, readResourceContents, readRouterTasks, resourceProof, requestTiming, scopedGlobalRouter=false}) {
   const {sessionId} = identity
   if (!sessionId || !persistence?.readNative) return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
   const identityKey = JSON.stringify(identity), secretKey = digest(JSON.stringify(secrets))
@@ -804,7 +832,7 @@ async function projection({base, identity, persistence, validIdentity, notStarte
   let proofs = liveProofs.get(authority)
   if (!proofs) {proofs = new Map(); liveProofs.set(authority, proofs)}
   for (const [key, value] of proofs) if (value.expires <= Date.now()) proofs.delete(key)
-  if (liveProof) {
+  if (liveProof && !scopedGlobalRouter) {
     const saved = proofs.get(liveProof)
     const changed = () => ({...base, status:'ready', historyChanged:true, live:{active:false,items:[]}})
     if (saved && saved.secret !== secretKey) fail('SESSION_REDACTION_CHANGED',409)
@@ -853,7 +881,21 @@ async function projection({base, identity, persistence, validIdentity, notStarte
     return {...base, status: 'unavailable', reason: 'SESSION_UNAVAILABLE'}
   }
   if (snapshot.header?.id !== sessionId || !Array.isArray(snapshot.entries) || !Array.isArray(snapshot.context?.projection?.entries) || !validIdentity(snapshot)) fail('SESSION_IDENTITY_INVALID', 503)
-  const journalRevision = digest(JSON.stringify([sessionId, snapshot.journalDigest??snapshot.entries.at(-1)?.id,secretKey]))
+  if(scopedGlobalRouter){
+    const admitted=new Set((snapshot.audit??[]).filter(row=>row.domain==='admission'&&row.kind==='admitted').map(row=>row.payload?.entryId))
+    let inScope=false
+    const entries=snapshot.context.projection.entries.filter(({sourceEntry:entry})=>{
+      if(entry.type==='custom_message'&&entry.customType==='night.business-input'){
+        const source=entry.details?.source
+        inScope=['conversation-router','conversation-router-held-review'].includes(source?.kind)&&source.conversationId===identity.conversationId&&admitted.has(entry.id)
+        return inScope
+      }
+      return inScope&&entry.type==='message'&&['assistant','toolResult'].includes(entry.message?.role)
+    })
+    snapshot={...snapshot,context:{...snapshot.context,projection:{...snapshot.context.projection,entries}}}
+  }
+  const revisionMaterial=scopedGlobalRouter?snapshot.context.projection.entries.map(row=>[row.sourceEntry.id,row.messages]):snapshot.journalDigest??snapshot.entries.at(-1)?.id
+  const journalRevision = digest(JSON.stringify([sessionId,revisionMaterial,secretKey]))
   // Validate/redact committed history once, retaining its exact pending-call
   // pairing state for the bounded live suffix. No cached authorization.
   const calls = new Map()
@@ -862,7 +904,7 @@ async function projection({base, identity, persistence, validIdentity, notStarte
   if (executionActivity&&readExecutionTiming) try {timing=await measure(requestTiming,'diagnostics',()=>readExecutionTiming(identity))} catch { /* Optional diagnostics never blocks committed history. */ }
   const resourceCandidates = readResourceContents ? [] : undefined
   const items = await measure(requestTiming,'projection',()=>projectEntries(snapshot, identity, secrets, calls, true, taskInputs, executionActivity, timing, resourceCandidates, currentTitles))
-  const live = persistence.readLive ? await projectLive(snapshot, identity, secrets, await persistence.readLive(sessionId), calls, executionActivity) : undefined
+  const live = !scopedGlobalRouter&&persistence.readLive ? await projectLive(snapshot, identity, secrets, await persistence.readLive(sessionId), calls, executionActivity) : undefined
   if (revision && revision !== journalRevision) fail('SESSION_PAGE_STALE', 409)
   let nextProof
   const liveCalls = new Map([...calls].map(([id, call]) => {
@@ -870,7 +912,7 @@ async function projection({base, identity, persistence, validIdentity, notStarte
     const {resourceArgs, ...safe} = call
     return [id, safe]
   }))
-  const canProve=proofScope && liveCalls.size<=256 && JSON.stringify([...liveCalls]).length<=65536 && typeof snapshot.journalDigest==='string' && persistence.readNativeDigest
+  const canProve=!scopedGlobalRouter && proofScope && liveCalls.size<=256 && JSON.stringify([...liveCalls]).length<=65536 && typeof snapshot.journalDigest==='string' && persistence.readNativeDigest
   if(canProve)nextProof=issueLiveProof(snapshot.journalDigest,liveCalls)
   const fixed={status:'ready',revision:journalRevision,...(includeTaskUsage?{tokenUsage:nativeTokenUsage(snapshot.entries)}:{}),
     ...taskTodos(snapshot,identity,secrets),items}
@@ -1015,15 +1057,16 @@ async function taskProjection({task, ...options}) {
     }})
 }
 async function routerProjection({conversationId, readRouter, readRotations, ...options}) {
-  const router = await readRouter(), sessionId = router?.activeSessionId
-  const base = {conversationId, sessionId: sessionId ?? null, scope: 'current-router-session-context', items: [], total: 0, nextOffset: null}
+  const router = await readRouter(), sessionId = router?.sharedSessionId??router?.activeSessionId
+  const scopedGlobalRouter=router?.sharedSessionId===GLOBAL_ROUTER_SESSION
+  const base = {conversationId, sessionId: sessionId ?? null, scope: 'current-router-session-context', ...(scopedGlobalRouter?{routingMode:'shared'}:{}), items: [], total: 0, nextOffset: null}
   if (!router || !sessionId) return {...base, status: 'pending', reason: 'SESSION_NOT_STARTED'}
   if (router.id !== conversationId || !Number.isSafeInteger(router.generation) || router.generation < 1) fail('SESSION_IDENTITY_INVALID', 503)
-  let value = await projection({...options, revision: undefined, base: {...base, generation: router.generation, activeGeneration: router.generation}, identity: {sessionId, conversationId, generation: router.generation}, notStarted: true,
-    validIdentity: snapshot => snapshot.header.runtimeOwner === 'conversation-router' && snapshot.header.conversationId === conversationId && snapshot.header.generation === router.generation})
+  let value = await projection({...options, scopedGlobalRouter,revision: undefined, base: {...base, generation: router.generation, activeGeneration: router.generation}, identity: {sessionId, conversationId, generation: router.generation}, notStarted: true,
+    validIdentity: snapshot => snapshot.header.runtimeOwner === 'conversation-router' && snapshot.header.conversationId === (scopedGlobalRouter?GLOBAL_ROUTER_SCOPE:conversationId) && snapshot.header.generation === (scopedGlobalRouter?1:router.generation)})
   // Idle rotation starts a fresh context containing only private handoff data.
   // Select only a published, same-conversation predecessor; never expose handoff.
-  if (!options.liveProof && value.status === 'ready' && !value.items.some(row => row.kind !== 'router-packet-boundary') && readRotations) {
+  if (!scopedGlobalRouter && !options.liveProof && value.status === 'ready' && !value.items.some(row => row.kind !== 'router-packet-boundary') && readRotations) {
     const rotations = await readRotations()
     const previous = rotations.filter(row => row.state === 'published' && row.conversationId === conversationId
       && Number.isSafeInteger(row.oldGeneration) && row.oldGeneration > 0 && row.oldGeneration < router.generation
@@ -1035,7 +1078,7 @@ async function routerProjection({conversationId, readRouter, readRotations, ...o
   }
   if (options.revision && value.status === 'ready' && options.revision !== value.revision) fail('SESSION_PAGE_STALE', 409)
   const current = await readRouter()
-  if (current?.activeSessionId !== sessionId || current?.generation !== router.generation || current?.phase !== router.phase) fail('SESSION_PAGE_STALE', 409)
+  if ((current?.sharedSessionId??current?.activeSessionId) !== sessionId || current?.generation !== router.generation || current?.phase !== router.phase) fail('SESSION_PAGE_STALE', 409)
   return value
 }
 async function finalRead(value, options) {

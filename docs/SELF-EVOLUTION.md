@@ -1,7 +1,7 @@
 # Bot-shared autonomous learning
 
 Night Bot is a personal-assistant Agent initialization kit. It learns reusable
-reference material through conversation memory and post-completion task reviews;
+reference material through conversation memory and Router-selected periodic checks;
 learning is not permission to change the user's objective or execute new actions.
 No developer identity, credential or private business policy is built into it.
 
@@ -17,15 +17,7 @@ recall or proof that the model will always choose the right note.
 
 Router 是 Bot 的语义决策核心，依据当前认证消息判断记忆或学习 Skill 的增改删并直接执行短维护。Host 不用话术正则再次判断授权，也不增加授权模型、空任务或先写 experience 的门槛。普通对话候选与无工具任务复盘保持独立；它们不获得 Router 专用写权限。记忆从上下文提炼，正文固定为 Summary、Why、How to apply，三项必填且不写推测；原因必须有来源支持，原话留在证据元数据中。个人偏好按原提出者判断适用性，项目背景按当前场景判断，不把来源作者等同于适用对象。来源、权限与失败合同见 [MEMORY](MEMORY.md#渠道长期偏好)。
 
-The real task service attaches reflection to the durable SQLite `task.completed`
-event stream, requests a scan after a committed completion and on normal recovery,
-and scans existing completion events at startup. A review is separate background
-work, after task completion has committed. It cannot undo that state, block the
-completion receipt or execute tools. A channel installation is not a prerequisite.
-The task service binds task execution sessions to ledger actor/group principals;
-other conversational integrations require explicit authenticated bindings. Router
-result assessment is separate from this tool-free retrospective: learning neither
-releases dependencies nor creates authority for a follow-up task.
+默认任务服务不在任务结束时触发自动复盘，也不在开机补扫全部完成事件。SQLite 持久保存自检水位，每两个小时通知同一个 Router 检查各渠道仍在执行或最近完成的任务。Router 可把核对现状派给异步只读会话；已接纳不等于已查证。收到核查结果后，只在当前版本与原授权仍有效时纠正、继续或反馈。只有确有可复用的证据，才用自检工具选择记忆/Skill 复盘，或把可独立使用的说明写进共享知识库。复盘不改变任务状态或授予新权限。
 
 每次复盘仅接收有稳定 ID 的完成、执行和操作证据，不传整段聊天或原始命令正文。模型最多提出三条有复用价值的经验，每条必须包含 summary、why、howToApply 和本任务有效 evidenceIds；没有合适经验时返回空列表。三段正文直接写结论、有依据的原因与具体用法，不保存假设或推测，不写任务流水。原因未说明时如实标明，不将用户陈述当作独立验证。证据 ID 留在既有 review 和来源元数据中，不重复铺入经验正文；合法 ID 不证明模型解释在语义上成立，当前事实和明确要求仍须重新核对。
 

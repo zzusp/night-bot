@@ -1,6 +1,7 @@
 export function readErrorLabel(source?: string) {
  if (!source) return '读取内容';
  if (source.includes('/messages/')) return '记录正文';
+ if (source.endsWith('/activity')) return '工作动态';
  if (source.includes('stage-times')) return '处理耗时';
  if (source.includes('/session')) return source.startsWith('/tasks/') ? '执行记录' : '路由记录';
  if (source.includes('/learning')) return '任务复盘';

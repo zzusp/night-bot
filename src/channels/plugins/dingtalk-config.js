@@ -38,11 +38,11 @@ export function validateConfig(config={}){
   operatorPeers=[...operatorPeers]
   const operatorNotifications=boolean(config.dingtalk_operator_notifications,'dingtalk_operator_notifications',false)
   if(operatorNotifications&&!operatorPeers.length)throw failure('DINGTALK_OPERATOR_PEERS_REQUIRED')
-  const name=text(config.dingtalk_name,'dingtalk_name'),prompt=text(config.dingtalk_prompt,'dingtalk_prompt',{empty:true})
-  return {profile,conversationType,groupId,groupName,userId,userName,name,prompt,binding:binding?{...binding}:undefined,
+  const name=text(config.dingtalk_name,'dingtalk_name')
+  return {profile,conversationType,groupId,groupName,userId,userName,name,binding:binding?{...binding}:undefined,
     storageKey,accountMode,executable:text(config.dingtalk_executable,'dingtalk_executable'),writesAuthorized:boolean(config.dingtalk_writes_authorized,'dingtalk_writes_authorized',false),listen:boolean(config.dingtalk_listen,'dingtalk_listen',true),
     operatorNotifications,operatorPeers,humanUserId:text(config.dingtalk_human_user_id,'dingtalk_human_user_id'),currentUserName:text(config.dingtalk_current_user_name,'dingtalk_current_user_name'),
-    groups:conversationType==='chat-room'&&groupId?[{groupId,...prompt!==undefined?{responsibility:prompt}:{}}]:[],directChats:conversationType==='chat',directPeers:conversationType==='chat'&&binding?[binding.peerId]:[],assistantActorId:binding?.actorId,responsibility:prompt}
+    groups:conversationType==='chat-room'&&groupId?[{groupId}]:[],directChats:conversationType==='chat',directPeers:conversationType==='chat'&&binding?[binding.peerId]:[],assistantActorId:binding?.actorId}
 }
 
 export function validateDingtalkInstance(instance){
@@ -81,5 +81,5 @@ export const dingtalkBindingKey=binding=>hash(JSON.stringify([binding.profile,bi
 export function dingtalkEditable(row){
   const config=row.config,prefix=config.dingtalk_conversation_type==='chat-room'?'dingtalk_group_':'dingtalk_user_'
   const targetKind=config[prefix+'name']!==undefined?'name':'id'
-  return {channelId:row.channelId,version:dingtalkConfigVersion(row),name:config.dingtalk_name??'',prompt:config.dingtalk_prompt??'',conversationType:config.dingtalk_conversation_type,targetKind,target:config[prefix+targetKind],writesAuthorized:config.dingtalk_writes_authorized===true}
+  return {channelId:row.channelId,version:dingtalkConfigVersion(row),name:config.dingtalk_name??'',conversationType:config.dingtalk_conversation_type,targetKind,target:config[prefix+targetKind],writesAuthorized:config.dingtalk_writes_authorized===true}
 }

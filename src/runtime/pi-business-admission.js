@@ -130,7 +130,7 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
     append('cancelled',{id,reason});await commit();cancelled.add(id)
    })
   },
-  async deliver(session,id,{deliverAs='steer',beforeDeliver}={}){
+  async deliver(session,id,{deliverAs='steer',beforeDeliver,onlyWhileStreaming=false}={}){
    healthy();if(taskFinished&&internalPackets.has(id)&&packets.get(id)?.source.kind==='job-completion')return {id,retired:true};if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED')
    if(!['steer','followUp'].includes(deliverAs))throw fail('PI_BUSINESS_ADMISSION_MODE_INVALID')
    const packet=packets.get(id);if(!packet)throw fail('PI_BUSINESS_ADMISSION_MISSING')
@@ -151,7 +151,8 @@ export async function createBusinessAdmission({store,authorize,bindInternal,auth
     healthy();if(paused)throw pauseReason??fail('PI_BUSINESS_ADMISSION_PAUSED')
     if(cancelled.has(id))throw fail('PI_BUSINESS_INPUT_CANCELLED')
     const command=!internalPackets.has(id)?skillCommand(packet):undefined
-    current={id,messages:[structuredClone(packet)]}
+    if(onlyWhileStreaming&&!session.isStreaming)return {id,deferred:true}
+    if(!onlyWhileStreaming)current={id,messages:[structuredClone(packet)]}
     if(command){
      if(typeof authorizeSkillCommand!=='function')throw fail('PI_SKILL_COMMAND_DENIED')
      commands.bindSession(session)

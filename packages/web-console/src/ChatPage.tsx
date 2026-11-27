@@ -12,12 +12,11 @@ import {createDrafts, emptyDraft, type Draft, type Attempt, type Drafts} from '.
 export {createDrafts, type Attempt, type Drafts} from './chat-drafts';
 interface Receipt { conversationId: string; status: string; accepted?: boolean }
 
-export default function ChatPage(props: { id?: string; drafts: Drafts; onAccepted: () => void; onResolved?: (id: string) => void }) {
+export default function ChatPage(props: { id?: string; drafts: Drafts; onAccepted: () => void }) {
   const current = useResource<{conversationId: string}>('/chat-current');
   const resolvedId = props.id || current.data?.conversationId;
-  useEffect(() => { if (resolvedId) props.onResolved?.(resolvedId); }, [resolvedId, props.onResolved]);
   if (!props.id && !current.data) return current.error ? <Notice error={current.error} onRetry={current.refresh} /> : <Loading>正在读取 Web 对话…</Loading>;
-  return <ChatContent {...props} id={props.id || current.data?.conversationId} />;
+  return <ChatContent {...props} id={resolvedId} />;
 }
 
 function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; onAccepted: () => void }) {
@@ -92,7 +91,7 @@ function ChatContent({ id, drafts, onAccepted }: { id?: string; drafts: Drafts; 
   const extra: Message[] = attempt && !messages.some(message => message.requestId === attempt.requestId)
     ? [{ id: attempt.requestId, role: 'user', text: attempt.text, attachments: attempt.files?.map(file => ({ name: file.name, mediaType: file.type, bytes: file.size })), createdAt: attempt.createdAt, status: ['sending', 'pending'].includes(attempt.state) ? 'pending' : 'unknown' }] : [];
   const busy = attempt?.state === 'sending';
-  return <ConversationFrame endpoint={id ? `/chat/${encodeURIComponent(id)}` : undefined}>
+  return <ConversationFrame>
     {query.data?.truncated && <div className="history-scope">当前显示最近 500 条消息；更早记录仍保存在 Bot 中。</div>}
     {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data} />}
     {query.loading && !query.data && id ? <Loading>正在读取会话…</Loading> : <ConversationMessages key={key} endpoint={id ? `/chat/${encodeURIComponent(id)}` : null} accessError={query.error} accessUpdatedAt={query.updatedAt} onRefresh={query.refresh} messages={[...messages, ...extra]}

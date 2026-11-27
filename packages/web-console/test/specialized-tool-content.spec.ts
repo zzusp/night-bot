@@ -1,3 +1,4 @@
+import {openRouter} from './open-router';
 import {expect, test, type Page} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {FIXTURE_TOKEN} from './preview.mjs';
@@ -22,8 +23,8 @@ async function open(page: Page) {
   await page.goto('/#/channels/room-product');
   await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN);
   await page.getByRole('button', {name: '连接工作空间', exact: true}).click();
-  await page.getByRole('tab', {name: '路由', exact: true}).click();
-  const history = page.getByRole('tabpanel', {name: '路由', exact: true}).locator('.execution-history');
+  await openRouter(page);
+  const history = page.getByRole('region',{name:'路由记录'}).locator('.execution-history');
   await expect(history.locator('[data-message-id="call-lookup"]')).toBeAttached();
   for (const summary of await history.locator('.execution-tool-group:not([open]) > summary').all()) await summary.click();
   return history;

@@ -1,3 +1,4 @@
+import {openRouter} from './open-router';
 import {expect, test, type Page} from '@playwright/test'
 import {FIXTURE_TOKEN} from './preview.mjs'
 
@@ -44,7 +45,7 @@ async function openRecord(page: Page, view: typeof task | typeof router) {
   await page.goto('/#' + view.path)
   await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN)
   await page.getByRole('button', {name: '连接工作空间', exact: true}).click()
-  if (view === router) await page.getByRole('tab', {name: '路由', exact: true}).click()
+  if (view === router) await openRouter(page)
   const record = page.locator('.execution-transcript')
   await expect(record).toBeVisible()
   return record

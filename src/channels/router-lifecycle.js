@@ -32,7 +32,7 @@ function comparableRouterPacket(packet){
 }
 export const sameRouterPacket=(left,right)=>isDeepStrictEqual(comparableRouterPacket(left),comparableRouterPacket(right))
 function buildRouterPacketViews(row,batch,legacyProgressIdentity=false){
-    const id=`router-input:${hash([row.id,batch.map(event=>event.id)])}`
+    const id=`router-input:${hash([row.id,batch.map(event=>event.id),...batch.some(event=>event.reviewedPacketIds?.length)?[batch.map(event=>event.reviewedPacketIds??[])]:[]])}`
     const body={conversationId:row.id,generation:row.generation,events:batch.map(event=>{
       // The lookup receipt can make a source read-only after admission. Business
       // tools enforce that flag from the live ledger; it is not input identity.

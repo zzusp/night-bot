@@ -19,7 +19,9 @@ export function followUpSettlementArgs(packetSource,args){
 export function routerModelEvent(event,{compactCompletion=false}={}){
   const view=pick(event,['id','kind','sourceId','messageVersion','taskId','taskEventId','directRouter','suppressChannelOutcome'])
   if(event.kind==='router.follow-up')view.followUp=pick(event.wake,['occurrenceAt','sourceId','sourceVersion','actorId','instruction'])
-  if(event.kind==='router.lookup.completed')view.lookupResult=pick(event.lookupResult,['lookupId','sourceId','messageVersion','state','completedAt','summary','limitations'])
+  if(event.selfCheck)view.selfCheck=event.selfCheck
+  if(event.kind==='router.lookup.completed'||event.kind==='router.self-check.completed')view.lookupResult=pick(event.lookupResult,['lookupId','sourceId','messageVersion','state','completedAt','summary','limitations'])
+  if(event.kind==='router.self-check.completed'&&event.lookupResult?.snapshots)view.lookupResult.snapshots=event.lookupResult.snapshots
   if(event.kind==='operator.message')view.operator=pick(event.operator,['requestId','actorId','text','destination'])
   if(event.source){
     const source=conversationSource(event.source)
@@ -49,7 +51,7 @@ export function routerModelBatch(row,inbox){
   const batch=[]
   let users=0
   for(const event of inbox){
-    if(batch.length&&(event.kind==='router.follow-up'||batch[0].kind==='router.follow-up'))break
+    if(batch.length&&[event.kind,batch[0].kind].some(kind=>['router.follow-up','router.self-check','router.self-check.completed'].includes(kind)))break
     if(batch.length&&(event.kind==='operator.message')!==(batch[0].kind==='operator.message'))break
     if(batch.length&&(event.suppressChannelOutcome===true)!==(batch[0].suppressChannelOutcome===true))break
     if(['source.message','operator.message'].includes(event.kind)&&users>=15)break

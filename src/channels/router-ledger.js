@@ -1,3 +1,6 @@
+import {GLOBAL_ROUTER_SESSION} from './router-identity.js'
+import {ROUTER_SELF_CHECK_INTERVAL,ROUTER_SELF_CHECK_CLOCK,selfCheckTaskScope,STANDALONE_SELF_CHECK_SCOPE} from './router-self-check.js'
+import {collaborationKey,peerRoles,peerAvailable} from '../tasks/peer-work.js'
 import {bindTaskMilestone} from '../tasks/milestone-notification.js'
 import {triageHandoff,routerTriageConclusion} from './triage-conclusion.js'
 import {inspectionIsCurrent,taskWaitIdentity,MIN_WAIT_RECHECK_MS} from '../tasks/inspection.js'
@@ -100,7 +103,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     const value={decisionId:row.id,conversationId:row.conversationId,sourceId:row.sourceId,messageVersion:row.messageVersion,...triageHandoff(decision.handoff)}
     return routerTriageConclusion({...event,source,triageConclusion:value})
   }
-  const pendingInbox = (conversationId, deliverable) => rows('router_inbox').filter(row=>row.conversationId===conversationId&&row.state==='pending'&&(!deliverable||!row.deliveryHold))
+  const pendingInbox = (conversationId, deliverable) => rows('router_inbox').filter(row=>row.conversationId===conversationId&&row.state==='pending'&&(!deliverable||!row.deliveryHold&&!row.sharedHold))
   const sourceLinks=db.prepare("SELECT body FROM dynamic_source_links WHERE json_extract(body,'$.conversationId')=? AND json_extract(body,'$.sourceId')=? AND json_extract(body,'$.messageVersion')=?")
   const heldReplies=db.prepare(`SELECT body FROM (SELECT body FROM dynamic_notifications UNION ALL SELECT body FROM dynamic_archived_notifications)
     WHERE json_extract(body,'$.payload.conversationId')=? AND json_extract(body,'$.payload.sourceId')=?
@@ -109,8 +112,9 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
   const heldArrangement=db.prepare(`SELECT body FROM dynamic_task_events WHERE json_extract(body,'$.kind')='task.arranged'
     AND json_extract(body,'$.taskId')=? AND json_extract(body,'$.sourceId')=? AND json_extract(body,'$.messageVersion')=?
     ORDER BY json_extract(body,'$.arrangementRevision') DESC LIMIT 1`)
+  const reviewHoldId=row=>row?.deliveryHold?.handoffId??(row?.sharedHold?'shared:'+hash(row.sharedHold):undefined)
   function heldSource(row){
-    if(row?.state!=='pending'||row.kind!=='source.message'||!row.deliveryHold)return
+    if(row?.state!=='pending'||row.kind!=='source.message'||!reviewHoldId(row))return
     const source=read('sources',row.sourceId,true)
     if(source?.groupId===row.conversationId&&source.version===row.messageVersion&&source.channel!=='internal'
       &&!source.retracted&&!source.authorizationRevoked&&!source.triageHold&&!source.archiveRestoreHold&&latest(source))return source
@@ -157,7 +161,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     // Only clear the restriction belonging to the checked hold, never a separate unknown effect.
     const released=new Set(row.heldReviews?.filter(review=>review.decision==='continue').map(review=>review.handoffId))
     return rows('router_rotations').every(rotation=>rotation.conversationId!==row.conversationId
-      ||rotation.id===row.deliveryHold.handoffId||released.has(rotation.id)||!rotation.recovery?.unknownSourceIds.includes(row.sourceId))
+      ||rotation.id===row.deliveryHold?.handoffId||released.has(rotation.id)||!rotation.recovery?.unknownSourceIds.includes(row.sourceId))
   }
   function independentSource(pending, excluded){
     return pending.find(row=>{
@@ -223,16 +227,19 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
   }
   function taskEvent(event) {
     const task = read('tasks',event.taskId,true)
-    if (task?.conversationId) {
+    const conversationId=task?.conversationId??(event.kind==='task.inspection'&&event.standalone===true?selfCheckTaskScope(task):undefined)
+    if (conversationId) {
       const outcome=isTaskOutcome(event)
-      const muted=outcome&&(event.suppressChannelOutcome===true||suppressChannelOutcome(task))
+      const muted=outcome&&(event.suppressChannelOutcome===true||suppressChannelOutcome(task)||event.kind==='task.completed'&&task.metadata?.work?.reportsFinal===false)
       const outcomePolicy=muted?{suppressChannelOutcome:true}:{}
+      if(event.kind==='task.peer.request'&&readEvent(event.id)&&digest(readEvent(event.id).request)!==digest(event.request))fail('TASK_PEER_MESSAGE_CONFLICT')
       if(!readEvent(event.id))db.prepare('INSERT INTO dynamic_task_events(id,body) VALUES (?,?)').run(event.id,JSON.stringify({...event,...outcomePolicy,eventVersion:1,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,recordedAt:new Date().toISOString()}))
       // 普通等待只保留审计；已排空的技术失败复用自己的巡检事件回报。
       const inspectionReport=event.kind==='task.blocked'&&event.resultSource!=='pi-task-result'&&(task.technicalFailure||task.sessionFailure
         ||task.lastDecision?.limitations?.some(code=>['TASK_SESSION_NO_SUBMISSION','TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(code)))
-      if(event.kind==='task.waiting'||inspectionReport)return
-      return enqueue(task.conversationId,event.id,{kind:event.kind,taskId:task.taskId,taskEventId:event.id,...outcome?{trackOutcome:true}:{},...outcomePolicy})
+      if(event.kind==='task.waiting'||inspectionReport||event.kind==='task.completed'&&task.metadata?.work?.reportsFinal===false
+        &&!rows('dependencies').some(dependency=>dependency.prerequisiteTaskId===task.taskId))return
+      return enqueue(conversationId,event.id,{kind:event.kind,taskId:task.taskId,taskEventId:event.id,...outcome?{trackOutcome:true}:{},...outcomePolicy})
     }
   }
   function outcomeDisposition(row,event){
@@ -300,7 +307,79 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     return result
   }
   function command(kind, a, commandId) {
+    if(kind==='router.self-check.tick'){
+      if(!Number.isSafeInteger(a.now)||a.now<0)fail('ROUTER_SELF_CHECK_CLOCK')
+      const prior=read('router_upgrade_audit',ROUTER_SELF_CHECK_CLOCK,true)
+      if(prior&&a.now<prior.nextAt)return changed({nextAt:prior.nextAt,conversations:[]})
+      const nextAt=a.now+ROUTER_SELF_CHECK_INTERVAL
+      write('router_upgrade_audit',{id:ROUTER_SELF_CHECK_CLOCK,nextAt})
+      if(!prior)return changed({nextAt,conversations:[]})
+      const scoped=new Map()
+      const since=new Date(prior.nextAt-ROUTER_SELF_CHECK_INTERVAL).toISOString()
+      for(const task of rows('tasks')){
+        const scope=selfCheckTaskScope(task)
+        if(!scope||task.archivedAt||task.archiveRestoreHold||task.archiveRestore?.reviewRequired||!(task.status==='active'||task.status==='completed'&&(task.completion?.at??'')>=since))continue
+        if(!scoped.has(scope))scoped.set(scope,[])
+        scoped.get(scope).push(task.taskId)
+      }
+      for(const [id,taskIds]of scoped){
+        for(let start=0;start<taskIds.length;start+=24)enqueue(id,'self-check:'+hash([prior.nextAt,start]),
+          {kind:'router.self-check',selfCheck:{occurrenceAt:new Date(a.now).toISOString(),taskIds:taskIds.slice(start,start+24)}})
+      }
+      if(!scoped.size){
+        enqueue(STANDALONE_SELF_CHECK_SCOPE,'self-check:'+hash([prior.nextAt,0]),
+          {kind:'router.self-check',selfCheck:{occurrenceAt:new Date(a.now).toISOString(),taskIds:[]}})
+        scoped.set(STANDALONE_SELF_CHECK_SCOPE,[])
+      }
+      return changed({nextAt,conversations:[...scoped.keys()]})
+    }
+
+    if(kind==='router.self-check.continue'){
+      conversationOf(a)
+      return operation(a,()=>{
+        const task=read('tasks',required(a.taskId),true),event=read('router_inbox',required(a.eventId),true)
+        const lookup=event?.lookupResult?.lookupId&&read('router_actions',event.lookupResult.lookupId,true)?.result?.lookup
+        const snap=lookup?.result?.snapshots?.find(item=>item.taskId===a.taskId)
+        const incident=event?.kind==='task.inspection'&&event.taskEventId?readEvent(event.taskEventId):null
+        if(a.conversationId!==STANDALONE_SELF_CHECK_SCOPE||selfCheckTaskScope(task)!==a.conversationId||task.archivedAt
+          ||task.archiveRestoreHold||task.archiveRestore?.reviewRequired||event?.conversationId!==a.conversationId
+          ||event.state!=='pending'||event.sharedHold||event.deliveryHold)fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+        if(incident){
+          if(incident.taskId!==task.taskId||incident.sessionId!==task.sessionId||incident.inspectionKey!==task.inspection?.key
+            ||!inspectionIsCurrent(task)||!task.inspection?.pending||a.kind!=='resume')fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+        }else if(event.kind!=='router.self-check.completed'||lookup?.state!=='completed'||lookup.conversationId!==a.conversationId
+          ||lookup.selfCheckEventId!==event.selfCheck?.requestEventId||!event.selfCheck?.taskIds.includes(a.taskId)
+          ||!lookup.taskIds.includes(a.taskId)||!snap||task.inspection?.pending)fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+        if(a.expectedRequirementRevision!==task.requirementRevision||a.expectedControlRevision!==task.controlRevision
+          ||!incident&&(snap.requirementRevision!==task.requirementRevision||snap.controlRevision!==task.controlRevision
+          ||snap.contextRevision!==(task.contextRevision??0)||snap.runSequence!==(task.runSequence??0)
+          ||snap.status!==task.status||snap.leaseEpoch!==(task.leaseEpoch??0)))fail('DYNAMIC_TASK_REVISION_STALE')
+        const sources=(task.sourceRefs??[]).map(id=>read('sources',id,true))
+        if(!sources.length||sources.some(source=>!source||source.channel!=='web'||source.actorId!==task.ownerActorId||!latest(source)
+          ||source.retracted||source.authorizationRevoked||source.triageHold||source.archiveRestoreHold))fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+        if(!task.drained||task.recovering||task.control==='cancelled'||blockers(task.taskId).operations.length
+          ||task.humanRequests?.some(row=>row.status==='waiting-reply')
+          ||task.dialogue?.some(row=>!row.reply&&!row.replyError))fail('ROUTER_TASK_RESUME_NOT_QUIESCENT')
+        const args={taskId:task.taskId,expectedRequirementRevision:a.expectedRequirementRevision,expectedControlRevision:a.expectedControlRevision,operationId:a.operationId}
+        if(a.kind==='reopen'&&task.status==='completed')return reduce('task.reopen',{...args,sameGoal:true},commandId)
+        if(a.kind==='resume'&&task.status==='active')return reduce('task.control',{...args,control:'active'},commandId,incident?{routerScheduling:true}:undefined)
+        fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+      })
+    }
     if(kind==='router.lookup.submit'){
+      if(a.selfCheckEventId!==undefined){
+        conversationOf(a)
+        return operation(a,()=>{
+          const event=read('router_inbox',a.selfCheckEventId,true)
+          if(event?.kind!=='router.self-check'||event.conversationId!==a.conversationId||event.state!=='pending'||event.sharedHold
+            ||!Array.isArray(a.taskIds)||!a.taskIds.length||a.taskIds.length>3||new Set(a.taskIds).size!==a.taskIds.length
+            ||a.taskIds.some(id=>!event.selfCheck.taskIds.includes(id)||selfCheckTaskScope(read('tasks',id,true))!==a.conversationId))fail('ROUTER_SELF_CHECK_SCOPE')
+          const id='router-action:'+hash([a.conversationId,a.operationId])
+          return changed({lookup:{id,conversationId:a.conversationId,taskIds:a.taskIds,selfCheckEventId:event.id,state:'pending',
+            createdAt:new Date().toISOString(),deadlineAt:new Date(Date.now()+30000).toISOString()}})
+        })
+      }
+
       conversationOf(a);const source=sourceOf(a)
       return operation(a,()=>{
         if(a.taskIds!==undefined&&(!Array.isArray(a.taskIds)||!a.taskIds.length||a.taskIds.length>3||new Set(a.taskIds).size!==a.taskIds.length))fail('ROUTER_LOOKUP_ARGUMENT_INVALID')
@@ -323,16 +402,17 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       if(!lookup||row.conversationId!==a.conversationId)fail('ROUTER_LOOKUP_SCOPE')
       if(lookup.state!=='pending')return changed({lookup})
       if(!['completed','failed','timed-out','interrupted'].includes(a.status))fail('ROUTER_LOOKUP_RESULT_INVALID')
-      const source=read('sources',lookup.sourceId,true)
-      const fresh=source&&source.groupId===a.conversationId&&source.version===lookup.messageVersion&&latest(source)&&!source.retracted&&!source.authorizationRevoked&&!source.triageHold&&!source.archiveRestoreHold
+      const source=lookup.selfCheckEventId?null:read('sources',lookup.sourceId,true)
+      const fresh=lookup.selfCheckEventId?true:source&&source.groupId===a.conversationId&&source.version===lookup.messageVersion&&latest(source)&&!source.retracted&&!source.authorizationRevoked&&!source.triageHold&&!source.archiveRestoreHold
       lookup.state=fresh?a.status:'discarded';lookup.completedAt=new Date().toISOString()
       if(a.status==='completed'&&fresh){
         if(typeof a.summary!=='string'||!a.summary.trim()||a.summary.length>4000||!Array.isArray(a.limitations)||a.limitations.length>4||a.limitations.some(text=>typeof text!=='string'||text.length>300)||!Array.isArray(a.snapshots)||a.snapshots.length>3||lookup.taskIds.length>0&&a.snapshots.length!==lookup.taskIds.length||new Set(a.snapshots.map(row=>row.taskId)).size!==a.snapshots.length)fail('ROUTER_LOOKUP_RESULT_INVALID')
-        for(const snap of a.snapshots){const task=read('tasks',snap.taskId,true);if(lookup.taskIds.length>0&&!lookup.taskIds.includes(snap.taskId)||!task||task.groupId!==a.conversationId)fail('ROUTER_LOOKUP_SCOPE');if(task.requirementRevision!==snap.requirementRevision||task.controlRevision!==snap.controlRevision||(task.contextRevision??0)!==snap.contextRevision||(task.runSequence??0)!==snap.runSequence||task.status!==snap.status||(task.leaseEpoch??0)!==snap.leaseEpoch)lookup.state='stale'}
+        for(const snap of a.snapshots){const task=read('tasks',snap.taskId,true);if(lookup.taskIds.length>0&&!lookup.taskIds.includes(snap.taskId)||!task||(lookup.selfCheckEventId?selfCheckTaskScope(task):task.groupId)!==a.conversationId)fail('ROUTER_LOOKUP_SCOPE');if(task.requirementRevision!==snap.requirementRevision||task.controlRevision!==snap.controlRevision||(task.contextRevision??0)!==snap.contextRevision||(task.runSequence??0)!==snap.runSequence||task.status!==snap.status||(task.leaseEpoch??0)!==snap.leaseEpoch)lookup.state='stale'}
         if(lookup.state==='completed')lookup.result={summary:a.summary,limitations:a.limitations,snapshots:a.snapshots}
       }
       write('router_actions',row)
-      const event=fresh?enqueue(a.conversationId,'lookup:'+lookup.id,{kind:'router.lookup.completed',lookupResult:{lookupId:lookup.id,sourceId:lookup.sourceId,messageVersion:lookup.messageVersion,state:lookup.state,completedAt:lookup.completedAt,...lookup.result??{}}}):undefined
+      const selfCheck=lookup.selfCheckEventId?{taskIds:lookup.taskIds,requestEventId:lookup.selfCheckEventId}:undefined
+      const event=fresh?enqueue(a.conversationId,'lookup:'+lookup.id,{kind:selfCheck?'router.self-check.completed':'router.lookup.completed',...selfCheck?{selfCheck}:{},lookupResult:{lookupId:lookup.id,...selfCheck?{}:{sourceId:lookup.sourceId,messageVersion:lookup.messageVersion},state:lookup.state,completedAt:lookup.completedAt,...lookup.result??{}}}):undefined
       return changed({lookup,...event?{event}:{}})
     }
     if(kind==='router.follow-up.enqueue'){
@@ -432,6 +512,44 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       }
       return changed({dispositions,notifications,routerEvents})
     }
+    if(kind==='router.shared.adopt'){
+      const id=required(a.conversationId),existing=read('conversations',id,true)
+      if(a.sessionId!==GLOBAL_ROUTER_SESSION||(existing?.activeSessionId??null)!==a.expectedId||(existing?.generation??null)!==a.expectedGeneration||!Array.isArray(a.eventIds))fail('ROUTER_GENERATION_STALE')
+      const row=existing??{id,conversationId:id,activeSessionId:a.sessionId,generation:1,phase:'active',cursor:0,lastHandoffCursor:0,holderVersion:1}
+      if(row.sharedSessionId&&row.sharedSessionId!==a.sessionId)fail('ROUTER_GENERATION_STALE')
+      row.sharedSessionId=a.sessionId
+      if(row.phase!=='active'){
+        row.legacyRotationId=row.rotationId
+        delete row.rotationId
+        row.phase='active'
+      }
+      for(const id of new Set(a.eventIds)){
+        const event=read('router_inbox',id,true)
+        if(event?.conversationId===row.id&&event.state==='pending'&&!event.deliveryHold&&!event.sharedHold)write('router_inbox',{...event,sharedHold:{code:'ROUTER_LEGACY_BATCH_REVIEW_REQUIRED',sessionId:row.activeSessionId,generation:row.generation}})
+      }
+      write('conversations',row);return changed({conversation:row})
+    }
+    if(kind==='router.shared.release'){
+      const row=conversationOf(a)
+      if(row.sharedSessionId!==a.sessionId||!Array.isArray(a.eventIds)||!a.eventIds.length)fail('ROUTER_GENERATION_STALE')
+      for(const id of new Set(a.eventIds)){
+        const event=read('router_inbox',id)
+        if(event.conversationId!==row.id||event.state!=='pending'||event.deliveryHold
+          ||event.sharedHold&&event.sharedHold.sessionId!==a.sessionId)fail('ROUTER_EVENT_SCOPE')
+        if(event.sharedHold){delete event.sharedHold;write('router_inbox',event)}
+      }
+      return changed({conversation:row})
+    }
+    if(kind==='router.shared.hold'){
+      const row=conversationOf(a)
+      if(row.sharedSessionId!==a.sessionId||!Array.isArray(a.eventIds)||!a.eventIds.length)fail('ROUTER_GENERATION_STALE')
+      for(const eventId of new Set(a.eventIds)){
+        const event=read('router_inbox',eventId)
+        if(event.conversationId!==row.id)fail('ROUTER_EVENT_SCOPE')
+        if(event.state==='pending'&&!event.sharedHold)write('router_inbox',{...event,sharedHold:{code:'ROUTER_ADMITTED_BATCH_REVIEW_REQUIRED',sessionId:a.sessionId,generation:row.generation,...a.packetId?{packetId:a.packetId}:{}}})
+      }
+      return changed({conversation:row})
+    }
     if (kind === 'router.ensure') {
       const id = required(a.conversationId), prior = read('conversations',id,true)
       if (prior) return changed({conversation:prior})
@@ -444,16 +562,43 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       requireWorkSource(source)
       if (!Array.isArray(a.tasks) || !a.tasks.length || !Array.isArray(a.dependencies ?? [])) fail('ROUTER_PLAN_INVALID')
       const created=[]
+      const collaborative=a.tasks.some(task=>task.workRole!==undefined||task.reportsFinal!==undefined)
+      const peer=a.peerRequestEventId===undefined?null:read('router_inbox',a.peerRequestEventId,true)
+      let parent
+      if(a.peerRequestEventId!==undefined){
+        sourceOf(a);if(source.retracted)fail('ROUTER_SOURCE_STALE')
+        parent=peer?.taskId&&read('tasks',peer.taskId,true)
+        const request=peer?.taskEventId&&readEvent(peer.taskEventId)
+        if(peer?.kind!=='task.peer.request'||peer.state!=='pending'||peer.peerAssignedTaskId||peer.conversationId!==a.conversationId
+          ||!peerAvailable(parent)||!parent.metadata?.work||parent.metadata.work.sourceId!==source.sourceId
+          ||parent.ownerActorId!==source.actorId||request?.request?.role!==a.tasks[0]?.workRole||a.tasks.length!==1
+          ||a.tasks[0].reportsFinal!==undefined&&typeof a.tasks[0].reportsFinal!=='boolean'||a.dependencies?.length)fail('ROUTER_WORK_PEER_REQUEST_STALE')
+      }else if(collaborative&&(a.tasks.some(task=>!peerRoles.includes(task.workRole)||typeof task.reportsFinal!=='boolean')||a.tasks.filter(task=>task.reportsFinal).length!==1))fail('ROUTER_WORK_PLAN_INVALID')
+      const workId=parent?.metadata.work.id??collaborationKey(a.conversationId,source.sourceId,a.operationId)
       for (const input of a.tasks) {
         for(const id of input.sourceRefs??[]){if(id!==source.sourceId){const context=read('sources',id);if(context.channel==='internal')fail('ROUTER_SOURCE_FORBIDDEN');sourceOf({sourceId:id,messageVersion:context.version,conversationId:source.groupId})}}
         const handoff=input.handoff===undefined?undefined:normalizeRouterHandoff(input.handoff)
         if(handoff!==undefined){sourceOf(a);if(source.retracted)fail('ROUTER_SOURCE_STALE')}
-        const result=reduce('task.create',{...input,...handoff===undefined?{}:{request:handoff},groupId:source.groupId,ownerActorId:source.actorId,sourceRefs:[...new Set([...(input.sourceRefs ?? []),source.sourceId])],operationId:a.operationId},`${commandId}:${input.taskId}`)
+        const {workRole,reportsFinal,...taskInput}=input
+        const work={id:workId,sourceId:source.sourceId,role:workRole??'general',reportsFinal:reportsFinal??!parent,cooperative:collaborative||!!parent}
+        if(parent&&work.reportsFinal){
+          for(const previous of rows('tasks').filter(item=>item.metadata?.work?.id===workId&&item.metadata.work.reportsFinal===true)){
+            if(previous.groupId!==parent.groupId||previous.ownerActorId!==parent.ownerActorId)fail('ROUTER_WORK_PLAN_INVALID')
+            previous.metadata.work.reportsFinal=false
+            saveTask(previous)
+          }
+        }
+        const result=reduce('task.create',{...taskInput,metadata:{...taskInput.metadata,work},...handoff===undefined?{}:{request:handoff},groupId:source.groupId,ownerActorId:source.actorId,sourceRefs:[...new Set([...(input.sourceRefs ?? []),source.sourceId])],operationId:a.operationId},`${commandId}:${input.taskId}`)
         const task=result.result.task;task.conversationId=source.groupId;task.arrangementRevision=1
         if(input.milestone!==undefined)task.milestoneNotification=bindTaskMilestone(input.milestone,source,task.requirementRevision)
         if(handoff!==undefined)recordRouterHandoff(task,source,a.operationId,handoff)
         else sourceOnlyTask(task,source,input.quote,true)
         saveTask(task);link(task,source,'create',input.quote);created.push(task)
+      }
+      let peerWake
+      if(peer){
+        peer.peerAssignedTaskId=created[0].taskId;write('router_inbox',peer)
+        peerWake=reduce('task.peer.assigned',{taskId:parent.taskId,targetTaskId:created[0].taskId,requestId:peer.taskEventId},commandId).result.peerWake
       }
       const dependencies=[]
       for (const input of a.dependencies ?? []) {
@@ -461,7 +606,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         const row=dependency(read('tasks',input.taskId),input,source,rows('dependencies'))
         write('dependencies',row);dependencies.push(row)
       }
-      return changed({tasks:created,dependencies})
+      return changed({tasks:created,dependencies,...peerWake?{peerWake}:{}})
     })
     if (kind === 'router.task-action') return operation(a,()=>{
       conversationOf(a);const task=read('tasks',a.action?.taskId)
@@ -537,7 +682,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(kind==='router.held-review.record'){
       const conversation=conversationOf(a),row=read('router_inbox',required(a.eventId),true)
       if(!row||row.conversationId!==conversation.id||row.sourceId!==a.sourceId||row.messageVersion!==a.messageVersion
-        ||row.deliveryHold?.handoffId!==a.handoffId||!heldSource(row))fail('ROUTER_HELD_REVIEW_STALE')
+        ||reviewHoldId(row)!==a.handoffId||!heldSource(row))fail('ROUTER_HELD_REVIEW_STALE')
       if(a.reviewCount!==(row.heldReviews?.length??0))fail('ROUTER_HELD_REVIEW_STALE')
       const evidence=heldEvidence(row)
       if(a.decision==='processed'){
@@ -550,7 +695,12 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         write('conversations',conversation)
       }else if(a.decision==='continue'){
         if(a.noEffect!==true||!mayReleaseHold(row)||evidence.tasks.length||evidence.replies.length)fail('ROUTER_HELD_REVIEW_EFFECT_UNKNOWN')
-        delete row.deliveryHold
+        if(row.deliveryHold)delete row.deliveryHold
+        else if(row.sharedHold){
+          if(typeof a.noEffectPacketId!=='string'||!a.noEffectPacketId||row.sharedHold.packetId&&row.sharedHold.packetId!==a.noEffectPacketId)fail('ROUTER_HELD_REVIEW_EFFECT_UNKNOWN')
+          row.reviewedPacketIds=[...new Set([...(row.reviewedPacketIds??[]),a.noEffectPacketId])]
+          delete row.sharedHold
+        }
       }else if(!['defer','no-decision'].includes(a.decision))fail('ROUTER_ARGUMENT_INVALID')
       const review={handoffId:a.handoffId,generation:a.generation,decision:a.decision,...a.decision==='processed'?{evidenceId:a.evidenceId,coverage:a.coverage.trim()}:{},recordedAt:new Date().toISOString()}
       ;(row.heldReviews??=[]).push(review)
@@ -569,7 +719,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         if(!row)fail('ROUTER_EVENT_SCOPE')
         if(row.kind==='operator.message'){if(a.webOnly!==true||row.operator?.destination!=='web'||!row.operatorReply)fail('ROUTER_OPERATOR_REPLY_REQUIRED')}else if(a.webOnly===true)fail('ROUTER_OPERATOR_BATCH_MIXED')
         if(row.state==='consumed')continue
-        if(row.deliveryHold)fail('ROUTER_EVENT_DELIVERY_HELD')
+        if(row.deliveryHold||row.sharedHold)fail('ROUTER_EVENT_DELIVERY_HELD')
         const event=row.taskEventId?readEvent(row.taskEventId):null
         if(row.trackOutcome===true)row.outcomeDisposition=outcomeDisposition(row,event)
         if(event?.kind==='task.inspection'&&event.reason==='wait-overdue'){
@@ -700,12 +850,24 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(q.kind==='triage.pending')return rows('triage').filter(row=>row.state==='pending'&&(!q.conversationId||row.conversationId===q.conversationId)).map(row=>read('sources',row.sourceId)).filter(row=>!row.routed&&!row.authorizationRevoked&&!row.triageHold&&!row.archiveRestoreHold&&latest(row)).slice(0,bounded(q.limit))
     if(q.kind==='router.upgrade-held')return {sources:rows('sources').filter(row=>row.triageHold&&(!q.conversationId||row.groupId===q.conversationId)),audit:rows('router_upgrade_audit').filter(row=>!q.conversationId||row.conversationId===q.conversationId)}
     if(q.kind==='router.source-status')return {triage:read('triage',`triage:${q.sourceId}`,true),event:rows('router_inbox').find(row=>row.sourceId===q.sourceId)??null}
+    if(q.kind==='router.self-check.clock')return read('router_upgrade_audit',ROUTER_SELF_CHECK_CLOCK,true)??null
+    if(q.kind==='router.self-check.completion'){
+      const task=read('tasks',q.taskId,true)
+      if(!task||selfCheckTaskScope(task)!==q.conversationId||task.archivedAt||task.archiveRestoreHold||task.archiveRestore?.reviewRequired||task.status!=='completed'||!task.drained||!task.completion)return null
+      const sources=(task.sourceRefs??[]).map(id=>read('sources',id,true))
+      const sourceInScope=source=>q.conversationId===STANDALONE_SELF_CHECK_SCOPE
+        ?source.channel==='web'&&source.actorId===task.ownerActorId:source.groupId===q.conversationId
+      if(!sources.length||sources.some(source=>!source||!sourceInScope(source)||!latest(source)||source.retracted
+        ||source.authorizationRevoked||source.triageHold||source.archiveRestoreHold))return null
+      const event=db.prepare("SELECT body FROM dynamic_task_events WHERE json_extract(body,'$.taskId')=? AND json_extract(body,'$.kind')='task.completed' AND json_extract(body,'$.commandId')=? LIMIT 1").get(task.taskId,task.completion.commandId)
+      return event?JSON.parse(event.body):null
+    }
     if(q.kind==='router.get')return read('conversations',q.conversationId,true)
     if(q.kind==='router.lookup.pending')return rows('router_actions').map(row=>row.result?.lookup).filter(row=>row?.state==='pending')
     if(q.kind==='router.action')return read('router_actions',`router-action:${hash([required(q.conversationId),required(q.operationId)])}`,true)
     if(q.kind==='router.list')return rows('conversations')
     if(q.kind==='router.operator.request'){const event=rows('router_inbox').find(row=>row.conversationId===q.conversationId&&row.kind==='operator.message'&&row.operator?.requestId===q.requestId&&row.operator.actorId===q.actorId);return event?{requestId:q.requestId,eventId:event.id,status:'accepted',webOnly:true}:null}
-    if(q.kind==='router.pending-conversations')return [...new Set([...rows('router_inbox').filter(row=>row.state==='pending').map(row=>row.conversationId),...rows('conversations').filter(row=>row.phase!=='active').map(row=>row.id)])]
+    if(q.kind==='router.pending-conversations')return [...new Set([...rows('router_inbox').filter(row=>row.state==='pending'&&(!row.sharedHold&&!row.deliveryHold||heldSource(row)&&!row.heldReviews?.some(review=>review.handoffId===reviewHoldId(row)))).map(row=>row.conversationId),...rows('conversations').filter(row=>row.phase!=='active').map(row=>row.id)])]
     if(q.kind==='router.batch-events'){
       required(q.conversationId)
       if(!Array.isArray(q.eventIds)||!q.eventIds.length||q.eventIds.length>30||new Set(q.eventIds).size!==q.eventIds.length)fail('ROUTER_ARGUMENT_INVALID')
@@ -723,15 +885,15 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       for(const row of candidates){
         if(row?.conversationId!==conversation.id||q.excludeEventIds?.includes(row.id))continue
         const source=heldSource(row)
-        if(!source||!q.includeReviewed&&row.heldReviews?.some(review=>review.generation===conversation.generation&&review.handoffId===row.deliveryHold.handoffId))continue
-        return {row,source,reviewCount:row.heldReviews?.length??0,evidence:heldEvidence(row),mayRelease:mayReleaseHold(row)}
+        if(!source||!q.includeReviewed&&row.heldReviews?.some(review=>review.generation===conversation.generation&&review.handoffId===reviewHoldId(row)))continue
+        return {row,source,handoffId:reviewHoldId(row),reviewCount:row.heldReviews?.length??0,evidence:heldEvidence(row),mayRelease:mayReleaseHold(row)}
       }
       return null
     }
     if(q.kind==='router.held-review.released')return rows('router_inbox').filter(row=>row.conversationId===q.conversationId
       &&row.heldReviews?.some(review=>review.decision==='continue')).flatMap(row=>row.heldReviews.filter(review=>review.decision==='continue')
         .map(review=>({sourceId:row.sourceId,handoffId:review.handoffId})))
-    if(q.kind==='router.delivery-holds')return [...new Set(rows('router_inbox').filter(row=>row.state==='pending'&&row.deliveryHold).map(row=>row.conversationId))]
+    if(q.kind==='router.delivery-holds')return [...new Set(rows('router_inbox').filter(row=>row.state==='pending'&&(row.deliveryHold||row.sharedHold)).map(row=>row.conversationId))]
     if(q.kind==='router.pending-completion')return rows('router_inbox').some(row=>row.conversationId===q.conversationId&&row.state==='pending'&&row.taskEventId&&readEvent(row.taskEventId)?.kind==='task.completed')
     if(q.kind==='router.inbox-count')return pendingInbox(q.conversationId,q.deliverable).length
     if(q.kind==='router.dependencies')return rows('dependencies').filter(row=>(!q.conversationId||row.conversationId===q.conversationId)&&(!q.taskId||row.taskId===q.taskId||row.prerequisiteTaskId===q.taskId))

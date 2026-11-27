@@ -51,9 +51,9 @@ neutral `quotedMessage` with internal `conversationId`, optional `actorId` and
 public identity contract. Transport-level `readMessage` still reports the original
 channel conversation and authenticated sender for that conversion.
 
-## 渠道职责配置
+## 渠道连接配置
 
-职责、助手设定和工作规范由可信部署配置提供，不从入站消息或任务摘要提取为配置。每个 `dingtalk-dws` 实例以唯一 `channelId` 绑定一个群聊或私聊；多群或多对端使用多个实例，不在一个实例中列出多个目标。公开 `config` 只接受 `dingtalk_*` 字段：
+渠道只配置身份、目标和收发能力。所有渠道共用 Router 工作原则，不保存或加载渠道提示词。旧配置中的 dingtalk_prompt 只为顺利启动而忽略，编辑保存时去掉。每个 `dingtalk-dws` 实例以唯一 `channelId` 绑定一个群聊或私聊；多群或多对端使用多个实例，不在一个实例中列出多个目标。公开 `config` 只接受 `dingtalk_*` 字段：
 
 | 配置 | 含义 |
 | --- | --- |
@@ -61,15 +61,17 @@ channel conversation and authenticated sender for that conversion.
 | `dingtalk_conversation_type` | 必填，`chat-room` 或 `chat` |
 | `dingtalk_group_id` / `dingtalk_group_name` | 群聊目标，至少一项；不能同时填私聊目标 |
 | `dingtalk_user_id` / `dingtalk_user_name` | 私聊对端 userId 或姓名，至少一项；不能同时填群目标 |
-| `dingtalk_name` / `dingtalk_prompt` | 渠道名称与本会话职责、助手设定、规范；Prompt 可用 `""` 明确清空，省略表示未指定 |
+| `dingtalk_name` | 渠道名称 |
 | `dingtalk_account_mode` / `dingtalk_executable` | 可选账号存储模式与 DWS 可执行文件 |
 | `dingtalk_listen` / `dingtalk_writes_authorized` | 监听默认 `true`，发送默认 `false`；关闭发送不关闭监听 |
 
 可选 operator 字段及耐久绑定见 [插件接口](CHANNEL-PLUGINS.md)。原 `groups[].responsibility`、`config.responsibility`、`profile`、`listen`、`writesAuthorized`、`directChats` 等不再是钉钉公开配置字段；插件内部标准化别名和历史审计字段不构成旧配置兼容入口，不机械迁移历史记录。
 
-配置只匹配本实例已认证的 conversation 类型、`channelId` 和目标 `conversationId`；私聊与群聊分别绑定，不借用其它会话职责。首次连接核对账号、组织、目标及对端身份并耐久绑定；未找到、多候选、资料不完整或后续身份不符均不得猜选。普通配置修改通过专用 CLI 离线保存，按 `restartRequired` 正常重启；保存不代表在线生效，也不验证真实登录、监听或外发。CLI 的 `--check` 不写盘、不调用 DWS；命令及环境导入见 [接入流程](ops/windows-local-runtime.md#指定钉钉群接入)。
+配置只匹配本实例已认证的 conversation 类型、`channelId` 和目标 `conversationId`；私聊与群聊分别绑定，不借用其它会话授权。首次连接核对账号、组织、目标及对端身份并耐久绑定；未找到、多候选、资料不完整或后续身份不符均不得猜选。普通配置修改通过专用 CLI 离线保存，按 `restartRequired` 正常重启；保存不代表在线生效，也不验证真实登录、监听或外发。CLI 的 `--check` 不写盘、不调用 DWS；命令及环境导入见 [接入流程](ops/windows-local-runtime.md#指定钉钉群接入)。
 
-标准任务服务把同一会话职责传入当前三个角色的系统指令：Router `resident-conversation-scope`、执行会话 `task:group-responsibility`，以及按任务所属认证会话解析的独立无工具复盘。Router 在每次系统指令编译时解析，执行和复盘在本次调用时取值；配置文字不进行模板插值，不混入用户事实，也不产生任务控制权、外发许可或跨会话记忆权限。职责配置不改变当前角色分工、任务版本与依赖守卫。`task.completed` 只证明任务账本完成，不证明群消息或附件送达；复盘保留该证据边界。
+## 升级到单 Router
+
+停机并离线备份。在启用新版本前，检查各旧 Router 的待处理批次；已接纳但效果不明确的事件会保留核对标记，不自动重放。新 Router 接管尚未接纳的输入，后续消息不被挂起批次堵住。旧会话和已提交效果仍留作审计，不复制到新模型上下文。回滚须用匹配的旧代码和备份。Web 记录按来源显示新 Router 已提交的历史，不展示全局实时原始流。
 
 ## 钉钉消息编辑与撤回
 
@@ -81,7 +83,7 @@ channel conversation and authenticated sender for that conversion.
 
 ## 渠道直入 Router 与历史分诊
 
-新渠道消息通过既有认证、去重、版本、撤回与来源准入后，在同一来源事务直接入对应会话 Router 的持久收件箱。没有前置模型分诊、自动收悉或分诊结论；不预筛“无需处理”的正文。Router 根据职责、真实作者、受话对象、原文和引用决定回复、任务或静默，入站本身不是交办或授权。
+新渠道消息通过既有认证、去重、版本、撤回与来源准入后，在同一来源事务直接入该渠道范围的持久收件箱，交给 Bot 唯一的 Router。没有前置模型分诊、自动收悉或分诊结论；不预筛“无需处理”的正文。Router 根据真实作者、受话对象、原文和引用决定回复、任务或静默，入站本身不是交办或授权。
 
 没有任务关联的直接来源须显式结清：`context-only` 表示无需动作的背景，`not-assigned` 表示未交办，`handled-inline` 须有同来源版本的 Router 冻结答复，`clarification` 保留原具体缺项与回执要求。静默原文留在同一原生 Router 上下文，不重新注入整个历史，不作为别的会话来源；Pi 原生压缩仍负责上下文预算。每批最多 15 条用户来源，沿用编码预算及溢出排队。任务派发与执行分离，Router 不等待任务结果才处理独立消息。
 
@@ -89,13 +91,17 @@ channel conversation and authenticated sender for that conversion.
 
 ## 常驻 Router 与事项直连
 
-Router 直接读新消息及引用，结合会话职责判断是匹配原任务、创建任务、查证后回复，还是保留为背景。受话对象或范围不清、原文与引用冲突时再针对性核对。恢复升级前的已分诊批次时，原文和当前权限仍优先；已静默处置的旧消息不重新入队，已有首答不重复发送。
+Router 直接读新消息及引用，判断是匹配原任务、创建任务、查证后回复，还是保留为背景。受话对象或范围不清、原文与引用冲突时再针对性核对。恢复升级前的已分诊批次时，原文和当前权限仍优先；已静默处置的旧消息不重新入队，已有首答不重复发送。
 
-每个已认证 `chat` / `chat-room` 有一个稳定 Router 身份。渠道账号命名空间、conversation 类型和 ID 共同隔离；私聊继续绑定已认证对端。Router 冷启动从已保存的渠道上下文核对原对端的记忆身份与会话 ID，不按参与者人数或最近发送者判断。早期上下文未保存记忆绑定时，只接受能还原原会话 ID 的已认证参与者；已保存的绑定若不匹配，不自动换人。群内共享安排上下文，真实 Router 对所属会话的执行 session 拥有完整调度权；原消息作者不是 Router 的调度许可人。Host 仍核对当前 Router 身份、代际及任务/会话归属，不能因为标题相同合并其它群的任务。
+一个 Bot 只有一个常驻 Pi Router。物理会话和生命周期共用，收件箱、来源版本、任务、授权和发送目标仍按认证渠道/对话隔离。模型每轮只看到当前对话可见的历史；Web 不直接读全局原始流。不同渠道可排队，Router 轮间交替处理。
 
-Router 负责理解转入原话、拆分/关联事项、查询和调整任务、澄清歧义以及评估执行结果。它使用受控的任务查询、任务动作、记忆/Skill 读取、来源绑定的长期记忆写入和回复能力，不代替执行会话运行业务脚本或外部写入。每个任务只有一个执行会话，补充和返工沿用原任务；没有每任务 Owner 或执行团队。Topic 不再是活动业务实体。
+独立任务可以不提供渠道。由渠道交办的任务保留原来源和回复地址。定时核查允许 `delivery_mode=silent`，到期只记录内部结清，不生成渠道回复；默认 `origin` 按已有方式回原对话。来源仍用于校验原授权和任务访问范围，不会因为没有回报地址而开放跨渠道读写。
 
-Router 区分新事项准入与已有事项后续。结合当前会话职责、原消息和历史关联识别进度追问，不仅凭提及操作者就判定未交办，也不要求用户重新点名或授权。先查同会话原任务，必要时回查来源；已有足够证据时直接回复具体进展和限制，以 `handled-inline` 结清，不为查询进度新建、重开或恢复任务。证据不足需执行会话补查时，沿原任务补充具体查询要求，不重复发布或扩大原执行范围。只有确实交给其他人且没有要求助手参与时，才使用 `not-assigned`；分诊首答不构成业务权限。
+共享 Router 的输入用原事件 ID 归档，尚未交给 Pi 的投递包作废后可用新包 ID 重投。已交给 Pi 的旧事件保留原收据，按事件复查：经原日志证明没有副作用才重送；已有动作或结果不明时不重跑。任务的完成提交与同伴入队互斥：先入队的反馈要先处理，已完成的会话不接收新的同伴消息。
+
+Router 每轮收到当前渠道的 ID、显示名、对话类型和会话标识；回复仍按 Host 认证的原消息地址发送，不靠模型猜。Router 负责理解转入原话、拆分/关联事项、查询和调整任务、澄清歧义以及评估执行结果。它使用受控的任务查询、任务动作、记忆/Skill 读取、来源绑定的长期记忆写入和回复能力，不代替执行会话运行业务脚本或外部写入。每个被派发的目标有一个独立执行会话。复杂事项的成员在同一协作组，使用 `task_peer_list` 查找、`task_peer_send` 直接交互；无合适成员才用 `task_peer_request` 让 Router 开新会话。同进程直接通知对端，不用轮询或转给 Router。SQLite 只记录待投递消息，以便掉电重启后接着处理；排队回执不代表对方已读。空闲会话由原调度唤醒，忙碌会话在当前已启动的工具结束后、下一次模型请求前接收，尚未开始的旧工具调用可以由模型重新决定。等待同伴而无法继续时用 `task_peer_wait` 释放执行位，不结束任务。只有最终结果和无法协作解决的阻塞才按原来源交 Router。Topic 不再是活动业务实体。
+
+Router 区分新事项准入与已有事项后续。结合原消息和历史关联识别进度追问，不仅凭提及操作者就判定未交办，也不要求用户重新点名或授权。先查同会话原任务，必要时回查来源；已有足够证据时直接回复具体进展和限制，以 `handled-inline` 结清，不为查询进度新建、重开或恢复任务。证据不足需执行会话补查时，沿原任务补充具体查询要求，不重复发布或扩大原执行范围。只有确实交给其他人且没有要求助手参与时，才使用 `not-assigned`；分诊首答不构成业务权限。
 
 判断业务卡点时，区分真实交办、适用规则和实际工具拒绝。Bot 旧回复（含被引用的回复）、任务摘要和只读查询的转述都不能产生新的审批条件。已有批准仍适用时不重复索要；没有依据的额外门槛不写入交办或汇报，不影响已有真实审批和工具权限校验。
 
@@ -248,7 +254,7 @@ capabilities, multi-account isolation and DWS source evidence are specified in
 {"channelPlugins":[{"type":"dingtalk-dws","enabled":false,"channelId":"dingtalk-room","config":{
   "dingtalk_profile":"YOUR_PROFILE","dingtalk_account_mode":"system",
   "dingtalk_conversation_type":"chat-room","dingtalk_group_id":"YOUR_ROOM_ID",
-  "dingtalk_name":"指定群助手","dingtalk_prompt":"仅处理本会话明确授权的请求。",
+  "dingtalk_name":"指定群助手",
   "dingtalk_listen":false,"dingtalk_writes_authorized":false
 }}]}
 ```

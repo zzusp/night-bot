@@ -45,3 +45,16 @@ test('interval and delay summaries use exact integral day, hour and minute units
     assert.equal(after.scheduleSummary, `${display}后执行一次`)
   }
 })
+
+
+test('only matching managed schedule bindings show a delivery mode and whitelisted origin',()=>{
+ const row={id:'silent',title:'Private check',status:'active',scheduledAt:'2026-11-27T08:00:00Z',kind:'at',sessionId:'private-session'}
+ const bindings=new Map([['silent',{mode:'silent',groupId:'g',sourceId:'do-not-show'}],['origin',{mode:'origin',groupId:'g'}]])
+ const page=schedulePage([row,{...row,id:'origin'},{...row,id:'native'}],{state:'active',offset:0,limit:20},[],{
+   bindings,originFor:id=>id==='g'?{kind:'channel',id,name:'研发会话'}:undefined,
+ })
+ assert.deepEqual(page.items.find(x=>x.id==='silent').delivery,{mode:'silent'})
+ assert.deepEqual(page.items.find(x=>x.id==='origin').delivery,{mode:'origin',origin:{kind:'channel',id:'g',name:'研发会话'}})
+ assert.equal(page.items.find(x=>x.id==='native').delivery,undefined)
+ assert.doesNotMatch(JSON.stringify(page),/private-session|do-not-show/)
+})

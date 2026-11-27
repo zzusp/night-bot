@@ -142,6 +142,7 @@ export type SettleEvent = {
 };
 export type ResidentSettlement = {requested:number; dispositions:SettleItem[]; reviews:SettleItem[]; events?:SettleEvent[]};
 const eventLabels: Record<string,string> = {
+  'router.follow-up':'定时跟进', 'router.self-check':'定时自检', 'router.self-check.completed':'自检结果已返回', 'task.peer.request':'请求协作成员',
   'source.message':'渠道消息', 'operator.message':'网页留言', 'task.completed':'任务完成',
   'task.blocked':'任务受阻', 'task.waiting':'任务等待', 'task.arranged':'任务安排',
   'task.changed':'任务变更', 'task.inspection':'任务巡查', 'router.lookup.completed':'后台查询回执',

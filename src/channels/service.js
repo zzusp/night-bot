@@ -25,8 +25,15 @@ export default class Channels extends Service {
   constructor(ctx){super(ctx,'channels');this.host=ctx;this.tails=new Map();this.handles=new Map();this.closed=false;this.contexts=new Map();this.targetHolds=new Map();this.activeTargets=new Map();this.targetInputs=new Set();this.transports=new Map();this.plugins=new Map();this.observers=new Map();this.ready=this.loadContexts();ctx.effect(()=>async()=>{this.closed=true;const pending=await Promise.allSettled([...this.tails.values()]);const disposed=await Promise.allSettled([...this.handles.values()].map(handle=>handle.dispose()));const errors=[...pending,...disposed].filter(result=>result.status==='rejected').map(result=>result.reason);if(errors.length)throw new AggregateError(errors,'Channel drain failed')},'channel drain')}
   async [Service.init](){await this.ready}
   async loadContexts(){for(const [key,value]of Object.entries(JSON.parse(await readRegular(join(this.host.runtimePaths.state,'channels','contexts.json'))??'{}')))this.contexts.set(key,value)}
-  groupContext(id){const context=this.contexts.get(id);if(!context)return;const plugin=this.plugins.get(context.channelId),responsibility=plugin?.responsibility?.(context),conversationName=plugin?.conversationDisplayName?.(context);return {...context,...conversationName?{conversationName}:{},...responsibility!==undefined?{responsibility}:{}}}
-  responsibility(id){return this.groupContext(id)?.responsibility}
+  groupContext(id){const context=this.contexts.get(id);if(!context)return;const plugin=this.plugins.get(context.channelId),conversationName=plugin?.conversationDisplayName?.(context);return {...context,...conversationName?{conversationName}:{}}}
+  routerOrigin(id){
+    const context=this.groupContext(id)
+    if(!context)return {scopeId:id}
+    const name=this.plugins.get(context.channelId)?.channelDisplayName
+    return {scopeId:id,channelId:context.channelId,channelName:typeof name==='string'&&name.trim()?name.trim().slice(0,256):context.channelId,
+      conversationId:context.conversationId,conversationType:context.type,...context.conversationName?{conversationName:context.conversationName}:{}}
+  }
+  responsibility(){return undefined}
   replySurface(id){return this.transports.get(this.contexts.get(id)?.channelId)?.capabilities?.replySurface}
   boundPrivatePeer(input){return input.type==='chat'?this.transports.get(input.channelId)?.privatePeer?.(input):undefined}
   privateScopeActor(context,id){
@@ -273,7 +280,6 @@ export default class Channels extends Service {
           return skill?.invocation?.userInvocable===true
         }}:{},setup:async ctx=>{
           await this.host.agentPresets.mount(ctx,'night-bot')
-          ctx.get('systemPrompt').section({name:'channel-conversation-responsibility',order:151,interpolate:false,officialText:()=>{const responsibility=this.responsibility(sessionId);return responsibility===undefined?'':'当前会话配置职责：'+responsibility+'。仅适用于当前认证会话，不创造发送许可、任务授权或跨会话访问权限。'}})
         }}
       handle=existing?await this.host.agents.resume({...options,resumeSessionId:sessionId}):await this.host.agents.create({...options,sessionId,meta:{cwd:workspace,agentPreset:'night-bot'}})
       this.handles.set(sessionId,handle)

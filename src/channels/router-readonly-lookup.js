@@ -1,3 +1,4 @@
+import {selfCheckPrompt,selfCheckTaskScope} from './router-self-check.js'
 import {ModelRuntime} from '@earendil-works/pi-coding-agent'
 import {z} from 'zod'
 import {containsSecret} from '../memory/format.js'
@@ -64,8 +65,11 @@ export function createRouterReadonlyLookups({ctx,query,command,models,schedule,t
    signal.throwIfAborted()
    const task=await query('task.get',{taskId})
     signal.throwIfAborted()
-   if(!task||task.groupId!==lookup.conversationId)fail('ROUTER_LOOKUP_TASK_SCOPE')
-   const progress=await routerTaskProgress(task,{persistence:ctx.get('sessionPersistence'),limit:2})
+   if(!task||(lookup.selfCheckEventId?selfCheckTaskScope(task):task.groupId)!==lookup.conversationId)fail('ROUTER_LOOKUP_TASK_SCOPE')
+   const progress=await routerTaskProgress(task,{persistence:ctx.get('sessionPersistence'),limit:2}).catch(error=>{
+     if(lookup.selfCheckEventId&&['PI_SESSION_CHANGED','PI_SESSION_UNCOMMITTED_TAIL','PI_SESSION_COMMIT_REQUIRED'].includes(error.code))return {coverage:'unavailable',activities:[]}
+     throw error
+   })
     signal.throwIfAborted()
    tasks.push({...version(task),title:task.title,status:task.status,control:task.control,observedAt:new Date().toISOString(),
     decision:task.lastDecision?{action:task.lastDecision.action,summary:task.lastDecision.summary?.slice(0,512)}:null,
@@ -125,6 +129,7 @@ export function createRouterReadonlyLookups({ctx,query,command,models,schedule,t
   return result(period+'查到'+matches.length+'条匹配的本渠道安排：'+details+(matches.length>5?'；其余'+(matches.length-5)+'条未展开。':'。'),limitations)
  }
  async function runLookup(lookup,signal){
+  if(lookup.selfCheckEventId){const input=await collect(lookup,lookup.taskIds,signal);return {...await infer(input.body,signal,selfCheckPrompt),snapshots:input.tasks.map(version)}}
   if(lookup.arrangement)return findArrangements(lookup,signal)
   const taskIds=await select(lookup,signal)
   if(!taskIds.length)return {summary:'没能确定你问的是哪个任务。可以发一下任务名或链接。',limitations:[],snapshots:[]}

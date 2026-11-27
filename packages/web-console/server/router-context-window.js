@@ -1,3 +1,4 @@
+import {GLOBAL_ROUTER_SCOPE,GLOBAL_ROUTER_SESSION} from '../../../src/channels/router-identity.js'
 import {calculateContextTokens,estimateTokens} from '@earendil-works/pi-coding-agent'
 import {getCurrentSystemMessage} from '@earendil-works/pi-ai'
 import {officialConversationContextBudget} from '../../../src/runtime/pi-official-settings.js'
@@ -67,11 +68,12 @@ export async function routerContextWindow(tasks, agents, conversationId) {
  const row=await tasks.store.query({kind:'router.get',conversationId})
  if(!row)return {...unavailable,reason:'not-started'}
  if(row.id!==conversationId||row.phase!=='active'||!Number.isSafeInteger(row.generation)||row.generation<1||!row.activeSessionId)return unavailable
- const actor=agents.get(row.activeSessionId),session=actor?.piSession,meta=actor?.metadata
+ const shared=row.sharedSessionId===GLOBAL_ROUTER_SESSION,sessionId=shared?row.sharedSessionId:row.activeSessionId
+ const actor=agents.get(sessionId),session=actor?.piSession,meta=actor?.metadata
  if(!actor)return {...unavailable,reason:'not-loaded'}
- if(actor.id!==row.activeSessionId||session?.sessionId!==row.activeSessionId||meta?.runtimeOwner!=='conversation-router'||meta.conversationId!==conversationId||meta.generation!==row.generation||actor.lifecycle?.signal.aborted||typeof session.getContextUsage!=='function')return unavailable
+ if(actor.id!==sessionId||session?.sessionId!==sessionId||meta?.runtimeOwner!=='conversation-router'||meta.conversationId!==(shared?GLOBAL_ROUTER_SCOPE:conversationId)||meta.generation!==(shared?1:row.generation)||actor.lifecycle?.signal.aborted||typeof session.getContextUsage!=='function')return unavailable
  const current=await tasks.store.query({kind:'router.get',conversationId})
- if(current?.activeSessionId!==row.activeSessionId||current.generation!==row.generation||current.phase!=='active'||agents.get(row.activeSessionId)!==actor||actor.lifecycle?.signal.aborted)return unavailable
+ if((current?.sharedSessionId??current?.activeSessionId)!==sessionId||current.generation!==row.generation||current.phase!=='active'||agents.get(sessionId)!==actor||actor.lifecycle?.signal.aborted)return unavailable
  return nativeContextWindow(session,model=>officialConversationContextBudget(model,'ROUTER').budgetTokens)
 }
 

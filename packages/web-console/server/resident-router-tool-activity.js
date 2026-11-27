@@ -24,7 +24,7 @@ const router = identity => !identity?.taskId && typeof identity?.conversationId 
 const summary = (toolName, value) => value && {toolName,text:JSON.stringify(value,null,2),redacted:true}
 const eventKinds = ['source.message','operator.message','task.completed','task.blocked','task.failed','task.changed','task.inspection',
   'task.arranged','task.reopened','task.started','task.resumed','task.result','task.waiting','task.cancelled','task.notification','task.interrupted',
-  'schedule.triggered','router.lookup.completed','notification.delivered','notification.failed']
+  'schedule.triggered','router.follow-up','router.self-check','router.self-check.completed','task.peer.request','router.lookup.completed','notification.delivered','notification.failed']
 const dispositionsAllowed = ['handled-inline','clarification','not-assigned','context-only','async-query']
 export function residentRouterSettleDetails(args,provedEvents) {
   if (!count(args?.eventIds,30) || args.eventIds.some(id=>typeof id!=='string'||!id)) return

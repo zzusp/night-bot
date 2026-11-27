@@ -64,7 +64,7 @@ export default class Reflection extends Service {
   directory(scope){return join(this.host.memory.store.directory(scope),'evolution')}
   async review(source,event){
     const task=await source.store.query({kind:'task.get',taskId:event.taskId})
-    if(!task||task.archiveRestore?.reviewRequired||task.archiveRestore?.completionEventIds?.includes(event.id)||typeof source.ownerActorId!=='string')return true
+    if(!task||source.validate&&!await source.validate(task,event)||task.archiveRestore?.reviewRequired||task.archiveRestore?.completionEventIds?.includes(event.id)||typeof source.ownerActorId!=='string')return true
     const binding={actorId:task.ownerActorId??source.ownerActorId,...task.groupId&&task.metadata?.channelType!=='chat'?{groupId:task.metadata?.memoryGroupId??task.groupId,groupWrite:true}:{}}
     const scope=memoryScope(binding,{scope:binding.groupId?'group':'personal'},true),directory=this.directory(scope),id=hash(event.id)
     // Serialize this event, not the whole memory scope, during tool-free inference.
@@ -133,6 +133,7 @@ export default class Reflection extends Service {
           await atomicWrite(join(directory,'state.json'),JSON.stringify(state,null,2)+'\n');return revoked
         }
         try{
+        if(source.validate&&!await source.validate(task,event))return null
         if(preparationError)throw preparationError
         if(lessons?.[0]?.admission&&lessons.some(lesson=>!lesson.applied)){
           const last=lessons.filter(lesson=>lesson.memoryWrite==='committed'&&lesson.memoryScopeRevision!==undefined).at(-1)

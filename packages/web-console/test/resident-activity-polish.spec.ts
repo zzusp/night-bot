@@ -1,3 +1,4 @@
+import {openRouter} from './open-router';
 import {test,expect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {FIXTURE_TOKEN} from './preview.mjs';
@@ -27,7 +28,7 @@ test('Router dispatch and settlement have a concise default with optional suppor
  await page.goto('/#/chat/sample-plan');
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
- await page.getByRole('tab',{name:'路由',exact:true}).click();
+ await openRouter(page);
  const record=page.locator('.execution-transcript');
  const fold=record.locator('.execution-turn-process').first();
  await fold.locator('summary').first().click();
@@ -99,7 +100,7 @@ test('task query and reopen show the current outcome before historical details',
  await page.goto('/#/chat/sample-plan');
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
- await page.getByRole('tab',{name:'路由',exact:true}).click();
+ await openRouter(page);
  const record=page.locator('.execution-transcript');
  const fold=record.locator('.execution-turn-process').first();
  await fold.locator('summary').first().click();

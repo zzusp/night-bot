@@ -1,3 +1,4 @@
+import {openRouter} from './open-router';
 import {test,expect} from '@playwright/test';
 import {FIXTURE_TOKEN} from './preview.mjs';
 test('execution search locates loaded records, handles keyboard, closes and hides after revoked reads', async({page})=>{
@@ -38,11 +39,10 @@ test('Router search sits immediately before the activity button at wide and narr
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
  await expect(page.getByRole('button',{name:'搜索执行记录',exact:true})).toHaveCount(0);
- const tab=page.getByRole('tab',{name:'路由',exact:true});
- await tab.click();
- const toolbar=page.locator('.conversation-tools');
+ await openRouter(page);
+ const toolbar=page.locator('.router-tools');
  const trigger=toolbar.getByRole('button',{name:'搜索执行记录',exact:true});
- const rail=toolbar.getByRole('button',{name:/活动面板/});
+ const rail=toolbar.getByRole('button',{name:/工作动态/});
  for (const width of [1440,390]) {
    await page.setViewportSize({width,height:880});
    await expect(trigger).toBeVisible();
@@ -61,7 +61,7 @@ test('Router search sits immediately before the activity button at wide and narr
    await expect(input).toBeFocused();
    await expect(trigger).toHaveCount(0);
    const opened=(await input.boundingBox())!, unchanged=(await rail.boundingBox())!;
-   expect(Math.abs(opened.y+opened.height/2-(b!.y+b!.height/2))).toBeLessThan(1);
+   expect(Math.abs(opened.y+opened.height/2-(unchanged.y+unchanged.height/2))).toBeLessThan(2);
    expect(unchanged.x).toBe(b!.x);
    if (width===1440) await page.screenshot({path:test.info().outputPath('router-search-open.png'),animations:'disabled'});
    await input.fill('任务进度');
@@ -80,9 +80,9 @@ test('Router search sits immediately before the activity button at wide and narr
    await expect(trigger).toBeFocused();
    await expect(trigger).toHaveAttribute('aria-expanded','false');
  }
- await page.getByRole('tab',{name:'对话',exact:true}).click();
+ await toolbar.getByRole('link',{name:'原对话',exact:true}).click();
  await expect(trigger).toHaveCount(0);
- await expect(rail).toBeVisible();
+ await expect(rail).toHaveCount(0);
 });
 
 test('Task search shares the right toolbar before panel, without overlapping progress or duplicating the control',async({page},info)=>{

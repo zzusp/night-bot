@@ -22,17 +22,22 @@ function summary(record) {
 // Native inactive means no future occurrence, not successful business completion.
 // There is currently no native paused state. Deleted schedules have no catalog row.
 // Explicit projection only: prompt, Session binding and delivery packets stay private.
-export function schedulePage(catalog, {state, offset, limit}, secrets = []) {
+export function schedulePage(catalog, {state, offset, limit}, secrets = [], {bindings,originFor}={}) {
   const rows = catalog.filter(record => record.status === state)
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt) || a.id.localeCompare(b.id))
   if (offset >= rows.length) offset = rows.length ? Math.floor((rows.length - 1) / limit) * limit : 0
-  const items = rows.slice(offset, offset + limit).map(record => ({
-    id: record.id,
-    title: visibleText(record.title, secrets, {maxLength: 256}).text,
-    state,
-    kind: record.kind,
-    scheduledAt: record.scheduledAt,
-    scheduleSummary: visibleText(summary(record), secrets, {maxLength: 512}).text,
-  }))
+  const items = rows.slice(offset, offset + limit).map(record => {
+    const binding=bindings?.get(record.id),mode=binding?.mode
+    const origin=mode==='origin'?originFor?.(binding.groupId):undefined
+    return {
+      id: record.id,
+      title: visibleText(record.title, secrets, {maxLength: 256}).text,
+      state,
+      kind: record.kind,
+      scheduledAt: record.scheduledAt,
+      scheduleSummary: visibleText(summary(record), secrets, {maxLength: 512}).text,
+      ...['silent','origin','router'].includes(mode)?{delivery:{mode, ...origin?{origin}:{}}}:{},
+    }
+  })
   return {items, total: rows.length, offset, limit, nextOffset: offset + items.length < rows.length ? offset + items.length : null}
 }

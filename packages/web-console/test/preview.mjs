@@ -231,7 +231,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
     const prefix = 'dingtalk_' + (conversationType === 'chat-room' ? 'group_' : 'user_')
     const targetKind = Object.hasOwn(config, prefix + 'id') ? 'id' : 'name'
     return {channelId: row.channelId, version: digest(JSON.stringify(row)), name: config.dingtalk_name ?? '',
-      prompt: config.dingtalk_prompt ?? '', conversationType, targetKind, target: config[prefix + targetKind], writesAuthorized: config.dingtalk_writes_authorized === true}
+      conversationType, targetKind, target: config[prefix + targetKind], writesAuthorized: config.dingtalk_writes_authorized === true}
   }
   const channelConfiguration = {
     async read() {return structuredClone(savedRows)},
@@ -262,7 +262,6 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
         dingtalk_profile: 'fixture-corp:fixture-user', dingtalk_conversation_type: input.conversationType,
         [targetField]: input.target, dingtalk_writes_authorized: input.writesAuthorized === true,
         ...(input.name === undefined ? {} : {dingtalk_name: input.name}),
-        ...(input.prompt === undefined ? {} : {dingtalk_prompt: input.prompt}),
       }}
       savedRows.push(row)
       return {changed: true, restartRequired: true, liveApplied: false, channel: structuredClone(row)}

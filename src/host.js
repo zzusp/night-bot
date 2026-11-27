@@ -99,8 +99,8 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
           return dingtalkEditable(row)
         }),
         editDingtalk:(channelId,input)=>configurationCall(async()=>{
-          const fields=['expectedVersion','name','prompt','conversationType','targetKind','target']
-          if(!input||Array.isArray(input)||typeof input!=='object'||fields.some(key=>!Object.hasOwn(input,key))||Object.keys(input).some(key=>![...fields,'writesAuthorized'].includes(key))||input.writesAuthorized!==undefined&&typeof input.writesAuthorized!=='boolean'||!['id','name'].includes(input.targetKind)||!['chat','chat-room'].includes(input.conversationType)||typeof input.expectedVersion!=='string'||!/^[a-f0-9]{64}$/.test(input.expectedVersion)||['name','prompt','target'].some(key=>typeof input[key]!=='string'||input[key].includes('\0'))||!input.target.trim())throw failure('DINGTALK_CHANNEL_REQUEST_INVALID')
+          const fields=['expectedVersion','name','conversationType','targetKind','target']
+          if(!input||Array.isArray(input)||typeof input!=='object'||fields.some(key=>!Object.hasOwn(input,key))||Object.keys(input).some(key=>![...fields,'writesAuthorized'].includes(key))||input.writesAuthorized!==undefined&&typeof input.writesAuthorized!=='boolean'||!['id','name'].includes(input.targetKind)||!['chat','chat-room'].includes(input.conversationType)||typeof input.expectedVersion!=='string'||!/^[a-f0-9]{64}$/.test(input.expectedVersion)||['name','target'].some(key=>typeof input[key]!=='string'||input[key].includes('\0'))||!input.target.trim())throw failure('DINGTALK_CHANNEL_REQUEST_INVALID')
           const {validateConfig:validateDingtalkConfig,validateDingtalkInstance,dingtalkEditable,dingtalkBindingKey,dingtalkConfigVersion}=await import('./channels/plugins/dingtalk-config.js')
           const {dingtalkChannelPaths,assertDingtalkStoragePath,assertDingtalkTargetSwitch,openDingtalkIngress,readDingtalkBinding}=await import('./channels/plugins/dingtalk-storage.js')
           const {bindDingtalkConfig}=await import('./channels/plugins/dingtalk-binding.js')
@@ -111,8 +111,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
           if(dingtalkConfigVersion(current)!==input.expectedVersion)throw failure('DINGTALK_CHANNEL_VERSION_CONFLICT')
           const before=dingtalkEditable(current),row=structuredClone(current),body={...input,name:input.name.trim(),target:input.target.trim()}
           if(body.name)row.config.dingtalk_name=body.name;else delete row.config.dingtalk_name
-          // 缺省空职责保持缺省，避免相同快照生成虚假的配置版本。
-          if(body.prompt||Object.hasOwn(row.config,'dingtalk_prompt'))row.config.dingtalk_prompt=body.prompt
+          delete row.config.dingtalk_prompt
           const targetChanged=['conversationType','targetKind','target'].some(key=>body[key]!==before[key])
           if(targetChanged&&body.writesAuthorized===true)throw failure('DINGTALK_CHANNEL_REQUEST_INVALID')
           if(body.writesAuthorized!==undefined)row.config.dingtalk_writes_authorized=body.writesAuthorized
@@ -197,14 +196,14 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
           return {changed:result.changed,restartRequired:result.restartRequired,liveApplied:result.liveApplied??false}
         }),
         addDingtalk:input=>configurationCall(async()=>{
-          const fields=['channelId','conversationType','targetKind','target','name','prompt','writesAuthorized']
+          const fields=['channelId','conversationType','targetKind','target','name','writesAuthorized']
           if(!input||Array.isArray(input)||typeof input!=='object'||Object.keys(input).some(key=>!fields.includes(key))||input.writesAuthorized!==undefined&&typeof input.writesAuthorized!=='boolean'||!['id','name'].includes(input.targetKind)||!['chat','chat-room'].includes(input.conversationType))throw failure('DINGTALK_CHANNEL_REQUEST_INVALID')
           const body=structuredClone(input),target='dingtalk_'+(body.conversationType==='chat-room'?'group':'user')+'_'+body.targetKind
           const {validateDingtalkInstance}=await import('./channels/plugins/dingtalk-config.js')
           const row={type:'dingtalk-dws',channelId:body.channelId,enabled:true,config:{
             dingtalk_conversation_type:body.conversationType,[target]:body.target,
             dingtalk_account_mode:'system',dingtalk_writes_authorized:body.writesAuthorized===true,dingtalk_listen:true,
-            ...body.name!==undefined?{dingtalk_name:body.name}:{},...body.prompt!==undefined?{dingtalk_prompt:body.prompt}:{},
+            ...body.name!==undefined?{dingtalk_name:body.name}:{},
           }}
           const {openDingtalkIngress}=await import('./channels/plugins/dingtalk-storage.js')
           const configuredAt=new Date().toISOString()

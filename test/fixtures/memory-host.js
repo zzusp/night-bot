@@ -26,7 +26,11 @@ export async function memoryHost(t,decide=()=>undefined,{callIdPrefix='',backgro
     if(decision?.error){res.writeHead(decision.errorStatus??400,{'content-type':'application/json'});res.end(JSON.stringify({error:{message:decision.error,type:'invalid_request_error'}}));return}
     res.writeHead(200,{'content-type':'text/event-stream'})
     const chunk=(delta,finish_reason=null)=>res.write('data: '+JSON.stringify({id:'memory-fixture',object:'chat.completion.chunk',created:1,model:body.model,choices:[{index:0,delta,finish_reason}]})+'\n\n')
-    if(decision?.tool){if(decision.prefixText)chunk({role:'assistant',content:decision.prefixText});chunk({role:'assistant',tool_calls:[{index:0,id:callIdPrefix+'call-'+requests.length,type:'function',function:{name:decision.tool,arguments:JSON.stringify(decision.args)}}]});if(decision.beforeFinish)await decision.beforeFinish();chunk({},'tool_calls')}
+    if(decision?.toolBatch){
+      chunk({role:'assistant',tool_calls:decision.toolBatch.map(({tool,args},index)=>({index,id:callIdPrefix+'batch-'+requests.length+'-'+index,type:'function',function:{name:tool,arguments:JSON.stringify(args)}}))})
+      chunk({},'tool_calls')
+    }
+    else if(decision?.tool){if(decision.prefixText)chunk({role:'assistant',content:decision.prefixText});chunk({role:'assistant',tool_calls:[{index:0,id:callIdPrefix+'call-'+requests.length,type:'function',function:{name:decision.tool,arguments:JSON.stringify(decision.args)}}]});if(decision.beforeFinish)await decision.beforeFinish();chunk({},'tool_calls')}
     else{chunk({role:'assistant',content:decision?.text??'verified'});chunk({},'stop')}
     res.end('data: [DONE]\n\n')
   })

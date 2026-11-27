@@ -19,6 +19,7 @@ export function executionTaskBrief(task){
   if(sourceOnlyTaskInput(task)&&task.metadata.routerSourceSelection)brief.sourceSelection=task.metadata.routerSourceSelection
   if(brief.dependencies)brief.dependencies=brief.dependencies.map(({condition,evaluation,...facts})=>facts)
  }
+ if(task.metadata?.work)brief.work={role:task.metadata.work.role,reportsFinal:task.metadata.work.reportsFinal}
  return brief
 }
 export function executionContext(input,audit=[]){
@@ -69,7 +70,7 @@ export function executionContext(input,audit=[]){
      resources:item.resources?.map(({value,...resource})=>({...resource,...value?.file?{file:value.file}:{}}))}
    : conversationSource(item))
  return {task:executionTaskBrief(input.task),sources:selected,materials,updates:usesHandoff?directUpdates:sourceOnlyTaskInput(input.task)?[]:updates,
-  ...(usesHandoff?{handoffs}:{}),dialogue:input.dialogue,humanReview:input.humanReview,blockers:input.blockers,
+  ...(usesHandoff?{handoffs}:{}),...(input.task.metadata?.work?{peerMessages:(input.wakes??[]).filter(item=>item.kind==='task.peer.message'&&item.payload.targetRequirementRevision===input.task.requirementRevision).map(item=>project(item.payload,['senderTaskId','senderRole','messageId','text']))}:{}),dialogue:input.dialogue,humanReview:input.humanReview,blockers:input.blockers,
   jobReconciliations:audit.filter(row=>row.domain==='job'&&row.kind==='reconciled').map(({payload:p})=>({jobId:p.jobId,toolCall:p.toolCall,outcome:p.outcome,exitStatus:p.exitStatus,producerObservation:p.producerObservation,partialEffectsPossible:true,noReplay:true,evidence:p.evidence}))}
 }
 
