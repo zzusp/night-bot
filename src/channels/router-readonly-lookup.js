@@ -15,8 +15,9 @@ const fail=code=>{throw Object.assign(Error(code),{code})}
 const version=task=>({taskId:task.taskId,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,contextRevision:task.contextRevision??0,runSequence:task.runSequence??0,status:task.status,leaseEpoch:task.leaseEpoch??0})
 /** Trusted NativeJobs producer; durable request/result and inbox live in the existing Router ledger. */
 export function createRouterReadonlyLookups({ctx,query,command,models,schedule,timeoutMs=LOOKUP_TIMEOUT_MS,now=Date.now,setTimer=setTimeout,clearTimer=clearTimeout}){
- const active=new Map(),queued=new Map(),expiring=new Map(),submitting=new Set();let closed=false,closing
- const stopController=ctx.get('jobs').attachController('router-readonly-lookup')
+ const submitting=new Set(),lateDrainErrors=[];let closed=false,closing
+ const queue=ctx.get('jobs').createDeadlineQueue({kind:'router-readonly-lookup',label:'Existing task status lookup',
+  outputLimitBytes:8192,concurrency:LOOKUP_CONCURRENCY,timeoutMs,now,setTimer,clearTimer})
  const wake=conversationId=>{void Promise.resolve().then(()=>schedule(conversationId)).catch(()=>ctx.logger.warn('ROUTER_LOOKUP_WAKE_FAILED'))}
  async function select(lookup,signal){
   const {conversationId,sourceId,messageVersion,taskIds}=lookup
@@ -88,64 +89,11 @@ export function createRouterReadonlyLookups({ctx,query,command,models,schedule,t
   const saved=await command('router.lookup.complete',{conversationId:lookup.conversationId,lookupId:lookup.id,...result},'router-lookup-complete:'+lookup.id)
   if(saved.result.event&&notify&&!closed)wake(lookup.conversationId)
  }
- const log=error=>ctx.logger.warn(error.code??'ROUTER_LOOKUP_COMPLETION_FAILED')
- const remainingMs=lookup=>Date.parse(lookup.deadlineAt)-now()
- function expire(id,entry){
-  if(closed||queued.get(id)!==entry)return
-  queued.delete(id)
-  const done=finish(entry.lookup,{status:'timed-out'}).finally(()=>expiring.delete(id))
-  expiring.set(id,done);void done.catch(log)
- }
- function enqueue(lookup){
-  const entry={lookup};queued.set(lookup.id,entry);pump()
-  if(closed||queued.get(lookup.id)!==entry)return
-  const remaining=remainingMs(lookup)
-  if(remaining<=0)expire(lookup.id,entry)
-  else{entry.timeout=setTimer(()=>expire(lookup.id,entry),remaining);entry.timeout?.unref?.()}
- }
- function pump(){
-  while(!closed&&active.size<LOOKUP_CONCURRENCY&&queued.size){
-   const [id,entry]=queued.entries().next().value
-   queued.delete(id);if(entry.timeout!==undefined)clearTimer(entry.timeout)
-   launch(entry.lookup)
-  }
- }
- function launch(lookup){
-  const controller=new AbortController(),cancelled=Promise.withResolvers(),shutdown=Promise.withResolvers()
-  const abort=()=>{controller.abort();cancelled.resolve()}
-  let jobId,work
-  const remaining=remainingMs(lookup)
-  const produce=async()=>{
-   let snapshots=[],result={status:'interrupted'}
-   const timeout=setTimer(abort,Math.min(timeoutMs,remaining));timeout.unref?.()
-   const operation=(async()=>{
-    const taskIds=await select(lookup,controller.signal)
-    if(!taskIds.length)return {summary:'没能确定你问的是哪个任务。可以发一下任务名或链接。',limitations:[]}
-    const input=await collect(lookup,taskIds,controller.signal);snapshots=input.tasks.map(version)
-    return infer(input.body,controller.signal)
-   })()
-   try{
-    const outcome=await Promise.race([operation,cancelled.promise.then(()=>null)])
-    if(outcome)result={status:'completed',...outcome,snapshots}
-    else result={status:closed?'interrupted':'timed-out'}
-   }catch{result={status:controller.signal.aborted?(closed?'interrupted':'timed-out'):'failed'}}
-   finally{clearTimer(timeout)}
-   try{await finish(lookup,result)}finally{
-    // Publish the timeout promptly, but release the execution slot only after
-    // the preceding producer has actually stopped using it.
-    // On Host shutdown this worker never admits anything again. A stuck,
-    // aborted read may finish on its own without keeping NativeJobs open.
-    await Promise.race([Promise.allSettled([operation]),shutdown.promise])
-   }
-   return result.status==='timed-out'||result.status==='interrupted'?{status:'killed',detail:result.status}:{status:'completed'}
-  }
-  if(remaining<=0)work=finish(lookup,{status:'timed-out'})
-  else try{jobId=ctx.get('jobs').start({kind:'router-readonly-lookup',label:'Existing task status lookup',outputLimitBytes:8192,run:()=>{work=produce();return {done:work,cancel:abort}}})}
-  catch(error){ctx.logger.warn(error.code??'ROUTER_LOOKUP_START_FAILED');abort();work=work??finish(lookup,{status:'failed'})}
-  const finished=work.finally(async()=>{
-   try{if(jobId){await ctx.get('jobs').wait(jobId);ctx.get('jobs').remove(jobId)}}finally{active.delete(lookup.id);pump()}
-  })
-  active.set(lookup.id,{abort,detach:shutdown.resolve,finished});void finished.catch(log)
+ async function runLookup(lookup,signal){
+  const taskIds=await select(lookup,signal)
+  if(!taskIds.length)return {summary:'没能确定你问的是哪个任务。可以发一下任务名或链接。',limitations:[],snapshots:[]}
+  const input=await collect(lookup,taskIds,signal)
+  return {...await infer(input.body,signal),snapshots:input.tasks.map(version)}
  }
  return {
   submit(args){
@@ -153,7 +101,15 @@ export function createRouterReadonlyLookups({ctx,query,command,models,schedule,t
    const pending=(async()=>{
     await command('router.lookup.submit',args,args.operationId)
     const lookup=(await query('router.action',{conversationId:args.conversationId,operationId:args.operationId})).result.lookup
-    if(lookup.state==='pending'&&!active.has(lookup.id)&&!queued.has(lookup.id)&&!expiring.has(lookup.id))enqueue(lookup)
+    if(lookup.state==='pending'&&!queue.has(lookup.id)){
+     const admitted=queue.enqueue(lookup.id,{deadlineAt:Date.parse(lookup.deadlineAt),run:signal=>runLookup(lookup,signal),
+      // Keep the existing live-cancel result and wake; shutdown never wakes Router.
+      settle:({status,value})=>finish(lookup,{status:status==='cancelled'?'timed-out':status,...value},status!=='interrupted')})
+     if(!admitted)try{await finish(lookup,{status:'interrupted'},false)}catch(error){
+      if(closed)lateDrainErrors.push(error)
+      throw error
+     }
+    }
     return {lookupId:lookup.id,status:lookup.state,readOnly:true}
    })()
    submitting.add(pending);void pending.then(()=>submitting.delete(pending),()=>submitting.delete(pending))
@@ -162,19 +118,14 @@ export function createRouterReadonlyLookups({ctx,query,command,models,schedule,t
   async recover(){
    const pending=await query('router.lookup.pending')
    await Promise.allSettled([...submitting])
-   for(const lookup of pending)if(!active.has(lookup.id)&&!queued.has(lookup.id)&&!expiring.has(lookup.id))await finish(lookup,{status:'interrupted'},false)
+   for(const lookup of pending)if(!queue.has(lookup.id))await finish(lookup,{status:'interrupted'},false)
   },
   close(){return closing??=(async()=>{
-   closed=true;for(const job of active.values()){job.abort();job.detach()}
-   await Promise.allSettled([...submitting])
-   try{
-    const results=await Promise.allSettled([
-     ...[...queued.values()].map(({lookup,timeout})=>{if(timeout!==undefined)clearTimer(timeout);return finish(lookup,{status:'interrupted'},false)}),
-     ...expiring.values(),...[...active.values()].map(job=>job.finished),
-    ])
-    const errors=results.filter(result=>result.status==='rejected').map(result=>result.reason)
-    if(errors.length)throw new AggregateError(errors,'ROUTER_LOOKUP_DRAIN_FAILED')
-   }finally{queued.clear();stopController?.()}
+   closed=true
+   // Wait for submissions, but only report failures settling already accepted work.
+   const [drain]=await Promise.allSettled([queue.close(),Promise.allSettled([...submitting])])
+   const errors=drain.status==='rejected'?[drain.reason,...lateDrainErrors]:lateDrainErrors
+   if(errors.length)throw new AggregateError(errors,'ROUTER_LOOKUP_DRAIN_FAILED')
   })()},
  }
 }
