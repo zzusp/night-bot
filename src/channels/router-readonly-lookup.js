@@ -29,7 +29,6 @@ export function createRouterReadonlyLookups({ctx,query,command,models,schedule,t
   signal.throwIfAborted()
   const quotedTaskIds=quote?.version===source.quote?.currentMessageVersion&&!quote?.retracted?quote?.taskIds:undefined
   const linked=[...new Set([...(source.taskIds??[]),...(quotedTaskIds??[])])]
-  if(linked.length===1)return linked
   const question=source.text?.slice(0,1200)??''
   const background=linked.length||source.quote?[]:(await recentSourceBackground(query,conversationId,[source])).sources
   const prior=[]
@@ -42,7 +41,11 @@ export function createRouterReadonlyLookups({ctx,query,command,models,schedule,t
   const contextIds=new Set(prior.flatMap(row=>row.taskIds))
   const index=await query('router.task-index',{conversationId,taskIds:[...linked,...contextIds],includeRecentTerminal:true,limit:12})
   signal.throwIfAborted()
-  const candidates=index.tasks.filter(({taskId,title})=>linked.length?linked.includes(taskId):contextIds.has(taskId)||question.includes(taskId)||title&&question.includes(title))
+  const named=index.tasks.filter(({taskId,title})=>question.includes(taskId)||title&&question.includes(title))
+  const namedIds=new Set(named.map(({taskId})=>taskId))
+  // A quote provides a candidate, not authority to override the current question.
+  if(linked.length===1&&!named.some(({taskId})=>taskId!==linked[0]))return linked
+  const candidates=index.tasks.filter(({taskId})=>linked.includes(taskId)||contextIds.has(taskId)||namedIds.has(taskId))
    .map(({taskId,title,status,control})=>({taskId,title,status,control,linked:linked.includes(taskId)}))
   if(!candidates.length)return []
   const body=JSON.stringify({question,candidates,recentLinkedSources:prior})

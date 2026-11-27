@@ -326,3 +326,48 @@ test('a pasted answer about work in another conversation does not select a merel
  assert.match(h.sent[0].text,/任务名或链接/)
  assert.equal(selected,0);assert.equal(summarized,0)
 })
+
+test('an explicit task name in the question can override the quoted task',{timeout:nativeTestTimeout(30000)},async t=>{
+ const quotedTask='quoted-task-a',namedTask='named-task-b',origin=channelMessage('plan-quoted',{text:'创建甲任务'})
+ let h,lookupId,result,selection,submitted=false
+ h=await residentRouterHost(t,body=>{
+  if(system(body).includes('NIGHT_ROUTER_TASK_LOOKUP_SELECT')){
+   selection=JSON.parse(body.messages.at(-1).content)
+   return {text:JSON.stringify({taskIds:[namedTask]})}
+  }
+  if(system(body).includes('NIGHT_ROUTER_TASK_LOOKUP。'))return {text:JSON.stringify({summary:'Task snapshot.',limitations:[]})}
+  if(requestTools(body).includes('task_result'))return call('task_result',{decision:{action:'complete',summary:'A completed.',evidence:['fixture'],limitations:[]}})
+  if(!requestTools(body).includes('resident_router_settle')||done(body))return {text:'Done'}
+  const packet=input(body),e=packet.events.find(event=>event.source?.messageId==='ask-about-b')??packet.events[0]
+  result??=packet.events.find(event=>event.lookupResult)?.lookupResult
+  if(e.source?.messageId==='plan-quoted'&&body.messages.at(-1)?.role!=='tool'){
+   return call('resident_task_plan',{operationId:'plan-quoted-task',sourceId:e.sourceId,messageVersion:e.messageVersion,
+    tasks:[{taskId:quotedTask,title:'甲发布',objective:'Run fixture A',handoff:'Run fixture A.',requirements:[]}],dependencies:[]})
+  }
+  if(e.source?.messageId==='ask-about-b'){
+   if(!submitted){submitted=true;return call('resident_task_lookup_async',{operationId:'lookup-named',sourceId:e.sourceId,messageVersion:e.messageVersion})}
+   const receipt=h.results.findLast(row=>row.name==='resident_task_lookup_async')
+   assert.equal(receipt?.result.isError,false,JSON.stringify(receipt))
+   lookupId=receipt.result.value.lookupId
+   return call('resident_router_settle',{operationId:'settle-named',eventIds:packet.events.map(event=>event.id),noTaskDispositions:[{eventId:e.id,outcome:'async-query',lookupId,sourceQuote:e.source.text,reason:'Query task named in the question'}]})
+  }
+  return call('resident_router_settle',{operationId:'settle:'+e.id,eventIds:packet.events.map(event=>event.id)})
+ })
+ const conversationId=h.host.ctx.channels.identity(origin).sessionId
+ await h.receive(origin);await h.service.whenIdle()
+ const original=(await h.query('source.list')).find(s=>s.messageId===origin.messageId)
+ assert.deepEqual((await h.query('router.source-current',{conversationId,sourceId:original.sourceId,includeTaskIds:true})).taskIds,[quotedTask])
+ await h.store.command({id:'seed-named-task',kind:'task.create',args:{taskId:namedTask,groupId:conversationId,conversationId,ownerActorId:'alice',title:'乙迁移',request:'乙迁移'}})
+ await h.store.command({id:'pause-named-task',kind:'task.control',args:{taskId:namedTask,control:'paused',expectedControlRevision:1}})
+ await eventually(async()=>(await h.query('task.get',{taskId:quotedTask})).status==='completed','quoted task completes')
+ await h.service.recover();await h.service.whenIdle()
+ await h.receive(channelMessage('ask-about-b',{text:'不是引用的那个，我问乙迁移做到哪了？',
+  quotedMessage:{messageId:origin.messageId,senderId:origin.senderId,text:origin.text}}))
+ await eventually(()=>result,'named task lookup result reaches Router')
+ await h.service.whenIdle()
+ assert.equal(result.lookupId,lookupId)
+ const {residentOperationId}=await import('../src/channels/resident-router-business.js')
+ const record=await h.query('router.action',{conversationId,operationId:residentOperationId(conversationId,'lookup-named')})
+ assert.deepEqual(record.result.lookup.result.snapshots.map(({taskId})=>taskId),[namedTask])
+ assert.deepEqual(new Set(selection.candidates.map(({taskId})=>taskId)),new Set([quotedTask,namedTask]))
+})
