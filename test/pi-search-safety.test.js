@@ -57,13 +57,89 @@ test('native find matches authorized hidden and nested files without a process o
  for(const [pattern,expected]of [['public.txt',/nested[\\/]deep[\\/]public.txt/],['**/*.txt',/\.hidden[\\/]proof.txt/],['work/.dot.txt',/\.dot.txt/]]){
   const result=await f.run('find',{pattern,path:'.'});assert.equal(result.isError,false,JSON.stringify(result));assert.match(JSON.stringify(result),expected);assert.doesNotMatch(JSON.stringify(result),/foreign.txt|sessions[\\/]/)
  }
- const missing=await f.run('find',{pattern:'missing.txt',path:'.'});assert.equal(missing.isError,false);assert.match(JSON.stringify(missing),/No files found/)
+ const missing=await f.run('find',{pattern:'missing.txt',path:'work'});assert.equal(missing.isError,false);assert.match(JSON.stringify(missing),/No files found/)
+ const incomplete=await f.run('find',{pattern:'missing.txt',path:'.'});assert.equal(incomplete.isError,false);assert.match(JSON.stringify(incomplete),/No matches in the checked scope.*Search incomplete.*access was denied/)
  for(const path of [f.foreign,join(f.own,'sessions'),join(f.own,'work/foreign-link')])assert.equal((await f.run('find',{pattern:'**/*',path})).isError,true)
  const definition=f.actor.ctx.get('tools').get('find',f.actor)
  assert.equal(isNativeSearchObservationalTool(definition,f.actor),true)
  assert.equal(isNativeSearchObservationalTool({...definition},f.actor),false)
  assert.equal(isNativeSearchObservationalTool(definition,{id:f.actor.id}),false)
  assert.equal(f.launched.length,0);assert.equal(f.requests.length,0)
+})
+test('find probes a fixed authorized path without walking unrelated entries',async t=>{
+ const f=await fixture(t),root=join(f.own,'work')
+ await mkdir(join(root,'noise'));await mkdir(join(root,'fixed','nested'),{recursive:true})
+ await Promise.all(Array.from({length:280},(_,i)=>writeFile(join(root,'noise','other-'+i+'.txt'),'irrelevant')))
+ await writeFile(join(root,'fixed','nested','proof.txt'),'proof')
+ await symlink(join(f.foreign,'work'),join(root,'alias'),'dir')
+ await writeFile(join(f.foreign,'work','hidden.txt'),'private')
+ for(const pattern of ['fixed/nested/proof.txt','./fixed/nested/proof.txt','fixed/nested/*.txt']){
+  const result=await f.run('find',{path:'work',pattern})
+  assert.equal(result.isError,false,JSON.stringify(result))
+  assert.match(JSON.stringify(result),/fixed\/nested\/proof.txt/)
+  assert.doesNotMatch(JSON.stringify(result),/Search incomplete|cursor=/)
+ }
+ const forbidden=await f.run('find',{path:'work',pattern:'alias/hidden.txt'})
+ assert.equal(forbidden.isError,false,JSON.stringify(forbidden));assert.match(JSON.stringify(forbidden),/symbolic link paths were not checked/);assert.doesNotMatch(JSON.stringify(forbidden),/hidden.txt/)
+ const suffix=await f.run('find',{path:'work',pattern:'**/fixed/nested/proof.txt',limit:1})
+ assert.equal(suffix.isError,false,JSON.stringify(suffix));assert.match(JSON.stringify(suffix),/fixed\/nested\/proof.txt.*cursor=/)
+ assert.equal(f.launched.length,0)
+})
+test('find reports partial coverage and resumes a large directory without duplicate matches',async t=>{
+ const f=await fixture(t),root=join(f.own,'work','large')
+ await mkdir(root)
+ await Promise.all(Array.from({length:275},(_,i)=>writeFile(join(root,'other-'+i+'.out'),'irrelevant')))
+ for(let i=0;i<3;i++)await writeFile(join(root,'match-'+i+'.txt'),'proof')
+ const args={path:'work/large',pattern:'*.txt',limit:1},found=[],seen=new Set()
+ let cursor
+ for(let page=0;page<8;page++){
+  const result=await f.run('find',{...args,...cursor?{cursor}:{}})
+  const text=JSON.stringify(result)
+  assert.equal(result.isError,false,text)
+  if(text.includes('Search incomplete'))assert.doesNotMatch(text,/No files found matching pattern/)
+  found.push(...new Set(text.match(/match-\d\.txt/g)??[]))
+  const next=/cursor=([\da-f-]{36})/.exec(text)?.[1]
+  if(!next){assert.doesNotMatch(text,/Search incomplete/);break}
+  assert.match(text,/Search incomplete.*pending/)
+  assert.ok(!seen.has(next));seen.add(next);cursor=next
+  if(page===0){
+   const invalid=await f.run('find',{...args,pattern:'*.out',cursor})
+   assert.equal(invalid.isError,true);assert.match(JSON.stringify(invalid),/SEARCH_CURSOR_INVALID/)
+  }
+ }
+ assert.ok(seen.size>=3)
+ assert.deepEqual(found.sort(),['match-0.txt','match-1.txt','match-2.txt'])
+ assert.equal(f.launched.length,0)
+})
+test('find cannot resume an open directory after the inspected scope changes',async t=>{
+ const f=await fixture(t),root=join(f.own,'work')
+ await writeFile(join(root,'first.txt'),'proof');await writeFile(join(root,'second.txt'),'proof')
+ const args={path:'work',pattern:'*.txt',limit:1},initial=await f.run('find',args)
+ const cursor=/cursor=([\da-f-]{36})/.exec(JSON.stringify(initial))?.[1];assert.ok(cursor)
+ await writeFile(join(root,'changed.txt'),'proof')
+ const result=await f.run('find',{...args,cursor})
+ assert.equal(result.isError,true,JSON.stringify(result));assert.match(JSON.stringify(result),/SEARCH_STALE_PATH/)
+ const reused=await f.run('find',{...args,cursor})
+ assert.equal(reused.isError,true);assert.match(JSON.stringify(reused),/SEARCH_CURSOR_INVALID/)
+})
+test('find returns every long UTF-8 path once across Pi output pages',async t=>{
+ const f=await fixture(t),root=join(f.own,'work','测'.repeat(64),'试'.repeat(64),'长'.repeat(64))
+ const expected=Array.from({length:100},(_,i)=>'long-'+String(i).padStart(3,'0')+'.txt')
+ await mkdir(root,{recursive:true})
+ await Promise.all(expected.map(name=>writeFile(join(root,name),'fixture')))
+ const args={path:'work',pattern:'**/long-*.txt',limit:100},seen=[]
+ let cursor,pages=0
+ do{
+  const result=await f.run('find',{...args,...cursor?{cursor}:{}})
+  assert.equal(result.isError,false,JSON.stringify(result))
+  const text=result.content[0].text
+  assert.doesNotMatch(text,/KB limit reached/)
+  seen.push(...(text.match(/long-\d{3}\.txt/g)??[]))
+  cursor=/cursor=([\da-f-]{36})/.exec(text)?.[1]
+  assert.ok(++pages<=4,'search should finish in a few pages')
+ }while(cursor)
+ assert.ok(pages>1)
+ assert.deepEqual(seen.sort(),expected)
 })
 test('Windows native grep retains the actual process privacy refusal without launching a child',{skip:process.platform!=='win32'},async t=>{
  const f=await fixture(t);await writeFile(join(f.own,'work/public.txt'),'PUBLIC_SEARCH_MARKER')
