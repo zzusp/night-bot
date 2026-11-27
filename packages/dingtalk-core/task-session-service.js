@@ -1059,7 +1059,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,dispatchFollowUp,
     readTasks:readPlatformTasks,appendOutbox:prepareDirectPlatformReply,
     notify:undefined})
-  readonlyLookups=createRouterReadonlyLookups({ctx,query,command,models:()=>roleModels('router'),schedule:groupId=>kickGroup(groupId)})
+  const lookupTimezone=groupId=>residentStore.getGroup(groupId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone
+  readonlyLookups=createRouterReadonlyLookups({ctx,query,command,timezone:lookupTimezone,models:()=>roleModels('router'),schedule:groupId=>kickGroup(groupId)})
   residentRouter=await openRouterLifecycle({ctx,store,root,settle:(args,id)=>command('router.settle',args,id),recordStage:recordResidentStage,models:()=>roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
     const platformPages=new Map()
     return registerResidentRouterTools(agentCtx,binding,{
@@ -1067,13 +1068,13 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     platformQuery:async(groupId,args)=>{
       const key=JSON.stringify([args.state??'all',args.day??null,args.limit??50])
       let snapshot=platformPages.get(key)
-      if(!snapshot||(args.offset??0)===0){snapshot={tasks:await readPlatformTasks(groupId),asOf:Date.now(),timezone:residentStore.getGroup(groupId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone,consumed:0,total:0};platformPages.set(key,snapshot)}
+      if(!snapshot||(args.offset??0)===0){snapshot={tasks:await readPlatformTasks(groupId),asOf:Date.now(),timezone:lookupTimezone(groupId),consumed:0,total:0};platformPages.set(key,snapshot)}
       if((args.offset??0)>snapshot.consumed)fail('platform_task_page_gap')
       const page=platformTaskPage(snapshot.tasks,args,{groupId,timezone:snapshot.timezone,now:snapshot.asOf})
       snapshot.consumed=Math.max(snapshot.consumed,page.nextOffset);snapshot.total=page.total
       return page
     },
-    platformConfig:groupId=>({responsibility:responsibilityFor(groupId),timezone:residentStore.getGroup(groupId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone,model:roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,maxConcurrentTasks:taskLimit()}),
+    platformConfig:groupId=>({responsibility:responsibilityFor(groupId),timezone:lookupTimezone(groupId),model:roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,maxConcurrentTasks:taskLimit()}),
     platformScheduleList:groupId=>platformSchedules.list(groupId),
     platformScheduleUpdate:args=>platformSchedules.update({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},{scheduleId:args.scheduleId,change:args.change}),
     platformScheduleDelete:args=>platformSchedules.delete({sourceMode:'direct',sourceId:args.source.sourceId,actorId:args.source.actorId,groupId:args.conversationId,requestId:args.requestId,messageId:args.source.messageId,messageVersion:args.source.version,timezone:residentStore.getGroup(args.conversationId)?.timezone??legacy.getAgentConfig().timezone??Intl.DateTimeFormat().resolvedOptions().timeZone},{scheduleId:args.scheduleId}),
