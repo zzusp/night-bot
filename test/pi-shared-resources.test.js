@@ -122,7 +122,11 @@ test('real Router and execution tools publish an original task file and read its
    return {tool:'shared_resource_apply',args:{}}
   }
   if(all.includes('fixture-local')){
-   if(last.role==='tool'&&called==='shared_resource_lookup'){local=JSON.parse(last.content);return done('Read the knowledge index.')}
+   if(last.role==='tool'&&called==='shared_resource_lookup'){
+    const item=JSON.parse(last.content)
+    if(item.nodes)return {tool:'shared_resource_lookup',args:{action:'read',id:item.nodes[0].id,version:item.nodes[0].version}}
+    local=item;return done('Read the indexed article.')
+   }
    return {tool:'shared_resource_lookup',args:{action:'index',indexPath:['Company','Directory']}}
   }
   return done('No shared work.')
@@ -169,8 +173,14 @@ test('real Router and execution tools publish an original task file and read its
  assert.equal(article.status,'published')
  const {localTask}=operate({action:'subjects'},'subjects')
  operate({action:'grant',id:article.id,expectedVersion:1,grants:[grant(localTask,['read'])]},'grant-local')
- await h.service.createTask({requestId:'local-fixture',objective:'fixture-local'})
- await eventually(()=>local,'another local task reads the company knowledge index')
- assert.equal(local.nodes[0].id,article.id)
+ const previous=await h.service.createTask({requestId:'background-only-fixture',objective:'Related background only.'})
  await h.service.whenIdle()
+ const oldSourceId=(await h.query('task.get',{taskId:previous.taskId})).sourceRefs[0]
+ const fresh=await h.service.createTask({requestId:'local-fixture',objective:'fixture-local',sourceRefs:[oldSourceId]})
+ await eventually(()=>local,'another local task reads the company knowledge index')
+ assert.equal(local.id,article.id)
+ await h.service.whenIdle()
+ const knownSource=(await h.query('task.get',{taskId:fresh.taskId})).metadata.authorizationSourceId
+ assert.notEqual(knownSource,oldSourceId)
+ assert.ok(operate({action:'audit',id:article.id},'audit-local').records.some(record=>record.action==='read'&&record.source.sourceId===knownSource))
 })

@@ -46,7 +46,7 @@ import { buildReplyReviewCandidates } from './decision.js'
 import { resolveTopicMessages, topicSourceEntries, stableId, fingerprint, replyTopicForMessage, canonicalReplyTopic, topicDecisionCoversEntry } from './topic-model.js'
 import { ingestTaskResidentMessage, projectTaskNotification, stableTaskResourceIdentity, mergeTaskResources, taskBoardState, messageProcessingSources } from './task-message-projections.js'
 import { taskWorkspace, taskDirectories, taskFilePath, checkedTaskDirectory, taskWorkspaceReady, assertTaskWorkspaceReady, initializeTaskDirectories } from './session-workspaces.js'
-import {conversationNotificationRouting,finalConversationNotificationRouting,prepareConversationNotification,notificationAudience,conversationMessageActorId} from './group-notification.js'
+import {conversationNotificationRouting,finalConversationNotificationRouting,prepareConversationNotification,notificationAudience,conversationMessageActorId,withoutAttachmentPromise} from './group-notification.js'
 import {assertConversationReply,assertNoConversationReplySecrets,replyInternalTaskId,conversationQuote} from '../../src/channels/message-safety.js'
 import { taskExecutionContext } from './execution-context.js'
 import { assertTaskContextSemantics } from './task-input-contract.js'
@@ -424,11 +424,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if(!shared||!await currentTask(binding))fail('SHARED_UNAVAILABLE')
     const task=await requireTask(binding.taskId)
     if(!task.ownerActorId||!task.sourceRefs?.length)fail('SHARED_FORBIDDEN')
-    // The latest task input must itself belong to the task's channel principal.
-    // An older owner's request cannot authorize a later actor's model turn.
-    const sourceId=task.currentInput?.sourceId??task.sourceRefs.at(-1)
+    // sourceRefs also contains related historical material, and is not ordered
+    // by authority. Prefer the actual current input or recorded handoff;
+    // ambiguous legacy tasks cannot use an arbitrary related source as consent.
+    const handoff=task.metadata?.routerHandoffs?.findLast(item=>item.requirementRevision===task.requirementRevision&&item.contextRevision===(task.contextRevision??0))
+    const origin=task.currentInput?.sourceId?task.currentInput:handoff
+    const sourceId=origin?.sourceId??task.metadata?.authorizationSourceId??(task.sourceRefs.length===1?task.sourceRefs[0]:undefined)
     if(!task.sourceRefs.includes(sourceId))fail('SHARED_FORBIDDEN')
-    const source=await sharedCurrentSource(sourceId,task.groupId??'task:'+task.taskId,task.ownerActorId)
+    const source=await sharedCurrentSource(sourceId,task.groupId??'task:'+task.taskId,task.ownerActorId,origin?.messageVersion)
     const principal={actorId:source.actorId,conversationId:task.groupId??'local-task'},attribution=sharedAttribution(source,task)
     const guard=async()=>{
       signal.throwIfAborted()
@@ -1066,14 +1069,16 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       await deliveryFiles.validateManifest(artifactFiles.map(file=>file.artifact),task)
     }
     const internalIds=[source.sourceId,source.groupId,source.messageId,source.actorId,notificationId,replyInternalTaskId(selection?.taskId,source.text)]
-    const text=finalReply?prepareConversationNotification({conversationId:source.groupId,text:args.text,replyToMessageId,replyToActorId,
-      recipientActorIds:recipients,atAll:args.atAll,artifactFiles,signature:legacy.getAgentConfig().replySignature,internalIds}).text:args.text
+    const attachmentDeliveryUnsupported=artifactFiles.length>0&&channels.fileDeliveryUnsupported(source.groupId)
+    const replyText=attachmentDeliveryUnsupported?withoutAttachmentPromise(args.text):args.text
+    const text=finalReply?prepareConversationNotification({conversationId:source.groupId,text:replyText,replyToMessageId,replyToActorId,
+      recipientActorIds:recipients,atAll:args.atAll,artifactFiles,signature:legacy.getAgentConfig().replySignature,internalIds}).text:replyText
     assertConversationReply(text,internalIds)
     if(exec||args.milestoneBinding){
       assertNoConversationReplySecrets(args.text)
       exec?.signal.throwIfAborted()
     }
-    const receipt=await measure('router-reply-register',()=>command('notification.prepare',{notificationId,...args.milestoneBinding?{milestoneBinding:args.milestoneBinding}:{},...exec?{routerGeneration:args.generation}:{},taskId:selection?.taskId??null,requirementRevision:selection?.requirementRevision??1,kind,
+    const receipt=await measure('router-reply-register',()=>command('notification.prepare',{notificationId,...attachmentDeliveryUnsupported?{attachmentDeliveryUnsupported:true}:{},...args.milestoneBinding?{milestoneBinding:args.milestoneBinding}:{},...exec?{routerGeneration:args.generation}:{},taskId:selection?.taskId??null,requirementRevision:selection?.requirementRevision??1,kind,
       payload:{text,...standaloneMarkdown?{textFormat:'markdown'}:{},...bindings,conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceMessageId:replyToMessageId,actorId:replyToActorId,
         sourceRef:{messageId:source.messageId,messageVersion:source.version,actorId:source.actorId},replyToMessageId,replyToActorId,
         recipientActorIds:recipients,...(args.atAll?{atAll:true}:{}),replyKind:'substantive',taskIds:selection?[selection.taskId]:[],topicRefs:[],replyRequest:request,...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
@@ -1557,6 +1562,12 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   async function scanNotifications(attempted) {
     for (let notification of await query('notification.list')) {
       if (closed) return
+      if(notification.state==='prepared'&&!notification.archiveRestoreHold&&!inflightNotifications.has(notification.id)
+        &&(notification.payload.artifact||notification.payload.artifactFiles?.length&&!notification.attachmentDeliveryUnsupported)
+        &&ctx.get('channels').fileDeliveryUnsupported(notification.payload.conversationId)){
+        await command('notification.blockUnsupportedAttachment',{notificationId:notification.id})
+        continue
+      }
       // 历史协调通知保持原账，不发送、不刷新、不自动重试。
       if (notification.kind === 'coordination') { await projectTaskNotification({ residentStore, notification }); continue }
       // 只释放被新来源暂缓的尝试；未知发送和限流的本轮去重不受影响。
@@ -2102,6 +2113,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       if (!groupId || !residentStore.getGroup(groupId) || !notification || notification.payload.audience === 'operator'
         || notification.payload.conversationId !== groupId) throw notificationRecoveryError('TASK_NOTIFICATION_NOT_FOUND', 404)
       if (notification.kind === 'coordination') throw notificationRecoveryError('INDEPENDENT_COORDINATION_RETIRED')
+      if(notification.state==='prepared'&&(notification.payload.artifact||notification.payload.artifactFiles?.length&&!notification.attachmentDeliveryUnsupported)
+        &&ctx.get('channels').fileDeliveryUnsupported(groupId))throw notificationRecoveryError('CHANNEL_FILE_DELIVERY_UNSUPPORTED')
       if (inflightNotifications.has(notificationId)) throw notificationRecoveryError('TASK_NOTIFICATION_RECOVERY_IN_PROGRESS')
       if (taskNotificationRecovery(notification).expectedToken !== expectedToken) throw notificationRecoveryError('DYNAMIC_NOTIFICATION_RECOVERY_STALE')
       const pending = Promise.resolve().then(async () => {
