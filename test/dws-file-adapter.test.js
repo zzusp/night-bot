@@ -32,6 +32,15 @@ test('发送状态只查询并保留真实原始回执', async () => {
   assert.deepEqual(await adapter.querySendStatus('task'), { result: { sendStatus: 'PROCESSING' } })
 })
 
+test('私聊附件只发给绑定的单一对端并保留发送回执',async()=>{
+ const request={openDingTalkId:'peer-open',fileName:'issue-499-draft.md',idempotencyKey:'dm-file'}
+ const adapter=createDwsAdapter({enabled:true,writesAuthorized:true,profile:'corp:user',runner:{run:async args=>{
+  assert.deepEqual(args,['chat','+messages-send','--as','user','--open-dingtalk-id','peer-open','--msg-type','file','--file','./issue-499-draft.md','--idempotency-key','dm-file','--format','json','--yes','--profile','corp:user'])
+  return ok({sendReceipt:{openTaskId:'download-verification-task'}})
+ }}})
+ assert.equal((await adapter.sendDirectFile(request)).sendReceipt.openTaskId,'download-verification-task')
+})
+
 async function harness(t, { row = message, bytes = data, receipt = {} } = {}) {
   const cwd = await mkdtemp(path.join(tmpdir(), 'dws-file-test-'))
   t.after(() => rm(cwd, { recursive: true, force: true }))

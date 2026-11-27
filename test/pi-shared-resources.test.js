@@ -4,7 +4,7 @@ import {join} from 'node:path'
 import {mkdir,mkdtemp,readFile,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {createServer} from 'node:http'
-import {openSharedResources} from '../src/shared-resources/store.js'
+import {openSharedResources,sharedImportRequested} from '../src/shared-resources/store.js'
 import {createSharedOperatorAuth,createSharedOperatorHttp,readSharedOperatorToken,SHARED_OPERATOR_ROUTE} from '../src/shared-resources/operator.js'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestText,eventually} from './fixtures/resident-router-host.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
@@ -13,6 +13,24 @@ const source={kind:'fixture'}
 const admin={operator:true,actorId:'operator',conversationId:'local-operator'}
 const a={actorId:'actor',conversationId:'A'},b={actorId:'actor',conversationId:'B'},c={actorId:'other',conversationId:'B'}
 const grant=(principal,permissions)=>({...principal,permissions})
+
+test('explicit natural import retains the untouched roster and verifies the linked knowledge record',()=>{
+ const path='work/contacts/group-roster.md'
+ assert.equal(sharedImportRequested('请把原联系人名册 `'+path+'` 迁入知识库，确认保存后清理旧文件。',path),true)
+ for(const line of ['不要把 `'+path+'` 迁入知识库','> 请把 `'+path+'` 迁入知识库','请把 `work/other.md` 迁入知识库'])assert.equal(sharedImportRequested(line,path),false)
+ const repo=openSharedResources({dbPath:':memory:',instanceId:'roster-fixture'})
+ const args={action:'import',name:'公司联系人',indexPath:['企业资料','组织与通讯录'],fileName:'group-roster.md'}
+ const bytes=Buffer.from('## 核验范围\n只含测试群\n## 已核实成员\n测试成员\n## 已核实机器人\n测试机器人\n')
+ try{
+  assert.throws(()=>repo.execute(a,args,{source,operation:'natural-import',bytes}),{code:'SHARED_FORBIDDEN'})
+  repo.execute(admin,{action:'publisher',...a,enabled:true},{source,operation:'enable-publisher'})
+  const {result}=repo.execute(a,args,{source,operation:'natural-import',bytes})
+  assert.equal(repo.verifyImport(a,result).verified,true)
+  assert.deepEqual(repo.execute(a,{action:'read',id:result.file.id,version:1},{source}).bytes,bytes)
+  assert.equal(repo.execute(b,{action:'search',query:'公司联系人'},{source}).result.matches.length,0)
+  assert.deepEqual(repo.execute(a,args,{source,operation:'natural-import',bytes}).result,result)
+ }finally{repo.close()}
+})
 
 test('local operator API requires its capability and returns original bytes as a download',async t=>{
  const root=await mkdtemp(join(tmpdir(),'night-shared-http-')),secrets=join(root,'secrets')
@@ -92,6 +110,12 @@ test('real Router and execution tools publish an original task file and read its
   if(tools.includes('resident_task_plan')){
    const packet=requestEnvelope(body,'Router 请求：'),event=packet.events.find(row=>row.source),s=event?.source
    if(last.role==='tool'&&called==='resident_router_settle')return {text:'Settled'}
+   if(s?.messageId.startsWith('forward-')){
+    if(last.role!=='tool'||called!=='resident_router_shared_forward')return {tool:'resident_router_shared_forward',args:{sourceId:s.sourceId,messageVersion:s.version}}
+    const receipt=last.content.startsWith('Error:')?{}:JSON.parse(last.content)
+    return {tool:'resident_router_settle',args:{operationId:'settle-forward-'+s.messageId,eventIds:packet.events.map(row=>row.id),
+      noTaskDispositions:[{eventId:event.id,outcome:receipt.status==='queued'||receipt.status==='delivered'?'handled-inline':'context-only',reason:receipt.status==='queued'?'Original file queued by Router.':'No further work.',sourceQuote:s.text}]}}
+   }
    if(s&&!decided.has(s.messageId)){
     decided.add(s.messageId)
     const title='fixture-'+s.messageId
@@ -103,8 +127,8 @@ test('real Router and execution tools publish an original task file and read its
   if(last.role==='tool'&&called==='task_result')return {text:'Done'}
   const all=requestText(body).join('\n')
   if(all.includes('fixture-publish')){
-   if(last.role==='tool'&&called==='shared_resource_apply')return done('Publication processed.')
-   if(last.role==='tool'&&called==='write')return {tool:'shared_resource_apply',args:{}}
+   if(last.role==='tool'&&called==='shared_resource_import')return done('Publication processed.')
+   if(last.role==='tool'&&called==='write')return {tool:'shared_resource_import',args:{path:'work/contacts.txt',name:'Contacts',indexPath:['Company','Directory']}}
    return {tool:'write',args:{path:'work/contacts.txt',content:'SYNTHETIC_CONTACTS_VERSION_ONE'}}
   }
   if(all.includes('fixture-lookup')){
@@ -115,11 +139,7 @@ test('real Router and execution tools publish an original task file and read its
     const match=parsed.matches[0]
     return {tool:'shared_resource_lookup',args:{action:'read',id:match.id,version:match.version,byteOffset:0}}
    }
-   return {tool:'shared_resource_lookup',args:{action:'search',query:'Contacts'}}
-  }
-  if(all.includes('fixture-forward')){
-   if(last.role==='tool'&&called==='shared_resource_apply')return done('Forward processed.')
-   return {tool:'shared_resource_apply',args:{}}
+   return {tool:'shared_resource_lookup',args:{action:'search',query:'Contacts',kind:'file'}}
   }
   if(all.includes('fixture-local')){
    if(last.role==='tool'&&called==='shared_resource_lookup'){
@@ -137,7 +157,7 @@ test('real Router and execution tools publish an original task file and read its
   const file=notification.payload.artifact
   return {messageId:'fixture-file',conversationId:envelope.conversationId,artifactId:file.artifactId,sha256:file.sha256,size:file.size}
  }})
- const pub=channelMessage('publish',{text:'/shared '+JSON.stringify({action:'publish',kind:'file',name:'Contacts',path:'contacts.txt'})})
+ const pub=channelMessage('publish',{text:'请把原联系人名单 `work/contacts.txt` 迁入知识库。不要外发。'})
  const read=channelMessage('lookup',{channelId:'other-fixture',conversationId:'other-room',senderId:'bob',text:'Find the saved Contacts file.'})
  const identity=message=>{const scope=h.host.ctx.channels.identity(message);return {actorId:scope.principal,conversationId:scope.sessionId}}
  const operate=(args,requestId)=>h.service.sharedOperator(args,{requestId}).result
@@ -145,13 +165,16 @@ test('real Router and execution tools publish an original task file and read its
  await h.receive(pub)
  await h.service.whenIdle()
  await eventually(()=>{
-   const result=h.results.find(row=>row.name==='shared_resource_apply')?.result
+   const result=h.results.find(row=>row.name==='shared_resource_import')?.result
    if(!result)return
    assert.equal(result.isError,false,JSON.stringify(result))
-   version=result.value??JSON.parse(result.content[0].text)
-   return version
+   const imported=result.value??JSON.parse(result.content[0].text)
+   assert.equal(imported.status,'imported')
+   assert.equal(imported.verified,true)
+   return version=imported.file
  },'task invokes verified publication')
- assert.equal(version.status,'published',JSON.stringify(version))
+ assert.equal(version.version,1)
+ assert.equal((await h.query('notification.list')).some(row=>row.payload.artifact),false)
  operate({action:'grant',id:version.id,expectedVersion:version.version,grants:[grant(identity(read),['read'])]},'grant-other-room')
  await h.receive(read)
  await eventually(()=>query,'another execution reads pinned version')
@@ -163,12 +186,13 @@ test('real Router and execution tools publish an original task file and read its
  const forward=(id)=>channelMessage(id,{...read,messageId:id,text:'/shared '+JSON.stringify({action:'forward',id:version.id,version:1})})
  await h.receive(forward('forward-denied'));await h.service.whenIdle()
  assert.equal(receivedFiles.length,0)
- assert.equal(h.results.filter(row=>row.name==='shared_resource_apply').at(-1).result.value.code,'SHARED_FORBIDDEN')
+ assert.match(JSON.stringify(h.results.filter(row=>row.name==='resident_router_shared_forward').at(-1)?.result),/SHARED_FORBIDDEN/)
  operate({action:'grant',id:version.id,expectedVersion:1,grants:[grant(identity(read),['read','forward'])]},'grant-forward')
  await h.receive(forward('forward-allowed'))
  await eventually(()=>receivedFiles.length,'authorized file reaches receiving channel')
  assert.deepEqual(receivedFiles,[{conversationId:'other-room',body:'SYNTHETIC_CONTACTS_VERSION_ONE'}])
  await h.service.whenIdle()
+ assert.equal((await h.query('task.list')).some(task=>task.taskId.startsWith('fixture-forward')),false)
  const article=operate({action:'publish',kind:'knowledge',name:'Company contacts',indexPath:['Company','Directory'],body:'Synthetic directory',links:[{id:version.id,version:1}]},'create-article')
  assert.equal(article.status,'published')
  const {localTask}=operate({action:'subjects'},'subjects')

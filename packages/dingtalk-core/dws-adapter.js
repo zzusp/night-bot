@@ -211,6 +211,11 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
       if (writesAuthorized) args.push('--yes')
       return withProfile(args)
     },
+    compileDirectFileSend({openDingTalkId,fileName,idempotencyKey}){
+      const args=['chat','+messages-send','--as','user','--open-dingtalk-id',assertStableId(openDingTalkId,'direct_recipient'),'--msg-type','file','--file',`./${assertFileName(fileName)}`,'--idempotency-key',dwsIdempotencyKey(idempotencyKey),'--format','json']
+      if(writesAuthorized)args.push('--yes')
+      return withProfile(args)
+    },
     compileGroupReply({ groupId, text, idempotencyKey, replyToMessageId, replyToSenderOpenDingTalkId, atOpenDingTalkIds = [], atAll = false }) {
       const args = ['chat', 'message', 'reply', '--group', assertStableId(groupId, 'group_id'), '--ref-msg-id', assertStableId(replyToMessageId, 'reply_message_id'), '--ref-sender', assertStableId(replyToSenderOpenDingTalkId, 'reply_sender_id'), '--content', assertStableId(text, 'text'), '--uuid', dwsIdempotencyKey(idempotencyKey), '--format', 'json']
       // DWS v1.0.63's reply contract separates ref-sender from atOpenDingTalkIds.
@@ -327,6 +332,13 @@ export function createDwsAdapter({ enabled = false, writesAuthorized = false, pr
       const result = await runner.run(this.compileGroupFileSend(request))
       if (result.exitCode !== 0) throw commandError('dws_file_send_failed', result)
       return parseJson(result.stdout, 'file-send')
+    },
+    async sendDirectFile(request){
+      requireEnabled()
+      if(!writesAuthorized)throw new Error('dws_write_not_authorized')
+      const result=await runner.run(this.compileDirectFileSend(request))
+      if(result.exitCode!==0)throw commandError('dws_file_send_failed',result)
+      return sendCommandReceipt(result,'direct-file')
     },
     async querySendStatus(openTaskId) {
       requireEnabled()

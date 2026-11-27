@@ -4,7 +4,7 @@ import {containsSecret} from '../memory/format.js'
 
 export const MAX_SHARED_FILE_BYTES=20*1024*1024
 const text=(value,max=240)=>typeof value==='string'&&value.trim()===value&&value.length>0&&value.length<=max&&!/[\u0000-\u001f\u007f]/u.test(value)
-const actions=new Set(['index','search','read','publish','update','withdraw','forward','grant','publisher','audit'])
+const actions=new Set(['index','search','read','publish','import','update','withdraw','forward','grant','publisher','audit'])
 const grants=new Set(['read','update','withdraw','forward'])
 const refPattern=/^[a-f0-9-]{36}$/u
 const identity=value=>text(value,1024)
@@ -23,6 +23,18 @@ export function parseSharedDirective(text){
   const input=JSON.parse(text.slice(8))
   return ['publish','update','withdraw','forward'].includes(input?.action)?input:null
  }catch{return null}
+}
+// Recognize a direct import request, not file names found in quoted/history
+// text. The path still goes through the task's existing work-root guard.
+export function sharedImportRequested(source,path){
+ if(typeof source!=='string'||typeof path!=='string'||!path.startsWith('work/'))return false
+ const first=source.trim().split(/[。！？\n]/u,1)[0]
+ const action=/(?:迁入|迁移到|导入(?:到)?|放进|保存到)(?:Bot\s*)?知识库/u.exec(first)
+ if(!action)return false
+ const instruction=first.slice(0,action.index)
+ if(/^[>「“"']|不要|禁止|别把|不允许|未要求|没有要求|无需|不应|不该|不想|拒绝|请勿|是否|举例|转述|引用|之前|曾经|如果/u.test(instruction))return false
+ const named=[...instruction.matchAll(/(?:^|[\s`（(])(?:`)?(work\/[^`\s，,；;）)]+)(?=$|[`\s，,；;）)])/gu)].map(match=>match[1])
+ return named.length===1&&named[0]===path
 }
 
 /** Host-only, instance-bound repository. No task or channel path is a lookup
@@ -100,7 +112,7 @@ export function openSharedResources({dbPath,instanceId}){
   check(args&&actions.has(args.action)&&source&&typeof source==='object','INVALID')
   check(source&&Buffer.byteLength(JSON.stringify(source))<=8192,'INVALID')
   const {action,id}=args
-  if(['publish','update','withdraw','grant','forward','publisher'].includes(action))check(identity(operation),'OPERATION_REQUIRED')
+  if(['publish','import','update','withdraw','grant','forward','publisher'].includes(action))check(identity(operation),'OPERATION_REQUIRED')
   const requestHash=hex(JSON.stringify([principal.actorId,principal.conversationId,args,bytes?hex(bytes):null]))
   db.exec('BEGIN IMMEDIATE')
   try{
@@ -159,6 +171,21 @@ export function openSharedResources({dbPath,instanceId}){
      const links=entry.links.map(link=>{try{return {...link,...metadata(inspect(principal,link.id,link.version,'read').entry)}}catch(error){if(!['SHARED_NOT_FOUND','SHARED_FORBIDDEN','SHARED_WITHDRAWN'].includes(error.code))throw error;return {status:'unavailable'}}})
      result={...entry,links,status:'read'}
     }else result={...metadata(entry),status:action==='read'?'read':'forward-authorized'}
+   }else if(action==='import'){
+    check(onlyKeys(args,['action','name','indexPath','fileName'])&&text(args.name))
+    check(!!db.prepare('SELECT 1 FROM shared_publishers WHERE actor=? AND scope=?').get(principal.actorId,principal.conversationId),'FORBIDDEN')
+    const fileId=randomUUID(),entryId=randomUUID()
+    const file=content(principal,{name:args.name+' · 原文件',fileName:args.fileName},bytes,'file',fileId,1,source)
+    for(const [kind,name] of [['file',file.name],['knowledge',args.name]]){
+     check(text(name)&&!db.prepare('SELECT 1 FROM shared_items WHERE kind=? AND name_key=? AND withdrawn=0').get(kind,key(name)),'NAME_CONFLICT')
+    }
+    db.prepare('INSERT INTO shared_items VALUES(?,?,?,?,0,?,?,?)').run(fileId,'file',1,key(file.name),principal.actorId,principal.conversationId,'[]')
+    db.prepare('INSERT INTO shared_versions VALUES(?,?,?,?)').run(fileId,1,JSON.stringify(file),bytes)
+    const entry=content(principal,{name:args.name,indexPath:args.indexPath,body:'核验范围与名单记录以引用的原文件为准。',links:[{id:fileId,version:1}]},undefined,'knowledge',entryId,1,source)
+    db.prepare('INSERT INTO shared_items VALUES(?,?,?,?,0,?,?,?)').run(entryId,'knowledge',1,key(entry.name),principal.actorId,principal.conversationId,'[]')
+    db.prepare('INSERT INTO shared_versions VALUES(?,?,?,NULL)').run(entryId,1,JSON.stringify(entry))
+    result={status:'imported',id:entryId,version:1,name:entry.name,indexPath:entry.indexPath,file:{id:fileId,version:1,sha256:file.sha256}}
+    audit(principal,'publish-import-file',metadata(file),source,null,requestHash)
    }else if(action==='publish'||action==='update'){
     check(onlyKeys(args,['action','id','expectedVersion','kind','name','topic','keywords','indexPath','body','links','fileName','knowledge']))
     const creating=action==='publish'
@@ -226,5 +253,13 @@ export function openSharedResources({dbPath,instanceId}){
   current(principal,id,expectedVersion,'update')
   return metadata(inspect(principal,id,expectedVersion,'update').entry)
  }
- return {execute,authorizeForward,metadataForUpdate,close:()=>db.close()}
+ function verifyImport(principal,result){
+  const article=inspect(principal,result.id,result.version,'read').entry
+  const file=inspect(principal,result.file.id,result.file.version,'read').entry
+  const {bytes}=db.prepare('SELECT bytes FROM shared_versions WHERE id=? AND version=?').get(file.id,file.version)
+  check(article.links.length===1&&article.links[0].id===file.id&&article.links[0].version===file.version&&
+   bytes.length===file.size&&hex(bytes)===file.sha256&&file.sha256===result.file.sha256,'INTEGRITY')
+  return {...result,verified:true}
+ }
+ return {execute,authorizeForward,metadataForUpdate,verifyImport,close:()=>db.close()}
 }
