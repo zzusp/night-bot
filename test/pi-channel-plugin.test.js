@@ -411,6 +411,15 @@ for(const quoteMode of ['other-recipient','explicit','default'])test('default ap
       if(step>0){
         const task=modelToolValues(body).toReversed().find(value=>value.task?.taskId===taskId)?.task
         assert.ok(task?.completion?.result?.artifactFiles?.length)
+        const replyTool=body.tools.find(item=>item.function.name==='resident_router_reply').function
+        const prompt=body.messages.filter(row=>row.role==='system').map(row=>row.content).join('\n')
+        for(const surface of [prompt,replyTool.parameters.properties.text.description]){
+          for(const phrase of ['未在本次','尚未证实','不能认定','未改动','仅询问'])assert.ok(surface.includes('「'+phrase+'」'),phrase)
+          assert.match(surface,/不要换个说法继续免责/u)
+          assert.match(surface,/删除不改变对方理解、决定或下一步，就删/u)
+          assert.match(surface,/确实影响答案的未知或风险，把对象和状态直接写在结论里/u)
+        }
+        assert.match(replyTool.description,/不重贴目录、附件清单或验收对照/u)
         const delivery={operationId:'neutral-delivery',sourceId:originalSource.sourceId,messageVersion:originalSource.version,text:'The verified DingTalk material result'+(replyToSource?' '+taskId:'')+' is attached.',...quoteMode==='default'?{}:{recipientActorIds:quoted?[sourceIdentity.principal,bob]:[bob]},...(replyToSource?{replyToSource}:{}),taskDelivery:{taskId,requirementRevision:task.requirementRevision,artifactIds:task.completion.result.artifactFiles.map(file=>file.artifact.artifactId)}}
         if(replyToSource){
           if(step<=6){assert.equal((await app.tasks.store.query({kind:'notification.list'})).length,0,'invalid quote requests must not prepare any notification');assert.equal(sent.length,0)}
@@ -498,6 +507,8 @@ for(const quoteMode of ['other-recipient','explicit','default'])test('default ap
   for(const [index,envelope] of sent.entries()){assert.equal(envelope.conversationId,message.conversationId);assert.equal(envelope.channelId,message.channelId);assert.deepEqual(envelope.recipientIds,expectedNativeActors);assert.equal(envelope.replyToMessageId,quoted&&index===0?message.messageId:undefined);assert.equal(envelope.replyToParticipantId,quoted&&index===0?'alice':undefined)}
   assert.ok(resourceReads.length>=1);assert.ok(resourceReads.every(value=>value.channelId===message.channelId&&value.conversationId===message.conversationId&&value.messageId===message.messageId));assert.deepEqual(resourceReads[0].resource,message.resourceRefs[0])
   const child=notices.find(notice=>notice.payload.artifact),parent=notices.find(notice=>!notice.payload.artifact)
+  assert.equal(sent[0].text,parent.payload.replyRequest.text,'Delivery must not append the attachment list to the Router text')
+  assert.equal(sent[1].text,`${replyToSource?taskId+'.txt':'result.txt'}：Verified material result`,'The file still carries its original name and caption')
   assert.equal(child.payload.afterNotificationId,parent.id);assert.deepEqual(child.payload.recipientActorIds,expectedActors);assert.equal(child.payload.replyToActorId,undefined)
   assert.equal(parent.payload.sourceMessageId,quoted?message.messageId:undefined);assert.equal(parent.payload.replyToActorId,quoted?sourceIdentity.principal:undefined)
   assert.equal(parent.payload.replyRequest.replyToMessageId,parent.payload.sourceMessageId);assert.equal(parent.payload.replyRequest.replyToActorId,parent.payload.replyToActorId)

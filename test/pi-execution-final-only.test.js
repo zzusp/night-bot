@@ -28,7 +28,7 @@ for(const action of ['complete','detailed','scoped-recovery','end-to-end-recover
     assert.match(resultTool.description,/Use action=complete when the requested outcome is achieved.*action=blocked/u)
     assert.match(JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role))),/an internal result, not a human-facing reply/u)
     const prompt=JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role)))
-    assert.doesNotMatch(prompt,/默认 ELI5|禁止防御性内容/u)
+    assert.doesNotMatch(prompt,/默认 ELI5|禁止防御性内容|禁用词句包括/u)
     assert.match(prompt,/交给 Router 的内部 task_result 不适用/u)
     assert.ok(tools.includes('communication_guidance_read'))
    }

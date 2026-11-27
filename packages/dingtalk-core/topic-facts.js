@@ -291,8 +291,6 @@ export function createTopicFactHandler({ residentStore, query, commit, signature
       }
       if (Buffer.byteLength(JSON.stringify(input), 'utf8') > 22 * 1024) fail('TOPIC_FACT_CONTEXT_BUDGET')
       return { eventIds: facts.map(fact => fact.id), generation: hash(facts.map(fact => [fact.id, fact.lastSupersededNotificationId])), expectedSummary: topic.summary,
-        artifactFiles: [...new Map(facts.filter(fact => fact.kind === 'completed').flatMap(fact => fact.result.artifactFiles ?? [])
-          .map(file => [file.artifact.artifactId, file])).values()],
         replySnapshot, taskSnapshot, taskIds, sourceIdentities, input,
         metrics: { trigger: 'task-facts', queryCount: 4, factCount: facts.length, sourceCount: sources.length,
           recentCount: recent.length, taskCount: tasks.length, replyCount: replies.length,
@@ -317,7 +315,7 @@ export function createTopicFactHandler({ residentStore, query, commit, signature
         }
         submission = { ...submission, decision: { ...submission.decision, atOpenDingTalkIds: recipients } }
         reply = prepareGroupNotification({ groupId: request.groupId, text: submission.decision.reply,
-          atOpenDingTalkIds: recipients, atAll: submission.decision.atAll, artifactFiles: context.artifactFiles, signature: signature(),
+          atOpenDingTalkIds: recipients, atAll: submission.decision.atAll, signature: signature(),
           internalIds: [request.groupId, request.topicId, request.requestId, sourceId, target?.messageId, ...recipients,
             ...context.eventIds, ...context.input.tasks.map(task => task.taskId), ...context.sourceIdentities],
         })
