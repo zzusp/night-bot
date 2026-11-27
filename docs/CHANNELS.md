@@ -134,9 +134,9 @@ Router 的业务工具按实际职责区分：
 
 这些是应用授权的模型工具，不是公开 HTTP 接口。动作的稳定 `operationId` 按 conversation 和业务键派生，不依赖本次 Pi sessionId；跨 generation 仍按原收据去重。当前 generation、来源版本、真实作者和任务权限均在 Host 校验，模型不能自选其它身份。
 
-`resident_router_reply` 可用 `recipientActorIds` 明确选择同一会话中有受信身份依据的一人或多人，值为 Host namespace 内部 actor 标识，`[]` 表示不提及。渠道插件负责将 Host 受众映射为原生 sender/mention/quote 字段；模型和显示名不能直接指定 vendor open ID。不得按姓名猜 ID，也不默认通知所有参与人；Router 不开放 `atAll`。支持原生引用的渠道中，新 Router 进展和结果回复（含附件的父说明）默认引用本次已验证的原消息；若明确选择的受众不含原作者（含 `[]`），发送普通消息，不隐式通知原作者。省略受众时，默认引用原消息并以原作者为受众；不支持原生引用的渠道维持原规则。受众与正文、来源、文件选择一并冻结在 `replyRequest`，相同 operationId 改换受众明确冲突，不能变成新一轮发送。
+`resident_router_reply` 可用 `recipientActorIds` 明确选择同一会话中有受信身份依据的一人或多人，值为 Host namespace 内部 actor 标识，`[]` 表示不提及。渠道插件负责将 Host 受众映射为原生 sender/mention/quote 字段；模型和显示名不能直接指定 vendor open ID。不得按姓名猜 ID，也不默认通知所有参与人；Router 不开放 `atAll`。支持原生引用的渠道中，直接回答已绑定的原消息时，即使也支持普通 Markdown，仍默认原生引用。本次受众若明确不含原作者（含 `[]`），不隐式引用或通知原作者。未选择受众的直接答复可引用原消息，并以原作者为受众。文字回复的引用条件或任务结果绑定失效时，只要来源和所选受众仍有效，就发送不带原生引用的正文；无效的任务绑定不登记为结果回报。主动进展（`replyPurpose: task-update`）不强制引用，附件的完成校验和交付顺序不变。受众与正文、来源、文件选择一并冻结在 `replyRequest`，相同 operationId 改换受众明确冲突，不能变成新一轮发送。
 
-`replyToSource` 是仅接受 `true` 的可选公开字段，不接受 `false`；只在原请求明确要求原生引用本次原消息时使用。Host 从已校验的本次 `sourceId` / `messageVersion` 绑定原消息和真实作者，不开放另选引用消息/作者的参数。`recipientActorIds` 必须显式包含该原作者；缺省、空数组或缺作者均拒绝，其余受众仍须是同会话受信成员。引用目标、作者及受众按现有 `replyRequest` 冻结与去重；旧冻结回复重试不会补加引用或重发。
+`replyToSource` 是仅接受 `true` 的可选公开字段，不接受 `false`；只在原请求明确要求原生引用本次原消息时使用。Host 从已校验的本次 `sourceId` / `messageVersion` 绑定原消息和真实作者，不开放另选引用消息/作者的参数。`recipientActorIds` 必须显式包含该原作者；缺省、空数组或缺作者均拒绝，其余受众仍须是同会话受信成员。引用目标、作者及受众按现有 `replyRequest` 冻结与去重；旧冻结回复重试不会补加引用或重发。显式引用的同源同版本重试（相同操作号，或失败后用相同正文重试）从 Pi 历史保留引用意图和原结果绑定；绑定过期时先重新核对，不能靠省略参数改发普通消息。
 
 ## Router 最终文件交付
 

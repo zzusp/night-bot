@@ -44,7 +44,7 @@ test('direct Router keeps silent background in the original bounded session, ans
  assert.ok(!h.requests.some(body=>requestTools(body).includes('channel_triage_submit')))
 })
 
-test('Router puts Markdown in its real system prompt, freezes it unchanged and preserves explicitly quoted replies',{timeout:nativeTestTimeout(30000)},async t=>{
+test('Router defaults direct answers to quotes and keeps proactive or different-audience Markdown',{timeout:nativeTestTimeout(30000)},async t=>{
  const markdown='## 核对结果\n\n**已核实**：使用 `status`。\n\n- 保留原证据\n\n| 项目 | 状态 |\n| --- | --- |\n| 账本 | 已完成 |\n\n[查看说明](https://example.org/result)\n\n```text\nverified\n```'
  const answered=new Set()
  const h=await residentRouterHost(t,body=>{
@@ -52,15 +52,18 @@ test('Router puts Markdown in its real system prompt, freezes it unchanged and p
   const {source}=input.events.find(event=>event.source)
   if(answered.has(source.sourceId))return settle(input,'handled-inline')
   answered.add(source.sourceId)
-  assert.match(body.messages.filter(message=>message.role==='system').map(message=>message.content).join('\n'),/正文使用 Markdown.*标题.*加粗.*列表.*表格/)
-  return {tool:'resident_router_reply',args:{operationId:'markdown:'+source.messageId,sourceId:source.sourceId,messageVersion:source.version,text:markdown,...source.messageId==='quote'?{replyToSource:true,recipientActorIds:[source.actorId]}:{}}}
+  assert.match(body.messages.filter(message=>message.role==='system').map(message=>message.content).join('\n'),/正文使用 Markdown.*标题.*列表.*表格/)
+  return {tool:'resident_router_reply',args:{operationId:'markdown:'+source.messageId,sourceId:source.sourceId,messageVersion:source.version,text:markdown,...source.messageId==='quote'?{replyToSource:true,recipientActorIds:[source.actorId]}
+    :source.messageId==='markdown'?{replyPurpose:'task-update'}
+    :source.messageId==='no-mention'?{recipientActorIds:[]}: {}}}
  },{transportCapabilities:{standaloneMarkdown:true,quotedReplies:['chat-room']}})
- for(const id of ['markdown','quote']){await h.receive(channelMessage(id));await h.service.whenIdle()}
+ for(const id of ['markdown','quote','direct-default','no-mention']){await h.receive(channelMessage(id));await h.service.whenIdle()}
  const notices=await h.query('notification.list'),plain=notices.find(row=>row.payload.sourceRef.messageId==='markdown'),quoted=notices.find(row=>row.payload.sourceRef.messageId==='quote')
  assert.equal(plain.state,'delivered');assert.equal(plain.payload.text,markdown);assert.equal(plain.payload.textFormat,'markdown');assert.equal(plain.payload.sourceMessageId,undefined)
  assert.equal(quoted.state,'delivered');assert.equal(quoted.payload.text,markdown);assert.equal(quoted.payload.sourceMessageId,'quote');assert.equal(quoted.payload.textFormat,undefined)
- assert.deepEqual(h.sent.map(row=>[row.text,row.replyToMessageId,row.recipientIds]),[[markdown,undefined,['alice']],[markdown,'quote',['alice']]])
- await h.restart();await h.service.whenIdle();assert.equal(h.sent.length,2)
+ assert.deepEqual(h.sent.map(row=>[row.text,row.replyToMessageId,row.recipientIds]),[
+  [markdown,undefined,['alice']],[markdown,'quote',['alice']],[markdown,'direct-default',['alice']],[markdown,undefined,[]]])
+ await h.restart();await h.service.whenIdle();assert.equal(h.sent.length,4)
 })
 
 test('direct Router answers an independent message before the running task finishes',{timeout:nativeTestTimeout(45000)},async t=>{
@@ -195,4 +198,86 @@ test('a new explicit Router acknowledgement is rejected before freezing and cann
  assert.ok(h.results.some(row=>row.name==='resident_router_settle'&&row.result.isError&&JSON.stringify(row.result).includes('ROUTER_DIRECT_REPLY_REQUIRED')))
  assert.ok(h.results.some(row=>row.name==='resident_router_settle'&&!row.result.isError));assert.equal(h.sent.length,1)
  assert.equal((await h.query('notification.list')).length,1);assert.equal(h.sent[0].text,'Synthetic actual answer')
+})
+
+test('a stale text-result binding sends one ordinary reply and reconciles an unambiguous current outcome',{timeout:nativeTestTimeout(45000)},async t=>{
+ const taskId='quote-retry-task',summary='The isolated check has finished.'
+ let original,attempt=0
+ const h=await residentRouterHost(t,body=>{
+  const tools=requestTools(body)
+  if(tools.includes('task_result'))return {tool:'task_result',args:{decision:{action:'complete',summary,evidence:[],limitations:[]}}}
+  const input=checked(body);if(!input||isSettleResult(body))return {text:'Done'}
+  if(!original){
+   original=input.events.find(event=>event.source).source
+   return {tool:'resident_task_plan',args:{operationId:'plan',sourceId:original.sourceId,messageVersion:original.version,tasks:[{taskId,title:'Isolated check',objective:'Check the fixture',requirements:[],handoff:'Check the fixture.'}],dependencies:[]}}
+  }
+  if(input.events.some(event=>event.kind==='task.completed')&&attempt++<2){
+   return {tool:'resident_router_reply',args:{operationId:'stale-outcome-fallback',sourceId:original.sourceId,messageVersion:original.version,text:summary,outcomeEventId:'stale-outcome-event',replyToSource:true,recipientActorIds:[original.actorId]}}
+  }
+  return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
+ },{transportCapabilities:{standaloneMarkdown:true,quotedReplies:['chat-room']}})
+ await h.receive(channelMessage('result-request'))
+ await eventually(()=>h.sent.length===1,'fallback sent')
+ await h.service.whenIdle()
+ const replies=h.results.filter(row=>row.name==='resident_router_reply')
+ assert.equal(replies.length,2)
+ assert.ok(replies.every(row=>!row.result.isError))
+ const notices=await h.query('notification.list')
+ assert.equal(notices.length,1)
+ const [notice]=notices
+ assert.equal(notice.state,'delivered')
+ assert.ok(notice.payload.completionBinding.eventId)
+ assert.notEqual(notice.payload.completionBinding.eventId,'stale-outcome-event')
+ assert.equal(notice.payload.sourceRef.messageId,'result-request')
+ assert.equal(notice.payload.sourceMessageId,undefined)
+ assert.equal(notice.payload.textFormat,'markdown')
+ assert.deepEqual(h.sent.map(row=>[row.text,row.replyToMessageId,row.recipientIds]),[[summary,undefined,['alice']]])
+})
+
+for(const {reason,missingOutcome,recipientActorIds,expectedRecipientIds,supportsQuote} of [
+ {reason:'no native quote support',expectedRecipientIds:['alice']},
+ {reason:'no matching outcome',missingOutcome:true,supportsQuote:true,expectedRecipientIds:['alice']},
+ {reason:'an explicit no-mention audience',supportsQuote:true,recipientActorIds:[],expectedRecipientIds:[]},
+])test('a text reply still sends with '+reason,{timeout:nativeTestTimeout(30000)},async t=>{
+ let attempt=0
+ const h=await residentRouterHost(t,body=>{
+  const input=checked(body);if(!input||isSettleResult(body))return {text:'Done'}
+  const source=input.events.find(event=>event.source)?.source
+  if(attempt++>=2)return settle(input,'handled-inline')
+  return {tool:'resident_router_reply',args:{operationId:'plain-fallback',sourceId:source.sourceId,messageVersion:source.version,text:'A channel reply.',replyToSource:true,
+   ...missingOutcome?{outcomeEventId:'no-outcome-to-bind'}:{},...recipientActorIds!==undefined?{recipientActorIds}:{}}}
+ },{transportCapabilities:{standaloneMarkdown:true,quotedReplies:supportsQuote?['chat-room']:[]}})
+ await h.receive(channelMessage('unbound-quote'));await h.service.whenIdle()
+ const notices=await h.query('notification.list')
+ assert.equal(notices.length,1)
+ assert.equal(notices[0].state,'delivered')
+ assert.equal(notices[0].payload.sourceMessageId,undefined)
+ assert.equal(notices[0].payload.completionBinding,undefined)
+ assert.deepEqual(h.sent.map(row=>[row.text,row.replyToMessageId,row.recipientIds]),[['A channel reply.',undefined,expectedRecipientIds]])
+})
+
+test('frozen native and plain replies retain their original route when channel capability changes',{timeout:nativeTestTimeout(30000)},async t=>{
+ const capabilities={standaloneMarkdown:true,quotedReplies:['chat-room']},attempts=new Map()
+ const h=await residentRouterHost(t,body=>{
+  const input=checked(body);if(!input||isSettleResult(body))return {text:'Done'}
+  const source=input.events.find(event=>event.source)?.source
+  const count=attempts.get(source.sourceId)??0
+  if(count===2)return settle(input,'handled-inline')
+  const isNative=source.messageId==='native-frozen'
+  capabilities.quotedReplies=(count===0?isNative:!isNative)?['chat-room']:[]
+  attempts.set(source.sourceId,count+1)
+  return {tool:'resident_router_reply',args:{operationId:'fixed:'+source.messageId,sourceId:source.sourceId,messageVersion:source.version,text:'The isolated check passed.'}}
+ },{transportCapabilities:capabilities})
+ for(const id of ['native-frozen','plain-frozen']){await h.receive(channelMessage(id));await h.service.whenIdle()}
+ const replies=h.results.filter(row=>row.name==='resident_router_reply')
+ assert.equal(replies.length,4)
+ for(const reply of replies)assert.equal(reply.result.isError,false)
+ const notices=await h.query('notification.list')
+ assert.equal(notices.length,2)
+ const native=notices.find(row=>row.payload.sourceRef.messageId==='native-frozen'),plain=notices.find(row=>row.payload.sourceRef.messageId==='plain-frozen')
+ assert.equal(native.payload.sourceMessageId,'native-frozen')
+ assert.equal(native.payload.textFormat,undefined)
+ assert.equal(plain.payload.sourceMessageId,undefined)
+ assert.equal(plain.payload.textFormat,'markdown')
+ assert.deepEqual(h.sent.map(row=>row.replyToMessageId),['native-frozen',undefined])
 })

@@ -899,11 +899,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const explicitQuote=args.replyToSource===true
     const previous=await measure('router-reply-lookup',()=>query('notification.get',{notificationId}))
     const channels=ctx.get('channels'),context=channels.groupContext(source.groupId)
-    const targetedReply=finalReply||!!boundTaskId&&context?.type==='chat-room'
-    // 新回复优先使用可渲染的正文；重试由原通知决定格式和引用，不随新能力改变。
     const transport=channels.transports.get(context?.channelId)
-    const standaloneMarkdown=!explicitQuote&&(previous?previous.payload.textFormat==='markdown'
-      :!!exec&&kind!=='platform-reply'&&transport?.capabilities?.standaloneMarkdown===true)
+    const supportsQuote=transport?.capabilities?.quotedReplies?.includes(context?.type)
     let boundTask,requestedRecipients=audience.recipientActorIds
     if(boundTaskId&&!explicitAudience&&!explicitQuote&&!args.atAll){
       if(previous)requestedRecipients=notificationAudience(previous.payload).recipientActorIds
@@ -912,18 +909,33 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         requestedRecipients=boundTask.groupId===source.groupId&&Object.hasOwn(context.participants,boundTask.ownerActorId)?[boundTask.ownerActorId]:[]
       }
     }
-    // 冻结历史不升级为引用，新回复不隐式通知受众之外的引用作者。
-    const defaultQuote=!explicitQuote&&!standaloneMarkdown&&targetedReply&&kind!=='platform-reply'&&source.channel==='im'&&!args.atAll
+    // 直接答复优先引用；主动进展和附件仍沿用原来的格式选择。
+    const canQuote=kind!=='platform-reply'&&source.channel==='im'&&!args.atAll
       &&(requestedRecipients===undefined||requestedRecipients.includes(source.actorId))
-      &&(previous?previous.payload.sourceMessageId===source.messageId&&previous.payload.actorId===source.actorId
-        :transport?.capabilities?.quotedReplies?.includes(context.type))
-    const quoteSource=explicitQuote||defaultQuote
-    const replyToMessageId=standaloneMarkdown?undefined:quoteSource?source.messageId:targetedReply?args.replyToMessageId:args.replyToMessageId??source.messageId
-    const replyToActorId=standaloneMarkdown?undefined:quoteSource?source.actorId:targetedReply?audience.replyToActorId:audience.replyToActorId??source.actorId
-    const recipients=[...new Set(requestedRecipients??(explicitQuote||targetedReply&&!defaultQuote?[]:[source.actorId]))]
+    const preferDirectQuote=!previous&&!!exec&&!selection&&!args.artifactFiles?.length&&args.replyPurpose!=='task-update'
+      &&canQuote&&supportsQuote
+    const targetedReply=finalReply||!!boundTaskId&&context?.type==='chat-room'||preferDirectQuote
+    const messages=residentStore.getGroup(source.groupId)?.messages??[]
+    const textReply=!!exec&&!selection&&!args.artifactFiles?.length
+    const fallbackRecipients=requestedRecipients??[source.actorId]
+    const frozenPlain=previous?.payload.replyRequest?.unquoted===true
+    let unquoted=frozenPlain||!previous&&args.unquoted===true
+    let standaloneMarkdown=previous?previous.payload.textFormat==='markdown'
+      :!explicitQuote&&!preferDirectQuote&&!!exec&&kind!=='platform-reply'&&transport?.capabilities?.standaloneMarkdown===true
+    const defaultQuote=!explicitQuote&&!standaloneMarkdown&&targetedReply&&canQuote
+      &&(previous?previous.payload.sourceMessageId===source.messageId&&previous.payload.actorId===source.actorId:supportsQuote)
+    if(!previous&&textReply&&!unquoted&&(explicitQuote||defaultQuote)){
+      const target=messages.find(message=>message.messageId===source.messageId&&!['web','internal'].includes(message.sourceKind))
+      unquoted=!supportsQuote||!canQuote||!target||conversationMessageActorId(target)!==source.actorId
+    }
+    if(unquoted&&!previous)standaloneMarkdown=transport?.capabilities?.standaloneMarkdown===true
+    const quoteSource=!unquoted&&(explicitQuote||defaultQuote)
+    const replyToMessageId=unquoted||standaloneMarkdown?undefined:quoteSource?source.messageId:targetedReply?args.replyToMessageId:args.replyToMessageId??source.messageId
+    const replyToActorId=unquoted||standaloneMarkdown?undefined:quoteSource?source.actorId:targetedReply?audience.replyToActorId:audience.replyToActorId??source.actorId
+    const recipients=[...new Set(unquoted?fallbackRecipients:requestedRecipients??(explicitQuote&&!textReply||targetedReply&&!defaultQuote&&!explicitQuote?[]:[source.actorId]))]
     const bindings=clean({completionBinding:args.completionBinding,blockedBinding:args.blockedBinding,milestoneTaskId:args.milestoneBinding?.taskId})
     const request=clean({kind,sourceId:source.sourceId,sourceVersion:source.version,text:args.text,taskDelivery:selection,...bindings,...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
-      replyToMessageId,replyToActorId,recipientActorIds:recipients,...(args.atAll?{atAll:true}:{}),artifactFiles:args.artifactFiles??[]})
+      replyToMessageId,replyToActorId,recipientActorIds:recipients,...unquoted?{unquoted:true}:{},...(args.atAll?{atAll:true}:{}),artifactFiles:args.artifactFiles??[]})
     if(previous){
       const p=previous.payload
       const frozen=args.frozen===true&&kind==='platform-reply'
@@ -938,9 +950,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if(selection&&args.completionBinding&&selection.taskId!==args.completionBinding.taskId)fail('TASK_DELIVERY_COMPLETION_MISMATCH')
     if(kind!=='platform-reply'&&args.replyPurpose==='acknowledgement')fail('ROUTER_REPLY_REQUIRES_RESULT')
     if(quoteSource){
-      const {target}=conversationNotificationRouting(residentStore.getGroup(source.groupId).messages,{replyToMessageId,recipientActorIds:recipients,atAll:args.atAll})
+      const {target}=conversationNotificationRouting(messages,{replyToMessageId,recipientActorIds:recipients,atAll:args.atAll})
       if(conversationMessageActorId(target)!==replyToActorId)fail('DYNAMIC_DIRECT_SOURCE_INVALID')
-    }else if(requestedRecipients!==undefined)finalConversationNotificationRouting(residentStore.getGroup(source.groupId).messages,{recipientActorIds:recipients})
+    }else if(requestedRecipients!==undefined)finalConversationNotificationRouting(messages,{recipientActorIds:recipients})
     let artifactFiles=args.artifactFiles??[]
     if(selection){
       const task=boundTask?.taskId===selection.taskId?boundTask:await requireTask(selection.taskId)
