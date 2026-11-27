@@ -273,7 +273,12 @@ test('failed skill refresh in a held review does not poison the next Router inpu
    if(!toolResult)return {tool:'platform_task_query',args:{state:'all'}}
    if(lastTool==='platform_task_query'){
     const page=h.results.findLast(row=>row.name===lastTool).result.value
-    return {tool:'platform_reply_submit',args:{recipientActorIds:[next.actorId],text:`本会话待跟进：${page.items.map(item=>item.title).join('、')}`}}
+    assert.deepEqual(page.eligibleEvidenceTaskIds,['local-follow-up'])
+    return {tool:'platform_task_evidence',args:{taskIds:page.eligibleEvidenceTaskIds}}
+   }
+   if(lastTool==='platform_task_evidence'){
+    const evidence=h.results.findLast(row=>row.name===lastTool).result.value
+    return {tool:'platform_reply_submit',args:{recipientActorIds:[next.actorId],text:`本会话待跟进：${evidence.items.map(item=>item.title).join('、')}`}}
    }
    return {text:'End scheduled turn'}
   }
@@ -358,16 +363,23 @@ test('failed skill refresh in a held review does not poison the next Router inpu
   const due=firstDue+index*interval*1000,occurrenceAt=new Date(due).toISOString()
   // 快进到到期前，随后由原生定时器回调触发，不手动投递排期输入。
   t.mock.timers.setTime(due-1);schedule.start();await schedule.runtime.running
-  assert.equal(h.sent.length,index+1)
+  assert.equal(h.sent.length,index?2:1)
   assert.equal(h.residentStore.getPlatformSchedule(binding.sessionId).lastOccurrenceAt,index?record.scheduledAt:undefined)
   t.mock.timers.setTime(due)
   await eventually(()=>h.residentStore.getPlatformSchedule(binding.sessionId).lastOccurrenceAt===occurrenceAt,'periodic follow-up '+index)
-  await eventually(()=>h.sent.length===index+2,'isolated report '+index)
+  if(index===0){
+   await eventually(()=>h.sent.length===2,'isolated first report')
+   await eventually(async()=>(await h.query('notification.list')).some(row=>row.kind==='platform-reply'&&row.state==='delivered'),'confirmed first report')
+  }else{
+   await eventually(()=>h.results.filter(row=>row.name==='platform_reply_submit'&&row.sessionId===binding.sessionId).length===2,'second report receipt')
+   assert.equal(h.results.findLast(row=>row.name==='platform_reply_submit').result.value.status,'occurrence-settled')
+   assert.equal(h.sent.length,2,'unchanged follow-up remains silent')
+  }
   const queries=h.results.filter(row=>row.name==='platform_task_query'&&row.sessionId===binding.sessionId)
   assert.equal(queries.length,index+1);assert.equal(queries[index].result.isError,false)
   assert.equal(queries[index].result.value.asOf,occurrenceAt)
   assert.deepEqual(queries[index].result.value.items.map(item=>item.taskId),['local-follow-up'])
-  assert.equal(h.sent[index+1].text,'本会话待跟进：本群待办')
+  assert.equal(h.sent[1].text,'本会话待跟进：本群待办')
  }
  assert.equal((await schedule.catalog())[0].status,'active')
 })
