@@ -1261,6 +1261,14 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       .finally(()=>selfCheckCuration.delete(event.id)).catch(()=>{})
     return {status:'queued'}
   }
+  function continueStandaloneSelfCheck(args){
+    return admitTask(args.taskId,async()=>{
+      const receipt=await command('router.self-check.continue',args,'router-self-check-continue:'+args.operationId)
+      if(!receipt.replayed)failures.delete(args.taskId)
+      void hostScheduler(()=>schedulePending())
+      return receipt
+    })
+  }
   function routerSelfCheck(now=Date.now()){
     if(closed||config.globalRouter!==true||now<nextSelfCheckAt)return Promise.resolve()
     return selfCheckFlight??=(async()=>{
@@ -1276,7 +1284,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const platformPages=new Map()
     return registerResidentRouterTools(agentCtx,binding,{
     query,command,responsibilityFor,followUpGrantActive,startLookup:args=>readonlyLookups.submit(args),
-    ...binding.global?{startSelfCheck:args=>readonlyLookups.submit({...args,operationId:'self-check-review:'+hash([args.selfCheckEventId,[...args.taskIds].sort()])}),learnFromSelfCheck}:{},
+    ...binding.global?{startSelfCheck:args=>readonlyLookups.submit({...args,operationId:'self-check-review:'+hash([args.selfCheckEventId,[...args.taskIds].sort()])}),learnFromSelfCheck,continueStandaloneSelfCheck}:{},
     applyTaskAction:applyDirectTaskAction,importShared:shared?importReportedWorkFile:undefined,forwardShared:(source,exec,validate)=>routerForwardShared(source,binding,exec,validate),prepareReply:(args,exec)=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args,exec)},
     platformQuery:async(groupId,args)=>{
       const key=JSON.stringify([args.state??'all',args.day??null,args.limit??50])
@@ -1575,8 +1583,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         if(!closed){
           // The turn has stopped and drained; inspect its terminal evidence now.
           const current=await requireTask(taskId)
-          if(taskInspectionReason(current)&&!runMilestoneParked){
-            try{await command('task.inspect',{taskId,expected:inspectionVersion(current)})}catch(error){if(error.code!=='TASK_INSPECTION_STALE')throw error}
+          if(taskInspectionReason(current,{standalone:config.globalRouter===true})&&!runMilestoneParked){
+            try{
+              const receipt=await command('task.inspect',{taskId,expected:inspectionVersion(current),standalone:config.globalRouter===true})
+              if(receipt.result?.inspected&&!current.conversationId&&!current.groupId)void kickGroup(selfCheckTaskScope(current)).catch(()=>{})
+            }catch(error){if(error.code!=='TASK_INSPECTION_STALE')throw error}
           }
         }
         if (!closed) void deliverNotifications()
@@ -1775,9 +1786,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     for(const task of await query('task.list')){
       const m=currentTaskMilestone(task)
       if(m?.waitForDelivery&&m.notificationId&&m.checkpointLease===task.leaseEpoch&&task.sessionFailure?.code!=='TASK_SESSION_DRAIN_FAILED'
-        ||!taskInspectionReason(task,{inflight:inflightTasks.has(task.taskId)}))continue
+        ||!taskInspectionReason(task,{inflight:inflightTasks.has(task.taskId),standalone:config.globalRouter===true}))continue
       try{
-        await command('task.inspect',{taskId:task.taskId,expected:inspectionVersion(task)})
+        await command('task.inspect',{taskId:task.taskId,expected:inspectionVersion(task),standalone:config.globalRouter===true})
         // Missing registry handles do not prove a writer or external producer
         // drained. Inspection records the incident; existing drain proofs own it.
       }

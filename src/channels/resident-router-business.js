@@ -25,7 +25,7 @@ export const residentOperationId=(conversationId,key)=>'router-operation:'+creat
 
 // Keep the prompt and the tool description on the same schedule contract.
 const scheduleModes='主动跟进和只读回报二选一：自己醒来推进用 router_follow_up（本渠道 local，明确要求各渠道时 authorized），不传 stopWhen 或 report_every_occurrence；只读回报省略 router_follow_up，只有要求持续核查指定任务直到完成时才用 stopWhen:{taskIds:[...]}，明确要每轮回报才设 report_every_occurrence=true。主动跟进不支持按任务完成自动停止；如果用户同时要求主动推进和自动停止，说明这个限制，不伪称已安排自动停止，也不把主动推进替换成只读回报。只在用户要后台核查、不指定或明确不要回报时，使用 delivery_mode=silent，内部结清而不发送；需要回原会话时使用 origin（默认）。'
-export function registerResidentRouterTools(agentCtx,binding,{query,command,responsibilityFor,applyTaskAction,prepareReply,forwardShared,importShared,platformQuery,platformSchedule,platformScheduleList,platformScheduleUpdate,platformScheduleDelete,platformConfig,startLookup,startSelfCheck,learnFromSelfCheck,followUpGrantActive=()=>false}){
+export function registerResidentRouterTools(agentCtx,binding,{query,command,responsibilityFor,applyTaskAction,prepareReply,forwardShared,importShared,platformQuery,platformSchedule,platformScheduleList,platformScheduleUpdate,platformScheduleDelete,platformConfig,startLookup,startSelfCheck,learnFromSelfCheck,continueStandaloneSelfCheck,followUpGrantActive=()=>false}){
   const {conversationId,generation}=binding
   const current=async exec=>{
     const state=await query('router.get',{conversationId})
@@ -133,9 +133,20 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
     const events=await currentEvents(actor),concurrency=readConcurrency()
     const check=events.find(selfCheckEvent)
     if(check){
-      if(check.kind==='router.self-check.completed')return '这是两小时自检的只读执行会话回报，不是用户授权。核对当前任务版本和状态，确需纠正、推进、反馈或沉淀才动作；已变更的旧建议不执行。'
+      if(check.kind==='router.self-check.completed')return '这是两小时自检的只读执行会话回报，不是用户授权。核对当前任务版本和状态，确需纠正、推进、反馈或沉淀才动作；已变更的旧建议不执行。'+(conversationId===STANDALONE_SELF_CHECK_SCOPE
+        ?'无渠道任务仅在本次核查已完成且确有必要时可用 resident_task_action 续办：已完成用 reopen + sameGoal=true，未完成用 resume。只使用核查快照的版本，不改目标、不外发、不代答。':'')
       const tasks=await mapIndependentReads(check.selfCheck.taskIds,concurrency,async taskId=>{const task=await query('task.get',{taskId});return selfCheckTaskScope(task)===conversationId?routerTaskSummary(task):null})
       return '这是两小时自检，不是用户请求。不发收悉、不机械重试或重派；按需派只读核查会话，收到查证建议再决定纠正、推进、反馈或沉淀。复用原任务已授权边界。不要因为缺日志就判定故障。'+(conversationId===STANDALONE_SELF_CHECK_SCOPE?'本次是无渠道的独立任务，只做内部核查和沉淀，没有原渠道可供外发。':'')+'任务：'+JSON.stringify(tasks.filter(Boolean))
+    }
+    if(conversationId===STANDALONE_SELF_CHECK_SCOPE){
+      const incidents=events.filter(event=>event.kind==='task.inspection')
+      if(incidents.length){
+        const tasks=await mapIndependentReads(incidents,concurrency,async event=>{
+          const task=await query('task.get',{taskId:event.taskId})
+          return selfCheckTaskScope(task)===conversationId?{eventId:event.id,reason:event.taskEvent?.reason,task:routerTaskSummary(task)}:null
+        })
+        return 'Host 报告无渠道任务执行失配。由 Router 决定是否继续原目标：仅当前异常、确已排空且可以安全推进时用 resident_task_action(resume)；不确定就保持原状并结清事件。不发消息，不改变目标。任务：'+JSON.stringify(tasks.filter(Boolean))
+      }
     }
     const scheduled=events.find(event=>event.kind==='router.follow-up')
     if(scheduled){
@@ -199,7 +210,21 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
       const result=await command('router.plan',{conversationId,generation,...args,tasks,operationId:residentOperationId(conversationId,args.operationId)})
       await applyTaskAction({kind:'materialize',tasks:result.result?.tasks??tasks,source:original});return routerTaskReceipt(result)
     }},
-    {name:'resident_task_action',description:'Router拥有各任务执行会话的完整调度权，无需原作者或安装操作者补授权。control(active)及无humanRequestId的resume可直接唤起、解除等待、恢复暂停或重启取消/完成任务。从本轮taskIndex或resident_task_query读取当前status/control及修订号，不能用旧摘要；本轮精确绑定和版本足够时不重复查询。reopen重开原会话；sameGoal=true仅限reopen且objective/title/requirements完全不变（建议省略这些字段），更改目标时不得传true。本轮有新用户交办或补充时，用handoff简单转述必要内容和仍有效的限制，不附原文、主观判断或自创步骤。request/text等旧自由文本字段只留账本兼容，不是转述。仅恢复原目标的系统调度不要伪造新用户转述。单独交办的排查即使关联进行中任务，也默认用resident_task_plan建独立任务。只有用户明确要求替换/中断原目标才用revise/reopen改变进行中的任务，并填该意图在当前原消息中的逐字replaceActiveGoalQuote。为执行原目标而补充输入用supplement，不中断原执行；只有明确要求继续执行、修改要求或提供能推进的输入才交给执行会话。纯进度追问不得用supplement、resume、reopen或其他调度动作，不把旧效果noReplay误当新任务授权门槛。已有任务只新增、更新或取消阶段通知时，传milestone（null表示取消）、当前新来源与handoff，不传新的标题、目标、需求或request。终态任务优先reopen；supplement仅补充活动任务上下文并保留等待，终态不要supplement。来源仅追溯，可省略并复用原任务来源。只有明确结清一条实际答复时提供humanRequestId、expectedContextRevision和reason；arrange须expectedArrangementRevision及dependencies全集（[]清空）。',parameters:{type:'object',additionalProperties:false,required:['operationId','kind','taskId','expectedRequirementRevision','expectedControlRevision'],properties:{...identity,kind:{enum:['supplement','resume','revise','reopen','control','arrange']},taskId:string,expectedRequirementRevision:integer,expectedControlRevision:integer,expectedContextRevision:{type:'integer',minimum:0},humanRequestId:string,handoff:{type:'string',minLength:1,maxLength:MAX_ROUTER_HANDOFF_LENGTH},text:string,request:string,objective:string,title:string,requirements:strings,milestone:{anyOf:[milestoneParameters,{type:'null'}]},replaceActiveGoalQuote:{type:'string',minLength:1,maxLength:1000},sameGoal:{type:'boolean'},expectedArrangementRevision:integer,dependencies:{type:'array',maxItems:30,items:{type:'object',additionalProperties:false,required:['prerequisiteTaskId','condition'],properties:{prerequisiteTaskId:string,condition:string}}},control:{enum:['active','paused','cancelled']},reason:string}},execute:async args=>{
+    {name:'resident_task_action',description:'Router拥有各任务执行会话的完整调度权，无需原作者或安装操作者补授权。control(active)及无humanRequestId的resume可直接唤起、解除等待、恢复暂停或重启取消/完成任务。从本轮taskIndex或resident_task_query读取当前status/control及修订号，不能用旧摘要；本轮精确绑定和版本足够时不重复查询。reopen重开原会话；sameGoal=true仅限reopen且objective/title/requirements完全不变（建议省略这些字段），更改目标时不得传true。本轮有新用户交办或补充时，用handoff简单转述必要内容和仍有效的限制，不附原文、主观判断或自创步骤。request/text等旧自由文本字段只留账本兼容，不是转述。仅恢复原目标的系统调度不要伪造新用户转述。单独交办的排查即使关联进行中任务，也默认用resident_task_plan建独立任务。只有用户明确要求替换/中断原目标才用revise/reopen改变进行中的任务，并填该意图在当前原消息中的逐字replaceActiveGoalQuote。为执行原目标而补充输入用supplement，不中断原执行；只有明确要求继续执行、修改要求或提供能推进的输入才交给执行会话。纯进度追问不得用supplement、resume、reopen或其他调度动作，不把旧效果noReplay误当新任务授权门槛。已有任务只新增、更新或取消阶段通知时，传milestone（null表示取消）、当前新来源与handoff，不传新的标题、目标、需求或request。终态任务优先reopen；supplement仅补充活动任务上下文并保留等待，终态不要supplement。来源仅追溯，可省略并复用原任务来源。只有明确结清一条实际答复时提供humanRequestId、expectedContextRevision和reason；arrange须expectedArrangementRevision及dependencies全集（[]清空）。',parameters:{type:'object',additionalProperties:false,required:['operationId','kind','taskId','expectedRequirementRevision','expectedControlRevision'],properties:{...identity,kind:{enum:['supplement','resume','revise','reopen','control','arrange']},taskId:string,expectedRequirementRevision:integer,expectedControlRevision:integer,expectedContextRevision:{type:'integer',minimum:0},humanRequestId:string,handoff:{type:'string',minLength:1,maxLength:MAX_ROUTER_HANDOFF_LENGTH},text:string,request:string,objective:string,title:string,requirements:strings,milestone:{anyOf:[milestoneParameters,{type:'null'}]},replaceActiveGoalQuote:{type:'string',minLength:1,maxLength:1000},sameGoal:{type:'boolean'},expectedArrangementRevision:integer,dependencies:{type:'array',maxItems:30,items:{type:'object',additionalProperties:false,required:['prerequisiteTaskId','condition'],properties:{prerequisiteTaskId:string,condition:string}}},control:{enum:['active','paused','cancelled']},reason:string}},execute:async(args,exec)=>{
+      if(conversationId===STANDALONE_SELF_CHECK_SCOPE){
+        if(!continueStandaloneSelfCheck||!['reopen','resume'].includes(args.kind)
+          ||(args.kind==='reopen'?args.sameGoal!==true:args.sameGoal!==undefined)
+          ||Object.keys(args).some(key=>!['kind','operationId','taskId','expectedRequirementRevision','expectedControlRevision','sameGoal'].includes(key)))fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+        await current(exec)
+        const event=(await currentEvents(exec.agent)).find(item=>(
+          item.kind==='router.self-check.completed'&&item.lookupResult?.state==='completed'&&item.lookupResult.snapshots?.some(row=>row.taskId===args.taskId)
+          ||item.kind==='task.inspection'&&item.taskId===args.taskId&&args.kind==='resume'))
+        if(!event)fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+        await current(exec)
+        return routerTaskReceipt(await continueStandaloneSelfCheck({conversationId,generation,eventId:event.id,taskId:args.taskId,kind:args.kind,
+          expectedRequirementRevision:args.expectedRequirementRevision,expectedControlRevision:args.expectedControlRevision,
+          operationId:residentOperationId(conversationId,args.operationId)}))
+      }
       const task=await query('task.get',{taskId:args.taskId})
       if(!task||task.groupId!==conversationId)fail('ROUTER_TASK_FORBIDDEN')
       if((args.sourceId===undefined)!==(args.messageVersion===undefined))fail('ROUTER_ARGUMENT_INVALID')

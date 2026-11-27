@@ -15,8 +15,8 @@ export function inspectionIsCurrent(task){
   return matchesExecution(task,record)&&(!record.waitIdentity||record.waitIdentity===taskWaitIdentity(task))
 }
 export const inspectionHoldsExecution=task=>task.inspection?.pending&&task.inspection.reason!=='wait-overdue'&&inspectionIsCurrent(task)
-export function taskInspectionReason(task,{inflight=false}={}){
-  if(!task.conversationId||task.archivedAt||task.status!=='active'||task.control!=='active')return
+export function taskInspectionReason(task,{inflight=false,standalone=false}={}){
+  if((!task.conversationId&&(!standalone||task.groupId!=null))||task.archivedAt||task.status!=='active'||task.control!=='active')return
   if(task.sessionFailure?.code==='TASK_SESSION_DRAIN_FAILED')return 'drain-failed'
   if(inflight)return
   if(task.recovering)return 'host-restart'

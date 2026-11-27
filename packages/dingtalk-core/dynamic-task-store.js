@@ -961,7 +961,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     if(kind==='task.inspect'){
       const task=get('dynamic_tasks',text(a.taskId,'taskId'))
       if(digest(inspectionVersion(task))!==digest(a.expected))fail('TASK_INSPECTION_STALE')
-      const reason=taskInspectionReason(task)
+      const reason=taskInspectionReason(task,{standalone:a.standalone===true})
       if(!reason)return changed({task,inspected:false})
       const expected=inspectionVersion(task)
       const key=digest([task.sessionId,task.requirementRevision,task.controlRevision,task.contextRevision??0,task.leaseEpoch])
@@ -969,7 +969,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       task.inspection={key,pending:true,reason,leaseEpoch:task.leaseEpoch,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,contextRevision:task.contextRevision??0,at:stamp}
       saveTask(task)
       routerLedger.taskEvent({id:'task-inspection:'+digest([task.taskId,key]),kind:'task.inspection',taskId:task.taskId,
-        sessionId:task.sessionId,reason,inspectionKey:key,expected})
+        sessionId:task.sessionId,reason,inspectionKey:key,expected,standalone:a.standalone===true})
       return changed({task,inspected:true})
     }
     if (kind === 'task.claim') {

@@ -539,3 +539,120 @@ test('two-hour self-check reviews standalone tasks without adding a channel or s
  assert.equal((await h.query('task.get',{taskId})).groupId??null,null)
  assert.deepEqual(h.sent,[])
 })
+
+test('standalone self-check resumes the reviewed task without a reply channel', {timeout:nativeTestTimeout(45000)}, async t=>{
+ let task,checked=0,attempted=false
+ const h=await residentRouterHost(t,body=>{
+   if(requestText(body).join('\n').includes('NIGHT_ROUTER_SELF_CHECK_REVIEW')){
+     checked++;return {text:'{"summary":"The standalone task needs one more pass to complete its existing goal.","limitations":[]}'}
+   }
+   const input=requestEnvelope(body,'Router 请求：'),last=lastCall(body)
+   if(input){
+     if(last==='resident_router_settle')return {text:'Settled'}
+     const ev=input.events[0]
+     if(ev.kind==='router.self-check'&&!last)return call('resident_self_check_review',{eventId:ev.id,taskIds:[task.taskId]})
+     if(ev.kind==='router.self-check.completed'&&!last){
+       attempted=true
+       return call('resident_task_action',{operationId:'audit-confirmed-resume',kind:'reopen',taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,sameGoal:true})
+     }
+     return settle(input)
+   }
+   return taskInput(body)?decision('Standalone task complete'):{text:'Idle'}
+ },{config:{globalRouter:true}})
+ const created=await h.service.createTask({requestId:'standalone-action-review',objective:'Verify the unchanged standalone goal'})
+ await h.service.whenIdle()
+ task=await h.query('task.get',{taskId:created.taskId})
+ const end=Date.parse(task.completion.at)
+ await h.service.routerSelfCheck(end-10)
+ const before=await h.query('router.self-check.clock')
+ await h.service.routerSelfCheck(before.nextAt)
+ await import('./fixtures/resident-router-host.js').then(x=>x.eventually(()=>checked===1&&attempted,'standalone review and action'))
+ await h.service.whenIdle()
+ const action=h.results.find(row=>row.name==='resident_task_action')
+ assert.ok(action?.result&&!action.result.isError,JSON.stringify(action))
+ const reopened=await h.query('task.get',{taskId:created.taskId})
+ assert.equal(reopened.status,'completed')
+ assert.notEqual(reopened.completion.commandId,task.completion.commandId)
+ assert.equal(reopened.requirementRevision,task.requirementRevision+1)
+ assert.equal(reopened.objective,task.objective)
+ assert.equal(reopened.groupId??null,null)
+ assert.equal(reopened.conversationId??null,null)
+ assert.deepEqual(h.sent,[])
+})
+
+test('legacy Router history stays readable after shared adoption without mixing current history',{timeout:nativeTestTimeout(45000)},async t=>{
+ const h=await residentRouterHost(t,body=>{
+   const input=requestEnvelope(body,'Router 请求：')
+   return input&&lastCall(body)!=='resident_router_settle'?settle(input):{text:'Settled'}
+ })
+ const old=channelMessage('old-ui-event',{text:'previously visible Router event flint-41'})
+ await h.receive(old);await h.service.whenIdle()
+ const id=h.host.ctx.channels.identity(old).sessionId,legacy=(await h.query('router.get',{conversationId:id})).activeSessionId
+ const history=(legacyOnly=false)=>routerSessionView({legacyOnly,conversationId:id,readRouter:()=>h.query('router.get',{conversationId:id}),readRotations:()=>h.query('router.rotations',{conversationId:id}),persistence:h.host.ctx.sessionPersistence})
+ assert.match(JSON.stringify((await history()).items),/flint-41/)
+ await h.restart({restoreIdleRouters:true},{globalRouter:true})
+ await h.receive({...old,messageId:'new-ui-event',text:'fresh Router event willow-42'})
+ await h.service.whenIdle()
+ assert.ok(await h.host.ctx.sessionPersistence.stat(legacy))
+ const visible=await history()
+ assert.match(JSON.stringify(visible.items),/willow-42/)
+ assert.doesNotMatch(JSON.stringify(visible.items),/flint-41/)
+ const prior=await history(true)
+ assert.equal(prior.sessionId,legacy)
+ assert.equal(prior.scope,'legacy-committed-router-context')
+ assert.match(JSON.stringify(prior.items),/flint-41/)
+ assert.doesNotMatch(JSON.stringify(prior.items),/willow-42/)
+})
+
+for(const shouldResume of [true,false])test('Host reports a standalone mismatch and Router '+(shouldResume?'can resume it':'can leave it stopped'),{timeout:nativeTestTimeout(40000)},async t=>{
+ let turns=0,seen=0,originalSession
+ const h=await residentRouterHost(t,async body=>{
+   const router=requestEnvelope(body,'Router 请求：'),last=lastCall(body)
+   if(router){
+     if(last==='resident_router_settle')return {text:'Settled'}
+     const incident=router.events.find(e=>e.kind==='task.inspection')
+     if(incident&&!last){
+       seen++
+       assert.equal(incident.taskEvent.reason,'execution-failed')
+       const current=await h.query('task.get',{taskId:incident.taskId})
+       assert.ok(current.inspection.pending)
+       if(shouldResume)return call('resident_task_action',{operationId:'continue-inspected-standalone',kind:'resume',taskId:current.taskId,expectedRequirementRevision:current.requirementRevision,expectedControlRevision:current.controlRevision})
+     }
+     return settle(router)
+   }
+   const input=taskInput(body)
+   if(!input)return {text:'Idle'}
+   originalSession??=input.task.sessionId
+   assert.equal(input.task.sessionId,originalSession)
+   if(++turns===1)return {error:'Synthetic standalone task model failure'}
+   return decision('Original standalone task resumed by Router')
+ },{config:{globalRouter:true}})
+ const created=await h.service.createTask({requestId:'standalone-host-inspection',objective:'Verify the existing task'})
+ await import('./fixtures/resident-router-host.js').then(x=>x.eventually(()=>seen===1,'inspection routed without waiting for the periodic wake'))
+ await h.service.whenIdle()
+ const task=await h.query('task.get',{taskId:created.taskId})
+ assert.equal(task.status,shouldResume?'completed':'active')
+ assert.equal(task.inspection.pending,!shouldResume)
+ assert.equal(turns,shouldResume?2:1)
+ assert.equal(task.groupId??null,null)
+ assert.deepEqual(h.sent,[])
+})
+
+test('the two-hour background clock wakes Router even when there are no tasks',{timeout:nativeTestTimeout(30000)},async t=>{
+ let seen=0
+ const h=await residentRouterHost(t,body=>{
+   const router=requestEnvelope(body,'Router 请求：'),last=lastCall(body)
+   if(!router||last==='resident_router_settle')return {text:'Settled'}
+   const check=router.events.find(e=>e.kind==='router.self-check')
+   if(check){seen++;assert.deepEqual(check.selfCheck.taskIds,[])}
+   return settle(router)
+ },{config:{globalRouter:true}})
+ await h.service.routerSelfCheck(Date.now())
+ const clock=await h.query('router.self-check.clock')
+ await h.service.routerSelfCheck(clock.nextAt-1)
+ assert.equal(seen,0)
+ await h.service.routerSelfCheck(clock.nextAt)
+ await import('./fixtures/resident-router-host.js').then(x=>x.eventually(()=>seen===1,'empty two-hour Router wake'))
+ await h.service.whenIdle()
+ assert.deepEqual(h.sent,[])
+})

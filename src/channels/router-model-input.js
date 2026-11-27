@@ -21,6 +21,7 @@ export function routerModelEvent(event,{compactCompletion=false}={}){
   if(event.kind==='router.follow-up')view.followUp=pick(event.wake,['occurrenceAt','sourceId','sourceVersion','actorId','instruction'])
   if(event.selfCheck)view.selfCheck=event.selfCheck
   if(event.kind==='router.lookup.completed'||event.kind==='router.self-check.completed')view.lookupResult=pick(event.lookupResult,['lookupId','sourceId','messageVersion','state','completedAt','summary','limitations'])
+  if(event.kind==='router.self-check.completed'&&event.lookupResult?.snapshots)view.lookupResult.snapshots=event.lookupResult.snapshots
   if(event.kind==='operator.message')view.operator=pick(event.operator,['requestId','actorId','text','destination'])
   if(event.source){
     const source=conversationSource(event.source)

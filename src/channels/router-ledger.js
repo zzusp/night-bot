@@ -227,7 +227,8 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
   }
   function taskEvent(event) {
     const task = read('tasks',event.taskId,true)
-    if (task?.conversationId) {
+    const conversationId=task?.conversationId??(event.kind==='task.inspection'&&event.standalone===true?selfCheckTaskScope(task):undefined)
+    if (conversationId) {
       const outcome=isTaskOutcome(event)
       const muted=outcome&&(event.suppressChannelOutcome===true||suppressChannelOutcome(task)||event.kind==='task.completed'&&task.metadata?.work?.reportsFinal===false)
       const outcomePolicy=muted?{suppressChannelOutcome:true}:{}
@@ -238,7 +239,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         ||task.lastDecision?.limitations?.some(code=>['TASK_SESSION_NO_SUBMISSION','TASK_EFFECT_UNCERTAIN_NO_REPLAY','TASK_JOB_UNCERTAIN_NO_REPLAY'].includes(code)))
       if(event.kind==='task.waiting'||inspectionReport||event.kind==='task.completed'&&task.metadata?.work?.reportsFinal===false
         &&!rows('dependencies').some(dependency=>dependency.prerequisiteTaskId===task.taskId))return
-      return enqueue(task.conversationId,event.id,{kind:event.kind,taskId:task.taskId,taskEventId:event.id,...outcome?{trackOutcome:true}:{},...outcomePolicy})
+      return enqueue(conversationId,event.id,{kind:event.kind,taskId:task.taskId,taskEventId:event.id,...outcome?{trackOutcome:true}:{},...outcomePolicy})
     }
   }
   function outcomeDisposition(row,event){
@@ -325,9 +326,46 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         for(let start=0;start<taskIds.length;start+=24)enqueue(id,'self-check:'+hash([prior.nextAt,start]),
           {kind:'router.self-check',selfCheck:{occurrenceAt:new Date(a.now).toISOString(),taskIds:taskIds.slice(start,start+24)}})
       }
+      if(!scoped.size){
+        enqueue(STANDALONE_SELF_CHECK_SCOPE,'self-check:'+hash([prior.nextAt,0]),
+          {kind:'router.self-check',selfCheck:{occurrenceAt:new Date(a.now).toISOString(),taskIds:[]}})
+        scoped.set(STANDALONE_SELF_CHECK_SCOPE,[])
+      }
       return changed({nextAt,conversations:[...scoped.keys()]})
     }
 
+    if(kind==='router.self-check.continue'){
+      conversationOf(a)
+      return operation(a,()=>{
+        const task=read('tasks',required(a.taskId),true),event=read('router_inbox',required(a.eventId),true)
+        const lookup=event?.lookupResult?.lookupId&&read('router_actions',event.lookupResult.lookupId,true)?.result?.lookup
+        const snap=lookup?.result?.snapshots?.find(item=>item.taskId===a.taskId)
+        const incident=event?.kind==='task.inspection'&&event.taskEventId?readEvent(event.taskEventId):null
+        if(a.conversationId!==STANDALONE_SELF_CHECK_SCOPE||selfCheckTaskScope(task)!==a.conversationId||task.archivedAt
+          ||task.archiveRestoreHold||task.archiveRestore?.reviewRequired||event?.conversationId!==a.conversationId
+          ||event.state!=='pending'||event.sharedHold||event.deliveryHold)fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+        if(incident){
+          if(incident.taskId!==task.taskId||incident.sessionId!==task.sessionId||incident.inspectionKey!==task.inspection?.key
+            ||!inspectionIsCurrent(task)||!task.inspection?.pending||a.kind!=='resume')fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+        }else if(event.kind!=='router.self-check.completed'||lookup?.state!=='completed'||lookup.conversationId!==a.conversationId
+          ||lookup.selfCheckEventId!==event.selfCheck?.requestEventId||!event.selfCheck?.taskIds.includes(a.taskId)
+          ||!lookup.taskIds.includes(a.taskId)||!snap||task.inspection?.pending)fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+        if(a.expectedRequirementRevision!==task.requirementRevision||a.expectedControlRevision!==task.controlRevision
+          ||!incident&&(snap.requirementRevision!==task.requirementRevision||snap.controlRevision!==task.controlRevision
+          ||snap.contextRevision!==(task.contextRevision??0)||snap.runSequence!==(task.runSequence??0)
+          ||snap.status!==task.status||snap.leaseEpoch!==(task.leaseEpoch??0)))fail('DYNAMIC_TASK_REVISION_STALE')
+        const sources=(task.sourceRefs??[]).map(id=>read('sources',id,true))
+        if(!sources.length||sources.some(source=>!source||source.channel!=='web'||source.actorId!==task.ownerActorId||!latest(source)
+          ||source.retracted||source.authorizationRevoked||source.triageHold||source.archiveRestoreHold))fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+        if(!task.drained||task.recovering||task.control==='cancelled'||blockers(task.taskId).operations.length
+          ||task.humanRequests?.some(row=>row.status==='waiting-reply')
+          ||task.dialogue?.some(row=>!row.reply&&!row.replyError))fail('ROUTER_TASK_RESUME_NOT_QUIESCENT')
+        const args={taskId:task.taskId,expectedRequirementRevision:a.expectedRequirementRevision,expectedControlRevision:a.expectedControlRevision,operationId:a.operationId}
+        if(a.kind==='reopen'&&task.status==='completed')return reduce('task.reopen',{...args,sameGoal:true},commandId)
+        if(a.kind==='resume'&&task.status==='active')return reduce('task.control',{...args,control:'active'},commandId,incident?{routerScheduling:true}:undefined)
+        fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+      })
+    }
     if(kind==='router.lookup.submit'){
       if(a.selfCheckEventId!==undefined){
         conversationOf(a)

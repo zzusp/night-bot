@@ -36,7 +36,9 @@ export default function RouterPage({route,channels,web}:{
   const target=listedTarget??(entry?{kind:'chat' as const,id:entry.id,name:entry.title||'Web 对话',href:'#/chat/'+encodeURIComponent(entry.id)}:undefined);
   const options=target&&!listedTarget?[...listed,target]:listed;
   const historicalError=historical.error instanceof ApiError&&[403,404].includes(historical.error.status)?null:historical.error;
-  const endpoint=target?`/${target.kind}/${encodeURIComponent(target.id)}/session`:null;
+  const legacy=route.searchParams.get('history')==='legacy';
+  const endpoint=target?`/${target.kind}/${encodeURIComponent(target.id)}/${legacy?'legacy-session':'session'}`:null;
+  const historyHref=target?'#/router?conversation='+encodeURIComponent(targetKey(target))+(legacy?'':'&history=legacy'):null;
   const [toolbar,setToolbar]=useState<HTMLDivElement|null>(null);
   const [rail,setRail]=useState(()=>window.matchMedia('(min-width: 1251px)').matches);
   const loading=channels.loading||web.loading||historical.loading;
@@ -51,19 +53,20 @@ export default function RouterPage({route,channels,web}:{
         </BoardSelect>
         <div className="router-tools">
           {target&&<a href={target.href} className="text-link router-origin-link">原对话</a>}
+          {historyHref&&<a href={historyHref} className="text-link router-origin-link">{legacy?'当前记录':'旧记录'}</a>}
           <div ref={setToolbar} className="router-search-slot"/>
-          {target&&<IconButton label={rail?'隐藏工作动态':'显示工作动态'} aria-expanded={rail} aria-controls={rail?'activity-panel':undefined} onClick={()=>setRail(value=>!value)}><RiLayoutRightLine size={18}/></IconButton>}
+          {target&&!legacy&&<IconButton label={rail?'隐藏工作动态':'显示工作动态'} aria-expanded={rail} aria-controls={rail?'activity-panel':undefined} onClick={()=>setRail(value=>!value)}><RiLayoutRightLine size={18}/></IconButton>}
         </div>
       </div>
       {channels.error&&<Notice error={channels.error} source="/conversations" onRetry={channels.refresh}/>}
       {web.error&&<Notice error={web.error} source="/chat" onRetry={web.refresh}/>}
       {historicalError&&historicalId&&<Notice error={historicalError} source="/chat" onRetry={historical.refresh}/>}
-      <div className="conversation-session-records" role="region" aria-label="路由记录">
+      <div className="conversation-session-records" role="region" aria-label={legacy?'旧路由记录（只读）':'路由记录'}>
         {endpoint?<ExecutionSearchToolbar.Provider value={toolbar}><ExecutionHistory key={endpoint} endpoint={endpoint} router sessionKind="router" controlsTarget={null}/></ExecutionSearchToolbar.Provider>
           :loading?<Loading>正在读取对话…</Loading>
           :<EmptyState title={selection?'所选对话暂不可用':options.length?'选择对话查看路由记录':'暂无可查看的对话'}/>}
       </div>
     </section>
-    {target&&rail&&<ActivityPanel key={targetKey(target)} conversation={target}/>}
+    {target&&rail&&!legacy&&<ActivityPanel key={targetKey(target)} conversation={target}/>}
   </div>;
 }

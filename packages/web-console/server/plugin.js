@@ -659,16 +659,17 @@ export async function createWebConsole({channels, paths, config, getApplication,
       }
       fail('NOT_FOUND',404)
     }
-    const chatSession = /^\/api\/(chat|conversations)\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
+    const chatSession = /^\/api\/(chat|conversations)\/([^/]+)\/(session|legacy-session)(?:\/messages\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && chatSession) {
       const conversationId = executionContext(chatSession[1], decodeURIComponent(chatSession[2]))
       const taskService = application().tasks, store = taskService.store
       if (!store?.query) fail('SESSION_UNAVAILABLE', 503)
-      const options = {conversationId, executionActivity:true, readRouterTasks: () => store.query({kind:'task.transcript-titles',groupId:conversationId}), readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), ...await sessionGuards(async()=>{if(executionContext(chatSession[1],decodeURIComponent(chatSession[2]))!==conversationId)fail('SESSION_PAGE_STALE',409)})}
-      if (chatSession[3]) return sendSession(response, routerSessionMessageView, {...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[3])},requestStarted)
+      const legacyOnly=chatSession[3]==='legacy-session'
+      const options = {conversationId, legacyOnly, executionActivity:true, readRouterTasks: () => store.query({kind:'task.transcript-titles',groupId:conversationId}), readRouter: () => store.query({kind: 'router.get', conversationId}), readRotations: () => store.query({kind: 'router.rotations', conversationId}), persistence: getSessionPersistence(), ...await sessionGuards(async()=>{if(executionContext(chatSession[1],decodeURIComponent(chatSession[2]))!==conversationId)fail('SESSION_PAGE_STALE',409)})}
+      if (chatSession[4]) return sendSession(response, routerSessionMessageView, {...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[4])},requestStarted)
       return serveExecution(routerSessionView,{...options,readExecutionTiming:scope=>taskService.executionHistoryTiming?.(scope)},async()=>{
         const router=await options.readRouter()
-        return {id:router?.sharedSessionId?undefined:router?.activeSessionId,key:JSON.stringify([router?.id,router?.sharedSessionId??router?.activeSessionId,router?.generation])}
+        return {id:legacyOnly||router?.sharedSessionId?undefined:router?.activeSessionId,key:JSON.stringify([router?.id,legacyOnly,router?.sharedSessionId,router?.activeSessionId,router?.generation])}
       })
     }
     const chatSummary = /^\/api\/chat\/([^/]+)\/summary$/.exec(path)

@@ -143,3 +143,21 @@ test('Router opens a historical Web conversation beyond the initial listing and 
  await expect(page.getByRole('link',{name:'原对话',exact:true})).toHaveCount(0);
  expect(foreignRequests).toBe(0)
 });
+
+test('Router offers a distinct read-only legacy record view and can return to live history',async({page})=>{
+ const old=page.getByRole('region',{name:'旧路由记录（只读）',exact:true})
+ await page.route('**/api/conversations/room-product/legacy-session?*',r=>r.fulfill({json:{
+   status:'ready',scope:'legacy-committed-router-context',revision:'legacy',total:1,
+   items:[{id:'legacy-event',role:'user',text:'仅旧 Router 会话中的记录'}],
+ }}))
+ await page.goto(fixture.origin+'/#/router?conversation=conversations%3Aroom-product')
+ await page.getByLabel('访问令牌',{exact:true}).fill(fixture.token)
+ await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
+ await expect(page.getByRole('region',{name:'路由记录',exact:true})).toBeVisible()
+ await page.getByRole('link',{name:'旧记录',exact:true}).click()
+ await expect(old).toContainText('仅旧 Router 会话中的记录')
+ await expect(page.locator('.board-composer, #activity-panel')).toHaveCount(0)
+ await page.getByRole('link',{name:'当前记录',exact:true}).click()
+ await expect(old).toHaveCount(0)
+ await expect(page.getByRole('region',{name:'路由记录',exact:true})).not.toContainText('仅旧 Router 会话中的记录')
+})
