@@ -53,3 +53,14 @@ test('capped or clipped records are distinguishable from a complete unbounded re
  assert.equal(result.records.length,24)
  assert.ok(result.records.every(row=>row.clipped&&row.title.length===160))
 })
+
+test('credential fragments at the clipping boundary never enter the arrangement projection',t=>{
+ const {db,put}=fixture(t)
+ const common={groupId:'room',createdAt:'2026-11-20T12:00:00.000Z',requirementRevision:1}
+ put('tasks','normal',{...common,title:'巡检'})
+ put('tasks','sensitive',{...common,title:'内部任务',objective:'x'.repeat(233)+' sk-'+'X'.repeat(24)})
+ const result=queryArrangementHistory(db,range)
+ assert.equal(result.complete,true)
+ assert.equal(result.records[0].title,'巡检')
+ assert.deepEqual(result.records[1],{restricted:true})
+})

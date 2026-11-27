@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto'
+import {containsSecret} from '../memory/format.js'
 import {localStamp,shiftDay,validDay} from '../work-log/calendar.js'
 
 const fail=()=>{throw Object.assign(Error('ROUTER_LOOKUP_ARGUMENT_INVALID'),{code:'ROUTER_LOOKUP_ARGUMENT_INVALID'})}
@@ -74,6 +75,12 @@ export function queryArrangementHistory(db,{conversationId,day,through,timezone}
    }
   }
   const title=typeof identity?.title==='string'?identity.title:'',objective=typeof identity?.objective==='string'?identity.objective:''
+  // Detect credentials before clipping: clipping can leave a credential fragment
+  // that no longer matches the detector. Keep only a coverage marker for that row.
+  if(containsSecret(title)||containsSecret(objective)){
+   records.push({restricted:true})
+   continue
+  }
   records.push({kind:row.kind,localAt:local.day+' '+local.time,title:title.slice(0,160),objective:objective.slice(0,240),
     clipped:title.length>160||objective.length>240,identityMissing:!title&&!objective})
  }

@@ -437,7 +437,7 @@ test('date-based arrangement question without a task reference uses the durable 
    const facts=JSON.parse(requestText(body).at(-1))
    assert.deepEqual(requestTools(body),[])
    assert.deepEqual(facts.range,{day:localDay,through:localDay,timezone})
-   assert.deepEqual(facts.records.map(row=>row.title),facts.question.includes('归档核对')?['客户巡检安排','另一个任务']:['客户巡检安排'])
+   assert.deepEqual(facts.records.map(row=>row.title),facts.question.includes('归档核对')||facts.question.includes('还有巡检')?['客户巡检安排','另一个任务']:['客户巡检安排'])
    assert.equal(facts.records[0].kind,'created')
    return {text:JSON.stringify({matches:facts.question.includes('巡检')?[1]:[],uncertain:false})}
   }
@@ -448,7 +448,7 @@ test('date-based arrangement question without a task reference uses the durable 
    completions.set(result.sourceId,result);replied.add(result.sourceId)
    return call('resident_router_reply',{operationId:'arrangement-answer:'+result.sourceId,sourceId:result.sourceId,messageVersion:result.messageVersion,text:result.summary,replyPurpose:'task-update'})
   }
-  const event=packet.events.find(event=>['today-matching','today-no-match','today-partial','empty-day'].includes(event.source?.messageId))
+  const event=packet.events.find(event=>['today-matching','today-no-match','today-partial','empty-day','today-restricted'].includes(event.source?.messageId))
   if(event){
    const last=body.messages.at(-1)
    if(last.role==='tool'){
@@ -484,14 +484,24 @@ test('date-based arrangement question without a task reference uses the durable 
  await h.receive(channelMessage('empty-day',{text:'2020年1月1日有没有安排过任务？'}))
  await eventually(()=>h.sent.length===4,'empty date response')
  await h.service.whenIdle()
- assert.equal(workers,3,'a date with no records is answered from the store without a model call')
  assert.deepEqual(await h.query('task.list'),moreTasks);assert.deepEqual(await h.query('execution.list'),moreExecutions)
+ await h.store.command({id:'seed-restricted',kind:'task.create',args:{taskId:'restricted',groupId:conversationId,ownerActorId:'alice',title:'不应披露的任务',request:'x'.repeat(233)+' sk-'+'X'.repeat(24)}})
+ await h.store.command({id:'pause-restricted',kind:'task.control',args:{taskId:'restricted',control:'paused',expectedControlRevision:1}})
+ await h.service.whenIdle()
+ const restrictedTasks=await h.query('task.list'),restrictedExecutions=await h.query('execution.list')
+ await h.receive(channelMessage('today-restricted',{text:'今天还有巡检安排吗？'}))
+ await eventually(()=>h.sent.length===5,'safe records still match when one arrangement is excluded')
+ await h.service.whenIdle()
+ assert.equal(workers,4,'a date with no records is answered from the store without a model call')
+ assert.deepEqual(await h.query('task.list'),restrictedTasks);assert.deepEqual(await h.query('execution.list'),restrictedExecutions)
  const results=[...completions.values()]
- assert.deepEqual(results.map(result=>result.state),['completed','completed','completed','completed'])
+ assert.deepEqual(results.map(result=>result.state),['completed','completed','completed','completed','completed'])
  assert.match(results[0].summary,/查到1条.*客户巡检安排/)
  assert.match(results[1].summary,/没有查到匹配/)
  assert.match(results[2].summary,/已查记录没有明确匹配，不能确认没有安排/)
  assert.match(results[2].limitations[0],/缺少完整/)
  assert.match(results[3].summary,/2020-01-01.*本渠道没有记录到任务安排/)
+ assert.match(results[4].summary,/查到1条.*客户巡检安排/)
+ assert.match(results[4].limitations.join(' '),/含敏感信息/)
  assert.deepEqual([results[0],results[1],results[3]].map(result=>result.limitations),[[],[],[]])
 })

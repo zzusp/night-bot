@@ -104,17 +104,19 @@ export function createRouterReadonlyLookups({ctx,query,command,models,schedule,t
   signal.throwIfAborted()
   const period=(range.day===range.through?range.day:range.day+'至'+range.through)+'（'+range.timezone+'）'
   if(!allRecords.length&&complete)return result(period+'本渠道没有记录到任务安排。')
-  const records=allRecords.filter(row=>!row.identityMissing)
+  const records=allRecords.filter(row=>!row.identityMissing&&!row.restricted)
   const limitations=[]
   if(!complete)limitations.push('该日期范围内还有未读取的安排记录。')
-  const identityMissing=records.length!==allRecords.length
-  if(!records.length&&identityMissing)return result(period+'有任务安排，但记录未保留当时的任务内容，无法确认是否匹配。',['缺少安排时的任务名称和目标。',...limitations])
+  if(allRecords.some(row=>row.identityMissing))limitations.push('部分记录缺少安排时的任务名称和目标。')
+  if(allRecords.some(row=>row.restricted))limitations.push('部分安排的内容含敏感信息，未纳入类别核对。')
+  if(!records.length)return result(period+'有任务安排，但缺少可用于判断类别的记录。',limitations)
   if(!source.text||source.truncated)return result('原问题内容缺失或被截断，无法核对哪类任务安排。')
+  if(containsSecret(source.text))return result('原问题含敏感信息，请去掉敏感内容后再查。')
   const body=JSON.stringify({question:source.text,range,records:records.map(({title,objective,kind,localAt},index)=>({number:index+1,title,objective,kind,localAt}))})
   if(Buffer.byteLength(body)>64*1024||containsSecret(body))return result('部分安排记录无法安全读取，无法确认是否有匹配安排。')
   const {matches,uncertain}=await infer(body,signal,arrangementPrompt,arrangementSchema)
   if(matches.some(number=>number<1||number>records.length)||new Set(matches).size!==matches.length)fail('ROUTER_LOOKUP_RESULT_INVALID')
-  if(identityMissing||uncertain||records.some(row=>row.clipped))limitations.push('部分记录缺少完整的安排时任务内容，无法确定类别。')
+  if(uncertain||records.some(row=>row.clipped))limitations.push('部分记录缺少完整的安排时任务内容，无法确定类别。')
   if(!matches.length)return result(period+(limitations.length?'已查记录没有明确匹配，不能确认没有安排。':'本渠道没有查到匹配的任务安排。'),limitations)
   const details=matches.slice(0,5).map(number=>{
    const row=records[number-1]
