@@ -1,6 +1,6 @@
 import {dwsEnvironment,dwsAccountPolicy} from './dws-environment.js'
 import {join} from 'node:path'
-import {createDwsAdapter} from '../../../packages/dingtalk-core/dws-adapter.js'
+import {createDwsAdapter,formatDwsReplyText} from '../../../packages/dingtalk-core/dws-adapter.js'
 import {createNodeDwsRunner} from '../../../packages/dingtalk-core/dws-runner.js'
 import {messageTimestamp,normalizeHistoryMessage,startDwsBridge} from '../../../packages/dingtalk-core/dws-bridge.js'
 import {sendWorkflowNotification,notificationOpenTaskId} from '../../../packages/dingtalk-core/group-message.js'
@@ -83,6 +83,7 @@ export async function apply(ctx,config={},dependencies={}){
   }
   const inBoundScope=context=>readyBound&&context?.channelId===channelId&&context.type===config.conversationType&&context.conversationId===config.binding.conversationId
   unregister=ctx.channels.registerTransport(channelId,{canSend:()=>readyBound&&!closed&&config.enabled&&config.writesAuthorized===true,
+    formatNewReplyText:formatDwsReplyText,
     privatePeer:input=>inBoundScope(input)&&input.type==='chat'&&isBoundPrivateAuthor(config.binding,input.senderId)?config.binding.peerId:undefined,
     capabilities:{account:accountPolicy,privateSubscription:{scope:'explicit-peers',peerCount:privatePeers.length+(config.conversationType==='chat'?1:0)},conversationTypes:[config.conversationType],files:[config.conversationType],quotedReplies:[config.conversationType],standaloneMarkdown:true},
     send:(envelope,notification)=>{requireSend();assertTarget(envelope.conversationId,envelope.type);return envelope.type==='chat'?adapter.sendDirectIntent({openDingTalkId:config.binding.peerId,text:envelope.text,textFormat:notification.payload.textFormat,idempotencyKey:notification.id,conversationId:envelope.conversationId,replyToMessageId:envelope.replyToMessageId,replyToSenderId:envelope.replyToParticipantId??envelope.senderId??config.binding.peerId}):notifications.send(typed(notification,envelope))},

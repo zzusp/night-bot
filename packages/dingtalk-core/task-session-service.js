@@ -11,7 +11,7 @@ import {assertPiTaskBackend} from '../../src/runtime/pi-task-backend.js'
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import {TaskArchives} from '../../src/tasks/archive.js'
-import {freezeSingleTaskFiles} from '../../src/tasks/delivery.js'
+import {freezeSingleTaskFiles,reportedWorkFile} from '../../src/tasks/delivery.js'
 import {createSingleTaskSessions,historicalTaskResultEvidence} from '../../src/tasks/single-session.js'
 import {routerHandoffTaskInput} from '../../src/tasks/execution-context.js'
 import {createTaskEffectReconciliation,taskEffectReconciliationIdentity,taskEffectDigest,effectReconciliationAuditKinds} from '../../src/tasks/effect-reconciliation.js'
@@ -419,6 +419,31 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       !await query('router.source-latest',{conversationId,sourceId,messageVersion:source.version}))fail('SHARED_SOURCE_STALE')
     return source
   }
+  async function importReportedWorkFile({source,taskId,requirementRevision,path,name,indexPath},exec,validate){
+    if(!shared)fail('SHARED_UNAVAILABLE')
+    const task=await requireTask(taskId)
+    if(!reportedWorkFile(task,source,requirementRevision,path))fail('SHARED_REPORTED_FILE_UNAVAILABLE')
+    const file=await readSharedWorkFile(task,path)
+    if(!reportedWorkFile(await requireTask(taskId),source,requirementRevision,path))fail('SHARED_REPORTED_FILE_UNAVAILABLE')
+    await validate()
+    exec.signal.throwIfAborted()
+    return commitSharedImport(source,task,{name,indexPath},file)
+  }
+  async function readSharedWorkFile(task,path){
+    try{return await readTaskWorkFile(await taskWorkspace(root,task.taskId,task),path.slice('work/'.length),MAX_SHARED_FILE_BYTES)}
+    catch(error){
+      if(error?.code==='ENOENT')fail('SHARED_FILE_NOT_FOUND')
+      if(String(error?.code).startsWith('TASK_ARTIFACT_'))fail('SHARED_FILE_INVALID')
+      throw error
+    }
+  }
+  function commitSharedImport(source,task,args,file){
+    const operation='shared-import:'+hash([source.groupId,source.sourceId,source.version])
+    const {result}=shared.execute({actorId:source.actorId,conversationId:task.groupId??'local-task'},
+      {action:'import',name:args.name,indexPath:args.indexPath,fileName:file.fileName},
+      {source:sharedAttribution(source,task),operation,bytes:file.bytes})
+    return shared.verifyImport(result)
+  }
   function sharedAttribution(source,task){return {sourceId:source.sourceId,version:source.version,taskId:task.taskId}}
   async function taskSharedResource(binding,args,signal){
     if(!shared||!await currentTask(binding))fail('SHARED_UNAVAILABLE')
@@ -452,18 +477,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
     if(args.action==='import'){
       if(!sharedImportRequested(source.text,args.path))fail('SHARED_IMPORT_REQUEST_REQUIRED')
-      let file
-      try{file=await readTaskWorkFile(await taskWorkspace(root,task.taskId,task),args.path.slice('work/'.length),MAX_SHARED_FILE_BYTES)}
-      catch(error){
-        if(error?.code==='ENOENT')fail('SHARED_FILE_NOT_FOUND')
-        if(String(error?.code).startsWith('TASK_ARTIFACT_'))fail('SHARED_FILE_INVALID')
-        throw error
-      }
+      const file=await readSharedWorkFile(task,args.path)
       await guard()
-      const operation='shared-import:'+hash([source.groupId,source.sourceId,source.version])
-      const {result}=shared.execute(principal,{action:'import',name:args.name,indexPath:args.indexPath,fileName:file.fileName},
-        {source:attribution,operation,bytes:file.bytes})
-      return shared.verifyImport(result)
+      return commitSharedImport(source,task,args,file)
     }
     // Maintenance updates the specified shared file at its expected version.
     const maintaining=args.action==='maintain'
@@ -1085,7 +1101,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const task=boundTask?.taskId===selection.taskId?boundTask:await requireTask(selection.taskId)
       if(task.groupId!==source.groupId||!task.sourceRefs.includes(source.sourceId)&&task.ownerActorId!==source.actorId||task.status!=='completed'||task.archivedAt
         ||task.requirementRevision!==selection.requirementRevision||task.archiveRestore?.reviewRequired)fail('TASK_DELIVERY_SOURCE_STALE')
-      artifactFiles=selection.artifactIds.map(id=>{
+      if(selection.reportedFiles){
+        if(!selection.reportedFiles.every(file=>reportedWorkFile(task,source,selection.requirementRevision,file.path)))fail('TASK_DELIVERY_ARTIFACT_NOT_REPORTED')
+        artifactFiles=await freezeSingleTaskFiles({reported:task.completion.result.artifacts,selected:selection.reportedFiles,
+          task,directory:await taskWorkspace(root,task.taskId,task),files:deliveryFiles,reportedDelivery:true})
+      }else artifactFiles=selection.artifactIds.map(id=>{
         const file=task.completion?.result?.artifactFiles?.find(file=>file.artifact.artifactId===id)
         if(!file)fail('TASK_DELIVERY_ARTIFACT_NOT_REPORTED')
         return file
@@ -1094,7 +1114,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
     const internalIds=[source.sourceId,source.groupId,source.messageId,source.actorId,notificationId,replyInternalTaskId(selection?.taskId,source.text)]
     const attachmentDeliveryUnsupported=artifactFiles.length>0&&channels.fileDeliveryUnsupported(source.groupId)
-    const replyText=attachmentDeliveryUnsupported?withoutAttachmentPromise(args.text):args.text
+    const presented=exec&&transport?.formatNewReplyText?transport.formatNewReplyText(args.text):args.text
+    const replyText=attachmentDeliveryUnsupported?withoutAttachmentPromise(presented):presented
     const text=finalReply?prepareConversationNotification({conversationId:source.groupId,text:replyText,replyToMessageId,replyToActorId,
       recipientActorIds:recipients,atAll:args.atAll,artifactFiles,signature:legacy.getAgentConfig().replySignature,internalIds}).text:replyText
     assertConversationReply(text,internalIds)
@@ -1193,7 +1214,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   residentRouter=await openRouterLifecycle({ctx,store,root,settle:(args,id)=>command('router.settle',args,id),recordStage:recordResidentStage,models:()=>roleModels('router'),agentPreset:legacy.getAgentConfig().agentPreset,setupBusiness:(agentCtx,binding)=>{
     const platformPages=new Map()
     return registerResidentRouterTools(agentCtx,binding,{
-    query,command,responsibilityFor,followUpGrantActive,startLookup:args=>readonlyLookups.submit(args),applyTaskAction:applyDirectTaskAction,forwardShared:(source,exec,validate)=>routerForwardShared(source,binding,exec,validate),prepareReply:(args,exec)=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args,exec)},
+    query,command,responsibilityFor,followUpGrantActive,startLookup:args=>readonlyLookups.submit(args),applyTaskAction:applyDirectTaskAction,importShared:shared?importReportedWorkFile:undefined,forwardShared:(source,exec,validate)=>routerForwardShared(source,binding,exec,validate),prepareReply:(args,exec)=>{if([...platformPages.values()].some(page=>page.consumed<page.total))fail('platform_task_pages_unread');return prepareDirectReply(args,exec)},
     platformQuery:async(groupId,args)=>{
       const key=JSON.stringify([args.state??'all',args.day??null,args.limit??50])
       let snapshot=platformPages.get(key)

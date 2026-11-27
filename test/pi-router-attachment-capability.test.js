@@ -1,7 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
-import {residentRouterHost,channelMessage,requestEnvelope,requestTools,eventually} from './fixtures/resident-router-host.js'
+import {join} from 'node:path'
+import {backupTask,validateTaskArchive} from '../src/tasks/archive.js'
+import {ledgerDigest,validateTaskLedger} from '../src/tasks/ledger-archive.js'
+import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestText,eventually} from './fixtures/resident-router-host.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {taskNotificationRecovery} from '../packages/dingtalk-core/notification-delivery.js'
 import {blockUnsupportedAttachment,withoutAttachmentPromise} from '../packages/dingtalk-core/group-notification.js'
@@ -20,44 +23,70 @@ test('attachment preflight never replaces a claimed send or an existing receipt'
  }
 })
 
-test('Router respects file capabilities and preserves independently proven attachment and text receipts',{timeout:nativeTestTimeout(65000)},async t=>{
- let h
+const reportedPath='work/report.md', importName='合成资料归档'
+async function attachmentFixture(t,files=['chat-room']){
+ let h,phase='open'
+ const setPhase=value=>{phase=value}
+ t.after(()=>{if(phase!=='verified')t.diagnostic('Last attachment test phase: '+phase)})
  const planned=new Map(),replied=new Set(),receipts=new Map(),attempts=[]
- const capabilities={conversationTypes:['chat','chat-room'],files:['chat-room'],standaloneMarkdown:true}
+ let acceptedImport, crossChannelRead
+ const capabilities={conversationTypes:['chat','chat-room'],files,standaloneMarkdown:true}
  let holdOldFile=true
  h=await residentRouterHost(t,async body=>{
   const names=requestTools(body)
   if(names.includes('task_result')){
    if(result(body,'task_result'))return {text:'Done'}
+   if(requestText(body).some(text=>text.includes('跨渠道读取合成资料'))){
+    if(!result(body,'shared_resource_lookup'))return call('shared_resource_lookup',{action:'search',query:importName,kind:'file'})
+    const reply=JSON.parse(body.messages.at(-1).content)
+    if(!reply.contentBase64){const match=reply.matches[0];return call('shared_resource_lookup',{action:'read',id:match.id,version:match.version,byteOffset:0})}
+    crossChannelRead=reply
+    return call('task_result',{decision:{action:'complete',summary:'已读共享原件。',evidence:[],limitations:[]}})
+   }
    if(!result(body,'write'))return call('write',{path:'work/report.md',content:contents})
-   return call('task_result',{decision:{action:'complete',summary:'核对已完成。',evidence:[],limitations:[],artifacts:['work/report.md'],deliveryFiles:[{path:'work/report.md',caption:'核对草稿'}]}})
+   return call('task_result',{decision:{action:'complete',summary:'核对已完成。',evidence:[],limitations:[],artifacts:['work/report.md'],deliveryFiles:requestText(body).some(text=>text.includes('仅记录原件'))?[]:[{path:'work/report.md',caption:'核对草稿'}]}})
   }
   if(!names.includes('resident_router_settle'))return {text:'No work'}
   if(result(body,'resident_router_settle'))return {text:'Settled'}
   const packet=requestEnvelope(body,'Router 请求：'),event=packet.events.find(row=>row.source)
-  if(event?.source.messageId==='send-existing'){
-   if(result(body,'resident_router_reply'))return call('resident_router_settle',{operationId:'settle-resend',eventIds:packet.events.map(row=>row.id),
-    noTaskDispositions:[{eventId:event.id,outcome:'handled-inline',reason:'Delivered through Router outbox.',sourceQuote:event.source.text}]})
-   const task=await h.query('task.get',{taskId:'task-private'})
-   return call('resident_router_reply',{operationId:'send-existing',sourceId:event.sourceId,messageVersion:event.messageVersion,text:'原文件见附件。',replyPurpose:'direct-answer',
-    taskDelivery:{taskId:task.taskId,requirementRevision:task.requirementRevision,artifactIds:task.completion.result.artifactFiles.map(file=>file.artifact.artifactId)}})
+  if(['import-existing','import-other-room','import-stale','import-unreported'].includes(event?.source.messageId)){
+   const negative=event.source.messageId!=='import-existing'
+   if(negative&&result(body,'resident_router_shared_import'))return call('resident_router_settle',{operationId:'settle-'+event.source.messageId,eventIds:packet.events.map(row=>row.id),
+    noTaskDispositions:[{eventId:event.id,outcome:'context-only',reason:'File selection rejected.',sourceQuote:event.source.text}]})
+   if(result(body,'resident_router_reply'))return call('resident_router_settle',{operationId:'settle-import',eventIds:packet.events.map(row=>row.id),
+    noTaskDispositions:[{eventId:event.id,outcome:'handled-inline',reason:'Original saved.',sourceQuote:event.source.text}]})
+   if(result(body,'resident_router_shared_import')){
+    acceptedImport=JSON.parse(body.messages.at(-1).content)
+    return call('resident_router_reply',{operationId:'import-reply',sourceId:event.sourceId,messageVersion:event.messageVersion,text:'草稿已收入知识库。'})
+   }
+   const task=await h.query('task.get',{taskId:'task-reported'})
+   return call('resident_router_shared_import',{sourceId:event.sourceId,messageVersion:event.messageVersion,sourceQuote:event.source.text,
+     taskId:task.taskId,requirementRevision:task.requirementRevision+Number(event.source.messageId==='import-stale'),path:event.source.messageId==='import-unreported'?'work/../materials/source.md':reportedPath,name:importName})
+  }
+  if(['send-existing','send-reported','send-other-room'].includes(event?.source.messageId)){
+   const fromReported=event.source.messageId!=='send-existing'
+   if(result(body,'resident_router_reply'))return call('resident_router_settle',{operationId:'settle-'+event.source.messageId,eventIds:packet.events.map(row=>row.id),
+    noTaskDispositions:[{eventId:event.id,outcome:event.source.messageId==='send-other-room'?'context-only':'handled-inline',reason:'Request checked through Router.',sourceQuote:event.source.text}]})
+   const task=await h.query('task.get',{taskId:fromReported?'task-reported':'task-private'})
+   return call('resident_router_reply',{operationId:event.source.messageId,sourceId:event.sourceId,messageVersion:event.messageVersion,text:'原文件见附件。',replyPurpose:'direct-answer',
+    taskDelivery:{taskId:task.taskId,requirementRevision:task.requirementRevision,...(fromReported?{reportedFiles:[{path:reportedPath,caption:'原草稿'}]}:{artifactIds:task.completion.result.artifactFiles.map(file=>file.artifact.artifactId)})}})
   }
   if(event&&!planned.has(event.source.messageId)){
    const id='task-'+event.source.messageId
    planned.set(event.source.messageId,{id,source:event.source})
-   return call('resident_task_plan',{operationId:id,sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:id,title:id,objective:'创建一次合成测试草稿',requirements:[],handoff:'在 work/report.md 保留合成测试草稿'}],dependencies:[]})
+   return call('resident_task_plan',{operationId:id,sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:id,title:id,objective:'创建一次合成测试草稿',requirements:[],handoff:'在 work/report.md 保留合成测试草稿'+(id==='task-reported'?'，仅记录原件':id==='task-lookup'?'，跨渠道读取合成资料':'')}],dependencies:[]})
   }
   const done=packet.events.find(row=>row.kind==='task.completed')
   if(done&&!replied.has(done.taskId)){
    replied.add(done.taskId)
    const {source}=[...planned.values()].find(row=>row.id===done.taskId)
    const task=await h.query('task.get',{taskId:done.taskId})
-   return call('resident_router_reply',{operationId:'reply-'+done.taskId,sourceId:source.sourceId,messageVersion:source.version,text:reply,completionEventId:done.taskEventId,replyPurpose:'task-update',
+   if(task.completion.result.artifactFiles?.length)return call('resident_router_reply',{operationId:'reply-'+done.taskId,sourceId:source.sourceId,messageVersion:source.version,text:reply,completionEventId:done.taskEventId,replyPurpose:'task-update',
     taskDelivery:{taskId:done.taskId,requirementRevision:task.requirementRevision,artifactIds:task.completion.result.artifactFiles.map(file=>file.artifact.artifactId)}})
   }
   return call('resident_router_settle',{operationId:'settle-'+packet.events.map(row=>row.id).join(','),eventIds:packet.events.map(row=>row.id)})
  },{
-  strictModelDecisions:true,transportCapabilities:capabilities,
+  strictModelDecisions:true,transportCapabilities:capabilities,channelIds:['resident-fixture','other-fixture'],
   canSend:row=>!(holdOldFile&&row.payload.artifact&&row.payload.sourceRef.messageId==='old'),
   async send(envelope){
    const receipt={messageId:'text-proof-'+attempts.length,visible:true}
@@ -73,14 +102,22 @@ test('Router respects file capabilities and preserves independently proven attac
  })
  const parts=async messageId=>(await h.query('notification.list')).filter(row=>row.payload.sourceRef?.messageId===messageId)
  async function deliver(message,attachmentState){
+  phase=message.messageId
   await h.receive(message)
   await eventually(async()=>{
    const rows=await parts(message.messageId),parent=rows.find(row=>!row.payload.artifact),file=rows.find(row=>row.payload.artifact)
    return parent?.state==='delivered'&&file?.state===attachmentState?true:undefined
   },`${message.messageId} delivery states`).catch(async error=>{t.diagnostic(JSON.stringify({results:h.results.map(x=>[x.name,x.result.error??x.result.value]),parts:await parts(message.messageId),alerts:h.service.listAlerts()}));throw error})
+  phase=message.messageId+' settled'
   await h.service.whenIdle()
   return parts(message.messageId)
  }
+ return {h,attempts,capabilities,parts,deliver,setPhase,releaseFile:()=>{holdOldFile=false},
+  get acceptedImport(){return acceptedImport},get crossChannelRead(){return crossChannelRead}}
+}
+
+test('Router respects file capabilities and preserves independently proven attachment and text receipts',{timeout:nativeTestTimeout(65000)},async t=>{
+ const {h,attempts,capabilities,parts,deliver,setPhase,releaseFile}=await attachmentFixture(t)
  const privateParts=await deliver(channelMessage('private',{type:'chat',conversationId:'private-room'}),'failed')
  const parent=privateParts.find(row=>!row.payload.artifact),file=privateParts.find(row=>row.payload.artifact)
  assert.match(parent.payload.text,/核对已完成/)
@@ -100,7 +137,7 @@ test('Router respects file capabilities and preserves independently proven attac
  const oldParts=await deliver(channelMessage('old',{conversationId:'other-group'}),'prepared')
  assert.ok(oldParts.find(row=>row.payload.artifact))
  capabilities.files=[]
- holdOldFile=false
+ releaseFile()
  await h.restart();await h.service.whenIdle()
  const recovered=(await parts('old')).find(row=>row.payload.artifact)
  assert.equal(recovered.state,'failed')
@@ -118,4 +155,54 @@ test('Router respects file capabilities and preserves independently proven attac
  assert.equal(resend.find(row=>row.payload.artifact).payload.artifact.sha256,file.payload.artifact.sha256)
  assert.equal((await h.query('task.list')).length,before)
  assert.deepEqual(attempts.slice(-2).map(row=>[row.kind,row.envelope.type,row.envelope.conversationId]),[['text','chat','private-room'],['file','chat','private-room']])
+ setPhase('verified')
+})
+
+test('Router sends, imports and seals an original reported by a completed task',{timeout:nativeTestTimeout(65000)},async t=>{
+ const fixture=await attachmentFixture(t,['chat-room','chat'])
+ const {h,attempts,parts,deliver,setPhase}=fixture
+ async function receive(message){setPhase(message.messageId);await h.receive(message);await h.service.whenIdle()}
+ await receive(channelMessage('reported',{type:'chat',conversationId:'private-room',text:'留一份草稿，暂时不用发。'}))
+ const original=await h.query('task.get',{taskId:'task-reported'})
+ assert.deepEqual(original.completion.result.artifacts,[reportedPath]);assert.equal(original.completion.result.artifactFiles,undefined)
+ const file=(await deliver(channelMessage('send-reported',{type:'chat',conversationId:'private-room',text:'把刚才留的原稿发我。'}),'delivered')).find(row=>row.payload.artifact)
+ const sha256=file.payload.artifact.sha256
+ assert.deepEqual(attempts.map(row=>[row.kind,row.envelope.type,row.envelope.conversationId]),[['text','chat','private-room'],['file','chat','private-room']])
+ assert.deepEqual((await h.query('task.get',{taskId:'task-reported'})).completion,original.completion)
+ await receive(channelMessage('import-existing',{type:'chat',conversationId:'private-room',text:'刚才那份草稿也收录到我们的知识库吧。'}))
+ const {acceptedImport}=fixture
+ assert.equal(acceptedImport?.verified,true,JSON.stringify(h.results.filter(row=>row.name==='resident_router_shared_import').map(row=>row.result)))
+ assert.equal(acceptedImport.file.sha256,sha256)
+ assert.deepEqual((await h.query('task.get',{taskId:'task-reported'})).completion,original.completion)
+ assert.equal((await h.query('task.list')).length,1)
+ const sentBeforeRepeat=attempts.length
+ await receive(channelMessage('send-reported',{type:'chat',conversationId:'private-room',text:'把刚才留的原稿发我。'}))
+ assert.equal(attempts.length,sentBeforeRepeat)
+ for(const id of ['send-other-room','import-other-room','import-stale','import-unreported']){
+  const wrongRoom=id.endsWith('other-room')
+  await receive(channelMessage(id,{type:'chat',conversationId:wrongRoom?'unrelated-room':'private-room',text:'测试无效的原文件请求。'}))
+  const tool=id.startsWith('send')?'resident_router_reply':'resident_router_shared_import'
+  assert.match(JSON.stringify(h.results.findLast(row=>row.name===tool)?.result),/TASK_DELIVERY_SOURCE_STALE|SHARED_REPORTED_FILE_UNAVAILABLE/)
+  assert.deepEqual(await parts(id),[])
+ }
+ assert.equal(attempts.length,sentBeforeRepeat)
+ await receive(channelMessage('lookup',{channelId:'other-fixture',conversationId:'other-read-room',senderId:'bob',text:'查找并读取合成资料归档。'}))
+ const {crossChannelRead}=fixture
+ assert.deepEqual([crossChannelRead?.id,crossChannelRead?.version,crossChannelRead?.sha256],[acceptedImport.file.id,acceptedImport.file.version,acceptedImport.file.sha256])
+ assert.equal(Buffer.from(crossChannelRead.contentBase64,'base64').toString('utf8'),contents)
+ setPhase('close Host before offline seal')
+ await h.close();await h.host.close()
+ setPhase('offline seal')
+ const config={...h.config,resident:{taskSessions:{instanceId:'resident-router-fixture'}}}
+ const {destination}=await backupTask(config,'task-reported',join(h.root,'backups','reported-file'))
+ const sealed=await validateTaskArchive(destination)
+ assert.ok(sealed.manifest.files.some(row=>row.path.startsWith('outputs/')&&row.sha256===sha256))
+ const ledger=sealed.snapshot.ledger
+ const request=ledger.tables.sources.find(row=>row.body.messageId==='send-reported')
+ assert.ok(request)
+ assert.ok(!ledger.tables.tasks[0].body.sourceRefs.includes(request.id))
+ const wrong=structuredClone(ledger);wrong.tables.sources.find(row=>row.id===request.id).body.actorId='other-actor'
+ wrong.digest=ledgerDigest({version:wrong.version,taskId:wrong.taskId,tables:wrong.tables})
+ assert.throws(()=>validateTaskLedger(wrong),/TASK_ARCHIVE_ROW_SCOPE_INVALID/)
+ setPhase('verified')
 })
