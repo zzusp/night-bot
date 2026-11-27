@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import { lstat, realpath, mkdir, open, link, unlink } from 'node:fs/promises'
-import { isAbsolute, resolve, join, relative, dirname, sep, extname } from 'node:path'
+import { isAbsolute, resolve, join, relative, dirname, sep, extname, basename } from 'node:path'
 import { canonicalExecutionJson, executionDigest, executionError } from './artifact-json.js'
 
 const fail = code => { throw executionError(`TASK_ARTIFACT_${code}`) }
@@ -61,6 +61,13 @@ async function readRegular(path, maxBytes) {
       || afterOpen.ctimeMs !== opened.ctimeMs || bytes.length !== opened.size) fail('FILE_CHANGED')
     return bytes
   } finally { await handle.close() }
+}
+
+export async function readTaskWorkFile(workspace,relativePath,maxBytes){
+  if(!isAbsolute(workspace)||typeof relativePath!=='string'||!relativePath||isAbsolute(relativePath)
+    ||relativePath.split(/[\\/]/u).some(part=>!safeName(part)))fail('SOURCE_INVALID')
+  const sourceRoot=join(workspace,'work'),path=join(sourceRoot,...relativePath.split(/[\\/]/u))
+  return {fileName:basename(path),bytes:await readRegular(path,maxBytes)}
 }
 
 async function publish(path, bytes) {

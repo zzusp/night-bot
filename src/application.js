@@ -1,6 +1,7 @@
 import {createRouterOperatorAuth,createRouterOperatorHttp} from './channels/router-operator.js'
 import {createSettingsOperatorAuth} from './settings/auth.js'
 import {createSettingsHttp} from './settings/http.js'
+import {createSharedOperatorAuth,createSharedOperatorHttp} from './shared-resources/operator.js'
 import {createEffectOperatorAuth} from './tasks/effect-operator-auth.js'
 import {createServer} from 'node:http'
 import {join} from 'node:path'
@@ -43,12 +44,13 @@ export async function apply(ctx,config){
   const routerAuth=await createRouterOperatorAuth(paths),routerHttp=createRouterOperatorHttp({auth:routerAuth,getTasks:()=>tasks})
   const effectOperatorAuth=await createEffectOperatorAuth(paths)
   const settingsAuth=await createSettingsOperatorAuth(paths),settingsHttp=createSettingsHttp({auth:settingsAuth,getSettings:()=>ctx.get('operatorSettings'),getChannels:()=>ctx.get('channelConfiguration'),getPermissions:()=>ctx.get('toolPermissions')})
+  const sharedAuth=await createSharedOperatorAuth(paths),sharedHttp=createSharedOperatorHttp({auth:sharedAuth,execute:(args,options)=>tasks.sharedOperator(args,options)})
   const bindings={listExecutionTrace:'listExecutionTrace',inspectTaskEffect:'inspectTaskEffect',reconcileTaskEffect:'reconcileTaskEffect',listAlertPage:'listAlertPage',listAlerts:'listAlerts',listActivities:'listActivities',listTaskTimings:'listTaskTimings',listPerformance:'listPerformance',getActivityAuditStatus:'getActivityAuditStatus',ingest:'ingest',isOwnNotification:'isOwnNotification',listObserverGroups:'listObserverGroups',observerGroupPage:'observerGroupPage',listTaskView:'boardTasks',hasPendingTopicFacts:'hasPendingTopicFacts',messageProcessingSources:'messageProcessingSources',messageProcessingRequests:'messageProcessingRequests',getTaskSessionDetail:'taskDetail',getTaskSessionIdentity:'taskIdentity',getTaskSessionExecutions:'taskExecutions',getTaskSessionDecisions:'taskDecisions',createTask:'createTask',appendTaskContext:'appendTaskContext',reopenTask:'reopenTask',getTaskDialogue:'taskDialogue',sendTaskDialogue:'sendTaskDialogue',cancelTask:'cancelTask',archiveTask:'archiveTask',listAuthorizationRequests:'listAuthorizationRequests',respondTaskHumanRequest:'respondHumanRequest',reconcileWebTaskTopics:'reconcileWebTaskTopics',respondTaskPrivateHumanReply:'respondPrivateHumanReply',retryDecisionFailedMessage:'retryMessageProcessing',updateMessageRoutingHold:'updateMessageRoutingHold',retryNotification:'retryNotification'}
   for(const [target,source]of Object.entries(bindings))runtime[target]=tasks[source]
   runtime.isTaskSessionMode=()=>true;runtime.getTopicTasksPage=options=>tasks.boardTasks({...options,archived:'all'})
   const oldIssues=runtime.listRecoveryIssues.bind(runtime);runtime.listRecoveryIssues=()=>[...oldIssues(),...tasks.listAlerts().filter(alert=>alert.type!=='task').map(alert=>({kind:'task',...alert,error:alert.detail}))]
   const application={runtime,tasks,store,config,close};ctx.provide('application',application)
-  server=createServer((request,response)=>(async()=>{if(await routerHttp(request,response)||await settingsHttp(request,response))return;await handleRequest(request,response,runtime,{transport:'channels',outboundAuthorized:ctx.get('channels').transports.size>0,modelMode:'real',effectOperatorAuth})})().catch(error=>{applyResidentCorsHeaders(request,response);if(!response.headersSent)response.writeHead(residentErrorStatus(error),{'content-type':'application/json; charset=utf-8'});response.end(JSON.stringify({error:error.code??error.message}))}))
+  server=createServer((request,response)=>(async()=>{if(await routerHttp(request,response)||await settingsHttp(request,response)||await sharedHttp(request,response))return;await handleRequest(request,response,runtime,{transport:'channels',outboundAuthorized:ctx.get('channels').transports.size>0,modelMode:'real',effectOperatorAuth})})().catch(error=>{applyResidentCorsHeaders(request,response);if(!response.headersSent)response.writeHead(residentErrorStatus(error),{'content-type':'application/json; charset=utf-8'});response.end(JSON.stringify({error:error.code??error.message}))}))
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(resident.port??18998,resident.host??'127.0.0.1',resolve)})
   await tasks.recover({waitForRouter:false,restoreIdleRouters:true})
   if(closing)return
