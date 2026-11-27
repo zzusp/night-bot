@@ -45,9 +45,15 @@ test('resident Router reads private principles at the next run; execution remain
  assert.equal((await h.query('router.get',{conversationId})).activeSessionId,row.activeSessionId)
  assert.ok(routerPrompts.get('three')?.length)
  for(const prompt of routerPrompts.get('three'))assert.ok(!prompt.includes(initial)&&!prompt.includes(updated))
- for(const prompt of [...routerPrompts.values()].flat())assert.ok(!prompt.includes(execution))
+ for(const prompt of [...routerPrompts.values()].flat()){
+  assert.ok(!prompt.includes(execution))
+  assert.equal(prompt.match(/NIGHT_CONTEXT_RETENTION/g)?.length??0,1,'every Router request carries one copy of the retention policy')
+ }
  const task=await h.service.createTask({requestId:'isolated-execution',objective:'Return synthetic result'})
  await eventually(async()=>{const row=await h.query('task.get',{taskId:task.taskId});return row.status==='completed'&&row.drained},'standalone execution')
  assert.ok(executionPrompts.length)
- for(const prompt of executionPrompts)assert.ok(prompt.includes(execution)&&!prompt.includes(initial)&&!prompt.includes(updated))
+ for(const prompt of executionPrompts){
+  assert.ok(prompt.includes(execution)&&!prompt.includes(initial)&&!prompt.includes(updated))
+  assert.equal(prompt.match(/NIGHT_CONTEXT_RETENTION/g)?.length??0,1,'execution still carries its one copy')
+ }
 })

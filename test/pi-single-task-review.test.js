@@ -25,11 +25,16 @@ test('actual Host legacy non-Router human review and dialogue stay read-only, re
  const f=await memoryHost({after:fn=>cleanups.push(fn)},body=>{
   if(!body.tools?.some(tool=>tool.function.name==='task_result'))return
   if(['dialogue','followup','answer'].includes(stage))for(const name of ['write',shell,'memory_remember'])assert.ok(body.tools.some(tool=>tool.function.name===name),'review must deny an actual available tool: '+name)
+  const resultDescription=body.tools.find(tool=>tool.function.name==='task_result').function.description
+  if(stage==='dialogue')assert.match(resultDescription,/summary is the reply shown to the user/u)
+  else if(['followup','answer'].includes(stage))assert.match(resultDescription,/use task_result with action=wait and internal summary/iu)
+  else assert.match(resultDescription,/an internal result, not a human-facing reply/u)
   const n=step++
   if(stage==='initial')return wait('Historical-session scaffold, no question capability.')
   if(stage==='dialogue'){
     const prompt=JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role)))
     assert.match(prompt,/summary 直接作为用户看见的回复/u)
+    assert.doesNotMatch(prompt,/Use complete with a truthful summary|an internal result, not a human-facing reply/u)
     assert.match(prompt,/未明确要求明细，只写结论和下一步/u)
     if(n===1){
       assert.match(JSON.stringify(body.messages.at(-1)),/禁止防御性内容/u)

@@ -10,7 +10,7 @@ export function assertSharedCommunicationGuidance(initial,loaded) {
   assert.equal(prompt.split(communicationReplyPrinciple).length-1,1,'one shared principle in the Router system prompt')
   assert.match(prompt,/默认 ELI5：先直接回答对方问的事/u)
   assert.match(prompt,/未明确要求明细，只写结论和下一步/u)
-  assert.match(prompt,/不因问题复杂、正式排查、结果交付或多个问题而例外/u)
+  assert.match(prompt,/复杂问题也一样/u)
   assert.match(prompt,/禁止防御性内容，不只是避开某些词/u)
   assert.doesNotMatch(prompt,/复杂问题把关键依据说透|有帮助的依据不要省/u)
   assert.doesNotMatch(prompt,/NIGHT_TASK_PUBLIC_COMMUNICATION|在测试环境验证后确认/, 'no detailed template or test-specific phrasing in the default prompt')

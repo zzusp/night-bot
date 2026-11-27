@@ -34,9 +34,14 @@ for(const scenario of archivedOnly?['old-finish']:['finish','reply-freeze','depe
    const input=requestText(body).map(text=>{try{return JSON.parse(text)}catch{return null}}).findLast(row=>row?.task)
    startedTasks.push(input.task.taskId);assert.equal(input.task.taskId,'first-task','unsatisfied dependent B must not start')
    sessionId=input.task.sessionId
-   if(baseline)assert.match(input.task.requirements.join(String.fromCharCode(10)),/Read only/)
-   else {assert.equal(input.task.inputPolicy,'source-only-v1');assert.equal(input.task.requirements,undefined)}
-   assert.ok(input.sources.some(source=>source.text.includes('Do not modify or deploy')))
+   if(baseline){
+    assert.match(input.task.requirements.join(String.fromCharCode(10)),/Read only/)
+    assert.ok(input.sources.some(source=>source.text.includes('Do not modify or deploy')))
+   }else{
+    assert.equal(input.task.inputPolicy,'faithful-handoff-v1')
+    assert.ok(input.handoffs.some(item=>item.text.includes('Do not modify or deploy')))
+    assert.ok(input.sources.every(source=>source.text===undefined),'current execution does not get the channel message text')
+   }
    executionAt=Date.now();executionEntered.resolve();await executionRelease.promise
    return call('task_result',{decision:{action:'complete',summary:'Synthetic read-only check complete',evidence:['fixture:checked'],limitations:['No live system accessed']}})
   }
@@ -52,8 +57,8 @@ for(const scenario of archivedOnly?['old-finish']:['finish','reply-freeze','depe
    if(baseline&&prePlanTools.length===0){prePlanTools.push('resident_task_query');return call('resident_task_query',{})}
    if(baseline&&prePlanTools.length===1){prePlanTools.push('memory_read');return call('memory_read',{})}
    planned=true;planRequestCount=routerRequests
-   const tasks=[{taskId:'first-task',title:'Synthetic read-only check',objective:'Check fixture only',requirements:['Read only; do not modify or deploy']}]
-   if(scenario==='dependency')tasks.push({taskId:'blocked-task',title:'B after A acceptance',objective:'Use accepted A evidence only',requirements:['Wait for Router acceptance of A']})
+   const tasks=[{taskId:'first-task',title:'Synthetic read-only check',objective:'Check fixture only',requirements:['Read only; do not modify or deploy'],...!baseline?{handoff:'Check the synthetic fixture read-only. Do not modify or deploy.'}:{}}]
+   if(scenario==='dependency')tasks.push({taskId:'blocked-task',title:'B after A acceptance',objective:'Use accepted A evidence only',requirements:['Wait for Router acceptance of A'],handoff:'Use accepted A evidence only after Router acceptance.'})
    return call('resident_task_plan',{operationId:'stable-first-plan',sourceId:source.sourceId,messageVersion:source.version,tasks,dependencies:scenario==='dependency'?[{taskId:'blocked-task',prerequisiteTaskId:'first-task',condition:'Router has accepted the verified A evidence'}]:[]})
   }
   if(source&&!paused&&scenario!=='reply-freeze'){paused=true;routerHeld.resolve();await routerRelease.promise;completedReturned=true}
