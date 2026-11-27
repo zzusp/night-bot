@@ -52,9 +52,12 @@ export const finalNotificationRouting=(messages,decision)=>groupNotificationRout
 export function prepareConversationNotification({conversationId,text,replyToMessageId,replyToActorId,sourceText,
   recipientActorIds=[],atAll,artifactFiles=[],signature,includeSignature=true,internalIds=[]}) {
   if(atAll&&(recipientActorIds.length||replyToMessageId))throw new Error('group_reply_audience_conflict')
-  const attachments=artifactFiles.length?'\n\n附件与验收对应：\n'+artifactFiles.map((file,index)=>`${index+1}. ${file.artifact.fileName}：${file.caption}`).join('\n'):''
-  const reply=formatTaskConversationReply({source:{conversationId,messageId:replyToMessageId,actorId:replyToActorId,text:sourceText},
-    summary:text+attachments,evidence:[],limitations:[],signature,includeSignature,internalIds,allowUnrouted:true})
+  const source={conversationId,messageId:replyToMessageId,actorId:replyToActorId,text:sourceText}
+  // Validate the separate file message without adding its metadata to the reply body.
+  for (const file of artifactFiles) formatTaskConversationReply({source,summary:`${file.artifact.fileName}：${file.caption}`,
+    evidence:[],limitations:[],includeSignature:false,internalIds,allowUnrouted:true})
+  const reply=formatTaskConversationReply({source,
+    summary:text,evidence:[],limitations:[],signature,includeSignature,internalIds,allowUnrouted:true})
   return {...reply,recipientActorIds,...atAll?{atAll:true}:{}}
 }
 

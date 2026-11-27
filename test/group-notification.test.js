@@ -28,6 +28,14 @@ test('shared audience selection retains intent instead of inferring the latest a
   assert.deepEqual(finalNotificationRouting(messages, { replyToMessageId: 'request', atOpenDingTalkIds: ['review-id'] }).recipients, ['review-id'], 'context reference does not change the actual final audience')
 })
 
+test('attachment metadata keeps its public boundary without being appended to the body', () => {
+  const reply = { groupId: 'group', text: '《安全工作清单》已整理好，见附件。', internalIds: ['internal-task-proof'] }
+  const withFile = (fileName, caption = '') => prepareGroupNotification({ ...reply, artifactFiles: [{ artifact: { fileName }, caption }] })
+  assert.equal(withFile('安全工作清单.md', '清单').text, reply.text)
+  assert.throws(() => withFile('internal-task-proof.md'), { code: 'GROUP_REPLY_INTERNAL_DETAILS' })
+  assert.throws(() => withFile('安全工作清单.md', '/workspace/private/report.md'), /GROUP_REPLY_(?:PRIVATE_OR_PLATFORM_TEXT|INTERNAL_DETAILS)/)
+})
+
 test('shared whole-group transport preserves Markdown/signature and uses the real DWS at-all parameter', async () => {
   const calls = [], adapter = createDwsAdapter({ enabled: true, writesAuthorized: true, runner: { async run(args) {
     calls.push(args); return { exitCode: 0, stdout: JSON.stringify({ success: true, result: { openTaskId: 'send-operation' } }) }

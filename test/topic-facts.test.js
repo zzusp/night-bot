@@ -81,7 +81,9 @@ test('最终文字与附件同批冻结，逐件有序发送，重启只核对�
   const notices = await f.query('notification.list')
   assert.equal(notices.length, 3)
   const [summary, first, second] = notices
-  assert.match(summary.payload.text, /acceptance-1.png：验收项1/)
+  assert.equal(summary.payload.text, '已完成页面调整，UAT验收通过，截图对应两个验收项。')
+  assert.equal(first.payload.text, 'acceptance-1.png：验收项1')
+  assert.equal(second.payload.text, 'acceptance-2.png：验收项2')
   assert.equal(first.payload.deliveryId, summary.id); assert.equal(first.payload.afterNotificationId, summary.id)
   assert.equal(second.payload.afterNotificationId, first.id)
   assert.equal(first.payload.sourceMessageId, undefined, '文件不另引用或重复@')

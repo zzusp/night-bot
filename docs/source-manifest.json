@@ -474,7 +474,7 @@
       "source": "group-notification.js",
       "sourceSha256": "121b35ac812f3c72b253b88c0ee5a25cbe02b156ab0fc9657261c2c461572168",
       "status": "adapted",
-      "sha256": "8508fc53d9b994b255fbef2d5dbdfe20340dec6c5ca1761dfb08469fe281f4b6",
+      "sha256": "dab0d4177e528cac4a727d32324256a5ea094a079b73a2d3110d07297d09446e",
       "adaptation": "直接来源平台附件仅在原通知具有fact时复制该字段，避免undefined进入持久化JSON；保留历史fact、来源身份、父子通知顺序及幂等边界。 文件子件继承taskDelivery与显式受众，仍按原deliveryId/afterNotificationId串行。 SG10：公开中性actor/recipient通知合同，历史group字段仅在显式包装与notificationAudience只读投影双读；保留原通知身份，不迁移冻结账。"
     },
     {
