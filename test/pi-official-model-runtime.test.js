@@ -10,11 +10,11 @@ import {mkdtemp,mkdir,rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 const declaration=baseURL=>({fixture:{api:'openai-completions',baseURL,apiKeyEnv:'FIXTURE_KEY',headers:{'x-profile':'preserved'},streamIdleTimeoutMs:process.platform==='win32'?5000:1000,models:[{id:'m',maxTokens:64,contextWindow:8192,compat:{supportsDeveloperRole:false}}]}})
-function fixture(raw,environment={FIXTURE_KEY:'private-fixture-key'}) {
+function fixture(raw,environment={FIXTURE_KEY:'private-fixture-key'},diagnostics=[]) {
  let profiles=resolvePiProfiles(raw,{deferred:true})
  const auth=piAuthentication({getEnvironment:name=>environment[name],fileExists:async()=>{throw Error('home file access forbidden')}})
- const runtime=new OfficialPiModelRuntime({get:()=>undefined},()=>profiles,auth)
- return {runtime,update(value){profiles=resolvePiProfiles(value,{deferred:true})}}
+ const runtime=new OfficialPiModelRuntime({get:()=>undefined,logger:{warn:message=>diagnostics.push(message)}},()=>profiles,auth)
+ return {runtime,diagnostics,update(value){profiles=resolvePiProfiles(value,{deferred:true})}}
 }
 async function serverFixture(t,handler) {const server=createServer(handler);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>{server.closeAllConnections();return new Promise(resolve=>server.close(resolve))});return `http://127.0.0.1:${server.address().port}/v1`}
 function respond(res,text='OFFICIAL_DIRECT') {res.writeHead(200,{'content-type':'text/event-stream'});res.write('data: '+JSON.stringify({id:'native-stream',object:'chat.completion.chunk',model:'m',choices:[{index:0,delta:{role:'assistant',content:text},finish_reason:null}]})+'\n\n');res.write('data: '+JSON.stringify({id:'native-stream',object:'chat.completion.chunk',model:'m',choices:[{index:0,delta:{},finish_reason:'stop'}],usage:{prompt_tokens:2,completion_tokens:3,total_tokens:5}})+'\n\ndata: [DONE]\n\n');res.end()}
@@ -66,11 +66,13 @@ test('credential capabilities isolate actors and keys resolve late without enter
  assert.deepEqual(seen,['Bearer actor-a-key','Bearer actor-b-key']);a.resolve=async()=>({value:'actor-a-rotated'})
  await one.modelRuntime.streamSimple(one.model,{messages:[{role:'user',content:'rotated',timestamp:1}]}).result();assert.equal(seen.at(-1),'Bearer actor-a-rotated');assert.ok(!JSON.stringify(one.model).includes('actor-a'))
 })
-test('official stream idle budget aborts a stalled loopback without Night event conversion',async t=>{
+test('self-triggered stream idle timeout is retryable, unlike caller cancellation',async t=>{
  const base=await serverFixture(t,async(req,res)=>{for await(const _ of req){}res.writeHead(200,{'content-type':'text/event-stream'});res.flushHeaders()})
  const raw=declaration(base);raw.fixture.streamIdleTimeoutMs=30
  const f=fixture(raw),resolved=await f.runtime.resolve({provider:'fixture',model:'m'}),result=await resolved.modelRuntime.streamSimple(resolved.model,{messages:[{role:'user',content:'stall',timestamp:1}]}).result()
- assert.ok(['aborted','error'].includes(result.stopReason));assert.equal(result.content.length,0)
+ assert.equal(result.stopReason,'error');assert.equal(result.content.length,0)
+ assert.equal(result.errorMessage,'Provider stream idle timeout')
+ assert.equal(diagnosticBody(f.diagnostics[0]).timeoutKind,'stream-idle')
 })
 
 test('official scripted provider preserves native signatures and requires no file model/auth stores',async()=>{
@@ -170,4 +172,63 @@ test('unspecified reasoning delegates to official SDK initialization for a high-
  const settings=SettingsManager.inMemory({retry:{enabled:false},compaction:{enabled:false},cacheWarming:'off'}),loader=new DefaultResourceLoader({cwd:root,agentDir,settingsManager:settings,noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true});await loader.reload()
  const {session}=await createAgentSession({cwd:root,agentDir,modelRuntime:resolved.modelRuntime,model:resolved.model,thinkingLevel:resolved.thinkingLevel,sessionManager:SessionManager.inMemory(root),settingsManager:settings,resourceLoader:loader,noTools:'all'});t.after(()=>session.dispose())
  assert.equal(session.thinkingLevel,'high');assert.ok(getSupportedThinkingLevels(resolved.model).includes(session.thinkingLevel))
+})
+
+const diagnosticBody=entry=>JSON.parse(entry.slice('NIGHT_MODEL_REQUEST_FAILED '.length))
+test('real HTTP timeout records a correlatable, privacy-safe failed attempt across the SDK',async t=>{
+ const seen=[]
+ const base=await serverFixture(t,async(req,res)=>{seen.push(req.headers['x-night-request-id']);for await(const _ of req){};void res})
+ const raw=declaration(base)
+ Object.assign(raw.fixture,{streamIdleTimeoutMs:5000,retry:{provider:{timeoutMs:400,maxRetries:0}}})
+ const f=fixture(raw),r=await f.runtime.resolve({provider:'fixture',model:'m'})
+ const result=await r.modelRuntime.streamSimple(r.model,{messages:[{role:'user',content:'private-business-payload',timestamp:1}]},{...r.requestOptions,sessionId:'fixture-session'}).result()
+ assert.match(result.errorMessage,/timed? out|timeout/i)
+ assert.equal(seen.length,1)
+ assert.equal(f.diagnostics.length,1)
+ const record=diagnosticBody(f.diagnostics[0])
+ assert.equal(record.requestId,seen[0]);assert.equal(record.sessionId,'fixture-session')
+ assert.equal(record.stage,'awaiting-http-response');assert.equal(record.httpAttempts,1);assert.equal(record.failureCode,'TIMEOUT');assert.ok(record.elapsedMs>=100)
+ assert.equal(record.httpStatus,undefined)
+ assert.doesNotMatch(f.diagnostics[0],/private-fixture-key|private-business-payload|127\.0\.0\.1/)
+})
+
+test('only bounded transport codes and selected response identifiers enter diagnostics',async t=>{
+ const raw=declaration('http://127.0.0.1:1/v1');raw.fixture.retry={provider:{maxRetries:0}}
+ const f=fixture(raw),r=await f.runtime.resolve({provider:'fixture',model:'m'}),context={messages:[{role:'user',content:'fixture-secret-prompt',timestamp:1}]}
+ await r.modelRuntime.streamSimple(r.model,context,{...r.requestOptions,fetch:async()=>{throw new TypeError('private raw error',{cause:Object.assign(new Error('raw gateway route'),{code:'ENOTFOUND'})})}}).result()
+ await r.modelRuntime.streamSimple(r.model,context,{...r.requestOptions,fetch:async()=>new Response('fixture-private-upstream-body',{status:504,headers:{'x-request-id':'gateway-432','set-cookie':'private-session-secret'}})}).result()
+ assert.equal(f.diagnostics.length,2)
+ const [transport, http]=f.diagnostics.map(diagnosticBody)
+ assert.equal(transport.transportCode,'ENOTFOUND');assert.equal(transport.stage,'awaiting-http-response')
+ assert.equal(http.httpStatus,504);assert.equal(http.upstreamRequestId,'gateway-432');assert.equal(http.stage,'response-headers')
+ assert.doesNotMatch(f.diagnostics.join(' '),/private raw error|raw gateway route|fixture-secret-prompt|fixture-private-upstream-body|private-session-secret/)
+})
+
+test('wire preflight counts final system prompt, tool schemas and history together',async t=>{
+ const seen=[]
+ const base=await serverFixture(t,async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;seen.push(JSON.parse(body));respond(res)})
+ const f=fixture(declaration(base)),r=await f.runtime.resolve({provider:'fixture',model:'m'})
+ const context={systemPrompt:'s'.repeat(10000),tools:[{name:'fixture',description:'d'.repeat(10000),parameters:{type:'object',properties:{}}}],messages:[{role:'user',content:'h'.repeat(11000),timestamp:1}]}
+ assert.equal((await r.modelRuntime.streamSimple(r.model,context,r.requestOptions).result()).stopReason,'stop')
+ const tooLong={...context,messages:[{role:'user',content:'h'.repeat(14000),timestamp:1}]}
+ const result=await r.modelRuntime.streamSimple(r.model,tooLong,r.requestOptions).result()
+ assert.equal(result.stopReason,'error');assert.match(result.errorMessage,/context window exceeded before dispatch/i)
+ assert.equal(seen.length,1)
+ const record=diagnosticBody(f.diagnostics.at(-1))
+ assert.equal(record.stage,'before-dispatch');assert.equal(record.httpAttempts,0);assert.ok(record.estimatedInputTokens>record.inputLimit)
+})
+
+test('HTTP 400 prompt overflow is not retried unchanged by Pi SDK',async t=>{
+ const seen=[]
+ const base=await serverFixture(t,async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;seen.push(JSON.parse(body));res.writeHead(400,{'content-type':'application/json','x-request-id':'gateway-overflow'});res.end(JSON.stringify({error:{type:'invalid_request_error',message:'prompt is too long: 483735 tokens > 472000 maximum'}}))})
+ const raw=declaration(base);raw.fixture.retry={provider:{maxRetries:2}}
+ const f=fixture(raw),r=await f.runtime.resolve({provider:'fixture',model:'m'}),root=await mkdtemp(join(tmpdir(),'night-overflow-sdk-')),agentDir=join(root,'agent');await mkdir(agentDir)
+ t.after(()=>rm(root,{recursive:true,force:true}))
+ const settings=SettingsManager.inMemory({compaction:{enabled:false},retry:{enabled:true,maxRetries:2,baseDelayMs:1}}),loader=new DefaultResourceLoader({cwd:root,agentDir,settingsManager:settings,noExtensions:true,disabledBuiltinExtensions:['mcp'],noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true});await loader.reload()
+ const {session}=await createAgentSession({cwd:root,agentDir,modelRuntime:r.modelRuntime,model:r.model,settingsManager:settings,resourceLoader:loader,sessionManager:SessionManager.inMemory(root),noTools:'all'})
+ const retries=[];session.subscribe(event=>{if(event.type==='auto_retry_start')retries.push(event)})
+ t.after(()=>session.dispose());await session.prompt('fixture within estimated budget')
+ assert.equal(seen.length,1);assert.equal(retries.length,0)
+ const record=diagnosticBody(f.diagnostics.at(-1))
+ assert.equal(record.failureCode,'CONTEXT_WINDOW_EXCEEDED');assert.equal(record.httpStatus,400);assert.equal(record.upstreamRequestId,'gateway-overflow')
 })

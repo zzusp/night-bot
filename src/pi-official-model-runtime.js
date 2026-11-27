@@ -6,6 +6,7 @@ import {isAbsolute,dirname} from 'node:path'
 import {inside} from './runtime/paths.js'
 import {configuredPiProvider} from './pi-provider-catalog.js'
 import {attributionHeaders} from './native-llm-protocol.js'
+import {estimateProviderInput,providerRequestDiagnostics} from './runtime/pi-provider-request.js'
 const fail=(code,message)=>{throw Object.assign(new Error(message),{code})}
 
 const emptyProvider=id=>({id,name:id,auth:{},getModels:()=>[],stream(){throw new Error('Provider route is not configured')},streamSimple(){throw new Error('Provider route is not configured')}})
@@ -97,21 +98,33 @@ export class OfficialPiModelRuntime {
    const endpointBound=profile.apiKeyEnv!==undefined||!provider.auth.oauth
    if(current!==profile || !canonical || ['api','contextWindow','maxTokens'].some(key=>canonical[key]!==model[key]) || !isDeepStrictEqual(canonical.compat,model.compat) || !isDeepStrictEqual(canonical.thinkingLevelMap,model.thinkingLevelMap) || endpointBound&&canonical.baseUrl!==model.baseUrl)return lazyStream(model,async()=>fail('OFFICIAL_MODEL_ROUTE_CHANGED','Provider configuration changed; resolve the model again'))
    const controller=new AbortController(),signal=AbortSignal.any([this.#lifetime.signal,controller.signal,...options.signal?[options.signal]:[]])
-   let timer
+   const diagnostics=providerRequestDiagnostics(model,options,message=>this.ctx.logger?.warn(message))
+   let timer,budget
    const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>controller.abort(Object.assign(new Error('Official provider stream idle timeout'),{code:'STREAM_IDLE_TIMEOUT'})),profile.streamIdleTimeoutMs);timer.unref?.()}
    const knobs=Object.fromEntries(['thinkingBudgets','cacheRetention','transport','timeoutMs','websocketConnectTimeoutMs'].filter(key=>profile[key]!==undefined).map(key=>[key,profile[key]]))
    const headers=new Headers(profile.headers),suppressed={}
-   for(const [name,value]of Object.entries(options.headers??{})){if(value===null){headers.delete(name);suppressed[name]=null}else if(value!==undefined)headers.set(name,value)}
+   for(const [name,value]of Object.entries(options.headers??{})){if(name.toLowerCase()==='x-night-request-id')continue;if(value===null){headers.delete(name);suppressed[name]=null}else if(value!==undefined)headers.set(name,value)}
    for(const [name,value]of Object.entries(attributionHeaders()))headers.set(name,value)
+   headers.set('x-night-request-id',diagnostics.requestId)
    const cap=profile.configuredMaxTokens.get(model.id)??model.maxTokens
    const requested=options.maxTokens??cap
    const record={done:Promise.withResolvers()};this.#active.add(record)
    return lazyStream(model,async()=>{
     signal.throwIfAborted()
     if(!Number.isSafeInteger(requested)||requested<=0||requested>cap)fail('INVALID_MODEL_MAX_TOKENS','Requested output exceeds configured model limit')
+    const estimatedInputTokens=estimateProviderInput(context)
+    if(estimatedInputTokens>=model.contextWindow){
+     diagnostics.preflight();budget={estimatedInputTokens,inputLimit:model.contextWindow}
+     fail('CONTEXT_WINDOW_EXCEEDED',`Model context window exceeded before dispatch: estimated input ${estimatedInputTokens} tokens, configured input limit ${model.contextWindow} tokens.`)
+    }
     touch()
-    return provider[method](model,context,{...profile.retrySettings.provider,...knobs,...options,maxTokens:requested,headers:{...Object.fromEntries(headers),...suppressed},signal})
-   },{onEvent:touch,onResult:()=>{clearTimeout(timer);controller.abort(new Error('Official provider stream settled'));this.#active.delete(record);record.done.resolve()}})
+    const source=provider[method](model,context,{...profile.retrySettings.provider,...knobs,...options,...diagnostics.options,maxTokens:Math.min(requested,model.contextWindow-estimatedInputTokens),headers:{...Object.fromEntries(headers),...suppressed},signal})
+    return diagnostics.observe(source,{idleExpired:()=>controller.signal.reason?.code==='STREAM_IDLE_TIMEOUT',externallyAborted:()=>this.#lifetime.signal.aborted||options.signal?.aborted})
+   },{onEvent:touch,onResult:result=>{
+    clearTimeout(timer)
+    try{diagnostics.record(result,{...budget,...controller.signal.reason?.code==='STREAM_IDLE_TIMEOUT'?{timeoutKind:'stream-idle'}:{}})}
+    finally{controller.abort(new Error('Official provider stream settled'));this.#active.delete(record);record.done.resolve()}
+   }})
   }
   return {...provider,auth,stream:(model,context,options)=>dispatch('stream',model,context,options),streamSimple:(model,context,options)=>dispatch('streamSimple',model,context,options)}
  }

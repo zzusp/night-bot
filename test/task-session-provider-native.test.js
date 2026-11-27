@@ -119,3 +119,17 @@ test('cold Single holds Night own persisted Host providerRecovery without deleti
  assert.equal(cold.taskRequests().length,0);const held=await cold.stored(id);assert.equal(held.task.providerRecovery.hostRetryDisabled,true);assert.equal(held.task.providerRecovery.nextAttemptAt,null);assert.equal(held.task.providerRecovery.attempts,prior.providerRecovery.attempts);assert.deepEqual(held.task.providerRecovery.failure,prior.providerRecovery.failure);assert.deepEqual(held.entries,original.entries);assert.deepEqual(await cold.query('source.get',{sourceId:source.sourceId}),source);assert.equal(await (await import('node:fs/promises')).readFile(join(cold.ctx.runtimePaths.workspaces,'tasks',id,'work/provider-effect.txt'),'utf8'),'one original effect')
  await cold.service.appendTaskContext({taskId:id,requestId:'actual-new-business-input',progressImpact:'replan',context:'Read the original successful receipt under current scope; never repeat its effect.'});await cold.service.whenIdle();const after=await cold.stored(id);assert.equal(after.task.status,'completed');assert.equal(after.task.sessionId,original.task.sessionId);assert.equal(cold.effects,0);assert.equal(cold.taskRequests().length,1);assert.equal(after.audit.filter(receipt=>receipt.domain==='task'&&receipt.kind==='effect-intent').length,1)
 })
+
+test('a timed-out model request retries in the same turn without re-running the completed tool',{timeout:nativeTestTimeout(20000)},async t=>{
+ let timedOut=false
+ const h=await providerHost(t,{intercept:request=>{
+  if(!taskRequest(request)||!sawEffect(request)||timedOut)return
+  timedOut=true;return {stopReason:'error',errorMessage:'Request timed out.'}
+ },decide:request=>sawEffect(request)?[result('complete')]:[effect]})
+ const id=await h.create();await h.service.whenIdle()
+ const {task,entries}=await h.stored(id)
+ assert.equal(task.status,'completed');assert.equal(task.leaseEpoch,1);assert.equal(task.technicalFailure??null,null)
+ assert.equal(h.effects,1);assert.equal(h.events.filter(e=>e.type==='auto_retry_start').length,1)
+ assert.ok(entries.some(e=>e.type==='message'&&e.message.errorMessage==='Request timed out.'))
+ assert.equal(h.taskRequests().length,3)
+})
