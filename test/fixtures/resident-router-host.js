@@ -84,6 +84,6 @@ export async function residentRouterHost(t, decide, options = {}) {
     get residentStore(){return opened.residentStore},sent,readbacks,results,close,
     receive:input=>f.host.ctx.channels.receive(input),
     query:(kind,args={})=>opened.store.query({kind,...args}),
-    async restart(options){await close();await f.close();await f.boot();await open();await opened.service.recover(options)},
+    async restart(options,updates){await close();if(updates)Object.assign(config,updates);await f.close();await f.boot();await open();await opened.service.recover(options)},
   }
 }

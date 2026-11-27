@@ -22,17 +22,17 @@ import { Loading, Notice, Search, Status } from './components/Shared';
 const conversationType = (type?: string | null) => type === 'chat-room' ? '群聊' : type === 'chat' ? '单聊' : '会话类型未记录';
 const channelTypeLabel = (item: Channel) => item.type === 'dingtalk-dws' ? `钉钉${item.conversationType ? ` · ${conversationType(item.conversationType)}` : ''}` : item.type === 'web-console' ? 'Web 对话' : item.type;
 
-const emptyChannel = (): DingtalkChannelInput => ({ channelId: '', conversationType: 'chat-room', targetKind: 'id', target: '', name: '', prompt: '', writesAuthorized: false });
+const emptyChannel = (): DingtalkChannelInput => ({ channelId: '', conversationType: 'chat-room', targetKind: 'id', target: '', name: '', writesAuthorized: false });
 type FieldErrors = Partial<Record<keyof DingtalkChannelInput, string>>;
 
 type PendingSave = { channelId: string; edit?: DingtalkChannelEdit };
 const detailPath = (channelId: string) => channelPath(channelId, true);
 const validDetail = (value: DingtalkChannelDetail, channelId: string) => value?.channelId === channelId &&
-  typeof value.version === 'string' && /^[a-f0-9]{64}$/.test(value.version) && typeof value.name === 'string' && typeof value.prompt === 'string' &&
+  typeof value.version === 'string' && /^[a-f0-9]{64}$/.test(value.version) && typeof value.name === 'string' &&
   ['chat', 'chat-room'].includes(value.conversationType) && ['id', 'name'].includes(value.targetKind) && typeof value.target === 'string' && typeof value.writesAuthorized === 'boolean';
-const detailDraft = (value: DingtalkChannelDetail): DingtalkChannelInput => ({ channelId: value.channelId, name: value.name, prompt: value.prompt,
+const detailDraft = (value: DingtalkChannelDetail): DingtalkChannelInput => ({ channelId: value.channelId, name: value.name,
   conversationType: value.conversationType, targetKind: value.targetKind, target: value.target, writesAuthorized: value.writesAuthorized });
-const sameFields = (value: DingtalkChannelDetail, fields: DingtalkChannelEdit) => value.name === fields.name && value.prompt === fields.prompt &&
+const sameFields = (value: DingtalkChannelDetail, fields: DingtalkChannelEdit) => value.name === fields.name &&
   value.conversationType === fields.conversationType && value.targetKind === fields.targetKind && value.target === fields.target && value.writesAuthorized === fields.writesAuthorized;
 
 function ChannelConfiguration({ onSaved, channelId, onDelete, onIngress, ingressPending, channelStatus, addTriggerRef }: { onSaved: () => void; channelId?: string; onDelete?: (trigger: HTMLButtonElement | null) => void; onIngress?: (trigger: HTMLButtonElement | null) => void; ingressPending?: boolean; channelStatus?: Channel; addTriggerRef?: Ref<HTMLButtonElement> }) {
@@ -89,7 +89,7 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, onIngress, ingress
     id: `${prefix}-${key}`, name: key, 'aria-invalid': !!errors[key] || undefined,
     'aria-describedby': [key === 'writesAuthorized' ? `${prefix}-${key}-help` : '', errors[key] ? `${prefix}-${key}-error` : ''].filter(Boolean).join(' ') || undefined,
   });
-  const edit = (key: 'channelId' | 'target' | 'name' | 'prompt', value: string) => {
+  const edit = (key: 'channelId' | 'target' | 'name', value: string) => {
     setDraft(previous => ({ ...previous, [key]: value, ...(key === 'target' ? {writesAuthorized: false} : {}) }));
     setErrors(previous => ({ ...previous, [key]: undefined }));
   };
@@ -136,16 +136,15 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, onIngress, ingress
     event.preventDefault();
     if (writing.current || locked || composing.current) return;
     const body: DingtalkChannelInput = { ...draft, channelId: draft.channelId.trim(), target: draft.target.trim(),
-      name: draft.name?.trim() || undefined, prompt: draft.prompt || undefined };
+      name: draft.name?.trim() || undefined };
     const invalid: FieldErrors = {};
     if (!body.channelId || body.channelId.length > 128 || body.channelId.includes(String.fromCharCode(0))) invalid.channelId = '请输入不超过 128 个字符的渠道标识，不含空字符。';
     if (!body.target || body.target.includes(String.fromCharCode(0))) invalid.target = `请输入${targetLabel}，不含空字符。`;
     if (body.name?.includes(String.fromCharCode(0))) invalid.name = '显示名称不能包含空字符。';
-    if (body.prompt?.includes(String.fromCharCode(0))) invalid.prompt = '渠道职责不能包含空字符。';
     setErrors(invalid); setError(null); setFeedback('');
     const first = Object.keys(invalid)[0];
     if (first) { (form.current?.elements.namedItem(first) as HTMLElement | null)?.focus(); return; }
-    const patch: DingtalkChannelEdit | undefined = editing ? { expectedVersion: version!, name: body.name ?? '', prompt: body.prompt ?? '',
+    const patch: DingtalkChannelEdit | undefined = editing ? { expectedVersion: version!, name: body.name ?? '',
       conversationType: body.conversationType, targetKind: body.targetKind, target: body.target, writesAuthorized: body.writesAuthorized === true } : undefined;
     writing.current = true; setBusy('saving');
     try {
@@ -185,12 +184,6 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, onIngress, ingress
     writing.current = true;
     try { await verify(unknownSave); } finally { writing.current = false; }
   };
-  useLayoutEffect(() => {
-    const field = form.current?.querySelector('textarea');
-    if (!field || !open) return;
-    field.style.height = 'auto';
-    field.style.height = `${Math.min(240, Math.max(120, field.scrollHeight))}px`;
-  }, [draft.prompt, open]);
   const reset = () => { setDraft(emptyChannel()); setErrors({}); setError(null); setFeedback(''); setSaved(false); setUnknownSave(null); };
   return <>
     {editing ? <ActionMenu label={`渠道操作：${channelId}`} actions={[{ label: '编辑配置', onSelect: openDialog },
@@ -247,10 +240,6 @@ function ChannelConfiguration({ onSaved, channelId, onDelete, onIngress, ingress
               <input {...field('name')} autoComplete="off" value={draft.name} onChange={event => edit('name', event.target.value)} />
 
               {errors.name && <p id={`${prefix}-name-error`} className="field-error" role="alert">{errors.name}</p>}</div>
-            <div className="channel-create-field channel-create-wide"><label htmlFor={`${prefix}-prompt`}>渠道职责（可选）</label>
-              <textarea {...field('prompt')} className="resize-none" rows={5} value={draft.prompt} onChange={event => edit('prompt', event.target.value)} />
-
-              {errors.prompt && <p id={`${prefix}-prompt-error`} className="field-error" role="alert">{errors.prompt}</p>}</div>
             <div className="channel-create-field channel-create-wide"><label htmlFor={`${prefix}-writesAuthorized`}>外发授权</label>
               <BoardSelect {...field('writesAuthorized')} value={draft.writesAuthorized === true ? 'true' : 'false'} disabled={locked || targetEdited}
                 onChange={event => setDraft(previous => ({ ...previous, writesAuthorized: event.target.value === 'true' }))}>
@@ -329,7 +318,7 @@ function ChannelCardHealth({ item }: { item: Channel }) {
 }
 
 export default function ChannelsPage({ id }: { id?: string }) {
-  const endpoint = id ? `/conversations/${encodeURIComponent(id)}` : '';
+  const endpoint = id ? `/conversations/${encodeURIComponent(id)}` : null;
   const channels = useResource<{ items: Channel[] }>('/channels', 10000);
   const conversations = useResource<{ items: Conversation[] }>('/conversations', 5000);
   const [search, setSearch] = useState('');
@@ -341,7 +330,7 @@ export default function ChannelsPage({ id }: { id?: string }) {
   const selected = conversations.data?.items.find(item => item.id === id);
   const query = useChannelMessages(id);
   const items = (conversations.data?.items || []).filter(item => (!channel || channel === item.channelId) && `${item.name} ${item.channelId}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
-  if (id) return <ConversationFrame endpoint={endpoint || undefined} channel label={`${selected?.name || '渠道会话'} · ${conversationType(selected?.type)}`}>
+  if (id) return <ConversationFrame channel label={`${selected?.name || '渠道会话'} · ${conversationType(selected?.type)}`}>
     {query.error && <Notice error={query.error} onRetry={query.refresh} stale={!!query.data} />}
     {query.loading && !query.data ? <Loading /> : !query.data && query.error ? null : <ConversationMessages endpoint={endpoint} accessError={query.error} accessUpdatedAt={query.updatedAt} onRefresh={query.refresh} key={id} older={query.older} messages={query.data?.items || []} userLabel="渠道成员" empty={<EmptyState title="暂无消息" />} />}
   </ConversationFrame>;

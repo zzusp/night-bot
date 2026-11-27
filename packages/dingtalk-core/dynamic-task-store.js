@@ -1,3 +1,4 @@
+import {peerRoles,sameCollaboration,peerAvailable,peerMessageKey,peerProjection} from '../../src/tasks/peer-work.js'
 import {currentTaskMilestone,taskMilestoneId,taskMilestonePending,taskMilestoneView} from '../../src/tasks/milestone-notification.js'
 import {reportedDeliveryFile} from '../../src/tasks/delivery.js'
 import {blockedReplyId,completionReplyId,currentOutcomeBinding,suppressChannelOutcome} from '../../src/channels/router-task-context.js'
@@ -1021,6 +1022,60 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       else { task.drained = true; task.recovering = false; task.sessionFailure = null }
       saveTask(task); return changed({ task, ...interruptedDrain?{interruptedDrain}:{} })
     }
+    if(kind==='task.peer.admitted'){
+      const task=currentTask(a.binding,{current:false})
+      const item=get('dynamic_wakes',a.wakeId,true)
+      if(task.recovering||task.controlRevision!==a.binding.controlRevision||item?.kind!=='task.peer.message'||item.taskId!==task.taskId
+        ||item.payload.targetRequirementRevision!==task.requirementRevision)fail('TASK_PEER_ADMISSION_STALE')
+      if(item.state==='acked')return changed({admitted:true})
+      if(item.state!=='pending')fail('TASK_PEER_ADMISSION_STALE')
+      item.state='acked';item.leaseEpoch=task.leaseEpoch;item.ackedAt=stamp;put('dynamic_wakes',item)
+      return changed({admitted:true})
+    }
+    if(kind==='task.peer.send'||kind==='task.peer.request'||kind==='task.peer.wait'){
+      const sender=currentTask(a.binding)
+      const original=sender.metadata?.work?.sourceId&&get('dynamic_sources',sender.metadata.work.sourceId,true)
+      if(!original||original.groupId!==sender.groupId||original.actorId!==sender.ownerActorId||original.retracted||original.authorizationRevoked||!peerAvailable(sender))fail('TASK_PEER_SCOPE')
+      if(kind==='task.peer.wait'){
+        // The id comes from a trusted peer call, not a model-asserted delivery.
+        if(!wakes(sender.taskId).some(item=>item.kind==='task.peer.park-permit'&&item.id===a.receiptId
+          &&item.payload.senderLease===sender.leaseEpoch&&item.state==='acked'))fail('TASK_PEER_WAIT_RECEIPT')
+        return changed({parked:true})
+      }
+      if(typeof a.text!=='string'||!a.text.trim()||a.text.length>8000)fail('TASK_PEER_ARGUMENT')
+      const messageId=kind==='task.peer.send'?a.messageId:a.requestId
+      if(typeof messageId!=='string'||!messageId.trim()||messageId.length>128)fail('TASK_PEER_ARGUMENT')
+      let target,eventId
+      if(kind==='task.peer.send'){
+        if(typeof a.taskId!=='string')fail('TASK_PEER_ARGUMENT')
+        target=get('dynamic_tasks',a.taskId,true)
+        if(!sameCollaboration(sender,target)||!peerAvailable(target))fail('TASK_PEER_UNAVAILABLE')
+        eventId=peerMessageKey(sender.taskId,target.taskId,messageId)
+        const payload={senderTaskId:sender.taskId,senderRole:sender.metadata.work.role,text:a.text,messageId,
+          targetRequirementRevision:target.requirementRevision}
+        const prior=get('dynamic_wakes',eventId,true)
+        if(prior&&digest(prior.payload)!==digest(payload))fail('TASK_PEER_MESSAGE_CONFLICT')
+        if(!prior&&wakes(target.taskId).filter(item=>item.kind==='task.peer.message'&&item.state!=='acked').length>=32)fail('TASK_PEER_INBOX_FULL')
+        wake(target.taskId,'task.peer.message',payload,eventId)
+      }else{
+        if(!peerRoles.includes(a.role))fail('TASK_PEER_ARGUMENT')
+        if(all('dynamic_tasks').some(other=>sameCollaboration(sender,other)&&peerAvailable(other)&&other.metadata.work.role===a.role))fail('TASK_PEER_ALREADY_AVAILABLE')
+        eventId=peerMessageKey(sender.taskId,'router',messageId)
+        const ledgerEvent=routerLedger.taskEvent({id:eventId,kind:'task.peer.request',taskId:sender.taskId,request:{requestId:messageId,role:a.role,text:a.text,sourceId:sender.metadata.work.sourceId,messageVersion:original.version}})
+        if(!ledgerEvent)fail('TASK_PEER_REQUEST_STALE')
+      }
+      const receiptId=peerMessageKey(sender.taskId,eventId,String(sender.leaseEpoch))
+      if(!get('dynamic_wakes',receiptId,true))put('dynamic_wakes',{id:receiptId,wakeId:receiptId,taskId:sender.taskId,kind:'task.peer.park-permit',payload:{senderLease:sender.leaseEpoch},state:'acked',leaseEpoch:sender.leaseEpoch,createdAt:stamp,ackedAt:stamp})
+      return changed({receiptId,messageId:eventId,status:'queued',...target?{targetTaskId:target.taskId,peerWake:get('dynamic_wakes',eventId)}:{conversationId:sender.groupId}})
+    }
+    if(kind==='task.peer.assigned'){
+      const task=get('dynamic_tasks',a.taskId),target=get('dynamic_tasks',a.targetTaskId)
+      if(!sameCollaboration(task,target)||!peerAvailable(task))fail('TASK_PEER_SCOPE')
+      const key=peerMessageKey(target.taskId,task.taskId,a.requestId)
+      wake(task.taskId,'task.peer.message',{senderTaskId:target.taskId,senderRole:target.metadata.work.role,targetRequirementRevision:task.requirementRevision,
+        messageId:a.requestId,text:'Router 已派发该成员。请与此会话直接协作。'},key)
+      return changed({wakeId:key,peerWake:get('dynamic_wakes',key)})
+    }
     if (kind === 'task.wake' || kind === 'wake.enqueue') {
       const task = get('dynamic_tasks', a.taskId)
       if(a.kind==='host.explicit-continuation'&&inspectionHoldsExecution(task)){Object.assign(task.inspection,{pending:false,resolvedAt:stamp,resolution:'host-explicit-continuation'});saveTask(task)}
@@ -1283,6 +1338,10 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
     }
     if (kind === 'task.complete') {
       const task = currentTask(a.binding)
+      // A peer message enqueued before the terminal commit belongs to the
+      // active task. After the commit, task.peer.send rejects this target.
+      if(wakes(task.taskId).some(item=>item.kind==='task.peer.message'&&item.state==='pending'
+        &&item.payload.targetRequirementRevision===task.requirementRevision))fail('TASK_PEER_INPUT_PENDING')
       const milestone=currentTaskMilestone(task)
       if(taskMilestonePending(task,id=>get('dynamic_notifications',id,true))
         ||milestone&&!milestone.notificationId&&!['blocked','wait'].includes(a.result?.action))fail('TASK_MILESTONE_REQUIRED')
@@ -2464,6 +2523,11 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       }
       else if (q.kind === 'operation.get') value = get('dynamic_operations', q.operationId, true)
       else if (q.kind === 'operation.list') value = ops(q.taskId)
+      else if(q.kind==='task.peer.list'){
+        const task=get('dynamic_tasks',q.taskId,true)
+        value=!peerAvailable(task)||!task.metadata?.work?[]:all('dynamic_tasks',"WHERE json_extract(body,'$.groupId')=? ORDER BY rowid",[task.groupId])
+          .filter(peer=>sameCollaboration(task,peer)&&peerAvailable(peer)&&(!q.role||peer.metadata.work.role===q.role)).map(peerProjection)
+      }
       else if (q.kind === 'wake.list') value = wakes(q.taskId).filter(item => !q.state || item.state === q.state)
       else if (q.kind === 'task.milestone') {
         const task=get('dynamic_tasks',q.taskId,true), m=currentTaskMilestone(task)

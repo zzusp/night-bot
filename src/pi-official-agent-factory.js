@@ -1,3 +1,4 @@
+import {isGlobalRouter} from './channels/router-identity.js'
 import {routerCallNotStarted} from './runtime/router-preexecution-proof.js'
 import {sessionNameAuditKinds} from './pi-session-names.js'
 import {effectReconciliationAuditKinds} from './tasks/effect-reconciliation.js'
@@ -122,7 +123,7 @@ export class OfficialAgentFactory {
     return await authorizeCommand(packet,name,actor)===true
    },bindInternal:publish=>{publishInternal=(...args)=>{if(bundle?.durability.failure)throw bundle.durability.failure;return publish(...args)}}}))
    const state=await measurePhase('session-state-restore',()=>createNativeBusinessState(store,{readOnly:options.readOnly===true}))
-   bundle=await createNightOfficialSession({ctx:ownerCtx,store,admission,deferResources:true,measurePhase,
+   bundle=await createNightOfficialSession({ctx:ownerCtx,store,admission,deferResources:true,measurePhase,filterContext:options.filterContext,
     prepareActor:async value=>{
      actor=value;phaseActor=actor;Object.defineProperty(actor,'measurePhase',{value:measurePhase});scope=createScope(ownerCtx,actor,{parent:options.parentAgent});actor.ctx=scope.ctx
      Object.defineProperty(actor,'metadata',{value:deepFreeze(structuredClone(store.header)),enumerable:true});actor.options=deepFreeze(Object.fromEntries(['provider','model','reasoningEffort','maxTokens','temperature'].filter(key=>options.agentOptions?.[key]!==undefined).map(key=>[key,options.agentOptions[key]])))
@@ -202,7 +203,7 @@ export class OfficialAgentFactory {
    const thisFactory=this
    const routerInputCheckpoint=packet=>{
     active();check()
-    if(store.header.runtimeOwner!=='conversation-router'||packet.source.kind!=='conversation-router'||packet.source.conversationId!==store.header.conversationId||packet.source.generation!==store.header.generation)throw fail('PI_ROUTER_RESUME_SCOPE')
+    if(store.header.runtimeOwner!=='conversation-router'||packet.source.kind!=='conversation-router'||(!isGlobalRouter(store.header)&&(packet.source.conversationId!==store.header.conversationId||packet.source.generation!==store.header.generation)))throw fail('PI_ROUTER_RESUME_SCOPE')
     if(!bundle.session.isIdle||bundle.session.pendingMessageCount||bundle.session.isRetrying||bundle.session.agent.state.isStreaming)throw fail('PI_ROUTER_RESUME_BUSY')
     if(admission.status(packet.id)!=='admitted'||admission.pending().length||!isDeepStrictEqual(admission.lookupPacket(packet.id),packet))throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
     const entries=store.manager.getEntries(),branch=store.manager.getBranch(),messages=branch.filter(entry=>['message','custom_message'].includes(entry.type))
@@ -242,7 +243,7 @@ export class OfficialAgentFactory {
     const suffix=branch.slice(branch.indexOf(input)+1),calls=new Map(),unknownCalls=[]
     for(const entry of suffix){
      if(entry.type==='message'&&entry.message.role==='user')throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
-     if(entry.type==='custom_message'&&entry.customType!=='night.tool-context'&&(!['night.router-resume-claim','night.router-resume-turn'].includes(entry.customType)||entry.details?.packetId!==packet.id||entry.details.inputEntryId!==input.id||entry.details.conversationId!==store.header.conversationId||entry.details.generation!==store.header.generation||entry.details.sessionId!==id))throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
+     if(entry.type==='custom_message'&&entry.customType!=='night.tool-context'&&(!['night.router-resume-claim','night.router-resume-turn'].includes(entry.customType)||entry.details?.packetId!==packet.id||entry.details.inputEntryId!==input.id||entry.details.conversationId!==packet.source.conversationId||entry.details.generation!==packet.source.generation||entry.details.sessionId!==id))throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
     }
     for(const entry of suffix)if(entry.type==='message'){
      const message=entry.message
@@ -269,7 +270,7 @@ export class OfficialAgentFactory {
      }
      if(unknownCalls.some(call=>!canIsolate(call)))throw fail('PI_ROUTER_RESUME_EFFECT_UNRESOLVED')
     }
-    return {conversationId:store.header.conversationId,generation:store.header.generation,sessionId:id,packetId:packet.id,inputEntryId:input.id,failedEntryId,checkpointRevision:store.snapshot().revision,...isolationOnly?{unknownTaskIds:[...new Set(unknownCalls.map(call=>call.arguments?.taskId??call.arguments?.taskDelivery?.taskId).filter(id=>typeof id==='string'))],unknownSourceIds:[...new Set(unknownCalls.map(call=>call.arguments?.sourceId).filter(id=>typeof id==='string'))]}:{},...unpairedReplies?{unpairedReplies:unpairedReplies.map(call=>({sourceId:call.arguments.sourceId,messageVersion:call.arguments.messageVersion,taskId:call.arguments.taskDelivery?.taskId}))}:{}}
+    return {conversationId:packet.source.conversationId,generation:packet.source.generation,sessionId:id,packetId:packet.id,inputEntryId:input.id,failedEntryId,checkpointRevision:store.snapshot().revision,...isolationOnly?{unknownTaskIds:[...new Set(unknownCalls.map(call=>call.arguments?.taskId??call.arguments?.taskDelivery?.taskId).filter(id=>typeof id==='string'))],unknownSourceIds:[...new Set(unknownCalls.map(call=>call.arguments?.sourceId).filter(id=>typeof id==='string'))]}:{},...unpairedReplies?{unpairedReplies:unpairedReplies.map(call=>({sourceId:call.arguments.sourceId,messageVersion:call.arguments.messageVersion,taskId:call.arguments.taskDelivery?.taskId}))}:{}}
    }
    const handle={actor,agent:actor,session:bundle.session,
     async retireTriagePending(){
@@ -277,6 +278,12 @@ export class OfficialAgentFactory {
      if(store.header.runtimeOwner!=='channel-triage'||ownerCtx.agents.currentInitiator?.()!==undefined)throw fail('PI_TRIAGE_RECOVERY_HOST_ONLY')
      if(pending.size||!bundle.session.isIdle)throw fail('PI_TRIAGE_RECOVERY_BUSY')
      return admission.cancelPending('triage-batch-refreshed')
+    },
+    retireGlobalRouterPending(packetId){
+     active()
+     if(!isGlobalRouter(store.header)||ownerCtx.agents.currentInitiator?.()!==undefined)throw fail('PI_ROUTER_RESUME_HOST_ONLY')
+     if(admission.lookupPacket(packetId)?.source?.kind!=='conversation-router'||!isDeepStrictEqual(admission.pending(),[packetId])||pending.size||!bundle.session.isIdle)throw fail('PI_ROUTER_RESUME_INPUT_INVALID')
+     return admission.cancelPending('global-router-stale-queued-input')
     },
     retireHeldReview(packetId){
      active();check()

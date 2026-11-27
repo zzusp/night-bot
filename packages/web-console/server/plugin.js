@@ -145,9 +145,26 @@ export async function createWebConsole({channels, paths, config, getApplication,
     return {...page(query), limit: pageNumber(query, 'limit', 10, 100), state, archived: query.get('archived') === 'all' ? 'all' : query.get('archived') === 'true',
       ...(query.get('revision') ? {revision: query.get('revision')} : {}), ...(query.get('groupId') ? {groupId: query.get('groupId')} : {})}
   }
+  const workOrigin = app => {
+    let groups
+    try{groups=new Map(app.tasks.listObserverGroups?.().map(group=>[group.groupId,group])??[])}catch{groups=new Map()}
+    const text = value => visibleText(value??'',[credential.token],{maxLength:140}).text
+    return id => {
+      const group=groups.get(id)
+      if(!group)return {kind:'unavailable'}
+      let context
+      try{context=channels.groupContext?.(id)}catch{return {kind:'unavailable'}}
+      if(context?.channelId===channelId){
+        const chat=ledger.chat(context.conversationId)
+        return chat?{kind:'web',id:context.conversationId,name:text(chat.title)||'Web 对话'}:{kind:'unavailable'}
+      }
+      if(!context||!['chat','chat-room'].includes(context.type))return {kind:'unavailable'}
+      return {kind:'channel',id,name:text(context.conversationName??group.name)||'渠道对话',type:context.type}
+    }
+  }
   const tasks = async options => {
-    const value = await application().tasks.boardTasks(options)
-    return {...value, items: value.items.map(task => taskView(task, [credential.token]))}
+    const app=application(),value=await app.tasks.boardTasks(options),originFor=workOrigin(app)
+    return {...value, items: value.items.map(task => taskView(task, [credential.token],originFor))}
   }
   let evolutionCache, evolutionUsageCache, authorizedEvolutionReader
   try {
@@ -347,7 +364,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if(!channelId||channelId!==channelId.trim()||channelId.length>128||channelId.includes('\0'))fail('DINGTALK_CHANNEL_REQUEST_INVALID',400)
       try{
         if(request.method==='GET')return send(response,200,await configuration.getDingtalk(channelId))
-        const body=await jsonBody(request,['expectedVersion','name','prompt','conversationType','targetKind','target','writesAuthorized'])
+        const body=await jsonBody(request,['expectedVersion','name','conversationType','targetKind','target','writesAuthorized'])
         const result=await configuration.editDingtalk(channelId,body),channel=configuredChannels(app,channels,[result.channel]).items[0]
         return send(response,200,{ok:true,changed:result.changed,restartRequired:channel.restartRequired,liveApplied:channel.liveApplied,channel,detail:result.detail})
       }catch(error){
@@ -359,7 +376,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
     }
     if (request.method === 'POST' && path === '/api/channels/dingtalk') {
       const app = application()
-      const body = await jsonBody(request, ['channelId', 'conversationType', 'targetKind', 'target', 'name', 'prompt', 'writesAuthorized'])
+      const body = await jsonBody(request, ['channelId', 'conversationType', 'targetKind', 'target', 'name', 'writesAuthorized'])
       const configuration = getChannelConfiguration()
       if (!configuration) fail('CHANNEL_CONFIGURATION_UNAVAILABLE', 503)
       let result
@@ -385,19 +402,22 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if (typeof schedule?.catalog !== 'function') fail('SCHEDULES_UNAVAILABLE', 503)
       let catalog
       try {catalog = await schedule.catalog()} catch {fail('SCHEDULES_READ_FAILED', 503)}
-      return send(response, 200, schedulePage(catalog, options, [credential.token]))
+      const app=application()
+      return send(response, 200, schedulePage(catalog, options, [credential.token],{
+        bindings:app.tasks.scheduleDeliveryBindings?.(catalog),originFor:workOrigin(app),
+      }))
     }
     if (request.method === 'GET' && path === '/api/tasks') return send(response, 200, await tasks(taskOptions(url.searchParams)))
-    const activity = /^\/api\/conversations\/([^/]+)\/activity$/.exec(path)
+    const activity = /^\/api\/(chat|conversations)\/([^/]+)\/activity$/.exec(path)
     if(request.method==='GET'&&activity){
       if([...url.searchParams.keys()].length)fail('PAGE_INVALID')
-      const id=decodeURIComponent(activity[1]),groupId=executionContext('conversations',id)
+      const kind=activity[1],id=decodeURIComponent(activity[2]),groupId=executionContext(kind,id)
       const states=[undefined,'running','interrupted'],keys=['tasks','running','interrupted']
       const results=await Promise.allSettled(states.map(state=>tasks({groupId,state,offset:0,limit:5,archived:false})))
-      executionContext('conversations',id)
+      if(executionContext(kind,id)!==groupId)fail('ACTIVITY_SCOPE_INVALID',409)
       const values=Object.fromEntries(keys.map((key,index)=>[key,results[index].status==='fulfilled'?results[index].value:null]))
       const sectionErrors=Object.fromEntries(keys.flatMap((key,index)=>results[index].status==='rejected'?[[key,'SECTION_UNAVAILABLE']]:[]))
-      return send(response,200,{scope:{conversationId:groupId},...values,sectionErrors})
+      return send(response,200,{scope:{conversationId:groupId,...kind==='chat'?{chatId:id}:{}},...values,sectionErrors})
     }
     if (request.method === 'GET' && path === '/api/overview') {
       const app = application()
@@ -533,7 +553,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
           ...await sessionGuards(async()=>{const current=await readTask();if(!current)fail('TASK_NOT_FOUND',404);if(taskIdentity(current)!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)})},
           async()=>({id:value.session?.sessionId??value.sessionId,key:taskIdentity(value)}))
       }
-      return send(response, 200, taskView(value, [credential.token]))
+      return send(response, 200, taskView(value, [credential.token],workOrigin(app)))
     }
     const conversation = /^\/api\/conversations\/([^/]+)\/messages$/.exec(path)
     if (request.method === 'GET' && conversation) {
@@ -608,7 +628,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if (!raw || raw.taskId !== taskId || raw.groupId !== conversationId) fail('CHAT_TASK_NOT_FOUND', 404)
       const detail = await app.tasks.taskDetail(taskId)
       if (!detail || detail.taskId !== taskId || detail.groupId !== conversationId) fail('CHAT_TASK_NOT_FOUND', 404)
-      return send(response, 200, taskView(detail, [credential.token]))
+      return send(response, 200, taskView(detail, [credential.token],workOrigin(application())))
     }
     const chatTask = /^\/api\/(chat|conversations)\/([^/]+)\/tasks\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && chatTask) {
@@ -648,8 +668,15 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if (chatSession[3]) return sendSession(response, routerSessionMessageView, {...options, ...bodyOptions(url.searchParams), messageId: decodeURIComponent(chatSession[3])},requestStarted)
       return serveExecution(routerSessionView,{...options,readExecutionTiming:scope=>taskService.executionHistoryTiming?.(scope)},async()=>{
         const router=await options.readRouter()
-        return {id:router?.activeSessionId,key:JSON.stringify([router?.id,router?.activeSessionId,router?.generation])}
+        return {id:router?.sharedSessionId?undefined:router?.activeSessionId,key:JSON.stringify([router?.id,router?.sharedSessionId??router?.activeSessionId,router?.generation])}
       })
+    }
+    const chatSummary = /^\/api\/chat\/([^/]+)\/summary$/.exec(path)
+    if (request.method === 'GET' && chatSummary) {
+      if ([...url.searchParams.keys()].length) fail('PAGE_INVALID')
+      const value=ledger.chatSummary(identifier(decodeURIComponent(chatSummary[1])))
+      if (!value) fail('CHAT_NOT_FOUND', 404)
+      return send(response, 200, value)
     }
     const chat = /^\/api\/chat\/([^/]+)$/.exec(path)
     if (request.method === 'GET' && chat) {

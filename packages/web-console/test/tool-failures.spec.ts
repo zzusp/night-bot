@@ -1,3 +1,4 @@
+import {openRouter} from './open-router';
 import {test, expect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {FIXTURE_TOKEN} from './preview.mjs';
@@ -40,7 +41,7 @@ for (const router of [true,false]) {
     await page.goto(router?'/#/channels/room-product':'/#/tasks/task-research');
     await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
     await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
-    if(router)await page.getByRole('tab',{name:'路由',exact:true}).click();
+    if(router)await openRouter(page);
     const history=page.locator('.execution-history').filter({hasText:'工具失败预览 · 合成数据'});
     const group=history.locator('.execution-turn-process');
     await expect(group).not.toHaveAttribute('open');

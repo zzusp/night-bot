@@ -1,3 +1,4 @@
+import {openRouter} from './open-router';
 import {test,expect} from '@playwright/test';
 import {FIXTURE_TOKEN,startPreview} from './preview.mjs';
 
@@ -36,7 +37,7 @@ for(const router of [false,true])test(`${router?'Router':'任务详情'}用真�
   await page.goto(preview.origin+(router?'/#/channels/'+conversationId:'/#/tasks/'+taskId));
   await page.getByLabel('访问令牌',{exact:true}).fill(preview.token);
   await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
-  if(router)await page.getByRole('tab',{name:'路由',exact:true}).click();
+  if(router)await openRouter(page);
   await expect(page.getByText(rows[0].text,{exact:true})).toBeVisible();
   await expect.poll(()=>subscriptions).toBe(1);
   liveText='这一段由事件推送。';liveRevision++;

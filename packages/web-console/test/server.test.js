@@ -28,7 +28,7 @@ async function fixture(t, options = {}) {
     transports, plugins,
     identity: envelope => {
       options.onIdentity?.(envelope)
-      if (options.validateIdentity) Channels.prototype.identity.call({host: {runtimePaths: {workspaces: root}}}, envelope)
+      if (options.validateIdentity) Channels.prototype.identity.call({boundPrivatePeer:()=>undefined,host: {runtimePaths: {workspaces: root}}}, envelope)
       return {sessionId: 'conversation-' + envelope.channelId + '-' + envelope.conversationId, binding: options.identityBinding?.() ?? {actorId: 'verified-web-operator'}}
     },
     groupContext: id => id === 'room-one' ? {channelId: 'team-chat', type: 'chat-room', conversationId: 'team'} : undefined,
@@ -296,7 +296,7 @@ test('渠道连接阶段只用真实 health 白名单，启用状态和私有错
       config: {dingtalk_profile: 'PRIVATE_PROFILE', dingtalk_conversation_type: 'chat-room', dingtalk_writes_authorized: writesAuthorized}})
     f.channels.plugins.set(channelId, {bindingActive:writesAuthorized!==undefined,health: {state: 'ready', healthy: true}})
     expected.push({channelId, type: 'dingtalk-dws', enabled: true, connectionState: 'ready', errorCode: null,
-      restartRequired: false, liveApplied: writesAuthorized!==undefined, name: channelId, conversationType: 'chat-room', promptConfigured: false,
+      restartRequired: false, liveApplied: writesAuthorized!==undefined, name: channelId, conversationType: 'chat-room',
       writesAuthorized: writesAuthorized === true, connected: true})
   }
   for(const item of expected){
@@ -1248,7 +1248,7 @@ test('compaction chart uses authenticated current Router events even with zero m
 })
 
 test('channel activity scopes every count and page before querying, rejects foreign targets and keeps global overview',async t=>{
- const identity=input=>Channels.prototype.identity.call({host:{runtimePaths:{workspaces:'/tmp/synthetic-conversations'}}},input).sessionId
+ const identity=input=>Channels.prototype.identity.call({boundPrivatePeer:()=>undefined,host:{runtimePaths:{workspaces:'/tmp/synthetic-conversations'}}},input).sessionId
  const message={type:'chat-room',channelId:'same-plugin',conversationId:'room-one',senderId:'actor',messageId:'synthetic',text:'Synthetic',conversationName:'Same display name'}
  assert.equal(new Set([identity(message),identity({...message,conversationId:'room-two'}),identity({...message,channelId:'other-plugin'}),identity({...message,type:'chat'})]).size,4)
  assert.equal(identity(message),identity({...message,senderId:'other-member'}),'group members share one stable room scope')
@@ -1622,4 +1622,68 @@ test('completed task context window uses the committed Pi journal without openin
  assert.deepEqual((await f.fetchApi(path)).body,{status:'unavailable'})
  changedDigest=false;wrongIdentity=true
  assert.deepEqual((await f.fetchApi(path)).body,{status:'unavailable'})
+})
+
+test('schedule and task delivery show only safe links to a known originating conversation',async t=>{
+ const records=[
+   {id:'focused-silent',sessionId:'internal-silent',kind:'at',status:'active',title:'静默核查',scheduledAt:'2030-01-01T00:00:00Z'},
+   {id:'focused-origin',sessionId:'internal-origin',kind:'at',status:'active',title:'回报进度',scheduledAt:'2030-01-01T00:00:00Z'},
+ ]
+ const f=await fixture(t,{schedule:{catalog:async()=>records}})
+ f.app.tasks.scheduleDeliveryBindings=()=>new Map([
+   ['focused-silent',{mode:'silent',groupId:'room-one'}],
+   ['focused-origin',{mode:'origin',groupId:'room-one'}],
+ ])
+ f.app.tasks.taskDetail=async id=>({taskId:id,state:'completed',title:'任务',...id==='known'?{
+   groupId:'room-one',metadata:{work:{id:'private-team',sourceId:'private-source',role:'verification',reportsFinal:true,cooperative:true}},
+ }:id==='absent'?{groupId:'room-unknown'}:{}})
+ await f.login()
+ const schedules=(await f.fetchApi('/api/schedules')).body.items
+ const origin={kind:'channel',id:'room-one',name:'项目讨论',type:'chat-room'}
+ assert.deepEqual(schedules.find(item=>item.id==='focused-origin').delivery,{mode:'origin',origin})
+ assert.deepEqual(schedules.find(item=>item.id==='focused-silent').delivery,{mode:'silent'})
+ assert.doesNotMatch(JSON.stringify(schedules),/internal-(?:origin|silent)/)
+ const task=(await f.fetchApi('/api/tasks/known')).body
+ assert.deepEqual(task.origin,origin)
+ assert.deepEqual(task.work,{role:'verification',reportsFinal:true})
+ assert.doesNotMatch(JSON.stringify(task),/private-(?:team|source)/)
+ assert.deepEqual((await f.fetchApi('/api/tasks/absent')).body.origin,{kind:'unavailable'})
+ assert.equal((await f.fetchApi('/api/tasks/standalone')).body.origin,null)
+})
+
+test('Web Router activity is scoped to the exact authenticated chat session',async t=>{
+ const f=await fixture(t),calls=[]
+ await f.login()
+ const missing=await f.fetchApi('/api/chat/not-created/activity')
+ assert.equal(missing.status,404)
+ const sent=await f.fetchApi('/api/chat',{method:'POST',body:{requestId:'activity-seed',text:'Task scope fixture'}})
+ assert.equal(sent.status,202)
+ f.app.tasks.boardTasks=async options=>{
+   calls.push(options)
+   return {items:[{taskId:'scoped-task',state:'running',groupId:options.groupId}],total:1,offset:0,limit:5,nextOffset:null}
+ }
+ const activity=await f.fetchApi('/api/chat/'+sent.body.conversationId+'/activity')
+ assert.equal(activity.status,200)
+ assert.equal(activity.body.scope.chatId,sent.body.conversationId)
+ assert.ok(activity.body.scope.conversationId)
+ assert.ok(calls.every(row=>row.groupId===activity.body.scope.conversationId&&row.limit===5))
+ assert.equal(calls.length,3)
+ assert.equal((await f.fetchApi('/api/chat/'+sent.body.conversationId+'/activity?groupId=room-one')).status,400)
+ assert.equal(calls.length,3)
+})
+
+test('direct Web conversation summary requires login and exposes only exact chat summary',async t=>{
+ const f=await fixture(t)
+ assert.equal((await f.fetchApi('/api/chat/unlisted/summary')).status,401)
+ await f.login()
+ assert.equal((await f.fetchApi('/api/chat/unlisted/summary')).status,404)
+ const sent=await f.fetchApi('/api/chat',{method:'POST',body:{requestId:'chat-summary-seed',text:'Historical title fixture'}})
+ assert.equal(sent.status,202)
+ const path='/api/chat/'+sent.body.conversationId+'/summary'
+ const summary=await f.fetchApi(path)
+ assert.equal(summary.status,200)
+ assert.equal(summary.body.id,sent.body.conversationId)
+ assert.equal(summary.body.title,'Historical title fixture')
+ assert.deepEqual(Object.keys(summary.body).sort(),['id','status','title','updatedAt'])
+ assert.equal((await f.fetchApi(path+'?offset=100')).status,400)
 })

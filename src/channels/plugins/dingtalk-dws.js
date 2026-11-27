@@ -304,7 +304,7 @@ export async function apply(ctx,config={},dependencies={}){
       return ingressControl.getStatus()
     }),
   }
-  const plugin={channelId,get bindingIdentity(){return config.binding?{...config.binding}:undefined},get bindingActive(){return readyBound&&!closed},get name(){return config.name??channelId},get prompt(){return config.prompt},get enabled(){return config.enabled},
+  const plugin={channelId,get bindingIdentity(){return config.binding?{...config.binding}:undefined},get bindingActive(){return readyBound&&!closed},get name(){return config.name??channelId},get enabled(){return config.enabled},
     ingressControl,
     setEnabled:enabled=>serialize(async()=>{
       if(typeof enabled!=='boolean')throw failure('DINGTALK_ENABLED_INVALID')
@@ -320,16 +320,15 @@ export async function apply(ctx,config={},dependencies={}){
       if(settings.enabled&&!config.enabled)await verifyDingtalkBinding(config,{runner})
       const receivePaused=settings.receivePaused??config.receivePaused
       if(settings.enabled!==config.enabled||receivePaused!==config.receivePaused)await changeIngress(receivePaused,{enabled:settings.enabled})
-      Object.assign(config,{name:settings.name,prompt:settings.prompt,enabled:settings.enabled,writesAuthorized:settings.writesAuthorized})
+      Object.assign(config,{name:settings.name,enabled:settings.enabled,writesAuthorized:settings.writesAuthorized})
       if(readyBound)adapter=createDwsAdapter({enabled:true,writesAuthorized:config.writesAuthorized,profile:config.profile,runner})
       return {enabled:config.enabled,health:plugin.health}
     }),
     updateSettings:settings=>serialize(async()=>{
-      if(!settings||Object.keys(settings).some(key=>!['name','prompt'].includes(key))||settings.name!==undefined&&(typeof settings.name!=='string'||!settings.name.trim())||settings.prompt!==undefined&&typeof settings.prompt!=='string')throw failure('DINGTALK_SETTINGS_INVALID')
+      if(!settings||Object.keys(settings).some(key=>!['name'].includes(key))||settings.name!==undefined&&(typeof settings.name!=='string'||!settings.name.trim()))throw failure('DINGTALK_SETTINGS_INVALID')
       if(settings.name!==undefined)config.name=settings.name
-      if(settings.prompt!==undefined)config.prompt=settings.prompt
-      return {enabled:config.enabled,name:config.name??channelId,promptConfigured:!!config.prompt}
-    }),accountPolicy,get adapter(){return adapter},notifications,acceptHistoryMessage,conversationDisplayName:context=>!closed&&inBoundScope(context)?config.conversationName:undefined,responsibility:context=>inBoundScope(context)?config.prompt:undefined,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:options=>createNativeDwsObserver({...options,resolveNotificationScope:notification=>{
+      return {enabled:config.enabled,name:config.name??channelId}
+    }),accountPolicy,get adapter(){return adapter},notifications,acceptHistoryMessage,get channelDisplayName(){return config.name??channelId},conversationDisplayName:context=>!closed&&inBoundScope(context)?config.conversationName:undefined,commands:nativeDwsCommands,observation:nativeDwsObservation,createObserver:options=>createNativeDwsObserver({...options,resolveNotificationScope:notification=>{
     const context=ctx.channels.groupContext(notification.payload?.conversationId)
     if(!inBoundScope(context)||context.type==='chat'&&!ctx.channels.targetMatches(context,{type:'chat',conversationId:config.binding.conversationId,peerId:config.binding.peerId}))return
     return {channelId,conversationId:context.conversationId,senderId:config.binding.actorId,querySendStatus:id=>adapter.querySendStatus(id)}

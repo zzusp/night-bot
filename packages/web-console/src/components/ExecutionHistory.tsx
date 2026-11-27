@@ -102,6 +102,7 @@ export function ExecutionHistory({ endpoint, router = false, sessionKind, status
   return <div className={`execution-history${router && (!query.data?.items.length || blocked) ? ' execution-history-empty' : ''}${sessionEmpty || readFailed ? ' session-records-empty' : ''}${readFailed ? ' execution-read-failed' : ''}`}>
     {tokenTarget && createPortal(<TaskTokenUsage usage={!blocked && query.data?.status === 'ready' ? query.data.tokenUsage : undefined} error={query.error || taskError} stale={!blocked && !!query.data?.tokenUsage} onRetry={query.error ? latest : taskRetry ?? latest} />, tokenTarget)}
     {controlsTarget === undefined ? controls : controlsTarget ? createPortal(controls, controlsTarget) : null}
+    {router && !blocked && query.data?.routingMode === 'shared' && <div className="execution-scope router-conversation-scope">统一 Router · 当前对话</div>}
     {query.error && hasRecords && <Notice read stale error={query.error} message={query.error instanceof TypeError ? '连接已断开，当前显示上次记录' : '更新失败，当前显示上次记录'} onRetry={query.loading ? undefined : latest} />}
     {!blocked && query.committing && <div className="execution-scope" role="status">记录正在提交，当前显示上次已提交记录。</div>}
     {!router && !blocked && query.data?.status === 'ready' && query.data.todos && <AgentProgress key={endpoint} items={query.data.todos.items} title={taskTitle} status={taskState} />}

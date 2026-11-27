@@ -261,7 +261,7 @@ Windows 短暂共享占用导致的原子替换 `EPERM` / `EACCES` / `EBUSY` 在
 
 1. 默认保持 `channelPlugins:[]` 或实例 `enabled:false`。公开配置只接受 `dingtalk_*`：`dingtalk_listen:false` 关闭监听，`dingtalk_writes_authorized:false` 关闭发送，两者不能代替禁用实例。`enabled:true` 即会核对登录与目标，即使监听关闭也可能调用 DWS；未获连接授权不启用。额外 `dingtalk_operator_notifications` 默认关闭，不扩大到 operator 私聊。普通任务补问不依赖此配置：已授权发送且有真实 IM 来源时引用原消息；纯 Web 问题保留在 Web。升级不为历史未发送的私密问题新建通知，已生成的出箱仍沿原回执核对。
 2. Windows 明确用 `dingtalk_account_mode:"system"` 和 `dingtalk_profile:"YOUR_PROFILE"`。system 是当前 OS 用户账号存储，不要求 LocalSystem 或管理员。复用已核实的已有登录态，不执行登录、切换账号、重置、凭据复制/导出或改注册表。多个实例/profile 可能共享账号存储，不能声明账号隔离；Windows 显式 private 请求拒绝。
-3. 每个实例只绑定一个目标，使用唯一 `channelId`。群聊设 `dingtalk_conversation_type:"chat-room"` 与群 ID 或群名；私聊另建实例，设 `"chat"` 与 userId 或姓名，不填群目标。`dingtalk_name` 是渠道名称，`dingtalk_prompt` 是该会话职责、设定与规范，`""` 清空、缺省未指定；不再使用 `groups[].responsibility`、`config.responsibility`、`directChats` 或旧无前缀字段。多群/私聊使用多个实例，职责与四角色消费见 [渠道职责配置](../CHANNELS.md#渠道职责配置)。
+3. 每个实例只绑定一个目标，使用唯一 `channelId`。群聊设 `dingtalk_conversation_type:"chat-room"` 与群 ID 或群名；私聊另建实例，设 `"chat"` 与 userId 或姓名，不填群目标。`dingtalk_name` 是渠道名称；不再配置渠道提示词；不再使用 `groups[].responsibility`、`config.responsibility`、`directChats` 或旧无前缀字段。多群/私聊使用多个实例，见[渠道连接配置](../CHANNELS.md#渠道连接配置)。
 
 在安装根目录做离线准备。以下 `add` 仅适用于尚未登记的 `dingtalk-room`，占位目标按获准范围填写；已有实例用专用 `set` 修改，不覆盖其它实例：
 
@@ -269,7 +269,7 @@ Windows 短暂共享占用导致的原子替换 `EPERM` / `EACCES` / `EBUSY` 在
 Get-Command dws -CommandType Application | Select-Object Name,Source
 $config = (Resolve-Path 'data/config/config.json').ProviderPath
 node bin/night-bot-dingtalk.js $config list
-$room = '{"dingtalk_profile":"YOUR_PROFILE","dingtalk_account_mode":"system","dingtalk_conversation_type":"chat-room","dingtalk_group_id":"YOUR_ROOM_ID","dingtalk_name":"指定群助手","dingtalk_prompt":"仅处理本会话明确授权的请求。","dingtalk_listen":false,"dingtalk_writes_authorized":false}'
+$room = '{"dingtalk_profile":"YOUR_PROFILE","dingtalk_account_mode":"system","dingtalk_conversation_type":"chat-room","dingtalk_group_id":"YOUR_ROOM_ID","dingtalk_name":"指定群助手","dingtalk_listen":false,"dingtalk_writes_authorized":false}'
 node bin/night-bot-dingtalk.js $config add --channel-id dingtalk-room --enabled false --json $room --check
 if ($LASTEXITCODE -ne 0) { throw '配置检查失败，不保存或启用插件。' }
 ```
@@ -282,7 +282,7 @@ if ($LASTEXITCODE -ne 0) { throw '配置保存失败，保留错误和原数据�
 node bin/night-bot-dingtalk.js $config list
 ```
 
-保存须取得离线 Host 锁，运行中拒绝写入；不靠停掉未知进程或删除锁绕过。保存返回 `liveApplied:false`，`changed/restartRequired` 也包含渠道暂停/补拉检查点变化；按返回值正常重启，不声称热更新。已存在实例修改名称/Prompt 使用 `set --channel-id dingtalk-room --json '{"dingtalk_name":"指定群助手","dingtalk_prompt":"新的已授权规范"}' --check`，通过后同样离线保存。`disable --channel-id ID --check` 检查后去掉 `--check` 才保存，`enable` 同理；均不自动连接正在运行的 Host。
+保存须取得离线 Host 锁，运行中拒绝写入；不靠停掉未知进程或删除锁绕过。保存返回 `liveApplied:false`，`changed/restartRequired` 也包含渠道暂停/补拉检查点变化；按返回值正常重启，不声称热更新。已存在实例修改名称 使用 `set --channel-id dingtalk-room --json '{"dingtalk_name":"指定群助手"}' --check`，通过后同样离线保存。`disable --channel-id ID --check` 检查后去掉 `--check` 才保存，`enable` 同理；均不自动连接正在运行的 Host。
 
 显式环境导入只走 `node bin/night-bot-dingtalk.js $config env --check`，核对后去掉 `--check` 保存。单实例使用 `DINGTALK_CHANNEL_ID`、`DINGTALK_ENABLED` 与公开字段对应大写名称；多实例用 `DINGTALK_CHANNELS_JSON` 完整实例数组，不同时设置其它非空 `DINGTALK_*`。首次准备显式禁用并关闭监听/发送，布尔只写 `true/false`；普通 CLI 参数不与环境变量混用。不要把凭据正文传入 JSON、命令行、日志或 Git。
 

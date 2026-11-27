@@ -13,7 +13,7 @@ import {handleRequest,applyResidentCorsHeaders,residentErrorStatus} from '../pac
  * this entry does not construct a vendor client, probe CLI login or start DWS. */
 export const inject=['runtimePaths','storage','storageDomain','credentials','agents','agentDefaultModel','agentPresets','permissionPresets','officialAgentFactory','nativePiProvider','sessionCatalog','piAuthority','sessionPersistence','workspaceRegistry','tools','nativeModelRoutes','systemPrompt','attachments','channels','jobs','subprocess']
 export async function apply(ctx,config){
-  const paths=ctx.get('runtimePaths'),resident=config.resident??{},taskConfig={...config.model,...resident.taskSessions,workspaceDir:paths.workspaces,dbPath:join(paths.state,'tasks.sqlite')}
+  const paths=ctx.get('runtimePaths'),resident=config.resident??{},taskConfig={...config.model,...resident.taskSessions,globalRouter:true,workspaceDir:paths.workspaces,dbPath:join(paths.state,'tasks.sqlite')}
   for(const field of ['instanceId','ownerActorId','webActorId'])if(typeof taskConfig[field]!=='string'||!taskConfig[field].trim())throw Error('TASK_SESSION_CONFIGURATION_REQUIRED:'+field)
   if(!Number.isFinite(Date.parse(taskConfig.ingressEpoch)))throw Error('TASK_SESSION_INGRESS_EPOCH_INVALID')
   const store=await openResidentStore(ctx.storageDomain),runtime=await openTaskResidentRuntime(ctx,store,paths.workspaces,{agentPreset:'night-bot',agentWorkspaceDir:paths.workspaces,taskSessionModel:taskConfig,maxConcurrentTasks:resident.maxConcurrentTasks??5})

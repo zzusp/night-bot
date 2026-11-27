@@ -1,3 +1,4 @@
+import {openRouter} from './open-router';
 import {test,expect} from '@playwright/test'
 import {startPreview} from './preview.mjs'
 let fixture:Awaited<ReturnType<typeof startPreview>>
@@ -9,14 +10,14 @@ for(const width of [1440,390])test(`渠道路由只读保留历史，普通 Web 
  let routerPosts=0
  page.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/router/messages'))routerPosts++})
  for(const name of ['对话','路由']){
-  await page.getByRole('tab',{name,exact:true}).click()
+  if(name==='路由')await openRouter(page)
   await expect(page.locator('.board-composer:visible')).toHaveCount(0)
   await expect(page.locator('.router-composer')).toHaveCount(0)
   await expect(page.getByPlaceholder('向 Router 询问…')).toHaveCount(0)
   await expect(page.getByRole('button',{name:'发送消息',exact:true})).toHaveCount(0)
   await expect(page.getByRole('button',{name:'重试发送',exact:true})).toHaveCount(0)
  }
- const panel=page.getByRole('tabpanel',{name:'路由',exact:true})
+ const panel=page.getByRole('region',{name:'路由记录'})
  await expect(panel).toContainText('请检查接口文档与实现的差异，并整理待确认事项。')
  await expect(panel).toContainText('resident_task_query')
  await expect(panel.locator('.composer-dock')).toHaveCount(0)
@@ -30,7 +31,7 @@ for(const width of [1440,390])test(`渠道路由只读保留历史，普通 Web 
  await expect(page.locator('.message-assistant').last()).toContainText('这是本地隔离验收回复')
  await expect(page.locator('.message-user').last()).toContainText(text)
  expect(routerPosts).toBe(0)
- await page.goto(fixture.origin+'/#/channels/room-product');await page.getByRole('tab',{name:'路由',exact:true}).click()
- await expect(page.getByRole('tabpanel',{name:'路由',exact:true})).toContainText('resident_task_query')
+ await page.goto(fixture.origin+'/#/channels/room-product');await openRouter(page)
+ await expect(page.getByRole('region',{name:'路由记录'})).toContainText('resident_task_query')
  await expect(page.locator('.board-composer:visible')).toHaveCount(0)
 })

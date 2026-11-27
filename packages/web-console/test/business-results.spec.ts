@@ -1,3 +1,4 @@
+import {openRouter} from './open-router';
 import {test,expect,type Page} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {resultPreview} from './business-results-fixture.mjs';
@@ -6,7 +7,7 @@ async function open(page:Page,fixture:Awaited<ReturnType<typeof resultPreview>>,
  await page.goto(fixture.origin+(router?'/#/chat/sample-plan':'/#/tasks/task-research'));
  await page.getByLabel('访问令牌',{exact:true}).fill(fixture.token);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
- if(router)await page.getByRole('tab',{name:'路由',exact:true}).click();
+ if(router)await openRouter(page);
  const history=page.locator('.execution-history');await expect(history).toBeVisible();return history;
 }
 for(const router of [false,true])test(`${router?'Router 回复':'任务结果'}按序独立展示，前后合组及重复刷新，窄屏浅深色`,async({page})=>{

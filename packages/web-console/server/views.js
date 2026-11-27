@@ -65,8 +65,14 @@ export function taskSummaryView(task, secrets = []) {
   }))
 }
 
-export function taskView(task, secrets = []) {
+const workRoles = new Set(['development','verification','investigation','general'])
+export function taskView(task, secrets = [], originFor) {
+  const origin=typeof task.groupId==='string'&&task.groupId?originFor?.(task.groupId):null
+  const work=task.metadata?.work
+  const role=workRoles.has(work?.role)?work.role:undefined
   return {
+    ...(origin ? {origin}:{origin:null}),
+    ...(role&&work.cooperative===true?{work:{role,reportsFinal:work.reportsFinal===true}}:{}),
     ...(task.durations ? {durations: task.durations} : {}),
     ...displayFields(task, ['taskId', 'title', 'objective', 'request', 'state', 'status', 'controlState', 'groupId', 'createdAt', 'updatedAt', 'archivedAt', 'requirementRevision', 'controlRevision', 'cancellationReason', 'waitingReason'], secrets),
     ...(task.milestone ? {milestone:{...pick(task.milestone,['state','waitForDelivery','deliveredAt','reachedAt']),...displayFields(task.milestone,['trigger','text'],secrets)}} : {}),
@@ -112,7 +118,7 @@ export function configuredChannels(application, channels, savedRows = applicatio
       restartRequired:pending,liveApplied:!lifecycleError&&!pending&&row.enabled===true&&!!plugin&&(row.type!=='dingtalk-dws'||plugin.bindingActive===true)&&!['waiting-auth','error','stopped'].includes(runningConnectionState),
       runningConnectionState,runningErrorCode:errorFor(health,row.type),
       ...(typeof healthy==='boolean'?{runningConnected:healthy}:{}),
-      ...(row.type==='dingtalk-dws'?{name:row.config?.dingtalk_name??channelId,conversationType:row.config?.dingtalk_conversation_type,promptConfigured:!!row.config?.dingtalk_prompt,writesAuthorized:row.config?.dingtalk_writes_authorized===true,
+      ...(row.type==='dingtalk-dws'?{name:row.config?.dingtalk_name??channelId,conversationType:row.config?.dingtalk_conversation_type,writesAuthorized:row.config?.dingtalk_writes_authorized===true,
         ...(loaded?{runningName:loaded.config?.dingtalk_name??channelId,runningConversationType:loaded.config?.dingtalk_conversation_type}:{} )}:{}),
       ...(pending||lifecycleError?{connected:false}:typeof healthy==='boolean'?{connected:healthy}:{})}
   })}

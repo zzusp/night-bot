@@ -854,3 +854,27 @@ test('上轮已冻结但未确认送达的通知，不能抵本轮已隔离的�
   assert.deepEqual(await f.query('notification.get',{notificationId}),unknown)
   assert.equal((await f.query('router.batch-events',{conversationId:f.conversationId,eventIds:[event.id]}))[0].state,'pending')
 })
+
+test('peer queue is durable, idempotent and refuses other work groups',async t=>{
+ const f=await fixture(t,{channel:'im'}),{command,query,conversationId,sourceId,generation}=f
+ const roleTask=(taskId,workRole,reportsFinal)=>({taskId,request:'Fixture '+taskId,workRole,reportsFinal})
+ await f.plan({tasks:[roleTask('a','development',false),roleTask('b','verification',true)],dependencies:[]})
+ await f.plan({operationId:'independent-plan',tasks:[roleTask('other','verification',true)],dependencies:[]})
+ const claimed=(await command('task.claim',{taskId:'a'})).result
+ const message={binding:claimed.binding,taskId:'b',messageId:'handoff-1',text:'candidate rev 1'}
+ await assert.rejects(command('task.peer.send',{...message,taskId:'other'}),{code:'TASK_PEER_UNAVAILABLE'})
+ const {result}=await command('task.peer.send',message)
+ const duplicate=await command('task.peer.send',message)
+ assert.equal(result.messageId,duplicate.result.messageId)
+ await assert.rejects(command('task.peer.send',{...message,text:'changed'}),{code:'TASK_PEER_MESSAGE_CONFLICT'})
+ assert.equal((await command('task.peer.wait',{binding:claimed.binding,receiptId:result.receiptId})).result.parked,true)
+ await command('wake.ack',{binding:claimed.binding,wakeIds:claimed.wakeIds})
+ await command('task.drained',{binding:claimed.binding})
+ await f.reopen()
+ const inbox=await query('wake.list',{taskId:'b'}), peer=inbox.filter(row=>row.kind==='task.peer.message')
+ assert.equal(peer.length,1);assert.equal(peer[0].payload.text,'candidate rev 1')
+ assert.equal(peer[0].payload.senderTaskId,'a')
+ const view=await query('task.peer.list',{taskId:'a',role:'verification'})
+ assert.deepEqual(view.map(x=>x.taskId),['b'])
+ assert.equal((await query('router.inbox',{conversationId})).filter(x=>x.kind.startsWith('task.peer')).length,0)
+})

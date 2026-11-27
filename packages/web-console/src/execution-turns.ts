@@ -7,7 +7,7 @@ export type ExecutionTurn = {
 };
 export type ExecutionTurnRow = ExecutionTurn | { kind: 'standalone'; row: TranscriptItem };
 
-const standalone = (message: Message) => ['task-result', 'router-reply', 'compaction', 'context-summary', 'run-boundary', 'router-packet-boundary'].includes(message.kind || '');
+const standalone = (message: Message) => ['task-result', 'router-reply', 'compaction', 'context-summary', 'run-boundary', 'router-packet-boundary', 'peer-handoff'].includes(message.kind || '');
 const interruption = (message: Message) => message.role === 'assistant' && ['error', 'failed', 'aborted', 'length'].includes(message.status || '');
 const ordinaryAnswer = (message: Message) => message.role === 'assistant' && !message.transient && (message.kind === 'message' || !message.kind) && message.status === 'stop';
 

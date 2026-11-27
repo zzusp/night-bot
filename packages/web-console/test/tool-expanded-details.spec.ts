@@ -1,3 +1,4 @@
+import {openRouter} from './open-router';
 import {test, expect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {FIXTURE_TOKEN} from './preview.mjs';
@@ -43,7 +44,7 @@ for (const router of [true,false]) test(`${router?'Router':'任务'}所有工具
   await page.goto(router?'/#/channels/room-product':'/#/tasks/task-research');
   await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
   await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
-  if(router)await page.getByRole('tab',{name:'路由',exact:true}).click();
+  if(router)await openRouter(page);
   const history=page.locator('.execution-history');
   for(const row of await history.locator('.execution-turn-process:not([open]) > summary, .execution-tool-group:not([open]) > summary').all())await row.click();
   const tools=history.locator('.pi-web-tool-frame');
@@ -144,7 +145,7 @@ test('Router结清优先显示获权任务名和消息摘录，缺少对应事�
   await page.goto('/#/channels/room-product');
   await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
   await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
-  await page.getByRole('tab',{name:'路由',exact:true}).click();
+  await openRouter(page);
   const tools=page.locator('.execution-history .pi-web-tool-frame');
   await expect(tools).toHaveCount(2);
   const actual=tools.nth(0), legacy=tools.nth(1);

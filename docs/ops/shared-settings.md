@@ -36,7 +36,7 @@ node bin/night-bot-settings.js CONFIG channel-remove --channel-id work-room --ex
 
 自定义渠道 JSON 与 Web 表单一致：`type`、`channelId`、`enabled`、`config`、可选 `createOnly` 和 `expectedVersion`。`config` 只允许插件清单声明的非秘密字段；`credential-ref` 是引用名，不是密钥。停机只允许创建没有历史渠道记录的新实例；修改既有实例或复用历史标识需 `--live`。无生命周期支持的插件可能要求重启，或拒绝在线编辑，不能把磁盘写入声称为即时生效。
 
-钉钉新增 JSON 与 Web 一致：`channelId`、`conversationType`（`chat`/`chat-room`）、`targetKind`（`id`/`name`）、`target`、可选 `name`、`prompt`、`writesAuthorized`。编辑另需 `expectedVersion`。切换目标时不允许同时授予写权限，仍需真实账户/目标绑定，保留旧渠道的补拉和任务边界。
+钉钉新增 JSON 与 Web 一致：`channelId`、`conversationType`（`chat`/`chat-room`）、`targetKind`（`id`/`name`）、`target`、可选 `name`、`writesAuthorized`。编辑另需 `expectedVersion`。切换目标时不允许同时授予写权限，仍需真实账户/目标绑定，保留旧渠道的补拉和任务边界。
 
 新 CLI 也提供 `model`（`--provider --model --api --base-url --key-env`）、`role`（`--role --provider --model --reasoning-effort`）、`web`（`--enabled --host --port --public-origin --channel-id --sender-id --operator-name`）、`permissions-show`、`permission-respond --id REQUEST --decision allow|reject|revoke`。`permission-respond` 只作用于仍有效、绑定原调用的审批；离线不能重放批准。
 

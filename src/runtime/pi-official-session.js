@@ -15,7 +15,7 @@ import {bindApprovalAudit} from '../native-approval.js'
  * No global/home resources, alternate message model or model loop is installed.
  * The application must durably admit work before calling session.prompt/steer.
  */
-export async function createNightOfficialSession({ctx,store,resolved,agentDir,registry,maxParallelToolCalls,admission,createAudit,settingsManager,context={},beforeRequest,prepareActor,beforeStoreClose,resolveResources,deferResources=false,measurePhase=(_phase,run)=>run()}) {
+export async function createNightOfficialSession({ctx,store,resolved,agentDir,registry,maxParallelToolCalls,admission,createAudit,settingsManager,context={},beforeRequest,filterContext,prepareActor,beforeStoreClose,resolveResources,deferResources=false,measurePhase=(_phase,run)=>run()}) {
  if(store?.kind!=='pi-native'||!admission||typeof createAudit!=='function')throw new TypeError('Explicit native store and business admission required')
  let resumedInput
  const actorAdmission=Object.fromEntries(['enqueue','has','status','lookupPacket','pending','current'].filter(key=>typeof admission[key]==='function').map(key=>[key,admission[key].bind(admission)]))
@@ -55,6 +55,10 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
   })
   actor.piSession=session
   session.agent.toolExecution='parallel'
+  if(filterContext){
+   const previous=session.agent.transformContext
+   session.agent.transformContext=async(messages,signal)=>filterContext(previous?await previous(messages,signal):messages,signal)
+  }
   toolBatchGuard=bindPiToolCallBatchGuard(session)
   if(resolved.requestImageLimitsFor)imageBudget=bindPiRequestImageBudget({session,getLimits:resolved.requestImageLimitsFor})
   const stream=session.agent.streamFunction

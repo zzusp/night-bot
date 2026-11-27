@@ -1,12 +1,10 @@
 import {ReadErrorScope, ReadErrorOutlet} from './components/ReadErrors';
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { RiBugLine, RiArrowRightLine, RiChat3Line, RiCheckboxCircleLine, RiCloseLine, RiEyeLine, RiEyeOffLine, RiGlobalLine, RiLayoutRightLine, RiLogoutBoxRLine, RiMenuLine, RiMoonLine, RiRefreshLine, RiSeedlingLine, RiSettings3Line, RiShieldCheckLine, RiSunLine, RiCalendarScheduleLine } from '@remixicon/react';
+import { RiBugLine, RiArrowRightLine, RiChat3Line, RiCheckboxCircleLine, RiCloseLine, RiEyeLine, RiEyeOffLine, RiGlobalLine, RiLogoutBoxRLine, RiMenuLine, RiMoonLine, RiRefreshLine, RiSeedlingLine, RiSettings3Line, RiShieldCheckLine, RiSunLine, RiCalendarScheduleLine, RiRouteLine } from '@remixicon/react';
 import { api, errorText, setSession, type ChatSummary, type RecentConversation, type Conversation, type Overview, type Page, type Session, type OperatorSettings } from './api';
 import { navigate, useResource, useRoute } from './hooks';
 import { Badge, Button, EmptyState, IconButton, Logo } from './components/BoardPrimitives';
 import { Loading, Notice } from './components/Shared';
-import { ExecutionSearchToolbar } from './components/ExecutionSearch';
-import { ActivityPanel } from './components/ActivityPanel';
 import ChatPage, { createDrafts, type Drafts } from './ChatPage';
 import { TaskDetail, TaskList } from './TasksPage';
 import {createTaskInputDrafts} from './task-input-drafts';
@@ -14,6 +12,7 @@ import ChannelsPage from './ChannelsPage';
 import PermissionsPanel from './components/PermissionsPanel';
 import EvolutionPage from './EvolutionPage';
 import {SettingsModal} from './components/SettingsModal';
+import RouterPage from './RouterPage';
 import SchedulesPage from './SchedulesPage';
 import FeedbackPage from './FeedbackPage';
 import {AssistantBrandContext, defaultBrand, useAssistantBrand} from './components/AssistantBrand';
@@ -72,10 +71,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const chats = useResource<Page<ChatSummary>>('/chat?offset=0&limit=20', 5000);
   const recent = useResource<Page<RecentConversation>>('/recent-conversations?offset=0&limit=20', 5000);
   const conversations = useResource<{items: Conversation[]}>('/conversations', 5000);
-  const [resolvedWebChat, setResolvedWebChat] = useState<{route: string; id: string} | null>(null);
-  const onChatResolved = useCallback((chatId: string) => setResolvedWebChat({route: route.pathname, id: chatId}), [route.pathname]);
-  const [searchToolbar, setSearchToolbar] = useState<HTMLDivElement | null>(null);
-  const [rail, setRail] = useState(() => window.matchMedia('(min-width: 1251px)').matches);
+  const routerChats = useResource<Page<ChatSummary>>(section==='router'?'/chat?offset=0&limit=100':null, 10000);
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'light');
   const [logoutError, setLogoutError] = useState<unknown>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
@@ -91,7 +87,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const drawer = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const currentChats = historyOffset ? olderChats : recent;
-  const title = section === 'tasks' ? id ? '任务详情' : '任务' : section === 'channels' ? id ? conversations.data?.items.find(item => item.id === id)?.name || '渠道会话' : '渠道' : section === 'schedules' && !id ? '定时任务' : section === 'feedback' && !id ? '报错反馈' : section === 'settings' && !id ? '设置' : section === 'evolution' && !id ? '自进化' : section === 'chat' ? chats.data?.items.find(item => item.id === id)?.title || '与 Bot 对话' : '页面不存在';
+  const title = section === 'tasks' ? id ? '任务详情' : '任务' : section === 'channels' ? id ? conversations.data?.items.find(item => item.id === id)?.name || '渠道会话' : '渠道' : section === 'router' && !id ? 'Router' : section === 'schedules' && !id ? '定时任务' : section === 'feedback' && !id ? '报错反馈' : section === 'settings' && !id ? '设置' : section === 'evolution' && !id ? '自进化' : section === 'chat' ? chats.data?.items.find(item => item.id === id)?.title || '与 Bot 对话' : '页面不存在';
   useEffect(() => { document.title = `${title} — ${brand.name}`; }, [title,brand.name]);
   useEffect(() => { if (section !== 'chat') titleRef.current?.focus(); drawer.current?.close(); }, [route.pathname, section]);
   const toggleTheme = () => {
@@ -104,8 +100,8 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     catch (err) { setLogoutError(err); }
     finally { setLogoutBusy(false); }
   };
-  const refresh = () => { overview.refresh(); chats.refresh(); recent.refresh(); conversations.refresh(); olderChats.refresh(); };
-  const navItems = [{ path: 'chat', label: '与 Bot 对话', icon: RiChat3Line }, { path: 'tasks', label: '任务', icon: RiCheckboxCircleLine }, { path: 'schedules', label: '定时任务', icon: RiCalendarScheduleLine }, { path: 'channels', label: '渠道', icon: RiGlobalLine }, { path: 'evolution', label: '自进化', icon: RiSeedlingLine }, {path:'feedback',label:'报错反馈',icon:RiBugLine}];
+  const refresh = () => { overview.refresh(); chats.refresh(); recent.refresh(); conversations.refresh(); if(section==='router')routerChats.refresh(); olderChats.refresh(); };
+  const navItems = [{ path: 'chat', label: '与 Bot 对话', icon: RiChat3Line }, { path:'router',label:'Router',icon:RiRouteLine }, { path: 'tasks', label: '任务', icon: RiCheckboxCircleLine }, { path: 'schedules', label: '定时任务', icon: RiCalendarScheduleLine }, { path: 'channels', label: '渠道', icon: RiGlobalLine }, { path: 'evolution', label: '自进化', icon: RiSeedlingLine }, {path:'feedback',label:'报错反馈',icon:RiBugLine}];
   const sidebar = (mobile = false) => <>
     <div className="sidebar-brand"><Logo />{mobile && <IconButton label="关闭导航" onClick={() => drawer.current?.close()}><RiCloseLine size={19} /></IconButton>}</div>
     <nav className="primary-nav" aria-label="主导航">{navItems.map(item => <a key={item.path} href={`#/${item.path}`} aria-current={section === item.path ? 'page' : undefined} onClick={() => drawer.current?.close()}><item.icon size={19} /><span>{item.label}</span>{item.path === 'tasks' && overview.data?.running?.total ? <span className="nav-count">{overview.data.running.total}</span> : null}</a>)}</nav>
@@ -121,15 +117,15 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const globalTools = <div className="topbar-actions"><span className={`connection ${overview.error ? 'offline' : ''}`} role="status"><i />{overview.error ? '概览暂不可读' : overview.data ? '已连接' : '连接中'}</span><span className="toolbar-divider" />
         <PermissionsPanel key={permissionIdentity.epoch} /><IconButton label="刷新概览" onClick={refresh}><RiRefreshLine size={18} /></IconButton><IconButton label="设置" aria-haspopup="dialog" onClick={event=>{event.currentTarget.focus({preventScroll:true});setSettingsOpen(true)}}><RiSettings3Line size={18}/></IconButton><IconButton label={theme === 'light' ? '切换深色外观' : '切换浅色外观'} onClick={toggleTheme}>{theme === 'light' ? <RiMoonLine size={18} /> : <RiSunLine size={18} />}</IconButton></div>;
   const workspaceHeader = <header className="topbar workspace-topbar">{locationHeader}{globalTools}</header>;
-  const conversationHeader = <div className="conversation-tools"><div className="topbar-actions"><div className="conversation-search-slot" ref={setSearchToolbar}/><IconButton label={rail ? '隐藏活动面板' : '显示活动面板'} className="rail-toggle" aria-expanded={rail} aria-controls={rail ? "activity-panel" : undefined} onClick={() => setRail(value => !value)}><RiLayoutRightLine size={18} /></IconButton></div></div>;
+
   return <AssistantBrandContext.Provider value={brand}><div className="app-shell"><a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>跳转到主内容</a><aside className="sidebar desktop-sidebar" inert={settingsOpen} aria-hidden={settingsOpen||undefined}>{sidebar()}</aside>
     <dialog ref={drawer} className="nav-dialog" aria-label="导航" aria-hidden={settingsOpen||undefined}><div className="sidebar">{sidebar(true)}</div></dialog>
     <div className="main-frame" inert={settingsOpen} aria-hidden={settingsOpen||undefined}>{workspaceHeader}
       {!!logoutError && <Notice error={logoutError} />}
-      <ReadErrorScope key={`${route.pathname}:${permissionIdentity.epoch}`}><div className={`workspace-body${isConversation ? ' conversation-workspace' : ''}`}>{currentChats.error && <Notice read error={currentChats.error} source="/recent-conversations" onRetry={currentChats.refresh}/>}<main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : ''}`}><ReadErrorOutlet/>{isConversation && conversationHeader}<div className={isConversation ? 'conversation-content' : 'page-content-slot'}><PageBoundary resetKey={route.pathname}><ExecutionSearchToolbar.Provider value={isConversation ? searchToolbar : null}>
-        {section === 'chat' ? <ChatPage id={id} onResolved={onChatResolved} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} drafts={taskInputDrafts} /> : <TaskList route={route} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
-      </ExecutionSearchToolbar.Provider></PageBoundary></div></main>
-      {isConversation && rail && <ActivityPanel conversation={{kind: section === 'chat' ? 'chat' : 'conversations', id: id || (resolvedWebChat?.route === route.pathname ? resolvedWebChat.id : undefined)}} data={overview.data ?? undefined} loading={overview.loading} error={overview.error} onRetry={overview.refresh}/>}
+      <ReadErrorScope key={`${route.pathname}:${permissionIdentity.epoch}`}><div className={`workspace-body${isConversation ? ' conversation-workspace' : ''}`}>{currentChats.error && <Notice read error={currentChats.error} source="/recent-conversations" onRetry={currentChats.refresh}/>}<main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : section === 'router' && !id ? 'router-workspace-panel' : ''}`}><ReadErrorOutlet/><div className={isConversation ? 'conversation-content' : 'page-content-slot'}><PageBoundary resetKey={route.pathname}>
+        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} drafts={taskInputDrafts} /> : <TaskList route={route} /> : section === 'router' && !id ? <RouterPage key={permissionIdentity.epoch} route={route} channels={conversations} web={routerChats} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
+      </PageBoundary></div></main>
+
       </div></ReadErrorScope>
     </div>
     {settingsOpen&&<SettingsModal key={permissionIdentity.epoch} onClose={closeSettings}/>}

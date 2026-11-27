@@ -1,3 +1,4 @@
+import {openRouter} from './open-router';
 import {test, expect} from '@playwright/test'
 import {startPreview} from './preview.mjs'
 let fixture: Awaited<ReturnType<typeof startPreview>>
@@ -18,7 +19,7 @@ for (const width of [1440, 390]) test(`路由自动输入与上下文摘要 ${wi
  await page.goto(fixture.origin+'/#/chat/sample-plan')
  await page.getByLabel('访问令牌',{exact:true}).fill(fixture.token)
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
- await page.getByRole('tab',{name:'路由',exact:true}).click()
+ await openRouter(page)
  const trigger = page.locator('[data-message-id="scheduled"]')
  await expect(trigger).toHaveClass(/message-user/)
  await expect(trigger).toContainText('由已安排任务发送')

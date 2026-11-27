@@ -84,6 +84,13 @@ export async function openWebLedger(directory, scope) {
       return request(requestId)
     },
     request,
+    chatSummary(conversationId) {
+      const first = db.prepare('SELECT text FROM requests WHERE conversation=? ORDER BY rowid LIMIT 1').get(conversationId)
+      if (!first) return conversationId === canonical() ? {id:conversationId,title:'',updatedAt:'',status:'ready'} : null
+      const latest = db.prepare('SELECT MAX(created_at) AS updated_at FROM (SELECT created_at FROM requests WHERE conversation=? UNION ALL SELECT created_at FROM replies WHERE conversation=?)').get(conversationId,conversationId)
+      const state = db.prepare('SELECT status FROM requests WHERE conversation=? ORDER BY rowid DESC LIMIT 1').get(conversationId).status
+      return {id:conversationId,title:first.text.slice(0,80),updatedAt:latest.updated_at,status:state==='accepted'?'ready':state}
+    },
     chats({offset = 0, limit = 30} = {}) {
       const total = db.prepare('SELECT COUNT(DISTINCT conversation) AS n FROM requests').get().n
       const rows = db.prepare('SELECT conversation,MAX(created_at) AS updated_at FROM (SELECT conversation,created_at FROM requests UNION ALL SELECT conversation,created_at FROM replies) GROUP BY conversation ORDER BY updated_at DESC,conversation LIMIT ? OFFSET ?').all(limit, offset)

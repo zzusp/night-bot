@@ -256,7 +256,7 @@ test('calendar rules retain DST gap/overlap semantics and cron missed-occurrence
   assert.deepEqual(resolveCronOccurrence(cron,Date.parse('2026-11-05T01:44:00Z')),{occurrenceAt:'2026-11-05T01:30:00.000Z',nextScheduledAt:'2026-11-05T01:45:00.000Z'})
 })
 
-for(const superseded of [false,true])test(`real platform bridge restores original source and gates actual due delivery: superseded=${superseded}`,{timeout:20000},async t=>{
+for(const mode of ['reply','superseded','silent']){const superseded=mode==='superseded';test(`real platform bridge restores original source and gates actual due delivery: mode=${mode}`,{timeout:20000},async t=>{
   let dueStep=0,store,bridge
   const notifications=[]
   const f=await fixture(t,body=>{
@@ -275,14 +275,14 @@ for(const superseded of [false,true])test(`real platform bridge restores origina
   await store.ingest({groupId:'local-group',messageId:'source',text,senderOpenDingTalkId:'local-owner',occurredAt:new Date().toISOString()})
   await store.routeMessages({groupId:'local-group',routeId:'route',routingRevision:0,routes:[{messageId:'source',messageVersion:1,units:[{unitKey:'report',summary:text,sourceRefs:[{quote:text}],topics:[],fixedTopic:'agent-platform',reason:'scheduled report'}]}]})
   const message=store.getGroup('local-group').messages[0],unit=message.units[0],requestId=fixedUnitRequestId('local-group',message,unit)
-  const result=await bridge.submit({groupId:'local-group',messageId:'source',messageVersion:1,unitId:unit.unitId,unitRevision:unit.unitRevision,requestId,timezone:'UTC'},rule(text,2500))
+  const result=await bridge.submit({groupId:'local-group',messageId:'source',messageVersion:1,unitId:unit.unitId,unitRevision:unit.unitRevision,requestId,timezone:'UTC'},{...rule(text,2500),...mode==='silent'?{delivery_mode:'silent'}:{}})
   assert.equal(result.status,'scheduled')
   assert.equal(f.requests.length,0)
   if(superseded)await store.ingest({groupId:'local-group',messageId:'source',messageVersion:2,text:'withdraw prior request',senderOpenDingTalkId:'local-owner',occurredAt:new Date().toISOString()})
   await bridge.close();bridge=undefined;await store.close();store=undefined;await f.close()
   await f.boot({deferScheduledDelivery:true});await mount();f.host.ctx.schedule.start()
   const [row]=await f.host.ctx.schedule.catalog()
-  await until(()=>store.getPlatformSchedule(row.sessionId)?.outcome===(superseded?'superseded':'replied'),'original source outcome')
+  await until(()=>store.getPlatformSchedule(row.sessionId)?.outcome===(superseded?'superseded':mode==='silent'?'completed':'replied'),'original source outcome')
   if(superseded)await assert.rejects(f.delivered(row.id),{code:'platform_schedule_superseded'})
   else await f.delivered(row.id)
   const actor=f.host.ctx.agents.get(row.sessionId)
@@ -290,11 +290,11 @@ for(const superseded of [false,true])test(`real platform bridge restores origina
   assert.equal(actor.admission.status((await f.host.ctx.schedule.catalog())[0].lastDelivery.messageId),'admitted','official packet admission is distinct from model authorization')
   assert.equal(actor.ctx.get('permissionPresets').current(actor),'danger-full-access','standing permission survives official cold resume')
   assert.equal(f.requests.length,superseded?0:2,'superseded requests never reach the model; completed reports stop after query and submit')
-  assert.equal(notifications.length,superseded?0:1)
+  assert.equal(notifications.length,mode==='reply'?1:0)
   assert.equal((await f.host.ctx.schedule.history({sessionId:row.sessionId,id:row.id,limit:10})).records.length,1)
   await bridge.close();bridge=undefined;await store.close();store=undefined
   assert.deepEqual(f.errors,[])
-})
+})}
 
 test('late platform mount reopens official tools and recovers one admitted original packet without inbox replay',{timeout:20000},async t=>{
  let store,bridge,steps=0

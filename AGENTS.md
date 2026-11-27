@@ -15,12 +15,16 @@ optional plugin. Historical audit and receipts remain traceable to source/vendor
 fields and are not mechanically renamed or migrated; retained compatibility
 helpers for historical message/receipt formatting do not mean DWS is loaded or
 running, and other static-loading claims require test evidence.
-Each task has one execution owner/session; no separate task Owner/coordinator or split
-execution team. The owner may run scoped temporary read-only subagents that do not
-create business tasks, effect claims or final results. New authenticated channel messages go directly to their
-conversation Router; no first-tier model or automatic acknowledgement runs.
-Historical triage sessions remain read-only. Each authenticated conversation has one durable Router identity for task arrangement and result
-assessment, separate from task execution and tool-free retrospectives. Router is
+Each execution unit has one Work session. Router can split a complex request into
+a group of cooperating Work sessions and nominate the session responsible for the
+final result. Work sessions discover and message their assigned peers directly;
+Router alone owns external replies and Work lifecycle. Authenticated inputs from
+all channels go to one durable Router; no channel-specific prompt, first-tier model
+or automatic acknowledgement runs. Each Router turn is scoped to its authenticated
+conversation; historical conversation Router and triage records remain read-only.
+Completion does not automatically trigger self-evolution. A two-hour Router
+self-check can delegate inspection and curate durable knowledge when warranted.
+Router is
 Bot's semantic decision-maker and directly maintains shared memory and managed
 learned Skills through short Host tools. Do not gate Router decisions by natural-
 language authorization prefixes or add a separate authorization model/task. The

@@ -13,7 +13,7 @@ test('current Router card reads actual official Pi context usage without another
   if(!requestTools(body).includes('resident_router_settle'))return {text:'No work'}
   const input=requestEnvelope(body,'Router 请求：')
   if(body.messages.at(-1)?.role==='tool')return {text:'Done'}
-  return {tool:'resident_router_settle',args:{operationId:input.events[0].id,eventIds:input.events.map(event=>event.id)}}
+  return {tool:'resident_router_settle',args:{operationId:input.events[0].id,eventIds:input.events.map(event=>event.id),noTaskDispositions:input.events.filter(event=>event.source).map(event=>({eventId:event.id,sourceQuote:event.source.text,outcome:'context-only',reason:'fixture context only'}))}}
  },{hostConfig:config=>{config.providers.fixture.models[0].contextWindow=262144;return config}})
  const config={...h.config,resident:{port:0,taskSessions:{instanceId:'router-restore-fixture',ownerActorId:'operator',webActorId:'operator',ingressEpoch:'2026-01-01T00:00:00Z',initialize:true,reasoningMode:'inherit'}}}
  const start=async()=>{

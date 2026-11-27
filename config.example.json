@@ -18,7 +18,6 @@
       "dingtalk_conversation_type": "chat-room",
       "dingtalk_group_id": "REPLACE_WITH_GROUP_ID",
       "dingtalk_name": "个人助手",
-      "dingtalk_prompt": "在此填写该群的职责、助手设定和工作规范；仅处理明确授权的请求，不能据此扩大权限。",
       "dingtalk_account_mode": "system",
       "dingtalk_listen": true,
       "dingtalk_writes_authorized": false

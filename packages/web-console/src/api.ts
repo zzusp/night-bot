@@ -10,8 +10,11 @@ export interface Session {
 }
 export interface Page<T> { items: T[]; total: number; nextOffset?: number | null; revision?: string }
 export type ScheduleState = 'active' | 'inactive';
+export type WorkOrigin = {kind:'unavailable'} | {kind:'web'|'channel'; id:string; name:string; type?:'chat'|'chat-room'};
+export type WorkRole = 'development'|'verification'|'investigation'|'general';
 export interface ScheduledTask {
   id: string; title: string; state: ScheduleState; kind: string; scheduledAt: string; scheduleSummary: string;
+  delivery?: {mode:'silent'|'origin'|'router'; origin?:WorkOrigin};
 }
 export interface TimelineEvent { id?: string; at?: string; createdAt?: string; startedAt?: string; kind?: string; type?: string; state?: string; status?: string; summary?: string; label?: string; description?: string }
 export interface TimelineTrack { events?: TimelineEvent[]; segments?: TimelineEvent[]; milestones?: TimelineEvent[] }
@@ -20,6 +23,7 @@ export interface TaskDuration { milliseconds: number | null; activeSince: string
 export interface Task {
   taskId: string; title?: string; objective?: string; state: string; controlState?: string; archivedAt?: string;
   createdAt?: string; updatedAt?: string; result?: unknown; cancellationReason?: string;
+  origin?: WorkOrigin | null; work?: {role:WorkRole; reportsFinal:boolean};
   durations?: { total: TaskDuration; execution: TaskDuration; observedAt: string };
   session?: { sessionId?: string; role?: string; status?: string };
   timeline?: { task?: TimelineTrack; executions?: TimelineTrack[]; human?: TimelineTrack; version?: number }; blockers?: TaskBlocker[];
@@ -39,16 +43,16 @@ export interface Channel {
   ingress?: ChannelIngress;
 }
 export interface DingtalkChannelInput {
-  channelId: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; name?: string; prompt?: string; writesAuthorized?: boolean;
+  channelId: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; name?: string; writesAuthorized?: boolean;
 }
 export interface DingtalkChannelCreated {
   ok: true; changed: true; restartRequired: boolean; liveApplied: boolean; channel: Channel;
 }
 export interface DingtalkChannelDetail {
-  channelId: string; version: string; name: string; prompt: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; writesAuthorized: boolean;
+  channelId: string; version: string; name: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; writesAuthorized: boolean;
 }
 export interface DingtalkChannelEdit {
-  expectedVersion: string; name: string; prompt: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; writesAuthorized?: boolean;
+  expectedVersion: string; name: string; conversationType: 'chat' | 'chat-room'; targetKind: 'id' | 'name'; target: string; writesAuthorized?: boolean;
 }
 export interface DingtalkChannelUpdated {
   ok: true; changed: boolean; restartRequired: boolean; liveApplied: boolean; channel: Channel; detail: DingtalkChannelDetail;
@@ -69,7 +73,7 @@ export interface Message {
   failure?: {reason: string; code?: string};
   timing?: MessageTiming;
   compaction?: {mode?: 'foreground' | 'background'; tokensBefore?: number; tokensAfter?: number; summaryHidden?: boolean};
-  kind?: string; toolName?: string; callId?: string; isError?: boolean; redacted?: boolean; truncated?: boolean; resourceContent?: boolean; skillName?: string; editDiff?: boolean;
+  kind?: string; workRole?: WorkRole; toolName?: string; callId?: string; isError?: boolean; redacted?: boolean; truncated?: boolean; resourceContent?: boolean; skillName?: string; editDiff?: boolean;
   detailState?: 'empty' | 'withheld' | 'not-recorded';
   source?: MessageSource; textTotal?: number; textNextOffset?: number | null;
 }
@@ -84,7 +88,7 @@ export interface TaskTodos {
 }
 export interface ExecutionLive {items: Message[]; tools?: {callId: string; startedAt: string}[]; active: boolean; revision?: string; phase?: 'preparing' | 'waiting' | 'thinking' | 'text' | 'tool' | 'compaction' | 'retry'; phaseStartedAt?: string; notice?: {kind: 'failed' | 'cancelled' | 'retry'; source?: 'model' | 'compaction'; message?: string; attempt?: number; maxAttempts?: number}}
 export interface TokenUsage {input: number | null; output: number | null; cacheWrite: number | null; cacheRead: number | null; total: number | null; basis: 'committed-native-entries'}
-export interface ExecutionPage extends Page<Message> { sessionId?: string | null; timingUpdates?: Record<string, MessageTiming>; compactionUpdates?: Record<string, {mode?: 'foreground' | 'background'; tokensAfter?: number}>; tokenUsage?: TokenUsage; liveProof?: string; resourceProof?: string; historyChanged?: boolean; live?: ExecutionLive; status: 'ready' | 'pending' | 'unavailable'; scope: string; reason?: string; generation?: number; activeGeneration?: number; checkpoint?: string | null; before?: string | null; hasNewer?: boolean; todos?: TaskTodos | null }
+export interface ExecutionPage extends Page<Message> { sessionId?: string | null; timingUpdates?: Record<string, MessageTiming>; compactionUpdates?: Record<string, {mode?: 'foreground' | 'background'; tokensAfter?: number}>; tokenUsage?: TokenUsage; liveProof?: string; resourceProof?: string; historyChanged?: boolean; live?: ExecutionLive; status: 'ready' | 'pending' | 'unavailable'; scope: string; routingMode?: 'shared'; reason?: string; generation?: number; activeGeneration?: number; checkpoint?: string | null; before?: string | null; hasNewer?: boolean; todos?: TaskTodos | null }
 export interface LearningSource { taskId: string; eventId: string; reviewId: string }
 export interface TaskReview { reviewId: string; taskId: string; status: 'done' | 'skipped' | 'failed'; summary: string; at: string; eventId: string }
 export interface LearningChange {

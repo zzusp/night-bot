@@ -7,7 +7,7 @@ import {validateDingtalkInstance,dingtalkInstancesFromEnvironment} from './dingt
 import {openDingtalkIngress} from './dingtalk-storage.js'
 
 export const dingtalkCliUsage='用法：night-bot-dingtalk CONFIG list | add --channel-id ID --json CONFIG_JSON [--enabled true|false] [--check] | set --channel-id ID --json PATCH_JSON [--check] | enable|disable --channel-id ID [--check] | env [--check]'
-const view=row=>({channelId:row.channelId,enabled:row.enabled,name:row.config.dingtalk_name??row.channelId,conversationType:row.config.dingtalk_conversation_type,promptConfigured:!!row.config.dingtalk_prompt})
+const view=row=>({channelId:row.channelId,enabled:row.enabled,name:row.config.dingtalk_name??row.channelId,conversationType:row.config.dingtalk_conversation_type})
 const parseJson=value=>{let parsed;try{parsed=JSON.parse(value)}catch{throw failure('DINGTALK_CLI_JSON_INVALID')}if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw failure('DINGTALK_CLI_JSON_INVALID');return parsed}
 function replaceRows(config,rows){
   config.channelPlugins??=[]

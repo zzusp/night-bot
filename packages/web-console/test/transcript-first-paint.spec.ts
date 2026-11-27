@@ -48,7 +48,7 @@ for(const router of [false,true])test(`${router?'Router':'任务详情'}按需�
   }).observe(document,{childList:true,subtree:true});
  },{marker});
  let durationMs=200;
- const endpoint=router?'**/api/chat/sample-plan/session?*':'**/api/tasks/task-research/session?*';
+ const endpoint=router?'**/api/**/session?*':'**/api/tasks/task-research/session?*';
  await page.route(endpoint,route=>{
   const url=new URL(route.request().url());
   return route.fulfill({json:{status:'ready',revision:'perf-initial-transcript',scope:'current-context',total:items.length,
@@ -57,7 +57,7 @@ for(const router of [false,true])test(`${router?'Router':'任务详情'}按需�
  await page.goto(router?'/#/chat/sample-plan':'/#/tasks');
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
- const entrance=router?page.getByRole('tab',{name:'路由',exact:true}):page.getByRole('link',{name:'整理本周产品调研',exact:true});
+ const entrance=router?page.getByRole('navigation',{name:'主导航'}).getByRole('link',{name:'Router',exact:true}):page.getByRole('link',{name:'整理本周产品调研',exact:true});
  await entrance.evaluate(el=>el.addEventListener('click',()=>performance.mark('execution-click'),{once:true,capture:true}));
  await entrance.click();
  const turns=page.locator('.execution-turn-process');
