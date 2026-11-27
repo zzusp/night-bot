@@ -22,7 +22,7 @@ async function login(page: import('@playwright/test').Page) {
 }
 
 test('activity rail keeps the running list without count or interrupted cards', async ({page}, testInfo)=>{
-  await page.route('**/api/chat/sample-plan/activity', route=>route.fulfill({json:overview}));
+  await page.route('**/api/overview', route=>route.fulfill({json:overview}));
   await login(page);
   const rail=page.getByRole('complementary',{name:'任务动态'});
   await expect(rail).toBeVisible();
@@ -32,7 +32,7 @@ test('activity rail keeps the running list without count or interrupted cards', 
   await expect(rail).not.toContainText(tasks[1].title);
   await expect(rail.getByRole('link',{name:'全部任务',exact:true})).toHaveCount(0);
   await expect(rail.getByRole('region',{name:'上下文窗口',exact:true})).toBeVisible();
-  await expect(rail.getByRole('region',{name:'路由耗时',exact:true})).toBeVisible();
+  await expect(rail.getByRole('region',{name:'路由耗时',exact:true})).toHaveCount(0);
   await expect(rail.locator('a[href="#/tasks?state=interrupted"]')).toHaveCount(0);
   await expect(rail).not.toContainText('已配置渠道');
   await expect(rail.getByRole('link',{name:'查看正在执行任务'})).toHaveCount(0);
@@ -54,7 +54,7 @@ test('activity rail keeps the running list without count or interrupted cards', 
 });
 
 test('empty and unavailable states remain distinct',async({page})=>{
-  await page.route('**/api/chat/sample-plan/activity',route=>route.fulfill({json:{...overview,running:null,interrupted:pageOf([]),sectionErrors:{running:'UNAVAILABLE'}}}));
+  await page.route('**/api/overview',route=>route.fulfill({json:{...overview,running:null,interrupted:pageOf([]),sectionErrors:{running:'UNAVAILABLE'}}}));
   await login(page);const rail=page.locator('#activity-panel');
   await expect(rail.getByRole('region',{name:'正在执行'})).toContainText('—');
   await expect(rail.getByRole('region',{name:'中断的任务'})).toHaveCount(0);
@@ -64,7 +64,7 @@ test('empty and unavailable states remain distinct',async({page})=>{
 
 test('narrow panel toggles below the Router transcript',async({page},testInfo)=>{
   await page.setViewportSize({width:390,height:844});
-  await page.route('**/api/chat/sample-plan/activity',route=>route.fulfill({json:overview}));
+  await page.route('**/api/overview',route=>route.fulfill({json:overview}));
   await login(page); await expect(page.locator('#activity-panel')).toHaveCount(0);
   await page.getByRole('button',{name:'显示工作动态'}).click();
   await expect(page.locator('#activity-panel')).toBeVisible();
@@ -84,7 +84,7 @@ for (const scenario of [
   {name:'running section error',running:pageOf([]),interrupted:pageOf([]),sectionErrors:{running:'UNAVAILABLE'},showRecent:false},
 ]) {
   test(`recent tasks require confirmed idle: ${scenario.name}`,async({page})=>{
-    await page.route('**/api/chat/sample-plan/activity',route=>route.fulfill({json:{...overview,...scenario}}));
+    await page.route('**/api/overview',route=>route.fulfill({json:{...overview,...scenario}}));
     await login(page);
     const rail = page.locator('#activity-panel');
     await expect(rail.getByRole('region',{name:'最近任务'})).toHaveCount(scenario.showRecent ? 1 : 0);
@@ -104,61 +104,12 @@ for (const scenario of [
   });
 }
 
-test('recent stage charts preserve gaps and expose equivalent point labels',async({page})=>{
-  await page.route('**/api/chat/sample-plan/activity',route=>route.fulfill({json:overview}));
-  await login(page);
-  const card=page.getByRole('group',{name:'最近处理耗时',exact:true});
-  await expect(card).toContainText('本会话 · 8 条消息');
-  await expect(card.getByRole('region',{name:'路由耗时',exact:true})).toBeVisible();
-  expect(await page.evaluate(()=>document.querySelector('.stage-timing-charts')!.getBoundingClientRect().bottom <= document.querySelector('.rail-section-running')!.getBoundingClientRect().top)).toBe(true);
-  await expect(card.locator('.stage-line').first()).toHaveAttribute('d',/ C /);
-  await expect(card.locator('circle')).toHaveCount(0);
-  await expect(card.locator('.stage-plot-router [data-stage-sample=measured]')).toHaveCount(7);
-  await expect(card.locator('.stage-plot-router .stage-missing')).toHaveCount(1);
-  await expect(card.locator('.stage-plot-router .stage-line')).toHaveCount(2);
-  expect((await new AxeBuilder({page}).include('#activity-panel').analyze()).violations).toEqual([]);
-});
-
-test('stage chart unavailable data never becomes a zero plot',async({page})=>{
-  await page.route('**/stage-times?limit=8*',route=>route.fulfill({json:{status:'unavailable',items:[]}}));
-  await login(page);
-  await expect(page.getByRole('alert',{name:'读取状态汇总'})).toContainText('处理耗时');
-  await expect(page.locator('.stage-point')).toHaveCount(0);
-});
-
-test('single stage sample has a value but does not invent a trend or point',async({page})=>{
-  await page.route('**/stage-times?limit=8*',route=>route.fulfill({json:{status:'ready',items:timingPage.items.slice(0,1)}}));
-  await login(page);
-  const card=page.getByRole('region',{name:'路由耗时',exact:true});
-  await expect(card).toContainText('15 秒');
-  await expect(card).toContainText('仅 1 条记录');
-  await expect(card.locator('circle, .stage-line')).toHaveCount(0);
-  await card.locator('[data-stage-sample]').focus();
-  await expect(card.locator('.stage-plot-heading')).toContainText('所选消息');
-});
-
 for (const idle of [false,true]) {
   test(`recent section errors only surface when its list is displayed: ${idle}`,async({page})=>{
-    await page.route('**/api/chat/sample-plan/activity',route=>route.fulfill({json:{...overview,running:pageOf(idle ? [] : tasks.slice(0,1)),interrupted:pageOf([]),tasks:null,sectionErrors:{tasks:'UNAVAILABLE'}}}));
+    await page.route('**/api/overview',route=>route.fulfill({json:{...overview,running:pageOf(idle ? [] : tasks.slice(0,1)),interrupted:pageOf([]),tasks:null,sectionErrors:{tasks:'UNAVAILABLE'}}}));
     await login(page);
     await expect(page.getByRole('alert',{name:'读取状态汇总'})).toHaveCount(idle ? 1 : 0);
     await expect(page.getByRole('region',{name:'最近任务'})).toHaveCount(idle ? 1 : 0);
     if(idle) await expect(page.getByRole('region',{name:'最近任务'})).toContainText('—');
   });
 }
-
-test('loading does not recreate removed cards and keeps context and timing visible',async({page})=>{
-  let release!:()=>void;
-  const gate=new Promise<void>(resolve=>release=resolve);
-  await page.route('**/api/chat/sample-plan/activity',async route=>{await gate;await route.fulfill({json:overview})});
-  try {
-    await login(page);
-    const rail=page.locator('#activity-panel');
-    await expect(rail.getByRole('status')).toContainText('正在获取');
-    await expect(rail.locator('.activity-counts')).toHaveCount(0);
-    await expect(rail.getByRole('region',{name:'中断的任务'})).toHaveCount(0);
-    await expect(rail.getByRole('region',{name:'上下文窗口',exact:true})).toBeVisible();
-    await expect(rail.getByRole('region',{name:'路由耗时',exact:true})).toBeVisible();
-  } finally { release(); }
-  await expect(page.getByRole('region',{name:'正在执行'})).toContainText(tasks[0].title);
-});

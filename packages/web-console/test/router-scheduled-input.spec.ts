@@ -6,7 +6,7 @@ test.beforeAll(async () => { fixture = await startPreview({port: 0, sessionRecor
 test.afterAll(async () => { await fixture?.close() })
 for (const width of [1440, 390]) test(`路由自动输入与上下文摘要 ${width}`, async ({page}) => {
  await page.setViewportSize({width, height: 1000})
- await page.route('**/api/chat/sample-plan/session?*', async route => {
+ await page.route('**/api/router/session?*', async route => {
   const response = await route.fetch()
   const body = await response.json()
   body.items = [

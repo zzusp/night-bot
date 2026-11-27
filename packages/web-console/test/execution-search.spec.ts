@@ -34,7 +34,7 @@ test('execution search locates loaded records, handles keyboard, closes and hide
 });
 
 test('Router search sits immediately before the activity button at wide and narrow widths',async({page})=>{
- await page.route('**/api/chat/sample-plan/session?*',route=>route.fulfill({json:{status:'ready',revision:'toolbar-r1',scope:'current-router-session-context',total:3,items:[{id:'m-1',role:'user',kind:'message',text:'看看有哪些任务可以继续做。'},{id:'toolbar-row',role:'assistant',kind:'message',text:'已同步任务进度：导出功能在验证，文档已更新。'},{id:'m-2',role:'assistant',kind:'message',text:'已更新任务进度：两项检查都通过了。'}]}}));
+ await page.route('**/api/router/session?*',route=>route.fulfill({json:{status:'ready',revision:'toolbar-r1',scope:'global-router-transcript',total:3,items:[{id:'m-1',role:'user',kind:'message',text:'看看有哪些任务可以继续做。'},{id:'toolbar-row',role:'assistant',kind:'message',text:'已同步任务进度：导出功能在验证，文档已更新。'},{id:'m-2',role:'assistant',kind:'message',text:'已更新任务进度：两项检查都通过了。'}]}}));
  await page.goto('/#/chat/sample-plan');
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
@@ -80,7 +80,7 @@ test('Router search sits immediately before the activity button at wide and narr
    await expect(trigger).toBeFocused();
    await expect(trigger).toHaveAttribute('aria-expanded','false');
  }
- await toolbar.getByRole('link',{name:'原对话',exact:true}).click();
+ await page.goto('/#/chat/sample-plan');
  await expect(trigger).toHaveCount(0);
  await expect(rail).toHaveCount(0);
 });

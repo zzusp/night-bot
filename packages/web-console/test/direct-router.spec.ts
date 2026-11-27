@@ -9,11 +9,11 @@ for(const width of [1440,390])test(`Router pages expose no triage history and sh
  await page.getByLabel('访问令牌',{exact:true}).fill(fixture.token);await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
  await expect(page.getByRole('tab',{name:'分诊',exact:true})).toHaveCount(0)
  if(width<900)await page.getByRole('button',{name:'显示工作动态',exact:true}).click()
- await expect(page.locator('.stage-timing-card-router')).toBeVisible()
+ await expect(page.getByRole('region',{name:'上下文窗口',exact:true})).toBeVisible()
  await expect(page.locator('.stage-timing-card-triage')).toHaveCount(0)
  await expect(page.getByRole('tablist',{name:'会话记录'})).toHaveCount(0)
  for(const path of ['/api/conversations/room-product/triage/session','/api/conversations/room-product/triage/session/messages/old','/api/chat/sample-plan/triage/session'])expect((await page.request.get(fixture.origin+path)).status()).toBe(404)
- await expect(page.getByRole('region',{name:'路由记录'})).toContainText('resident_task_query')
+ await expect(page.getByRole('region',{name:'路由记录'})).toContainText('产品渠道：压缩前的记录')
  await expect(page.locator('.board-composer:visible')).toHaveCount(0)
  await page.getByRole('button',{name:'设置',exact:true}).click()
  await page.getByRole('tab',{name:'模型分工',exact:true}).click()
@@ -24,16 +24,6 @@ for(const width of [1440,390])test(`Router pages expose no triage history and sh
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
 })
 
-test('old triage timings are hidden while Router durations remain accurate',async({page})=>{
- await page.route('**/stage-times?limit=8*',route=>route.fulfill({json:{status:'ready',items:[{receivedAt:'2026-11-18T00:00:00Z',triage:{status:'recorded',durationMs:2000,shared:false},router:{status:'recorded',durationMs:3000,shared:false}}]}}))
- await page.goto(fixture.origin+'/#/router?conversation=conversations%3Aroom-product')
- await page.getByLabel('访问令牌',{exact:true}).fill(fixture.token);await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
- await expect(page.getByRole('heading',{name:'历史分诊耗时',exact:true})).toHaveCount(0)
- await expect(page.getByRole('heading',{name:'路由耗时',exact:true})).toBeVisible()
- await expect(page.locator('.stage-timing-card-triage')).toHaveCount(0)
- await expect(page.locator('.stage-timing-card-router .stage-plot-heading strong')).toContainText('3')
-})
-
 for(const width of [1440,390])test(`context card replaces compaction chart without fake zero ${width}`,async({page})=>{
  await page.setViewportSize({width,height:900});await page.goto(fixture.origin+'/#/router?conversation=conversations%3Aroom-product')
  await page.getByLabel('访问令牌',{exact:true}).fill(fixture.token);await page.getByRole('button',{name:'连接工作空间',exact:true}).click()
@@ -42,6 +32,6 @@ for(const width of [1440,390])test(`context card replaces compaction chart witho
  await expect(card).toContainText('暂无可靠的上下文计数')
  await expect(card.locator('.context-window-bar')).toHaveCount(0)
  await expect(page.getByRole('region',{name:'Router 上下文压缩耗时',exact:true})).toHaveCount(0)
- await expect(page.getByRole('region',{name:'路由耗时',exact:true})).toBeVisible()
+ await expect(page.getByRole('region',{name:'路由耗时',exact:true})).toHaveCount(0)
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
 })

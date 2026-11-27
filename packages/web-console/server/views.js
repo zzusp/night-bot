@@ -66,15 +66,13 @@ export function taskSummaryView(task, secrets = []) {
 }
 
 const workRoles = new Set(['development','verification','investigation','general'])
-export function taskView(task, secrets = [], originFor) {
-  const origin=typeof task.groupId==='string'&&task.groupId?originFor?.(task.groupId):null
+export function taskView(task, secrets = []) {
   const work=task.metadata?.work
   const role=workRoles.has(work?.role)?work.role:undefined
   return {
-    ...(origin ? {origin}:{origin:null}),
     ...(role&&work.cooperative===true?{work:{role,reportsFinal:work.reportsFinal===true}}:{}),
     ...(task.durations ? {durations: task.durations} : {}),
-    ...displayFields(task, ['taskId', 'title', 'objective', 'request', 'state', 'status', 'controlState', 'groupId', 'createdAt', 'updatedAt', 'archivedAt', 'requirementRevision', 'controlRevision', 'cancellationReason', 'waitingReason'], secrets),
+    ...displayFields(task, ['taskId', 'title', 'objective', 'request', 'state', 'status', 'controlState', 'createdAt', 'updatedAt', 'archivedAt', 'requirementRevision', 'controlRevision', 'cancellationReason', 'waitingReason'], secrets),
     ...(task.milestone ? {milestone:{...pick(task.milestone,['state','waitForDelivery','deliveredAt','reachedAt']),...displayFields(task.milestone,['trigger','text'],secrets)}} : {}),
     ...(task.result ? {result: resultView(task.result, secrets)} : {}),
     ...(task.session ? {session: pick(task.session, ['role', 'sessionId', 'sessionBound', 'status'])} : {}),

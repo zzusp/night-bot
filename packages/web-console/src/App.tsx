@@ -71,7 +71,6 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const chats = useResource<Page<ChatSummary>>('/chat?offset=0&limit=20', 5000);
   const recent = useResource<Page<RecentConversation>>('/recent-conversations?offset=0&limit=20', 5000);
   const conversations = useResource<{items: Conversation[]}>('/conversations', 5000);
-  const routerChats = useResource<Page<ChatSummary>>(section==='router'?'/chat?offset=0&limit=100':null, 10000);
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'light');
   const [logoutError, setLogoutError] = useState<unknown>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
@@ -100,7 +99,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     catch (err) { setLogoutError(err); }
     finally { setLogoutBusy(false); }
   };
-  const refresh = () => { overview.refresh(); chats.refresh(); recent.refresh(); conversations.refresh(); if(section==='router')routerChats.refresh(); olderChats.refresh(); };
+  const refresh = () => { overview.refresh(); chats.refresh(); recent.refresh(); conversations.refresh(); olderChats.refresh(); };
   const navItems = [{ path: 'chat', label: '与 Bot 对话', icon: RiChat3Line }, { path:'router',label:'Router',icon:RiRouteLine }, { path: 'tasks', label: '任务', icon: RiCheckboxCircleLine }, { path: 'schedules', label: '定时任务', icon: RiCalendarScheduleLine }, { path: 'channels', label: '渠道', icon: RiGlobalLine }, { path: 'evolution', label: '自进化', icon: RiSeedlingLine }, {path:'feedback',label:'报错反馈',icon:RiBugLine}];
   const sidebar = (mobile = false) => <>
     <div className="sidebar-brand"><Logo />{mobile && <IconButton label="关闭导航" onClick={() => drawer.current?.close()}><RiCloseLine size={19} /></IconButton>}</div>
@@ -123,7 +122,7 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     <div className="main-frame" inert={settingsOpen} aria-hidden={settingsOpen||undefined}>{workspaceHeader}
       {!!logoutError && <Notice error={logoutError} />}
       <ReadErrorScope key={`${route.pathname}:${permissionIdentity.epoch}`}><div className={`workspace-body${isConversation ? ' conversation-workspace' : ''}`}>{currentChats.error && <Notice read error={currentChats.error} source="/recent-conversations" onRetry={currentChats.refresh}/>}<main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : section === 'router' && !id ? 'router-workspace-panel' : ''}`}><ReadErrorOutlet/><div className={isConversation ? 'conversation-content' : 'page-content-slot'}><PageBoundary resetKey={route.pathname}>
-        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} drafts={taskInputDrafts} /> : <TaskList route={route} /> : section === 'router' && !id ? <RouterPage key={permissionIdentity.epoch} route={route} channels={conversations} web={routerChats} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
+        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} drafts={taskInputDrafts} /> : <TaskList route={route} /> : section === 'router' && !id ? <RouterPage key={permissionIdentity.epoch} overview={overview} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></div></main>
 
       </div></ReadErrorScope>

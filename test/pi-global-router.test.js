@@ -1,4 +1,4 @@
-import {routerSessionView,taskSessionView} from '../packages/web-console/server/session-view.js'
+import {routerSessionView,taskSessionView,globalRouterSessionView} from '../packages/web-console/server/session-view.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {residentRouterHost,channelMessage,requestEnvelope,requestText} from './fixtures/resident-router-host.js'
@@ -37,6 +37,10 @@ test('one official Pi Router persists across channels and restart while filterin
   assert.match(JSON.stringify(visible.items),/violet-174/)
   assert.doesNotMatch(JSON.stringify(visible.items),/blue-176/)
   assert.equal(visible.live,undefined)
+  const combined=await globalRouterSessionView({executionActivity:true,persistence:h.host.ctx.sessionPersistence})
+  const text=combined.items.map(item=>item.text).join('\n')
+  assert.ok(text.indexOf('violet-174')>=0&&text.indexOf('blue-176')>text.indexOf('violet-174'),text)
+
   await h.restart()
   await h.receive({...a,messageId:'a-next',text:'go back to first group'});await h.service.whenIdle()
   assert.match(seen.get('a-next'),/violet-174/)

@@ -5,7 +5,7 @@ import {FIXTURE_TOKEN} from './preview.mjs';
 
 // Deliberately public projection fixtures. Raw names, queries, lookup IDs and
 // child session details are exercised at the server boundary in the .test.js tests.
-const endpoint = '**/api/conversations/room-product/session';
+const endpoint = '**/api/router/session';
 const source = {sessionId: 'fixture-router', entryId: 'fixture-entry'};
 const pair = (id: string, toolName: string, input: string, output: string) => [
   {id: `call-${id}`, role: 'tool', kind: 'tool-call', callId: id, toolName, text: input, status: 'result-unrecorded', source, redacted: input.startsWith('此工具尚未声明') },
@@ -18,7 +18,7 @@ const items = [
   ...pair('lookup', 'resident_task_lookup_async', '{"taskCount":2}', '{"status":"pending","readOnly":true}'),
   ...pair('historical-child', 'subagent', '此工具尚未声明可展示的输入字段；调用名称与状态保留。', '此工具尚未声明可展示的结果字段；调用名称与状态保留。'),
 ];
-const response = (rows: object[]) => ({status: 'ready', scope: 'current-router-session-context', items: rows, total: rows.length, nextOffset: null, revision: 'specialized-fixture', generation: 1});
+const response = (rows: object[]) => ({status: 'ready', scope: 'global-router-transcript', items: rows, total: rows.length, nextOffset: null, revision: 'specialized-fixture', generation: 1});
 async function open(page: Page) {
   await page.goto('/#/channels/room-product');
   await page.getByLabel('访问令牌', {exact: true}).fill(FIXTURE_TOKEN);

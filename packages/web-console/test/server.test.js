@@ -1,3 +1,4 @@
+import {routerJournal} from './router-journal-fixture.mjs'
 import {createOperatorSettings} from '../../../src/settings/operator.js'
 import {runtimePaths,prepareRuntimePaths} from '../../../src/runtime/paths.js'
 import {createFeedbackService} from '../../../src/feedback/service.js'
@@ -1260,7 +1261,7 @@ test('channel activity scopes every count and page before querying, rejects fore
  await f.login();assert.equal((await f.fetchApi('/api/conversations/foreign/activity')).status,404);assert.equal(calls.length,0)
  const a=(await f.fetchApi('/api/conversations/room-one/activity')).body
  assert.deepEqual(a.scope,{conversationId:'room-one'});assert.equal(a.running.total,1);assert.equal(a.interrupted.total,1);assert.equal(a.tasks.total,2)
- assert.ok(calls.every(q=>q.groupId==='room-one'&&q.offset===0&&q.limit===5&&q.archived===false));assert.ok(a.tasks.items.every(row=>row.groupId==='room-one'))
+ assert.ok(calls.every(q=>q.groupId==='room-one'&&q.offset===0&&q.limit===5&&q.archived===false));assert.ok(a.tasks.items.every(row=>!Object.hasOwn(row,'groupId')&&!Object.hasOwn(row,'origin')))
  const b=(await f.fetchApi('/api/conversations/room-two/activity')).body;assert.equal(b.running.total,12);assert.equal(b.running.items.length,5)
  const empty=(await f.fetchApi('/api/conversations/room-empty/activity')).body;assert.equal(empty.tasks.total,0);assert.equal(empty.running.total,0);assert.equal(empty.interrupted.total,0)
  const count=calls.length;assert.equal((await f.fetchApi('/api/conversations/room-one/activity?groupId=room-two')).status,400);assert.equal(calls.length,count)
@@ -1624,7 +1625,7 @@ test('completed task context window uses the committed Pi journal without openin
  assert.deepEqual((await f.fetchApi(path)).body,{status:'unavailable'})
 })
 
-test('schedule and task delivery show only safe links to a known originating conversation',async t=>{
+test('schedules can link to a verified delivery target; tasks expose no channel origin',async t=>{
  const records=[
    {id:'focused-silent',sessionId:'internal-silent',kind:'at',status:'active',title:'静默核查',scheduledAt:'2030-01-01T00:00:00Z'},
    {id:'focused-origin',sessionId:'internal-origin',kind:'at',status:'active',title:'回报进度',scheduledAt:'2030-01-01T00:00:00Z'},
@@ -1644,11 +1645,12 @@ test('schedule and task delivery show only safe links to a known originating con
  assert.deepEqual(schedules.find(item=>item.id==='focused-silent').delivery,{mode:'silent'})
  assert.doesNotMatch(JSON.stringify(schedules),/internal-(?:origin|silent)/)
  const task=(await f.fetchApi('/api/tasks/known')).body
- assert.deepEqual(task.origin,origin)
+ assert.equal(Object.hasOwn(task,'origin'),false)
+ assert.equal(Object.hasOwn(task,'groupId'),false)
  assert.deepEqual(task.work,{role:'verification',reportsFinal:true})
  assert.doesNotMatch(JSON.stringify(task),/private-(?:team|source)/)
- assert.deepEqual((await f.fetchApi('/api/tasks/absent')).body.origin,{kind:'unavailable'})
- assert.equal((await f.fetchApi('/api/tasks/standalone')).body.origin,null)
+ assert.equal(Object.hasOwn((await f.fetchApi('/api/tasks/absent')).body,'origin'),false)
+ assert.equal(Object.hasOwn((await f.fetchApi('/api/tasks/standalone')).body,'origin'),false)
 })
 
 test('Web Router activity is scoped to the exact authenticated chat session',async t=>{
@@ -1686,4 +1688,25 @@ test('direct Web conversation summary requires login and exposes only exact chat
  assert.equal(summary.body.title,'Historical title fixture')
  assert.deepEqual(Object.keys(summary.body).sort(),['id','status','title','updatedAt'])
  assert.equal((await f.fetchApi(path+'?offset=100')).status,400)
+})
+
+test('unified Router HTTP exposes one verified committed branch in order, including pre-compaction records',async t=>{
+ const snapshot=routerJournal()
+ const f=await fixture(t,{persistence:{readNative:async(id,options)=>{
+   assert.equal(id,snapshot.header.id)
+   assert.equal(options.requireComplete,true)
+   return snapshot
+ }}})
+ assert.equal((await f.fetchApi('/api/router/session')).status,401)
+ await f.login()
+ const whole=await f.fetchApi('/api/router/session')
+ assert.equal(whole.status,200,JSON.stringify(whole.body))
+ assert.equal(whole.body.scope,'global-router-transcript')
+ const values=whole.body.items.map(row=>row.text)
+ assert.deepEqual(values.filter(Boolean),['产品渠道：压缩前的记录','先核对产品资料。','资料渠道：压缩后的记录','已经登记资料查询。','定时自检','本轮自检已结束。'])
+ assert.equal(whole.body.items.find(row=>row.kind==='compaction').compaction.summaryHidden,true)
+ assert.equal((await f.fetchApi('/api/router/session?limit=2')).body.nextOffset,2)
+ assert.equal((await f.fetchApi('/api/router/session/messages/'+whole.body.items[0].id+'?revision='+whole.body.revision)).body.text,'产品渠道：压缩前的记录')
+ snapshot.header.conversationId='not-the-router'
+ assert.equal((await f.fetchApi('/api/router/session')).status,503)
 })

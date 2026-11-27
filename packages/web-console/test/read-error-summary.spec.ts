@@ -19,7 +19,7 @@ for(const width of [1440,390])test(`task shared owners first read stale recovery
  await expect(summary(page)).toHaveCount(0);await expect(page.locator('.task-dialogue .message').first()).toBeVisible();
  await page.route('**/api/tasks/task-research',fail);await page.route('**/api/tasks/task-research/session?*',fail);await page.route('**/api/tasks/task-research/learning',fail);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
- await expect(summary(page)).toHaveAttribute('data-affected-count','3');await expect(page.getByRole('alert')).toHaveCount(1);
+ await expect(summary(page)).toHaveAttribute('data-affected-count','2');await expect(page.getByRole('alert')).toHaveCount(1);
  await expect(page.locator('.task-token-card [role=alert]')).toHaveCount(0);await expect(page.locator('.task-dialogue .message').first()).toBeVisible();
  await page.locator('.workspace-topbar').getByRole('button',{name:'切换深色外观'}).click();
  await page.screenshot({path:test.info().outputPath(`task-stale-dark-${width}.png`)});

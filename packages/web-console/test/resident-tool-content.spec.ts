@@ -32,7 +32,7 @@ test('Router plan reads once with real dependencies, and failures or changed rec
     message('bounded','resident_memory_review','call',{operation:'review',scope:'topic'}),
     message('bounded','resident_memory_review','result',{operation:'review',scope:'topic',ok:true}, {truncated:true,textNextOffset:25}),
   ];
-  await page.route('**/api/chat/sample-plan/session?*',route=>route.fulfill({json:{status:'ready',scope:'current-router-session-context',items:rows,total:rows.length,revision:'resident-fixture',generation:1,live:{active:false,items:[]}}}));
+  await page.route('**/api/router/session?*',route=>route.fulfill({json:{status:'ready',scope:'global-router-transcript',items:rows,total:rows.length,revision:'resident-fixture',generation:1,live:{active:false,items:[]}}}));
   await page.goto('/#/chat/sample-plan');
   await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
   await page.getByRole('button',{name:'连接工作空间',exact:true}).click();

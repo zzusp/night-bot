@@ -35,7 +35,7 @@ for (const router of [true,false]) {
   test(`${router?'Router':'任务'}工具失败安全原因、折叠展开、键盘与撤权`,async({page})=>{
     const dto = await projected(router);
     expect(JSON.stringify(dto)).not.toMatch(/PRIVATE_|private\/path|nativeResult|stack/);
-    const endpoint = router?'**/api/conversations/room-product/session?*':'**/api/tasks/task-research/session?*';
+    const endpoint = router?'**/api/router/session?*':'**/api/tasks/task-research/session?*';
     let denied = false;
     await page.route(endpoint,route=>route.fulfill(denied?{status:403,json:{error:'RESOURCE_FORBIDDEN'}}:{json:dto}));
     await page.goto(router?'/#/channels/room-product':'/#/tasks/task-research');

@@ -27,20 +27,12 @@ for (const width of [1440, 390]) test(`页面精简文案后无空段落或横�
     ['chat', '/#/chat', '.board-composer'],
     ['tasks', '/#/tasks', '.task-table'],
     ['task', '/#/tasks/task-research', '.task-info-title'],
-    ['review-learning', '/#/tasks/task-research', '.task-learning-summary'],
     ['channels', '/#/channels', '.channel-cards'],
     ['channel-empty', '/#/channels/room-empty', '.board-empty'],
     ['evolution', '/#/evolution', '.evolution-table'],
   ]) {
     await page.goto(route);
     await expect(page.locator(ready).first()).toBeVisible();
-    if (name === 'review-learning') {
-      const review = page.getByRole('region', {name: '任务复盘', exact: true});
-      await expect(review).toBeVisible();
-      await expect(review.getByText('记忆', {exact: true})).toBeVisible();
-      await expect(review.getByText('技能', {exact: true})).toBeVisible();
-      await layout(page, review);
-    }
     await expect(page.locator('.main-panel')).not.toContainText('复盘完成与学习变更分别记录');
     await expect(page.locator('.main-panel .board-empty > p')).toHaveCount(0);
     await layout(page, page.locator('.main-panel'));

@@ -11,7 +11,8 @@ import {latestComparison} from '../../../src/memory/evolution-content.js'
 import {responseTiming,selectedResponseTiming} from './response-times.js'
 import {stageTiming} from './stage-times.js'
 import {routerCompactionTimes} from './router-compaction-times.js'
-import {routerContextWindow,taskContextWindow} from './router-context-window.js'
+import {GLOBAL_ROUTER_SESSION} from '../../../src/channels/router-identity.js'
+import {routerContextWindow,taskContextWindow,globalRouterContextWindow} from './router-context-window.js'
 import {createServer} from 'node:http'
 import {performance} from 'node:perf_hooks'
 import {readFile, lstat, realpath} from 'node:fs/promises'
@@ -21,7 +22,7 @@ import {accessCredential, browserSessions, controlledDirectory, digest, fail, js
 import {openWebLedger} from './ledger.js'
 import {admitWebChatAttachments, parseWebChatAttachments, saveParsedWebChatAttachments, WEB_CHAT_BODY_BYTES} from './chat-attachments.js'
 import {configuredChannels, conversationMessages, conversations, recentConversations, permissionsView, taskDialogueView, taskView, taskSummaryView} from './views.js'
-import {visibleText,taskSessionView,taskSessionMessageView,routerSessionView,routerSessionMessageView} from './session-view.js'
+import {visibleText,taskSessionView,taskSessionMessageView,routerSessionView,routerSessionMessageView,globalRouterSessionView,globalRouterSessionMessageView} from './session-view.js'
 import {createSessionEvents} from './session-events.js'
 
 export const inject = ['channels', 'runtimePaths', 'sessionPersistence']
@@ -163,8 +164,8 @@ export async function createWebConsole({channels, paths, config, getApplication,
     }
   }
   const tasks = async options => {
-    const app=application(),value=await app.tasks.boardTasks(options),originFor=workOrigin(app)
-    return {...value, items: value.items.map(task => taskView(task, [credential.token],originFor))}
+    const app=application(),value=await app.tasks.boardTasks(options)
+    return {...value, items: value.items.map(task => taskView(task, [credential.token]))}
   }
   let evolutionCache, evolutionUsageCache, authorizedEvolutionReader
   try {
@@ -553,7 +554,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
           ...await sessionGuards(async()=>{const current=await readTask();if(!current)fail('TASK_NOT_FOUND',404);if(taskIdentity(current)!==taskIdentity(value))fail('SESSION_PAGE_STALE',409)})},
           async()=>({id:value.session?.sessionId??value.sessionId,key:taskIdentity(value)}))
       }
-      return send(response, 200, taskView(value, [credential.token],workOrigin(app)))
+      return send(response, 200, taskView(value, [credential.token]))
     }
     const conversation = /^\/api\/conversations\/([^/]+)\/messages$/.exec(path)
     if (request.method === 'GET' && conversation) {
@@ -628,7 +629,7 @@ export async function createWebConsole({channels, paths, config, getApplication,
       if (!raw || raw.taskId !== taskId || raw.groupId !== conversationId) fail('CHAT_TASK_NOT_FOUND', 404)
       const detail = await app.tasks.taskDetail(taskId)
       if (!detail || detail.taskId !== taskId || detail.groupId !== conversationId) fail('CHAT_TASK_NOT_FOUND', 404)
-      return send(response, 200, taskView(detail, [credential.token],workOrigin(application())))
+      return send(response, 200, taskView(detail, [credential.token]))
     }
     const chatTask = /^\/api\/(chat|conversations)\/([^/]+)\/tasks\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && chatTask) {
@@ -658,6 +659,18 @@ export async function createWebConsole({channels, paths, config, getApplication,
         return send(response,200,value)
       }
       fail('NOT_FOUND',404)
+    }
+    if (request.method==='GET'&&path==='/api/router/context-window'){
+      if(url.search)fail('PAGE_INVALID')
+      return send(response,200,await globalRouterContextWindow(getAgents()))
+    }
+    const globalSession=/^\/api\/router\/session(?:\/messages\/([^/]+))?$/.exec(path)
+    if(request.method==='GET'&&globalSession){
+      const taskService=application().tasks
+      const options={persistence:getSessionPersistence(),executionActivity:true,
+        readExecutionTiming:scope=>taskService.executionHistoryTiming?.(scope),...await sessionGuards()}
+      if(globalSession[1])return sendSession(response,globalRouterSessionMessageView,{...options,...bodyOptions(url.searchParams),messageId:decodeURIComponent(globalSession[1])},requestStarted)
+      return serveExecution(globalRouterSessionView,options,async()=>({id:GLOBAL_ROUTER_SESSION,key:GLOBAL_ROUTER_SESSION}))
     }
     const chatSession = /^\/api\/(chat|conversations)\/([^/]+)\/session(?:\/messages\/([^/]+))?$/.exec(path)
     if (request.method === 'GET' && chatSession) {

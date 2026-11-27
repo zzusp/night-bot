@@ -3,7 +3,7 @@ import {expect, test, type Page} from '@playwright/test'
 import {FIXTURE_TOKEN} from './preview.mjs'
 
 const task = {path: '/tasks/task-research', endpoint: '**/api/tasks/task-research/session?*', resultKind: 'task-result'}
-const router = {path: '/chat/sample-plan', endpoint: '**/api/chat/sample-plan/session?*', resultKind: 'router-reply'}
+const router = {path: '/chat/sample-plan', endpoint: '**/api/router/session?*', resultKind: 'router-reply'}
 const source = (id: string) => ({sessionId: 'pi-web-fixture', entryId: id})
 const call = (id: string, toolName: string) => ({id, role: 'tool', kind: 'tool-call', toolName, callId: id, text: '已脱敏参数', source: source(id)})
 const thoughtBody = '核对可信来源。' + '逐项检查已公开的输入和结果。'.repeat(12) + '\n\n公开思考最后一段。'

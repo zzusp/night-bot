@@ -661,7 +661,8 @@ html, body, #root { width: 100%; min-width: 0; }
 .main-panel.router-workspace-panel { display: flex; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
 .router-workspace { display: flex; flex: 1; min-height: 0; width: 100%; gap: 12px; padding: 12px; box-sizing: border-box; }
 .router-records { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; border: 1px solid var(--board-border); border-radius: var(--board-radius-panel); overflow: hidden; }
-.router-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 9px 12px; border-bottom: 1px solid var(--board-border); gap: 8px 12px; flex: none; }
+.router-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 9px 12px; gap: 8px 12px; flex: none; }
+.router-records .execution-transcript .message-column:has(> .execution-history-start) { padding-top: 4px; }
 .router-conversation-select { flex: 1 1 180px; max-width: 350px; min-width: 0; }
 .router-tools { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex: 1 1 auto; min-width: 0; }
 .router-tools .router-origin-link { white-space: nowrap; }

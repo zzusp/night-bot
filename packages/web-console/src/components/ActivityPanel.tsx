@@ -5,7 +5,7 @@ import type { Overview, Page, Task } from '../api';
 import { dateTime, useResource } from '../hooks';
 import { Loading, Notice, Status } from './Shared';
 import '../styles/activity-panel.css';
-import { StageTimingChart } from './StageTimingChart';
+import {ContextWindow,type ContextWindowSnapshot} from './ContextWindow';
 
 function TaskRow({task}: {task: Task}) {
   const title = task.title || task.objective || '未命名任务';
@@ -24,16 +24,11 @@ function TaskSection({title, tasks, tone, failed}: {title: string; tasks?: Page<
   </section>;
 }
 
-type ActivityData = Pick<Overview, 'tasks' | 'running' | 'interrupted' | 'sectionErrors'>;
-type ConversationTarget = {kind:'chat'|'conversations';id:string};
-export function ActivityPanel({conversation}: {conversation:ConversationTarget}) {
-  const {kind,id}=conversation,path=`/${kind}/${encodeURIComponent(id)}/activity`;
-  const query=useResource<ActivityData & {scope:{conversationId:string;chatId?:string}}>(path,5000,{pauseWhenHidden:true});
-  const mismatch=query.data && (kind==='chat'?query.data.scope?.chatId:query.data.scope?.conversationId)!==id;
-  const error=query.error ?? (mismatch ? new ApiError(503,'ACTIVITY_SCOPE_INVALID') : null);
-  const data=!error?query.data??undefined:undefined,loading=query.loading,onRetry=query.refresh;
-  // The existing task-list UI cannot retain a channel filter. Do not link to a
-  // global collection from a scoped activity panel; individual task details stay linked.
+export function ActivityPanel({overview}:{overview:ReturnType<typeof useResource<Overview>>}) {
+  const {data:cached,error,loading,refresh:onRetry}=overview
+  const data=error?undefined:cached
+  const context=useResource<ContextWindowSnapshot>('/router/context-window',15000,{pauseWhenHidden:true});
+  const path='/overview';
   const partialError=useMemo(()=>new ApiError(503,'OVERVIEW_PARTIAL'),[]);
   // Preserve the recent-task fallback: both pages must confirm no current work.
   const idle = !error && !!data?.running && !!data?.interrupted
@@ -46,7 +41,7 @@ export function ActivityPanel({conversation}: {conversation:ConversationTarget})
     <div className="rail-heading"><h2>工作动态</h2></div>
     {!!error && <Notice error={error} stale={!!data} onRetry={onRetry}/>}
     {incomplete && !error && <Notice read error={partialError} source={path} message="部分工作动态暂不可读。" onRetry={onRetry}/>}
-    <StageTimingChart kind={conversation.kind} id={conversation.id}/>
+    <ContextWindow snapshot={context.error?undefined:context.data??undefined} loading={context.loading}/>
     {!data && loading ? <Loading/> : <>
       <TaskSection title="正在执行" tasks={data?.running} tone="running" failed={!!data?.sectionErrors?.running}/>
       {idle && <TaskSection title="最近任务" tasks={data?.tasks} tone="recent" failed={!!data?.sectionErrors?.tasks}/>}

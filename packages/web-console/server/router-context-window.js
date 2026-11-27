@@ -63,6 +63,13 @@ function classifiedRows(counts,total) {
 
 const unavailable={status:'unavailable'}
 
+export function globalRouterContextWindow(agents){
+ const actor=agents?.get?.(GLOBAL_ROUTER_SESSION),session=actor?.piSession,meta=actor?.metadata
+ if(!actor)return {...unavailable,reason:'not-loaded'}
+ if(actor.id!==GLOBAL_ROUTER_SESSION||session?.sessionId!==GLOBAL_ROUTER_SESSION||meta?.runtimeOwner!=='conversation-router'
+   ||meta.conversationId!==GLOBAL_ROUTER_SCOPE||meta.generation!==1||actor.lifecycle?.signal.aborted||typeof session.getContextUsage!=='function')return unavailable
+ return nativeContextWindow(session,model=>officialConversationContextBudget(model,'ROUTER').budgetTokens)
+}
 export async function routerContextWindow(tasks, agents, conversationId) {
  if(!tasks?.store?.query||!agents?.get)return unavailable
  const row=await tasks.store.query({kind:'router.get',conversationId})
