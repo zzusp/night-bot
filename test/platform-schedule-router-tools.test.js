@@ -9,6 +9,7 @@ test('Router exposes list/update/delete with bound conversation, source and gene
   let scope
   const f=await officialToolsFixture(t,({ctx,owner})=>{
     scope=createScope(ctx,owner);owner.ctx=scope.ctx
+    owner.admission={current:async()=>({messages:[]})}
     return registerResidentRouterTools(scope.ctx,{conversationId:'g',generation:2,sessionId:owner.id},{responsibilityFor:()=>'',
       query:async(kind,args)=>kind==='router.get'?state:kind==='source.get'?{...original,...(args.sourceId==='foreign'?{groupId:'foreign'}:{})}:kind==='source.list'?[original]:[],
       platformScheduleList:async id=>{calls.push(['list',id]);return []},
