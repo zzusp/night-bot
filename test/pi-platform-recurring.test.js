@@ -13,11 +13,11 @@ import NativeSchedule from '../src/native-schedule.js'
 
 // Actual Host, Pi admission/journal, native schedule clock and resident outbox.
 // Only the model and task facts are controlled; no real network messages are sent.
-async function fixture(t,{beforeReply,replyText}={}) {
+async function fixture(t,{beforeReply,replyText,extraTasks=[],probeUnbound=false}={}) {
   const root=await mkdtemp(join(tmpdir(),'platform-recurring-'))
   t.mock.timers.enable({apis:['Date'],now:Date.now()})
   let h,bridge,task={taskId:'observed-task',groupId:'periodic-room',title:'Deployment progress',status:'active',state:'running',control:'active',requirementRevision:1,controlRevision:1,runSequence:1}
-  const reads=[],errors=[],queryResults=[]
+  const reads=[],errors=[],queryResults=[],denials=[]
   const boot=async()=>{
     h=await nativeRuntimeHost(root,async request=>{
       assert.ok(request.tools.some(tool=>tool.name==='platform_task_query'))
@@ -30,6 +30,11 @@ async function fixture(t,{beforeReply,replyText}={}) {
         assert.ok(page,'report must read fresh task facts through the real query tool')
         queryResults.push(page)
         await beforeReply?.(page,queryResults.length)
+        return [{name:'platform_task_evidence',args:{taskIds:probeUnbound?['unrelated-task']:page.eligibleEvidenceTaskIds}}]
+      }
+      if(last?.role==='toolResult'&&last.toolName==='platform_task_evidence'){
+        const page=queryResults.at(-1)
+        if(probeUnbound){denials.push(last);return [{name:'platform_reply_submit',args:{text:null}}]}
         return [{name:'platform_reply_submit',args:{recipientActorIds:['original-actor'],text:replyText?replyText(page,queryResults.length):`Progress at ${page.asOf}: ${page.items[0]?.state??'missing'}`}}]
       }
       return [{name:'platform_task_query',args:{state:'all'}}]
@@ -38,7 +43,7 @@ async function fixture(t,{beforeReply,replyText}={}) {
     h.residentStore=await openResidentStore(h.ctx.storageDomain)
     bridge=createPlatformSchedules({ctx:h.ctx,store:h.residentStore,root:h.ctx.runtimePaths.workspaces,
       legacy:{getAgentConfig:()=>({agentPreset:'night-bot'})},models:{provider:'native-task-test',model:'controlled'},
-      readTasks:async groupId=>{assert.equal(groupId,'periodic-room');reads.push({at:Date.now(),task:structuredClone(task)});return [structuredClone(task)]},
+      readTasks:async groupId=>{assert.equal(groupId,'periodic-room');reads.push({at:Date.now(),task:structuredClone(task)});return [structuredClone(task),...structuredClone(extraTasks)]},
       appendOutbox:args=>h.residentStore.appendOutbox(args)})
     if(!h.ctx.get('sessionController'))await h.ctx.plugin(NativeSessionController)
     if(!h.ctx.get('schedule'))await h.ctx.plugin(NativeSchedule,{})
@@ -52,7 +57,7 @@ async function fixture(t,{beforeReply,replyText}={}) {
   await h.residentStore.routeMessages({groupId:'periodic-room',routeId:'periodic-route',routingRevision:0,routes:[{messageId:'periodic-source',messageVersion:1,units:[{unitKey:'periodic',summary:'周期进展检查',sourceRefs:[{quote:'每10分钟检查上线进展，直到任务完成。'}],topics:[],fixedTopic:'agent-platform',reason:'周期检查'}]}]})
   const message=h.residentStore.getGroup('periodic-room').messages[0],unit=message.units[0]
   const source={groupId:'periodic-room',requestId:fixedUnitRequestId('periodic-room',message,unit),unitId:unit.unitId,unitRevision:unit.unitRevision,messageId:'periodic-source',messageVersion:1,timezone:'Asia/Shanghai'}
-  return {source,reads,errors,queryResults,get h(){return h},get bridge(){return bridge},setTask:changes=>{task={...task,...changes}},
+  return {source,reads,errors,queryResults,denials,get h(){return h},get bridge(){return bridge},setTask:changes=>{task={...task,...changes}},
     outbox:()=>h.residentStore.getGroup(source.groupId).outbox,
     async tick(){t.mock.timers.tick(600001);h.ctx.schedule.start();await h.ctx.schedule.runtime.running},
     async restart(){await close();await boot()},
@@ -98,10 +103,10 @@ test('native platform checks repeat at the accepted interval, survive restart, a
   assert.deepEqual(f.errors,[])
 }))
 
-test('real Router tool preserves periodic user intent, reports a running task and stops after completion',
+for(const everyReport of [false,true])test('actual delivery: scoped evidence, unchanged report policy and completion: '+everyReport,
  {timeout:nativeLifecycleTimeout(40000)},nativeLifecycle(40000,async t=>{
   const root=await mkdtemp(join(tmpdir(),'router-periodic-'));let h
-  const taskId='router-observed-task',interval=600,execution=Promise.withResolvers()
+  const taskId='router-observed-task',interval=600,execution=Promise.withResolvers(),seenEvidence=[],sentUnchanged=[]
   t.mock.timers.enable({apis:['Date'],now:Date.now()})
   t.after(async()=>{await h?.close();await rm(root,{recursive:true,force:true})})
   await t.beginBusiness()
@@ -109,12 +114,12 @@ test('real Router tool preserves periodic user intent, reports a running task an
     const names=request.tools.map(tool=>tool.name),last=request.messages.at(-1)
     if(names.includes('task_result')){
       await execution.promise
-      return [{name:'task_result',args:{decision:{action:'complete',summary:'Synthetic build and service checked',evidence:['fixture:verified'],limitations:[]}}}]
+      return [{name:'task_result',args:{decision:{action:'complete',summary:'服务 A 已恢复',evidence:['服务 A 健康检查通过'],limitations:['服务 B 缺健康检查回执']}}}]
     }
     if(names.includes('resident_router_settle')){
       const {events}=latestInput(request),source=events.find(event=>event.source)?.source
       if(!source||last?.isError)return []
-      if(last?.toolName==='resident_task_plan')return [{name:'platform_schedule_submit',args:{operationId:'periodic-progress',sourceId:source.sourceId,messageVersion:source.version,title:'Deployment progress',prompt:'每10分钟检查部署进展，直到任务完成。',every_seconds:interval,stopWhen:{taskIds:[taskId]}}}]
+      if(last?.toolName==='resident_task_plan')return [{name:'platform_schedule_submit',args:{operationId:'periodic-progress',sourceId:source.sourceId,messageVersion:source.version,title:'Deployment progress',prompt:'每10分钟检查部署进展，直到任务完成。'+(everyReport?'每轮都确认，即使无变化。':''),every_seconds:interval,stopWhen:{taskIds:[taskId]},...everyReport?{report_every_occurrence:true}:{}}}]
       if(last?.toolName==='platform_schedule_submit')return [{name:'resident_router_settle',args:{eventIds:events.map(event=>event.id),operationId:'settle-periodic-request'}}]
       if(last?.toolName==='resident_router_settle')return []
       return [{name:'resident_task_plan',args:{operationId:'deployment-plan',sourceId:source.sourceId,messageVersion:source.version,tasks:[{taskId,title:'Synthetic deployment',objective:'Observe synthetic build progress',handoff:'Verify the synthetic build and service before reporting completion.',requirements:['Do not claim complete until build and service are verified']}],dependencies:[]}}]
@@ -124,7 +129,25 @@ test('real Router tool preserves periodic user intent, reports a running task an
         const page=modelToolValues(request).findLast(value=>Array.isArray(value.items)&&value.asOf)
         const task=page?.items.find(item=>item.taskId===taskId)
         assert.ok(task,'scheduled model must have the bound task in its current query result')
-        return [{name:'platform_reply_submit',args:{recipientActorIds:['native-user'],text:task.state==='completed'?'已核验构建和服务，任务已完成。':'部署任务仍在执行，尚未完成。'}}]
+        assert.ok(!names.includes('bash'))
+        return [{name:'platform_task_evidence',args:{taskIds:[task.taskId]}}]
+      }
+      if(last?.toolName==='platform_task_evidence'){
+        const evidence=modelToolValues({...request,messages:[last]}).find(value=>value.items?.some(row=>row.taskId===taskId&&Object.hasOwn(row,'outcome')))
+        const task=evidence.items.find(item=>item.taskId===taskId)
+        seenEvidence.push(task)
+        if(task.state==='completed'){
+          assert.deepEqual(task.outcome.evidence,['服务 A 健康检查通过'])
+          assert.deepEqual(task.outcome.limitations,['服务 B 缺健康检查回执'])
+          return [{name:'platform_reply_submit',args:{recipientActorIds:['native-user'],text:'服务 A 已恢复；服务 B 还缺健康检查回执，下一步查 B 的健康检查记录。',verificationIncomplete:true}}]
+        }
+        const text=seenEvidence.length===1?'部署任务仍在执行，尚未完成。':'旧进度还是未完成。这次只核查，没有做其他操作。'
+        if(seenEvidence.length>1)sentUnchanged.push(text)
+        return [{name:'platform_reply_submit',args:{recipientActorIds:['native-user'],text:everyReport&&seenEvidence.length===2?null:text}}]
+      }
+      if(last?.toolName==='platform_reply_submit'){
+        assert.ok(!last.isError)
+        return []
       }
       return [{name:'platform_task_query',args:{state:'all'}}]
     }
@@ -135,7 +158,7 @@ test('real Router tool preserves periodic user intent, reports a running task an
   const schedule=h.ctx.schedule
   async function tick(){t.mock.timers.tick(interval*1000+1);schedule.start();await schedule.runtime.running}
   try{
-    await h.service.ingest({groupId:'native-group',messageId:'periodic-deploy',senderOpenDingTalkId:'native-user',text:'上线包括合并、构建镜像、验证服务。每10分钟检查一次进展，直到任务完成。',occurredAt:new Date().toISOString(),mentionedAgent:true})
+    await h.service.ingest({groupId:'native-group',messageId:'periodic-deploy',senderOpenDingTalkId:'native-user',text:'上线包括合并、构建镜像、逐项验证服务 A 和 B。每10分钟检查一次进展，直到任务完成。'+(everyReport?'每轮都确认，即使无变化。':''),occurredAt:new Date().toISOString(),mentionedAgent:true})
     const submission=await wait(()=>h.toolResults.find(row=>row.name==='platform_schedule_submit'),'Router submits the recurring schedule')
     assert.equal(submission.result.isError,false,JSON.stringify(submission))
     const [record]=await schedule.catalog()
@@ -157,22 +180,62 @@ test('real Router tool preserves periodic user intent, reports a running task an
     assert.match(reports()[0].payload.text,/尚未完成/)
     assert.equal((await schedule.catalog())[0].status,'active')
 
+    const initialReport=reports()[0]
+    await wait(async()=>(await h.query('notification.get',{notificationId:initialReport.id}))?.state==='delivered','first report is confirmed, not only queued')
+    const firstOccurrence=h.residentStore.getPlatformSchedule(record.sessionId).lastOccurrenceAt
+    await tick()
+    await wait(()=>{const at=h.residentStore.getPlatformSchedule(record.sessionId).lastOccurrenceAt;return at&&at>firstOccurrence},'quiet or short confirmation settles the second occurrence')
+    assert.equal(sentUnchanged.length,1)
+    assert.equal(reports().length,everyReport?2:1)
+    assert.match(pages()[1].previousDeliveredReport.text,/尚未完成/)
+    if(everyReport){
+      assert.equal(reports()[1].payload.text,'本轮已复核，没有新变化。')
+      assert.doesNotMatch(reports()[1].payload.text,/没有做其他操作|旧进度/)
+    }
+
     execution.resolve();await h.service.whenIdle()
     const completed=await h.query('task.get',{taskId})
     assert.equal(completed.status,'completed')
     assert.equal(completed.sessionId,task.sessionId)
     assert.deepEqual(['requirementRevision','controlRevision','runSequence'].map(key=>completed.completion?.[key]),['requirementRevision','controlRevision','runSequence'].map(key=>completed[key]))
     await tick()
-    await wait(()=>reports().length===2,'completed task report reaches the channel')
-    await wait(async()=>(await schedule.catalog()).length===0,'completed schedule is removed from the native ledger')
-    assert.equal(h.residentStore.getPlatformSchedule(record.sessionId).outcome,'completed')
-    assert.deepEqual(pages().map(page=>[page.items[0]?.state,page.stopConditionMet]),[['running',false],['completed',true]])
-    assert.notEqual(pages()[0].asOf,pages()[1].asOf)
-    assert.equal(reports()[1].payload.sourceRef.messageId,'periodic-deploy')
-    assert.match(reports()[1].payload.text,/已完成/)
-    await tick();await h.service.whenIdle()
-    assert.equal(reports().length,2);assert.equal(pages().length,2)
+    await wait(()=>reports().length===(everyReport?3:2),'completed task report reaches the channel')
+    const gapReport=reports().at(-1)
+    await wait(async()=>(await h.query('notification.get',{notificationId:gapReport.id}))?.state==='delivered','actual gap report is delivered')
+    assert.equal((await schedule.catalog())[0].status,'active')
+    assert.equal(h.residentStore.getPlatformSchedule(record.sessionId).outcome,undefined,'completed task is not proof that both services recovered')
+    assert.deepEqual(pages().map(page=>[page.items[0]?.state,page.stopConditionMet]),[['running',false],['running',false],['completed',true]])
+    assert.equal(new Set(pages().map(page=>page.asOf)).size,3)
+    assert.equal(reports().at(-1).payload.sourceRef.messageId,'periodic-deploy')
+    assert.equal(reports().at(-1).payload.text,'服务 A 已恢复；服务 B 还缺健康检查回执，下一步查 B 的健康检查记录。')
+    assert.deepEqual(seenEvidence.map(value=>value.state),['running','running','completed'])
+    const gapOccurrence=h.residentStore.getPlatformSchedule(record.sessionId).lastOccurrenceAt
+    await tick()
+    await wait(()=>{const at=h.residentStore.getPlatformSchedule(record.sessionId).lastOccurrenceAt;return at&&at>gapOccurrence},'unchanged verification gap settles without stopping')
+    if(everyReport)await wait(()=>reports().length===4,'short confirmation is sent again as explicitly requested')
+    await h.service.whenIdle()
+    assert.equal(reports().length,everyReport?4:2);assert.equal(pages().length,4)
+    if(everyReport)assert.equal(reports().at(-1).payload.text,'本轮已复核，没有新变化。')
+    assert.equal((await schedule.catalog())[0].status,'active','unchanged incomplete evidence never stops the monitor')
   }finally{execution.resolve()}
+}))
+
+test('unbound periodic listing cannot expose other task detail, even in the same group',
+ {timeout:nativeLifecycleTimeout(25000)},nativeLifecycle(25000,async t=>{
+  await t.beginBusiness()
+  const f=await fixture(t,{probeUnbound:true,extraTasks:[
+    {taskId:'unrelated-task',groupId:'periodic-room',title:'Unrelated same-group task',state:'completed',status:'completed',completion:{summary:'UNRELATED_EVIDENCE_MUST_NOT_APPEAR'}},
+    {taskId:'other-group-task',groupId:'other-group',title:'Other channel',state:'completed',status:'completed',completion:{summary:'OTHER_CHANNEL_EVIDENCE_MUST_NOT_APPEAR'}},
+  ]})
+  await f.bridge.submit(f.source,{title:'Progress',prompt:'Check current work without a linked task',every_seconds:600})
+  const [record]=await f.h.ctx.schedule.catalog();await f.tick()
+  await waitUntil(()=>!!f.h.residentStore.getPlatformSchedule(record.sessionId).lastOccurrenceAt,'read-only denial was settled silently')
+  assert.deepEqual(f.queryResults[0].items.map(row=>row.taskId),['observed-task','unrelated-task'])
+  assert.deepEqual(f.queryResults[0].eligibleEvidenceTaskIds,[])
+  assert.ok(f.denials[0].isError)
+  assert.match(JSON.stringify(f.denials[0]),/platform_task_evidence_outside_scope/)
+  assert.doesNotMatch(JSON.stringify(f.h.requests),/UNRELATED_EVIDENCE_MUST_NOT_APPEAR|OTHER_CHANNEL_EVIDENCE_MUST_NOT_APPEAR/)
+  assert.equal(f.outbox().length,0)
 }))
 
 test('superseding the original source ends its recurring schedule without another report',
