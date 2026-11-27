@@ -1,5 +1,5 @@
 import {currentTaskMilestone,taskMilestoneId,taskMilestonePending,taskMilestoneView} from '../../src/tasks/milestone-notification.js'
-import {reportedWorkFile} from '../../src/tasks/delivery.js'
+import {reportedDeliveryFile} from '../../src/tasks/delivery.js'
 import {blockedReplyId,completionReplyId,currentOutcomeBinding,suppressChannelOutcome} from '../../src/channels/router-task-context.js'
 import {inspectionVersion,taskInspectionReason,inspectionIsCurrent,inspectionHoldsExecution,taskProviderFailureLabels} from '../../src/tasks/inspection.js'
 import {sourceHasNewerVersion,sourceHistorySchema} from '../../src/channels/source-history.js'
@@ -144,7 +144,7 @@ function durableMarker(path, value, initial = false) {
 
 /** New-instance initialization is explicit. An ingress epoch can only be bound to a new ledger.
  * Current Night ledgers upgrade in place only through their own explicit schema gates. */
-export async function openDynamicTaskStore({ dbPath, instanceId, initialize = false, migrate = false, migrationExpectedDigest, paginationMigrate = false, ingressEpoch, webActorId, ownerActorId, resourceCatalog: configuredResourceCatalog, startupObserver, ...unsupported } = {}) {
+export async function openDynamicTaskStore({ dbPath, instanceId, initialize = false, migrate = false, migrationExpectedDigest, paginationMigrate = false, ingressEpoch, webActorId, ownerActorId, resourceCatalog: configuredResourceCatalog, startupObserver, privateFileRecipient, ...unsupported } = {}) {
   if (Object.hasOwn(unsupported, 'legacyDbPath')) fail('DYNAMIC_LEGACY_IMPORT_RETIRED')
   const startup = createStartupMetrics(startupObserver)
   if (migrationExpectedDigest !== undefined && !/^[a-f0-9]{64}$/.test(migrationExpectedDigest)) fail('DYNAMIC_ARGUMENT_INVALID', 'migrationExpectedDigest')
@@ -554,16 +554,24 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       ||task.archiveRestore?.reviewRequired||notification.archiveRestoreHold)fail('DYNAMIC_TASK_DELIVERY_STALE')
     if(task.archivedAt&&!allowArchived)fail('DYNAMIC_TASK_DELIVERY_ARCHIVED')
     const source=get('dynamic_sources',text(p.sourceId,'sourceId')),ref=record(p.sourceRef)
-    if(source.groupId!==task.groupId||p.conversationId!==task.groupId||!task.sourceRefs.includes(source.sourceId)&&source.actorId!==task.ownerActorId
+    const reported=selection.reportedFiles===undefined?undefined:array(selection.reportedFiles)
+    const audience=notificationAudience(p)
+    // A different author is allowed only when live transport still binds the file to the task owner.
+    const ownerRecipient=reported!==undefined&&source.actorId!==task.ownerActorId&&p.privateFileRecipientActorId!==undefined
+      &&p.privateFileRecipientActorId===task.ownerActorId&&!audience.atAll
+      &&audience.recipientActorIds?.length===1&&audience.recipientActorIds[0]===task.ownerActorId
+    const recipient=ownerRecipient?privateFileRecipient?.(source):undefined
+    const privateOwner=recipient!==undefined&&recipient===task.ownerActorId
+    if(p.privateFileRecipientActorId!==undefined&&!privateOwner)fail('DYNAMIC_TASK_DELIVERY_SOURCE_INVALID')
+    if(source.groupId!==task.groupId||p.conversationId!==task.groupId||!task.sourceRefs.includes(source.sourceId)&&source.actorId!==task.ownerActorId&&!privateOwner
       ||p.sourceVersion!==source.version||digest(ref)!==digest({messageId:source.messageId,messageVersion:source.version,actorId:source.actorId})
       ||source.authorizationRevoked||source.triageHold||source.archiveRestoreHold
       ||all('dynamic_sources',"WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId')=?",[source.groupId,source.messageId]).some(row=>row.version>source.version))fail('DYNAMIC_TASK_DELIVERY_SOURCE_INVALID')
-    const reported=selection.reportedFiles===undefined?undefined:array(selection.reportedFiles)
     const parent=p.artifact===undefined?notification:get('dynamic_notifications',text(p.deliveryId,'deliveryId'))
     const frozen=reported===undefined?task.completion?.result?.artifactFiles??[]:array(parent.payload.artifactFiles)
     if(reported!==undefined&&(selection.artifactIds!==undefined||p.completionBinding||source.retracted||reported.length!==frozen.length
       ||new Set(reported.map(entry=>entry.path)).size!==reported.length
-      ||reported.some((entry,i)=>!reportedWorkFile(task,source,selection.requirementRevision,entry.path)
+      ||reported.some((entry,i)=>!reportedDeliveryFile(task,source,selection.requirementRevision,entry.path,privateOwner?recipient:undefined)
         ||frozen[i]?.artifact?.producer?.outputRef!=='reported:'+entry.path||frozen[i].caption!==entry.caption)))fail('DYNAMIC_TASK_DELIVERY_INVALID')
     const ids=reported===undefined?array(selection.artifactIds):frozen.map(file=>file.artifact?.artifactId)
     if(!ids.length||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string'||!id))fail('DYNAMIC_TASK_DELIVERY_INVALID')
@@ -583,6 +591,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
         ||parentPayload.artifact!==undefined||digest(parentPayload.taskDelivery??null)!==digest(selection)
         ||digest(parentPayload.artifactFiles??[])!==digest(selected)||parentPayload.sourceId!==source.sourceId
         ||parentPayload.sourceVersion!==source.version||digest(parentPayload.sourceRef??null)!==digest(ref)
+        ||parentPayload.privateFileRecipientActorId!==p.privateFileRecipientActorId
         ||digest(audience.recipientActorIds??null)!==digest(parentAudience.recipientActorIds??null)||audience.atAll!==parentAudience.atAll
         ||digest(p.artifact)!==digest(file.artifact)||p.artifactFiles!==undefined||p.text!==file.artifact.fileName+'：'+file.caption
         ||notification.id!==parent.id+':file:'+file.artifact.artifactId||p.afterNotificationId!==expectedAfter)fail('DYNAMIC_TASK_DELIVERY_INVALID')

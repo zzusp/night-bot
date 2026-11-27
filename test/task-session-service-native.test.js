@@ -709,7 +709,8 @@ test('official Host freezes raw PDF files for real Pi tools and rejects malforme
     assert.ok(JSON.stringify(results).includes('HOST_FILE_BYTES_4B71'))
     assert.ok(results.some(result => result.toolName === 'write' && result.isError))
     return [singleResult('wait', 'The delivered original file was read; retain it for the authorized follow-up')]
-  }, { serviceFactory: options => openTaskSessionService({ ...options, readResource: async (_group, _message, resource) => {
+  }, { compactionSummary: 'Verify the original PDF bytes and preserve the Host-owned material without editing or redownloading it.',
+    serviceFactory: options => openTaskSessionService({ ...options, readResource: async (_group, _message, resource) => {
     reads++
     const file = { name: 'report.pdf', mediaType: 'application/pdf', data: bytes }
     if (resource.resourceId === 'slash') file.name = '../report.pdf'

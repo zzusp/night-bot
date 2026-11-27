@@ -11,7 +11,7 @@ import {assertPiTaskBackend} from '../../src/runtime/pi-task-backend.js'
 import {AsyncLocalStorage} from 'node:async_hooks'
 import {agentObservationSchema} from '../../src/runtime/pi-agent-observation.js'
 import {TaskArchives} from '../../src/tasks/archive.js'
-import {freezeSingleTaskFiles,reportedWorkFile} from '../../src/tasks/delivery.js'
+import {freezeSingleTaskFiles,reportedWorkFile,reportedDeliveryFile} from '../../src/tasks/delivery.js'
 import {createSingleTaskSessions,historicalTaskResultEvidence} from '../../src/tasks/single-session.js'
 import {routerHandoffTaskInput} from '../../src/tasks/execution-context.js'
 import {createTaskEffectReconciliation,taskEffectReconciliationIdentity,taskEffectDigest,effectReconciliationAuditKinds} from '../../src/tasks/effect-reconciliation.js'
@@ -105,7 +105,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   await mkdir(dirname(config.dbPath), { recursive: true })
   const store = suppliedStore ?? await openDynamicTaskStore({ dbPath: config.dbPath, instanceId: config.instanceId,
     initialize: config.initialize === true, migrate: config.migrate === true, ingressEpoch: config.ingressEpoch, webActorId: config.webActorId, ownerActorId: config.ownerActorId,
-    resourceCatalog: await readExecutionResourceCatalog(root), startupObserver })
+    resourceCatalog: await readExecutionResourceCatalog(root), startupObserver,
+    privateFileRecipient: source => ctx.get('channels')?.privateFileRecipient(source) })
   try {
     createExecutionResourceCatalog(await store.query({ kind: 'resource.catalog' }))
   } catch (error) {
@@ -1039,12 +1040,29 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     const explicitAudience=kind!=='platform-reply'&&audience.recipientActorIds!==undefined
     const boundTaskId=selection?.taskId??args.completionBinding?.taskId??args.blockedBinding?.taskId
     const finalReply=kind==='platform-reply'||!!selection||explicitAudience
-    const explicitQuote=args.replyToSource===true
+    let explicitQuote=args.replyToSource===true
     const previous=await measure('router-reply-lookup',()=>query('notification.get',{notificationId}))
     const channels=ctx.get('channels'),context=channels.groupContext(source.groupId)
     const transport=channels.transports.get(context?.channelId)
     const supportsQuote=transport?.capabilities?.quotedReplies?.includes(context?.type)
-    let boundTask,requestedRecipients=audience.recipientActorIds
+    let boundTask,requestedRecipients=audience.recipientActorIds,privateRecipient
+    if(selection?.reportedFiles){
+      if(!previous){
+        boundTask=await requireTask(boundTaskId)
+        if(boundTask.ownerActorId!==source.actorId&&boundTask.groupId===source.groupId){
+          privateRecipient=channels.privateFileRecipient(source)
+          if(privateRecipient===undefined||privateRecipient!==boundTask.ownerActorId||args.atAll
+            ||requestedRecipients?.some(actor=>actor!==privateRecipient))fail('TASK_DELIVERY_SOURCE_STALE')
+          requestedRecipients=[privateRecipient]
+          explicitQuote=false
+        }
+      }else if(previous.payload.privateFileRecipientActorId!==undefined){
+        const recipient=previous.payload.privateFileRecipientActorId
+        if(args.atAll||requestedRecipients?.some(actor=>actor!==recipient))fail('TASK_DELIVERY_SOURCE_STALE')
+        requestedRecipients=[recipient]
+        explicitQuote=false
+      }
+    }
     if(boundTaskId&&!explicitAudience&&!explicitQuote&&!args.atAll){
       if(previous)requestedRecipients=notificationAudience(previous.payload).recipientActorIds
       else if(context?.type==='chat-room'){
@@ -1099,10 +1117,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     let artifactFiles=args.artifactFiles??[]
     if(selection){
       const task=boundTask?.taskId===selection.taskId?boundTask:await requireTask(selection.taskId)
-      if(task.groupId!==source.groupId||!task.sourceRefs.includes(source.sourceId)&&task.ownerActorId!==source.actorId||task.status!=='completed'||task.archivedAt
+      if(task.groupId!==source.groupId||!task.sourceRefs.includes(source.sourceId)&&task.ownerActorId!==source.actorId&&privateRecipient===undefined||task.status!=='completed'||task.archivedAt
         ||task.requirementRevision!==selection.requirementRevision||task.archiveRestore?.reviewRequired)fail('TASK_DELIVERY_SOURCE_STALE')
       if(selection.reportedFiles){
-        if(!selection.reportedFiles.every(file=>reportedWorkFile(task,source,selection.requirementRevision,file.path)))fail('TASK_DELIVERY_ARTIFACT_NOT_REPORTED')
+        if(!selection.reportedFiles.every(file=>reportedDeliveryFile(task,source,selection.requirementRevision,file.path,privateRecipient)))fail('TASK_DELIVERY_ARTIFACT_NOT_REPORTED')
         artifactFiles=await freezeSingleTaskFiles({reported:task.completion.result.artifacts,selected:selection.reportedFiles,
           task,directory:await taskWorkspace(root,task.taskId,task),files:deliveryFiles,reportedDelivery:true})
       }else artifactFiles=selection.artifactIds.map(id=>{
@@ -1124,7 +1142,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       exec?.signal.throwIfAborted()
     }
     const receipt=await measure('router-reply-register',()=>command('notification.prepare',{notificationId,...attachmentDeliveryUnsupported?{attachmentDeliveryUnsupported:true}:{},...args.milestoneBinding?{milestoneBinding:args.milestoneBinding}:{},...exec?{routerGeneration:args.generation}:{},taskId:selection?.taskId??null,requirementRevision:selection?.requirementRevision??1,kind,
-      payload:{text,...standaloneMarkdown?{textFormat:'markdown'}:{},...bindings,conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceMessageId:replyToMessageId,actorId:replyToActorId,
+      payload:{text,...standaloneMarkdown?{textFormat:'markdown'}:{},...bindings,...privateRecipient===undefined?{}:{privateFileRecipientActorId:privateRecipient},conversationId:source.groupId,sourceId:source.sourceId,sourceVersion:source.version,sourceMessageId:replyToMessageId,actorId:replyToActorId,
         sourceRef:{messageId:source.messageId,messageVersion:source.version,actorId:source.actorId},replyToMessageId,replyToActorId,
         recipientActorIds:recipients,...(args.atAll?{atAll:true}:{}),replyKind:'substantive',taskIds:selection?[selection.taskId]:[],topicRefs:[],replyRequest:request,...(args.replyPurpose?{replyPurpose:args.replyPurpose}:{}),
         ...(selection?{taskDelivery:selection}:{}),...(artifactFiles.length?{artifactFiles,deliveryId:notificationId}:{})}},'prepare-notification:'+notificationId))

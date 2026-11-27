@@ -239,7 +239,7 @@ export function openSharedResources({dbPath,instanceId}){
   const {bytes}=db.prepare('SELECT bytes FROM shared_versions WHERE id=? AND version=?').get(file.id,file.version)
   check(article.links.length===1&&article.links[0].id===file.id&&article.links[0].version===file.version&&
    bytes.length===file.size&&hex(bytes)===file.sha256&&file.sha256===result.file.sha256,'INTEGRITY')
-  return {...result,verified:true}
+  return {...result,verified:true,visibility:'bot-instance',originalDisposition:'retained'}
  }
  return {execute,verifyForwardReceipt,metadataForUpdate,verifyImport,close:()=>db.close()}
 }

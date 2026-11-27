@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
+import {createHash} from 'node:crypto'
+import {taskWorkspace} from '../packages/dingtalk-core/session-workspaces.js'
 import {join} from 'node:path'
 import {piJournalFilename} from '../src/runtime/pi-journal.js'
 import {backupTask,validateTaskArchive} from '../src/tasks/archive.js'
@@ -25,6 +27,9 @@ test('attachment preflight never replaces a claimed send or an existing receipt'
 })
 
 const reportedPath='work/report.md', importName='合成资料归档'
+const cleanupHash=createHash('sha256').update(contents).digest('hex')
+const cleanupPath=reportedPath, neighborPath='work/keep.md'
+const cleanupCommand=`set -eu; digest=$(sha256sum -- '${cleanupPath}'); test "\${digest%% *}" = '${cleanupHash}'; rm -- '${cleanupPath}'; test ! -e '${cleanupPath}'`
 async function attachmentFixture(t,files=['chat-room'],holdCompletion=false){
  let h,phase='open'
  const setPhase=value=>{phase=value}
@@ -37,6 +42,23 @@ async function attachmentFixture(t,files=['chat-room'],holdCompletion=false){
   const names=requestTools(body)
   if(names.includes('task_result')){
    if(result(body,'task_result'))return {text:'Done'}
+   const texts=requestText(body)
+   if(texts.some(text=>text.includes('按原交办清理已核对的旧原件'))){
+    if(result(body,'bash')){
+     const ok=h.results.findLast(row=>row.name==='bash')?.result.value?.exitCode===0
+     return call('task_result',{decision:ok
+      ?{action:'complete',summary:'合成原件已入库，旧文件已清理。',evidence:[cleanupHash],limitations:[]}
+      :{action:'blocked',summary:'旧文件未清理。',evidence:[],limitations:['清理命令未成功。']}})
+    }
+    assert.ok(texts.some(text=>text.includes(cleanupHash)&&text.includes(cleanupPath)))
+    return call('bash',{description:'核对摘要后清理指定合成旧文件',command:cleanupCommand})
+   }
+   if(texts.some(text=>text.includes('并留一份不清理的旁文件'))&&!body.messages.some(msg=>msg.tool_calls?.some(call=>call.function.name==='write'))){
+    return call('write',{path:neighborPath,content:'保留这份合成旁文件'})
+   }
+   if(result(body,'write')&&JSON.parse(body.messages.findLast(msg=>msg.tool_calls).tool_calls.at(-1).function.arguments).path===neighborPath){
+    return call('write',{path:cleanupPath,content:contents})
+   }
    if(requestText(body).some(text=>text.includes('跨渠道读取合成资料'))){
     if(!result(body,'shared_resource_lookup'))return call('shared_resource_lookup',{action:'search',query:importName,kind:'file'})
     const reply=JSON.parse(body.messages.at(-1).content)
@@ -50,6 +72,21 @@ async function attachmentFixture(t,files=['chat-room'],holdCompletion=false){
   if(!names.includes('resident_router_settle'))return {text:'No work'}
   if(result(body,'resident_router_settle'))return {text:'Settled'}
   const packet=requestEnvelope(body,'Router 请求：'),event=packet.events.find(row=>row.source)
+  if(event?.source.messageId==='import-cleanup'){
+   if(result(body,'resident_task_action'))return call('resident_router_settle',{operationId:'settle-cleanup',eventIds:packet.events.map(row=>row.id)})
+   const task=await h.query('task.get',{taskId:'task-cleanup-draft'})
+   if(result(body,'resident_router_shared_import')){
+    acceptedImport=JSON.parse(body.messages.at(-1).content)
+    assert.equal(acceptedImport.verified,true)
+    assert.equal(acceptedImport.visibility,'bot-instance')
+    assert.equal(acceptedImport.originalDisposition,'retained')
+    return call('resident_task_action',{operationId:'cleanup-original',sourceId:event.sourceId,messageVersion:event.messageVersion,kind:'reopen',
+     taskId:task.taskId,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision,sameGoal:true,
+     handoff:`按原交办清理已核对的旧原件 ${cleanupPath}；已入库的文件版本 ${acceptedImport.file.version}，SHA-256 ${acceptedImport.file.sha256}。只清理这一份。`})
+   }
+   return call('resident_router_shared_import',{sourceId:event.sourceId,messageVersion:event.messageVersion,sourceQuote:event.source.text,
+    taskId:task.taskId,requirementRevision:task.requirementRevision,path:cleanupPath,name:importName})
+  }
   if(['import-existing','import-other-room','import-stale','import-unreported'].includes(event?.source.messageId)){
    const negative=event.source.messageId!=='import-existing'
    if(negative&&result(body,'resident_router_shared_import'))return call('resident_router_settle',{operationId:'settle-'+event.source.messageId,eventIds:packet.events.map(row=>row.id),
@@ -64,7 +101,7 @@ async function attachmentFixture(t,files=['chat-room'],holdCompletion=false){
    return call('resident_router_shared_import',{sourceId:event.sourceId,messageVersion:event.messageVersion,sourceQuote:event.source.text,
      taskId:task.taskId,requirementRevision:task.requirementRevision+Number(event.source.messageId==='import-stale'),path:event.source.messageId==='import-unreported'?'work/../materials/source.md':reportedPath,name:importName})
   }
-  if(['send-existing','send-reported','send-other-room','send-other-author'].includes(event?.source.messageId)){
+  if(['send-existing','send-reported','send-bound-account','send-other-room','send-other-author'].includes(event?.source.messageId)){
    const fromReported=event.source.messageId!=='send-existing'
    if(result(body,'resident_router_reply'))return call('resident_router_settle',{operationId:'settle-'+event.source.messageId,eventIds:packet.events.map(row=>row.id),
     noTaskDispositions:[{eventId:event.id,outcome:event.source.messageId.startsWith('send-other-')?'context-only':'handled-inline',reason:'Request checked through Router.',sourceQuote:event.source.text}]})
@@ -75,7 +112,7 @@ async function attachmentFixture(t,files=['chat-room'],holdCompletion=false){
   if(event&&!planned.has(event.source.messageId)){
    const id='task-'+event.source.messageId
    planned.set(event.source.messageId,{id,source:event.source})
-   return call('resident_task_plan',{operationId:id,sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:id,title:id,objective:'创建一次合成测试草稿',requirements:[],handoff:'在 work/report.md 保留合成测试草稿'+(id==='task-reported'?'，仅记录原件':id==='task-lookup'?'，跨渠道读取合成资料':'')}],dependencies:[]})
+   return call('resident_task_plan',{operationId:id,sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:id,title:id,objective:'创建一次合成测试草稿',requirements:[],handoff:'在 work/report.md 保留合成测试草稿'+(id==='task-cleanup-draft'?'，仅记录原件并留一份不清理的旁文件':id==='task-reported'?'，仅记录原件':id==='task-lookup'?'，跨渠道读取合成资料':'')}],dependencies:[]})
   }
   const done=packet.events.find(row=>row.kind==='task.completed')
   if(done?.taskId==='task-reported'&&holdCompletion)return {text:'Leave this completed event pending for cold recovery.'}
@@ -100,6 +137,7 @@ async function attachmentFixture(t,files=['chat-room'],holdCompletion=false){
    return store
   },
   strictModelDecisions:true,transportCapabilities:capabilities,channelIds:['resident-fixture','other-fixture'],
+  privatePeer:input=>input.channelId==='resident-fixture'&&input.conversationId==='private-room'&&input.type==='chat'&&['alice','bound-account'].includes(input.senderId)?'alice':undefined,
   canSend:row=>!(holdOldFile&&row.payload.artifact&&row.payload.sourceRef.messageId==='old'),
   async send(envelope){
    const receipt={messageId:'text-proof-'+attempts.length,visible:true}
@@ -195,10 +233,24 @@ test('Router sends, imports and seals an original reported by a completed task',
  const sha256=file.payload.artifact.sha256
  assert.deepEqual(attempts.map(row=>[row.kind,row.envelope.type,row.envelope.conversationId]),[['text','chat','private-room'],['file','chat','private-room']])
  assert.deepEqual((await h.query('task.get',{taskId:'task-reported'})).completion,original.completion)
+ const replyFromAccount=channelMessage('send-bound-account',{type:'chat',conversationId:'private-room',senderId:'bound-account',text:'把刚才留的草稿原件发回这个私聊。'})
+ const throughPeer=await deliver(replyFromAccount,'delivered')
+ for(const part of throughPeer){
+  assert.notEqual(part.payload.sourceRef.actorId,original.ownerActorId)
+  assert.deepEqual(part.payload.recipientActorIds,[original.ownerActorId])
+  assert.equal(part.payload.privateFileRecipientActorId,original.ownerActorId)
+  assert.ok(part.receipt.messageId)
+ }
+ assert.equal(throughPeer.find(part=>part.payload.artifact).payload.artifact.sha256,sha256)
+ assert.deepEqual((await h.query('task.get',{taskId:'task-reported'})).completion,original.completion)
  await receive(channelMessage('import-existing',{type:'chat',conversationId:'private-room',text:'刚才那份草稿也收录到我们的知识库吧。'}))
  const {acceptedImport}=fixture
  assert.equal(acceptedImport?.verified,true,JSON.stringify(h.results.filter(row=>row.name==='resident_router_shared_import').map(row=>row.result)))
  assert.equal(acceptedImport.file.sha256,sha256)
+ assert.equal(acceptedImport.visibility,'bot-instance')
+ assert.equal(acceptedImport.originalDisposition,'retained')
+ const originalDirectory=await taskWorkspace(h.host.ctx.runtimePaths.workspaces,original.taskId,original)
+ assert.equal(await readFile(join(originalDirectory,reportedPath),'utf8'),contents)
  assert.deepEqual((await h.query('task.get',{taskId:'task-reported'})).completion,original.completion)
  assert.equal((await h.query('task.list')).length,1)
  const sentBeforeRepeat=attempts.length
@@ -230,5 +282,39 @@ test('Router sends, imports and seals an original reported by a completed task',
  const wrong=structuredClone(ledger);wrong.tables.sources.find(row=>row.id===request.id).body.actorId='other-actor'
  wrong.digest=ledgerDigest({version:wrong.version,taskId:wrong.taskId,tables:wrong.tables})
  assert.throws(()=>validateTaskLedger(wrong),/TASK_ARCHIVE_ROW_SCOPE_INVALID/)
+ const wrongRecipient=structuredClone(ledger)
+ const crossed=wrongRecipient.tables.notifications.find(row=>row.body.payload.sourceRef?.messageId==='send-bound-account'&&row.body.payload.artifact)
+ assert.ok(crossed)
+ crossed.body.payload.recipientActorIds=[crossed.body.payload.sourceRef.actorId]
+ wrongRecipient.digest=ledgerDigest({version:wrongRecipient.version,taskId:wrongRecipient.taskId,tables:wrongRecipient.tables})
+ assert.throws(()=>validateTaskLedger(wrongRecipient),/TASK_ARCHIVE_ROW_SCOPE_INVALID/)
+ setPhase('verified')
+})
+
+test('explicit import and cleanup reuses the original execution and removes only the verified file',{timeout:nativeTestTimeout(65000),
+ skip:process.platform!=='linux'&&'实际清理由 Linux 安装沙箱验证；其他系统不提供该受限 shell 合同'},async t=>{
+ const fixture=await attachmentFixture(t),{h,setPhase}=fixture
+ const originalInput=channelMessage('cleanup-draft',{text:'留一份合成草稿和一份不清理的旁文件，先不用发。'})
+ await h.receive(originalInput);await h.service.whenIdle()
+ const taskId='task-cleanup-draft',original=await h.query('task.get',{taskId})
+ assert.equal(original.status,'completed')
+ const directory=await taskWorkspace(h.host.ctx.runtimePaths.workspaces,taskId,original)
+ assert.equal(await readFile(join(directory,cleanupPath),'utf8'),contents)
+ setPhase('import-cleanup')
+ await h.receive(channelMessage('import-cleanup',{text:'把刚才留的草稿收录到知识库，确认收录后只清理这份旧草稿。'}))
+ await h.service.whenIdle().catch(error=>{
+  const detail=e=>e&&{message:e.message,code:e.code,cause:detail(e.cause),businessFailure:detail(e.businessFailure),errors:e.errors?.map(detail)}
+  t.diagnostic(JSON.stringify({error:detail(error),agentErrors:h.errors.map(detail),toolResults:h.results.slice(-6).map(row=>[row.name,row.result.error?.code??row.result.value?.exitCode??row.result.error]),alerts:h.service.listAlerts()}))
+  throw error
+ })
+ const final=await h.query('task.get',{taskId})
+ const execution=h.results.findLast(row=>row.name==='bash')?.result
+ assert.equal(execution?.value?.exitCode,0,JSON.stringify({execution,errors:h.errors.map(error=>error.message),alerts:h.service.listAlerts()}))
+ assert.equal(final.sessionId,original.sessionId)
+ assert.equal(final.status,'completed')
+ assert.equal(final.completion.result.summary,'合成原件已入库，旧文件已清理。')
+ assert.equal(fixture.acceptedImport.file.sha256,cleanupHash)
+ await assert.rejects(readFile(join(directory,cleanupPath)),{code:'ENOENT'})
+ assert.equal(await readFile(join(directory,neighborPath),'utf8'),'保留这份合成旁文件')
  setPhase('verified')
 })

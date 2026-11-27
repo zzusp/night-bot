@@ -38,6 +38,18 @@ export default class Channels extends Service {
     const actorId=context.memoryBinding?.actorId
     return Object.hasOwn(participants,actorId)&&matches(actorId,participants[actorId])?actorId:undefined
   }
+  privateFileRecipient(source){
+    if(source.channel!=='im')return
+    const context=this.contexts.get(source.groupId),fact=context?.messageFacts?.[source.messageId]
+    if(context?.type!=='chat'||!fact||fact.actorId!==source.actorId||fact.version!==source.version||fact.retracted)return
+    const senderId=context.participants?.[source.actorId]
+    if(!senderId||channelActor(context.channelId,senderId)!==source.actorId)return
+    const input={...context,senderId},peer=this.boundPrivatePeer(input)
+    if(!peer)return
+    this.assertInputTarget(input)
+    const actorId=this.privateScopeActor(context,source.groupId)
+    if(actorId===channelActor(context.channelId,peer))return actorId
+  }
   targetMatches(context,target){
     if(context.type!==target.type||context.conversationId!==target.conversationId)return false
     if(target.type!=='chat')return true
