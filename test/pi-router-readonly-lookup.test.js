@@ -1,5 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {createHash} from 'node:crypto'
+import {readFile,writeFile} from 'node:fs/promises'
+import {join} from 'node:path'
+import {decodePiJournal,piJournalFilename} from '../src/runtime/pi-journal.js'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestText,eventually} from './fixtures/resident-router-host.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 const call=(tool,args)=>({tool,args})
@@ -183,7 +187,36 @@ test('queued lookups time out independently and an unresponsive read does not ha
  assert.equal(notifications.length,2)
 })
 
-test('Router resumes its original timed-out lookup batch without another message or repeated effects',{timeout:nativeTestTimeout(45000)},async t=>{
+const hash=value=>createHash('sha256').update(value).digest('hex')
+
+async function installLegacyLookupCheckpoint(file,sessionId,packetId,legacyIdentity){
+ const lines=(await readFile(file,'utf8')).trimEnd().split('\n').map(JSON.parse)
+ const [header,...entries]=lines
+ let previous=null, batch=[], found=0
+ for(const entry of entries){
+  const receipt=entry.customType==='night.audit'&&entry.data.domain==='admission'&&entry.data.kind==='enqueued'&&entry.data.payload.id===packetId
+  const input=entry.customType==='night.business-input'&&entry.details.packetId===packetId
+  if(receipt||input){
+   const source=receipt?entry.data.payload.source:entry.details.source
+   assert.notEqual(source.ledgerIdentity,legacyIdentity)
+   source.ledgerIdentity=legacyIdentity
+   found++
+  }
+  if(entry.customType==='night.commit'){
+   entry.data.entriesHash=hash((previous===null?JSON.stringify(header)+'\n':'')+batch.map(row=>JSON.stringify(row)).join('\n'))
+   previous=entry.id
+   batch=[]
+  }else batch.push(entry)
+ }
+ assert.equal(found,2,'the admission receipt and Pi input both carry the old identity')
+ const contents=Buffer.from(lines.map(row=>JSON.stringify(row)).join('\n')+'\n')
+ decodePiJournal(contents,sessionId,{requireComplete:true})
+ await writeFile(file,contents)
+}
+
+for(const legacy of [false,true])test(legacy
+ ? 'Router cold recovery accepts a committed old lookup packet with its progress-only identity'
+ : 'Router resumes its original timed-out lookup batch without another message or repeated effects',{timeout:nativeTestTimeout(45000)},async t=>{
  const taskId='timeout-retained-task',answer='The retained task is still paused.',operationId='lookup-before-router-timeout'
  let h,source,lookupId,completedId,reads=0,timeouts=0,submits=0,replies=0
  h=await residentRouterHost(t,async body=>{
@@ -226,9 +259,23 @@ test('Router resumes its original timed-out lookup batch without another message
  assert.deepEqual(waiting.map(e=>e.state),['pending','pending']);assert.equal(waiting[0].progressOnly,true)
  assert.equal(timeouts,2)
  await h.service.whenIdle().catch(error=>{assert.equal(error.code,'ROUTER_BATCH_UNSETTLED')})
- // Use the same recovery entry as the periodic service tick, without an inbound message.
- const recovered=await h.service.recover()
- assert.deepEqual((await events()).map(e=>e.state),['consumed','consumed'],JSON.stringify(recovered))
+ const {packetId,failedEntryId}=router.timeoutContinuation
+ let legacyIdentity
+ if(legacy){
+  const {stages,...originalSource}=waiting[0].source
+  assert.equal(waiting[0].triageReply,undefined)
+  // Former compact-packet identity, when the ledger flag was already present
+  // at enqueue. Only the durable admission and Pi envelope encoding differs.
+  legacyIdentity=hash(JSON.stringify({conversationId,generation:router.generation,events:[{...waiting[0],source:originalSource}]}))
+  const file=join(h.host.ctx.runtimePaths.state,'sessions',piJournalFilename(router.activeSessionId))
+  await h.close();await h.host.close()
+  await installLegacyLookupCheckpoint(file,router.activeSessionId,packetId,legacyIdentity)
+  await h.restart()
+ }else{
+  // Periodic service recovery, without a new inbound message.
+  const recovered=await h.service.recover()
+  assert.deepEqual((await events()).map(e=>e.state),['consumed','consumed'],JSON.stringify(recovered))
+ }
  await h.service.whenIdle()
  const after=await h.query('router.get',{conversationId})
  const notices=(await h.query('notification.list')).filter(n=>n.payload?.sourceId===source.sourceId)
@@ -238,8 +285,10 @@ test('Router resumes its original timed-out lookup batch without another message
  assert.equal(after.activeSessionId,router.activeSessionId);assert.equal(after.generation,router.generation);assert.equal(after.timeoutContinuation,undefined)
  assert.deepEqual(await h.query('task.get',{taskId}),before);assert.deepEqual(await h.query('execution.list'),executions)
  const {entries}=await h.host.ctx.sessionPersistence.readNative(after.activeSessionId,{requireComplete:true})
- const {packetId,failedEntryId}=router.timeoutContinuation
- assert.equal(entries.filter(e=>e.customType==='night.business-input'&&e.details?.packetId===packetId).length,1)
+ assert.deepEqual((await events()).map(e=>e.state),['consumed','consumed'])
+ const originalInputs=entries.filter(e=>e.customType==='night.business-input'&&e.details?.packetId===packetId)
+ assert.equal(originalInputs.length,1)
+ if(legacy)assert.equal(originalInputs[0].details.source.ledgerIdentity,legacyIdentity,'recovery keeps the original journal input')
  assert.equal(entries.filter(e=>e.customType==='night.router-resume-claim'&&e.details?.failedEntryId===failedEntryId).length,1)
 })
 

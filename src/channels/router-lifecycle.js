@@ -31,13 +31,14 @@ function comparableRouterPacket(packet){
   return copy
 }
 export const sameRouterPacket=(left,right)=>isDeepStrictEqual(comparableRouterPacket(left),comparableRouterPacket(right))
-export function routerPacketViews(row,batch){
+function buildRouterPacketViews(row,batch,legacyProgressIdentity=false){
     const id=`router-input:${hash([row.id,batch.map(event=>event.id)])}`
     const body={conversationId:row.id,generation:row.generation,events:batch.map(event=>{
       // The lookup receipt can make a source read-only after admission. Business
       // tools enforce that flag from the live ledger; it is not input identity.
-      const {progressOnly,...input}=operatorInput(event)
-      return {...input,...event.source?{source:withoutTiming(event.source)}:{}}
+      const original=operatorInput(event)
+      const {progressOnly,...input}=original
+      return {...legacyProgressIdentity?original:input,...event.source?{source:withoutTiming(event.source)}:{}}
     })}
     const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id),...(batch.every(event=>event.kind==='operator.message')?{webOnly:true}:{}),...traceSourcesMetadata(batch.filter(event=>event.kind==='source.message'&&event.source).map(event=>event.source)),...traceTaskEventsMetadata(batch)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:body.events.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
     // Bind the compact view to every immutable ledger field, including fields
@@ -47,6 +48,15 @@ export function routerPacketViews(row,batch){
     const current=batch.some(event=>event.taskEvent?.kind==='task.completed')?{...compact,source:{...compact.source,modelViewVersion:2},content:[{type:'text',text:'Router 请求：'+JSON.stringify(routerModelBody(row,batch,{compactCompletion:true}))}]}:undefined
     return [...current?[current]:[],compact,packet,{...packet,content:[{type:'text',text:'Router 请求：'+JSON.stringify(body)}]}]
   }
+
+export function routerPacketViews(row,batch){
+  const current=buildRouterPacketViews(row,batch)
+  // Only the first view is written for new input. The additional views exactly
+  // reconstruct pre-upgrade packets using the current ledger, not the saved hash.
+  return batch.some(event=>event.progressOnly===true)
+    ? [...current,...buildRouterPacketViews(row,batch,true)]
+    : current
+}
 
 /** 串行调度只负责 Host 生命周期；推理、队列和历史始终由官方 Pi 执行。 */
 export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,agentPreset='night-bot',recordStage}){

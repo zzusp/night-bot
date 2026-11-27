@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {createHash} from 'node:crypto'
 import {routerModelEvent,routerModelBody,routerModelBatch} from '../src/channels/router-model-input.js'
 import {sameRouterPacket,routerPacketViews} from '../src/channels/router-lifecycle.js'
 
@@ -90,4 +91,27 @@ test('bound triage conclusion preserves originals with/without reply; identity g
  const old=event();assert.equal(routerModelEvent(old).triageConclusion,undefined);const packet=routerPacketViews(row,[old])[0]
  const later=structuredClone(old);later.source.stages={router:{start:'later'}};later.triageReply.state='delivered'
  assert.equal(sameRouterPacket(packet,routerPacketViews(row,[later])[0]),true)
+})
+
+
+test('legacy progress-only packets must still match the full ledger identity',()=>{
+ const value=event()
+ delete value.triageReply
+ const before=routerPacketViews(row,[value])[0],marked={...value,progressOnly:true}
+ const {stages,...source}=value.source
+ const oldBody={conversationId:row.id,generation:row.generation,events:[{...marked,source}]}
+ const legacy={...before,source:{...before.source,ledgerIdentity:createHash('sha256').update(JSON.stringify(oldBody)).digest('hex')}}
+ const views=routerPacketViews(row,[marked])
+ assert.ok(sameRouterPacket(before,views[0]),'new packets ignore mutable lookup state')
+ assert.notEqual(legacy.source.ledgerIdentity,views[0].source.ledgerIdentity)
+ const accepts=(packet,views)=>views.some(view=>sameRouterPacket(view,packet))
+ assert.equal(accepts(legacy,views),true)
+ assert.equal(accepts(legacy,routerPacketViews(row,[value])),false,'legacy state requires the live progress-only marker')
+ for(const [ nextRow, nextEvent ] of [[{...row,generation:3},marked],
+  [row,{...marked,source:{...source,text:'changed'}}],
+  [row,{...marked,source:{...source,version:4},messageVersion:4}],
+  [row,{...marked,source:{...source,actorId:'other-actor'}}],
+  [row,{...marked,source:{...source,routeReceipt:{decisionId:'changed-hidden-field'}}}]]){
+  assert.equal(accepts(legacy,routerPacketViews(nextRow,[nextEvent])),false)
+ }
 })
