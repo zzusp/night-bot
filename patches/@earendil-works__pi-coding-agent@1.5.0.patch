@@ -1,0 +1,85 @@
+diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
+index ccbb5a96b093a95499f1caa4a30371c3ebd4102a..3dc98e1a4fc1e6ee55c34c16ea61b041f94effd7 100644
+--- a/dist/core/agent-session.js
++++ b/dist/core/agent-session.js
+@@ -813,7 +813,7 @@ export class AgentSession {
+         if (this._agentRunAbortRequested)
+             return false;
+         const settings = this.settingsManager.getRetrySettings();
+-        if (!settings.enabled || this._retryAttempt >= settings.maxRetries) {
++        if (!settings.enabled || this._retryAttempt >= (settings.delaysMs?.length ?? settings.maxRetries)) {
+             return false;
+         }
+         for (let i = event.messages.length - 1; i >= 0; i--) {
+@@ -3110,17 +3110,18 @@ export class AgentSession {
+         if (!settings.enabled) {
+             return false;
+         }
++        const maxAttempts = settings.delaysMs?.length ?? settings.maxRetries;
+         this._retryAttempt++;
+-        if (this._retryAttempt > settings.maxRetries) {
++        if (this._retryAttempt > maxAttempts) {
+             // Preserve the completed attempt count so post-run handling can emit the final failure.
+             this._retryAttempt--;
+             return false;
+         }
+-        const delayMs = retryDelayMs(settings, this._retryAttempt);
++        const delayMs = settings.delaysMs ? settings.delaysMs[this._retryAttempt - 1] : retryDelayMs(settings, this._retryAttempt);
+         this._emit({
+             type: "auto_retry_start",
+             attempt: this._retryAttempt,
+-            maxAttempts: settings.maxRetries,
++            maxAttempts,
+             delayMs,
+             errorMessage: message.errorMessage || "Unknown error",
+         });
+diff --git a/dist/core/settings-manager.d.ts b/dist/core/settings-manager.d.ts
+index 5d05602cf8171b49ed72a8ac579445c261475fac..15778e139d2ca58b554d83b5d420400c723c4a7f 100644
+--- a/dist/core/settings-manager.d.ts
++++ b/dist/core/settings-manager.d.ts
+@@ -142,6 +142,7 @@ export declare class SettingsManager {
+     getRetryEnabled(): boolean;
+     setRetryEnabled(enabled: boolean): void;
+     getRetrySettings(): {
++        delaysMs?: number[];
+         enabled: boolean;
+         maxRetries: number;
+         baseDelayMs: number;
+diff --git a/dist/core/settings-manager.js b/dist/core/settings-manager.js
+index 1a0234704ebc861e4ed437c721d0821d45b4b4de..ef31e61683bb75872e52c6268b4496dacf278023 100644
+--- a/dist/core/settings-manager.js
++++ b/dist/core/settings-manager.js
+@@ -703,7 +703,9 @@ export class SettingsManager {
+         this.save();
+     }
+     getRetrySettings() {
++        const delaysMs = this.settings.retry?.delaysMs;
+         return {
++            ...(delaysMs ? { delaysMs: [...delaysMs] } : {}),
+             enabled: this.getRetryEnabled(),
+             maxRetries: this.settings.retry?.maxRetries ?? SETTINGS_DEFAULTS.retry.maxRetries,
+             baseDelayMs: this.settings.retry?.baseDelayMs ?? SETTINGS_DEFAULTS.retry.baseDelayMs,
+diff --git a/dist/core/settings-schema.d.ts b/dist/core/settings-schema.d.ts
+index 99113ea6a1921728cd265f3a860e89aef76ffdd6..4993c304595ec33cccb881da9546f907235493c4 100644
+--- a/dist/core/settings-schema.d.ts
++++ b/dist/core/settings-schema.d.ts
+@@ -26,6 +26,7 @@ declare const RetrySettingsSchema: Type.TObject<{
+     maxRetries: Type.TOptional<Type.TNumber>;
+     baseDelayMs: Type.TOptional<Type.TNumber>;
+     maxAgentDelayMs: Type.TOptional<Type.TNumber>;
++    delaysMs: import("typebox").TOptional<import("typebox").TArray<import("typebox").TInteger>>;
+     provider: Type.TOptional<Type.TObject<{
+         timeoutMs: Type.TOptional<Type.TNumber>;
+         maxRetries: Type.TOptional<Type.TNumber>;
+diff --git a/dist/core/settings-schema.js b/dist/core/settings-schema.js
+index 45c3ce8c5659c7f3373b4ff365659f7b3ef0b83b..3450d6b6aed3f4115a7c1a287d362b2843d401fa 100644
+--- a/dist/core/settings-schema.js
++++ b/dist/core/settings-schema.js
+@@ -45,6 +45,7 @@ const RetrySettingsSchema = Type.Object({
+         default: SETTINGS_DEFAULTS.retry.baseDelayMs,
+     })),
+     maxAgentDelayMs: Type.Optional(Type.Number({ default: SETTINGS_DEFAULTS.retry.maxAgentDelayMs })),
++    delaysMs: Type.Optional(Type.Array(Type.Integer({ minimum: 1, maximum: 2147483647 }), { minItems: 1, description: "Exact waits for normal model retries; the array length is the retry limit." })),
+     provider: Type.Optional(ProviderRetrySettingsSchema),
+     maxDelayMs: Type.Optional(Type.Number({
+         description: "Legacy retry delay setting. Use provider.maxRetryDelayMs instead.",

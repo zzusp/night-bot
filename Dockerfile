@@ -15,6 +15,7 @@ RUN node --input-type=module -e "import {rootCertificates} from 'node:tls'; impo
     && npm install --global pnpm@11.25.0
 WORKDIR /opt/night-bot
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
 RUN node --input-type=module -e "import p from './package.json' with {type:'json'}; if(p.packageManager !== 'pnpm@11.25.0') process.exit(1)" \
     && pnpm install --frozen-lockfile --prod
 
@@ -82,6 +83,7 @@ RUN node node_modules/playwright/cli.js install --with-deps --only-shell chromiu
     && ln -s /opt/night-bot/node_modules/playwright/cli.js /usr/local/bin/playwright \
     && rm -rf /var/lib/apt/lists/*
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml config.example.json LICENSE THIRD_PARTY.md ./
+COPY patches ./patches
 COPY licenses ./licenses
 COPY bin ./bin
 COPY src ./src

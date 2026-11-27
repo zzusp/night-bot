@@ -29,8 +29,8 @@ test('stale input drains and resumes the same Single journal without retrying it
 })
 test('configured provider retries through SDK events within the same task lease instead of a Night owner cooldown',{timeout:nativeTestTimeout(15000)},async t=>{
  let failed=false
- const h=await providerHost(t,{intercept:request=>{if(taskRequest(request)&&!failed){failed=true;return {stopReason:'error',errorMessage:transient}}},decide:()=>[result('complete')]})
- const id=await h.create();await h.service.whenIdle();const stored=await h.stored(id);assert.equal(stored.task.status,'completed');assert.equal(stored.task.leaseEpoch,1);assert.equal(stored.task.providerRecovery??null,null);assert.equal(stored.task.humanRequests.length,0);assert.equal(h.taskRequests().length,2);assert.equal(h.events.filter(e=>e.type==='auto_retry_start').length,1)
+ const h=await providerHost(t,{retry:{delaysMs:[7],provider:{maxRetries:0}},intercept:request=>{if(taskRequest(request)&&!failed){failed=true;return {stopReason:'error',errorMessage:transient}}},decide:()=>[result('complete')]})
+ const id=await h.create();await h.service.whenIdle();const stored=await h.stored(id);assert.equal(stored.task.status,'completed');assert.equal(stored.task.leaseEpoch,1);assert.equal(stored.task.providerRecovery??null,null);assert.equal(stored.task.humanRequests.length,0);assert.equal(h.taskRequests().length,2);assert.deepEqual(h.events.filter(e=>e.type==='auto_retry_start').map(e=>[e.attempt,e.maxAttempts,e.delayMs]),[[1,1,7]])
 })
 for(const restart of [false,true])test(`normal empty SDK completion records no invented conclusion: restart=${restart}`,{timeout:nativeTestTimeout(20000)},async t=>{
  const root=await mkdtemp(join(tmpdir(),'provider-empty-'));let first,second;t.after(async()=>{await second?.close();await first?.close();await rm(root,{recursive:true,force:true})})

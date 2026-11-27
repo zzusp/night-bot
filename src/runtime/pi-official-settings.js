@@ -9,7 +9,7 @@ export function officialRetrySettings(input) {
  if(input!==undefined&&!record(input))fail('PI_OFFICIAL_RETRY_SETTINGS_INVALID','Pi retry settings must be an object')
  input??={}
  if(['mode','retryableCodes','backoff','initialDelayMs','jitterRatio','maxDelayMs'].some(key=>Object.hasOwn(input,key)))fail('PI_RETRY_SETTINGS_MIGRATION_REQUIRED','Legacy retry policy is unsupported; configure Pi retry enabled/maxRetries/baseDelayMs/maxAgentDelayMs/provider settings')
- if(Object.keys(input).some(key=>!['enabled','maxRetries','baseDelayMs','maxAgentDelayMs','provider'].includes(key)))fail('PI_OFFICIAL_RETRY_SETTINGS_INVALID','Unknown Pi retry setting')
+ if(Object.keys(input).some(key=>!['enabled','maxRetries','baseDelayMs','maxAgentDelayMs','delaysMs','provider'].includes(key)))fail('PI_OFFICIAL_RETRY_SETTINGS_INVALID','Unknown Pi retry setting')
  if(input.enabled!==undefined&&typeof input.enabled!=='boolean')fail('PI_OFFICIAL_RETRY_SETTINGS_INVALID','Pi retry enabled must be boolean')
  if(input.maxRetries!==undefined&&(!Number.isSafeInteger(input.maxRetries)||input.maxRetries<0))fail('PI_OFFICIAL_RETRY_SETTINGS_INVALID','Pi retry maxRetries must be a finite nonnegative integer')
  for(const key of ['baseDelayMs','maxAgentDelayMs'])if(input[key]!==undefined&&(!timer(input[key])||input[key]===0))fail('PI_OFFICIAL_RETRY_SETTINGS_INVALID','Pi retry delay must be a positive bounded integer')
@@ -17,8 +17,11 @@ export function officialRetrySettings(input) {
  const provider=input.provider??{}
  if(Object.keys(provider).some(key=>!['timeoutMs','maxRetries','maxRetryDelayMs'].includes(key)))fail('PI_OFFICIAL_RETRY_SETTINGS_INVALID','Unknown Pi provider retry setting')
  for(const [key,value]of Object.entries(provider))if(key==='maxRetries'?(!Number.isSafeInteger(value)||value<0):!timer(value))fail('PI_OFFICIAL_RETRY_SETTINGS_INVALID','Pi provider retry values must be bounded nonnegative integers')
+ const {delaysMs:sequence,...retry}=input
+ const delaysMs=sequence===undefined?undefined:Array.isArray(sequence)?Array.from(sequence):null
+ if(delaysMs!==undefined&&(!delaysMs?.length||delaysMs.some(value=>!timer(value)||value===0)))fail('PI_OFFICIAL_RETRY_SETTINGS_INVALID','Pi retry delaysMs must contain positive bounded integers')
  const defaults=SettingsManager.inMemory()
- return Object.freeze({retry:Object.freeze({...defaults.getRetrySettings(),...input,provider:Object.freeze({...defined(defaults.getProviderRetrySettings()),...provider})})})
+ return Object.freeze({retry:Object.freeze({...defaults.getRetrySettings(),...retry,...delaysMs?{delaysMs:Object.freeze(delaysMs)}:{},provider:Object.freeze({...defined(defaults.getProviderRetrySettings()),...provider})})})
 }
 
 // Budgets never enlarge the actual model window. Pi owns compaction/projection.

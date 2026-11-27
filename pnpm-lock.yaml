@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@earendil-works/pi-coding-agent@1.5.0': ee49aac7b68a6a5b8571fc8a3b3857814b871eb8ddde273e3ebca2f944e9bfe3
+
 importers:
 
   .:
@@ -37,7 +40,7 @@ importers:
         version: 1.5.0
       '@earendil-works/pi-coding-agent':
         specifier: 1.5.0
-        version: 1.5.0(@aws-sdk/credential-provider-node@3.972.92)(@smithy/signature-v4@5.7.5)(supports-color@7.2.0)(ws@8.22.1)(zod@4.6.7)
+        version: 1.5.0(patch_hash=ee49aac7b68a6a5b8571fc8a3b3857814b871eb8ddde273e3ebca2f944e9bfe3)(@aws-sdk/credential-provider-node@3.972.92)(@smithy/signature-v4@5.7.5)(supports-color@7.2.0)(ws@8.22.1)(zod@4.6.7)
       '@earendil-works/pi-schema':
         specifier: 1.5.0
         version: 1.5.0
@@ -2170,7 +2173,7 @@ snapshots:
     dependencies:
       quickjs-wasi: 3.6.2
 
-  '@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.92)(@smithy/signature-v4@5.7.5)(supports-color@7.2.0)(ws@8.22.1)(zod@4.6.7)':
+  '@earendil-works/pi-coding-agent@1.5.0(patch_hash=ee49aac7b68a6a5b8571fc8a3b3857814b871eb8ddde273e3ebca2f944e9bfe3)(@aws-sdk/credential-provider-node@3.972.92)(@smithy/signature-v4@5.7.5)(supports-color@7.2.0)(ws@8.22.1)(zod@4.6.7)':
     dependencies:
       '@earendil-works/pi-agent-core': 1.5.0(@aws-sdk/credential-provider-node@3.972.92)(@smithy/signature-v4@5.7.5)(supports-color@7.2.0)(undici@8.12.3)(ws@8.22.1)(zod@4.6.7)
       '@earendil-works/pi-ai': 1.5.0(@aws-sdk/credential-provider-node@3.972.92)(@smithy/signature-v4@5.7.5)(supports-color@7.2.0)(undici@8.12.3)(ws@8.22.1)(zod@4.6.7)
