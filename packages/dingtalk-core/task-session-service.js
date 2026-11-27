@@ -1017,10 +1017,15 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
     return residentStore.getGroup(args.groupId)
   }
-  const readPlatformTasks=async groupId=>Promise.all((await query('task.list',{groupId,archived:'all'})).map(async task=>{
+  const readPlatformTasks=async (groupId,{includeEvidence=false}={})=>Promise.all((await query('task.list',{groupId,archived:'all'})).map(async task=>{
     const executions=await query('execution.list',{taskId:task.taskId})
     const pendingWake=task.status==='active'&&task.drained&&(await query('wake.list',{taskId:task.taskId})).some(wake=>wake.state==='pending')
-    return {...task,state:taskBoardState(task,executions,pendingWake),completedAt:task.completion?.at??null}
+    const stages=includeEvidence?executions.flatMap(run=>{
+      const stage=run.stageProgress
+      return stage&&['requirementRevision','controlRevision'].every(key=>stage[key]===task[key]&&run[key]===task[key])
+        &&stage.inputVersion===run.inputVersion&&stage.leaseEpoch===run.leaseEpoch?[stage]:[]
+    }).slice(-5):[]
+    return {...task,state:taskBoardState(task,executions,pendingWake),completedAt:task.completion?.at??null,...includeEvidence?{reportStages:stages}:{}}
   }))
   const platformSchedules=createPlatformSchedules({ctx,store:residentStore,legacy,root,models,
     readTasks:readPlatformTasks,appendOutbox:prepareDirectPlatformReply,

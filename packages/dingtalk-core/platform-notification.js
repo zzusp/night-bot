@@ -6,6 +6,7 @@ import { sessionWorkspace } from './session-workspaces.js'
 import { createTaskArtifactFiles } from './task-artifact-files.js'
 
 export const platformReplySchema = z.strictObject({ text: z.string().trim().min(1).nullable(), ...finalConversationNotificationFields,
+  verificationIncomplete:z.boolean().optional().describe('周期回报中，原请求的逐项核验仍有缺口时设为 true；只读任务账本的 completed 不能代替业务恢复。'),
   files: z.array(z.strictObject({ path: z.string().min(1), caption: z.string().trim().min(1).max(1000) })).max(20).optional(),
 })
 export const platformReplyParameters = toToolJsonSchema(platformReplySchema)
