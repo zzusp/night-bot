@@ -1293,7 +1293,7 @@ test('Router schedules the same execution session across wait, stop, cancellatio
     const summary=handoff(body);if(summary)return summary
     if(requestTools(body).includes('channel_triage_submit'))return submit(triage(body),()=>({needsHandling:true}))
     if(requestTools(body).includes('resident_router_settle')){
-      assert.match(JSON.stringify(body.messages),/你对所属conversation的执行会话拥有完整调度权/)
+      assert.match(requestText(body).join('\n'),/会话内调度不需额外审批，业务副作用仍须真实授权/)
       assert.doesNotMatch(JSON.stringify(body.messages),/技术等待仅原作者或配置操作者可续接/)
       const input=router(body),source=input.events.find(event=>event.source)?.source
       if(!source)return settle(body,input)

@@ -155,6 +155,18 @@ function comparableMessageText(value) {
   return String(value ?? '').replace(/[\p{P}\p{S}\s]/gu, '')
 }
 
+// DingTalk projects inline code as another rich-text form. For a short
+// prose reply, send literal identifiers and paths without that conversion.
+// Keep structured Markdown, quotations and arbitrary code untouched.
+export function formatDwsReplyText(text){
+  if (text.includes('\\') || /[\r\n\t<>\[\]~*]/u.test(text) || /^ {4}|^\s*(?:#|[-+] |\d+[.)] )/u.test(text)) return text
+  const parts=text.split('`')
+  if(parts.length<3||parts.length%2===0||parts.some((part,i)=>i%2===1
+    ? !/^[A-Za-z0-9][A-Za-z0-9_./-]*$/u.test(part)||/[_.-]$/u.test(part)
+    : part.includes('_')))return text
+  return parts.join('')
+}
+
 // DWS把段落边界回读为Markdown硬换行、软换行显示为单空格；保留其他空格和SQL字符。
 export function normalizeApprovalNoticeText(value) {
   return typeof value === 'string' ? value.replace(/ {2}\r?\n/gu, '\n\n').replace(/\r?\n/gu, ' ') : value

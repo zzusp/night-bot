@@ -82,6 +82,8 @@ v2 不再把 `topic_facts` 作为活动集合导出。版本 1 的既有封存�
 
 既有任务重安排时，当前 `dependencies` 全集和有效评估按新 `arrangementRevision` 保存；被替换的依赖/评估冻结在该任务自己的 `task.arranged` 事件中，经 `task_events` 随档案保留。历史安排只作审计，恢复不能据其重新满足依赖、执行任务或发送通知。
 
+后续按已报告路径回发文件时，任务档案保留该新请求的精确来源版本、通知及对应冻结副本；不把交付请求追加为原执行输入。封存同时校验通知来源和冻结描述符，恢复仍保持发送 hold。
+
 单任务档案不包含 Router conversation、inbox、轮换记录或整群 journal，也不随 B 复制前置 A。恢复保留原 taskId、执行 session、原始来源与产物身份；所有任务仍为 `paused`、`reviewRequired`。`dependencies` 强制重置为 `pending`，移除旧 `evaluationId` 并设置 `archiveRestoreHold`；来源、评估、通知和历史 Topic 审计同样保持 hold。操作员确认并不自动释放依赖或历史发送；前置任务身份、版本和证据不可验证时，B 继续等待。
 
 以上为当前格式/源码合同。本轮真实归档升级、旧版读取、恢复及依赖拒绝的实跑状态见 [常驻 Router 验收入口](acceptance/resident-conversation-routing/goal.md)，不能用此前 v1 档案验收代替。

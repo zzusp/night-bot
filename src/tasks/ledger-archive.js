@@ -17,19 +17,24 @@ function receiptOwned(body,taskId){
   const ids=[body.taskDecision?.taskId,...['task','execution','operation','binding','notification'].map(key=>result[key]?.taskId)].filter(id=>id!=null)
   return ids.length>0&&ids.every(id=>id===taskId)
 }
+function reportedDeliveryRows(tables){
+  return tables.notifications.filter(row=>row?.body?.payload?.taskDelivery?.reportedFiles!==undefined)
+}
 export function validateTaskLedger(snapshot){
   if(!record(snapshot)||![1,2].includes(snapshot.version)||snapshot.digest!==ledgerDigest({version:snapshot.version,taskId:snapshot.taskId,tables:snapshot.tables}))fail('TASK_ARCHIVE_LEDGER_INVALID')
   const {taskId,tables}=snapshot,expected=names(snapshot.version)
   if(typeof taskId!=='string'||!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(taskId)||!record(tables)||Object.keys(tables).sort().join()!==expected.toSorted().join()||expected.some(name=>!Array.isArray(tables[name]))||tables.tasks.length!==1)fail('TASK_ARCHIVE_LEDGER_INVALID')
   const task=tables.tasks[0]?.body
   if(!record(task)||task.taskId!==taskId||task.id!==taskId)fail('TASK_ARCHIVE_ROW_SCOPE_INVALID')
+  const deliveries=reportedDeliveryRows(tables)
+  const sourceIds=new Set([...(task.sourceRefs??[]),...deliveries.map(row=>row.body.payload.sourceId)])
   for(const name of expected){
     const seen=new Set()
     for(const row of tables[name]){
       if(!record(row)||typeof row.id!=='string'||!row.id||!record(row.body)||seen.has(row.id))fail('TASK_ARCHIVE_ROW_SCOPE_INVALID')
       seen.add(row.id)
       if(name!=='receipts'&&row.body.id!==row.id||row.sequence!==undefined&&(!Number.isSafeInteger(row.sequence)||row.sequence<1))fail('TASK_ARCHIVE_ROW_SCOPE_INVALID')
-      if(name==='tasks'?row.id!==taskId:name==='sources'?!(task.sourceRefs??[]).includes(row.id):name==='receipts'?!receiptOwned(row.body,taskId):row.body.taskId!==taskId)fail('TASK_ARCHIVE_ROW_SCOPE_INVALID')
+      if(name==='tasks'?row.id!==taskId:name==='sources'?!sourceIds.has(row.id):name==='receipts'?!receiptOwned(row.body,taskId):row.body.taskId!==taskId)fail('TASK_ARCHIVE_ROW_SCOPE_INVALID')
       if(name==='sources'&&(row.body.sourceId!==row.id||!Number.isSafeInteger(row.body.version)||row.body.version<1))fail('TASK_ARCHIVE_ROW_SCOPE_INVALID')
       if(name==='receipts'&&!/^[a-f0-9]{64}$/.test(row.digest))fail('TASK_ARCHIVE_ROW_SCOPE_INVALID')
       if(name==='dependencies'&&(typeof row.body.prerequisiteTaskId!=='string'||row.body.prerequisiteTaskId===taskId||!Number.isSafeInteger(row.body.prerequisiteRequirementRevision)))fail('TASK_ARCHIVE_DEPENDENCY_INVALID')
@@ -38,7 +43,14 @@ export function validateTaskLedger(snapshot){
       if(name==='completion_evaluations'&&!tables.dependencies.some(dependency=>dependency.id===row.body.dependencyId&&dependency.body.prerequisiteTaskId===row.body.prerequisiteTaskId))fail('TASK_ARCHIVE_DEPENDENCY_INVALID')
     }
   }
-  if((task.sourceRefs??[]).some(id=>!tables.sources.some(row=>row.id===id)))fail('TASK_ARCHIVE_SOURCE_MISSING')
+  if([...sourceIds].some(id=>!tables.sources.some(row=>row.id===id)))fail('TASK_ARCHIVE_SOURCE_MISSING')
+  for(const {body} of deliveries){
+    const {sourceId,sourceVersion,sourceRef,conversationId,taskDelivery}=body.payload
+    const source=tables.sources.find(row=>row.id===sourceId).body
+    if(body.kind!=='status'||conversationId!==task.groupId||source.groupId!==task.groupId||source.actorId!==task.ownerActorId
+      ||source.version!==sourceVersion||sourceRef?.messageId!==source.messageId||sourceRef?.messageVersion!==source.version||sourceRef?.actorId!==source.actorId
+      ||taskDelivery.taskId!==taskId||taskDelivery.requirementRevision!==body.requirementRevision)fail('TASK_ARCHIVE_ROW_SCOPE_INVALID')
+  }
   return snapshot
 }
 /** 调用方持有账本事务；整群 inbox、Router 会话及前置任务全文不属于单任务归档。 */
@@ -53,7 +65,7 @@ export function exportTaskLedger(db,taskId){
   const history=new Map()
   for(const table of ['dynamic_topic_facts',historicalTable])if(tableExists(db,table))for(const row of db.prepare(`SELECT id,body FROM ${table} WHERE json_extract(body,'$.taskId')=? ORDER BY id`).all(taskId))history.set(row.id,{id:row.id,body:JSON.parse(row.body)})
   tables.historical_topic_facts=[...history.values()]
-  tables.sources=(task.sourceRefs??[]).map(id=>db.prepare('SELECT id,body FROM dynamic_sources WHERE id=?').get(id)).map(row=>{if(!row)fail('TASK_ARCHIVE_SOURCE_MISSING');return {id:row.id,body:JSON.parse(row.body)}})
+  tables.sources=[...new Set([...(task.sourceRefs??[]),...reportedDeliveryRows(tables).map(row=>row.body.payload.sourceId)])].map(id=>db.prepare('SELECT id,body FROM dynamic_sources WHERE id=?').get(id)).map(row=>{if(!row)fail('TASK_ARCHIVE_SOURCE_MISSING');return {id:row.id,body:JSON.parse(row.body)}})
   tables.receipts=db.prepare(`SELECT id,digest,body,sequence FROM (SELECT r.id,r.rowid AS sequence,r.digest,coalesce(a.body,r.body) body FROM dynamic_receipts r LEFT JOIN dynamic_archived_receipts a ON a.id=r.id) WHERE ${receiptOwnerSql}=? ORDER BY sequence`).all(taskId).map(row=>({...row,body:JSON.parse(row.body)})).filter(row=>receiptOwned(row.body,taskId))
   const body={version:2,taskId,tables};return validateTaskLedger({...body,digest:ledgerDigest(body)})
 }

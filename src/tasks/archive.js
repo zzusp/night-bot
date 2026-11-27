@@ -2,7 +2,7 @@ import {resolveTaskMaterialPaths} from './material-paths.js'
 import {validateTaskIdentity} from './session-audit.js'
 import {createTaskArtifactFiles} from '../../packages/dingtalk-core/task-artifact-files.js'
 import {memoryScope,memoryDirectory} from '../memory/scope.js'
-import {validateTaskLedger} from './ledger-archive.js'
+import {ledgerDigest,validateTaskLedger} from './ledger-archive.js'
 import {DatabaseSync} from 'node:sqlite'
 import {validatePiArchiveSession} from '../pi-session-persistence.js'
 import {join,resolve,relative,dirname,isAbsolute} from 'node:path'
@@ -87,7 +87,21 @@ export async function validateTaskArchive(root){
   if(![1,2].includes(snapshot.version))throw failure('TASK_ARCHIVE_LEDGER_INVALID');validateTaskLedger(snapshot.ledger)
   const owner=JSON.parse(await readRegular(join(root,'.task-session.json')));if(owner.taskId!==snapshot.taskId||owner.sessionId!==snapshot.sessionId||snapshot.taskDirectoryRelative!=='data/workspaces/tasks/'+snapshot.taskId)throw failure('TASK_ARCHIVE_IDENTITY_INVALID')
   const task=snapshot.ledger?.tables?.tasks?.[0]?.body;if(task?.taskId!==snapshot.taskId||task?.sessionId!==snapshot.sessionId)throw failure('TASK_ARCHIVE_IDENTITY_INVALID');const sessionPath='sessions/'+archiveHash(snapshot.sessionId)+'.pi.jsonl';if(task?.sessionBound){if(!seen.has(sessionPath))throw failure('TASK_ARCHIVE_SESSION_MISSING');const session=await validatePiArchiveSession(join(root,sessionPath),snapshot.sessionId);if(session.header.portableCwd!==snapshot.taskDirectoryRelative||!ownsTaskSession(session,snapshot.taskId,snapshot.sessionId)||session.committedBytes!==session.totalBytes)throw failure('TASK_ARCHIVE_SESSION_IDENTITY_INVALID')}
-  const selected=task.completion?.result?.artifactFiles??[];if(selected.length){const artifacts=createTaskArtifactFiles({root:join(root,'outputs'),getTaskDirectories:id=>{if(id!==snapshot.taskId)throw failure('TASK_ARCHIVE_ARTIFACT_SCOPE_INVALID');return {outputs:join(root,'outputs')}}});await artifacts.validateManifest(selected.map(file=>file.artifact),task)}
+  const artifacts=createTaskArtifactFiles({root:join(root,'outputs'),getTaskDirectories:id=>{if(id!==snapshot.taskId)throw failure('TASK_ARCHIVE_ARTIFACT_SCOPE_INVALID');return {outputs:join(root,'outputs')}}})
+  const selected=task.completion?.result?.artifactFiles??[]
+  if(selected.length)await artifacts.validateManifest(selected.map(file=>file.artifact),task)
+  for(const {body:notification} of snapshot.ledger.tables.notifications){
+    const p=notification.payload,reported=p?.taskDelivery?.reportedFiles
+    if(reported===undefined)continue
+    const parent=p.artifact?snapshot.ledger.tables.notifications.find(row=>row.id===p.deliveryId)?.body:notification
+    const frozen=parent?.payload?.artifactFiles
+    if(!Array.isArray(reported)||!Array.isArray(frozen)||!reported.length||reported.length!==frozen.length
+      ||parent.payload.sourceId!==p.sourceId||parent.requirementRevision!==notification.requirementRevision
+      ||ledgerDigest(parent.payload.taskDelivery)!==ledgerDigest(p.taskDelivery)
+      ||reported.some((item,i)=>frozen[i]?.artifact?.producer?.outputRef!=='reported:'+item?.path||frozen[i].caption!==item.caption)
+      ||p.artifact&&!frozen.some(item=>ledgerDigest(item.artifact)===ledgerDigest(p.artifact)))throw failure('TASK_ARCHIVE_ARTIFACT_SCOPE_INVALID')
+    if(!p.artifact)await artifacts.validateManifest(frozen.map(file=>file.artifact),notification)
+  }
   for(const file of snapshot.attachments){if(!safeRelative(file.path)||!seen.has(file.path)||archiveHash(await bytes(join(root,file.path)))!==file.ref.attachmentId?.slice(7))throw failure('TASK_ARCHIVE_ATTACHMENT_CORRUPT')}
   return {root,manifest,snapshot}
 }

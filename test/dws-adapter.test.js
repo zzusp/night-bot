@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createHash } from 'node:crypto'
-import { createDwsAdapter, dispatchOutbox, dwsIdempotencyKey, matchesOutbound } from '../packages/dingtalk-core/dws-adapter.js'
+import { createDwsAdapter, dispatchOutbox, dwsIdempotencyKey, formatDwsReplyText, matchesOutbound } from '../packages/dingtalk-core/dws-adapter.js'
 import { assertGroupReply, persistedUuidSendRejectionProof, sendWorkflowNotification } from '../packages/dingtalk-core/group-message.js'
+
+test('DWS only unmarks literal identifiers and paths in a new single-line prose reply', () => {
+  assert.equal(formatDwsReplyText('字段 `MODE_CUSTOM`、`mode_code` 对应 `work/demo/entry.md`。'), '字段 MODE_CUSTOM、mode_code 对应 work/demo/entry.md。')
+  assert.equal(formatDwsReplyText('接收字段 FIELD_XFIELD_X。'), '接收字段 FIELD_XFIELD_X。')
+  for (const source of ['> 引文 `FIELD_X`', '    `FIELD_X`', '- `FIELD_X`', '1. `FIELD_X`',
+    '## 结果 `FIELD_X`', '已保存 **草稿** `work/demo.md`', '参见 [说明](https://example.org) `work/demo.md`',
+    '执行 `echo ok`', '执行 ``FIELD_X``', '第一行 `FIELD_X`\n第二行 `FIELD_Y`', '强调 _词_ 和 `FIELD_X`']) {
+    assert.equal(formatDwsReplyText(source), source)
+  }
+})
 
 test('钉钉单聊 Markdown 保留原文和幂等键，原生引用仍使用原参数', () => {
   const adapter = createDwsAdapter({enabled: true, writesAuthorized: true, runner: {}})

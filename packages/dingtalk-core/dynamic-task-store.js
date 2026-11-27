@@ -1,4 +1,5 @@
 import {currentTaskMilestone,taskMilestoneId,taskMilestonePending,taskMilestoneView} from '../../src/tasks/milestone-notification.js'
+import {reportedWorkFile} from '../../src/tasks/delivery.js'
 import {blockedReplyId,completionReplyId,currentOutcomeBinding,suppressChannelOutcome} from '../../src/channels/router-task-context.js'
 import {inspectionVersion,taskInspectionReason,inspectionIsCurrent,inspectionHoldsExecution,taskProviderFailureLabels} from '../../src/tasks/inspection.js'
 import {sourceHasNewerVersion,sourceHistorySchema} from '../../src/channels/source-history.js'
@@ -557,7 +558,14 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       ||p.sourceVersion!==source.version||digest(ref)!==digest({messageId:source.messageId,messageVersion:source.version,actorId:source.actorId})
       ||source.authorizationRevoked||source.triageHold||source.archiveRestoreHold
       ||all('dynamic_sources',"WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId')=?",[source.groupId,source.messageId]).some(row=>row.version>source.version))fail('DYNAMIC_TASK_DELIVERY_SOURCE_INVALID')
-    const ids=array(selection.artifactIds),frozen=task.completion?.result?.artifactFiles??[]
+    const reported=selection.reportedFiles===undefined?undefined:array(selection.reportedFiles)
+    const parent=p.artifact===undefined?notification:get('dynamic_notifications',text(p.deliveryId,'deliveryId'))
+    const frozen=reported===undefined?task.completion?.result?.artifactFiles??[]:array(parent.payload.artifactFiles)
+    if(reported!==undefined&&(selection.artifactIds!==undefined||p.completionBinding||source.retracted||reported.length!==frozen.length
+      ||new Set(reported.map(entry=>entry.path)).size!==reported.length
+      ||reported.some((entry,i)=>!reportedWorkFile(task,source,selection.requirementRevision,entry.path)
+        ||frozen[i]?.artifact?.producer?.outputRef!=='reported:'+entry.path||frozen[i].caption!==entry.caption)))fail('DYNAMIC_TASK_DELIVERY_INVALID')
+    const ids=reported===undefined?array(selection.artifactIds):frozen.map(file=>file.artifact?.artifactId)
     if(!ids.length||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string'||!id))fail('DYNAMIC_TASK_DELIVERY_INVALID')
     const selected=ids.map(id=>{
       const matches=frozen.filter(file=>file.artifact?.artifactId===id)
@@ -566,7 +574,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       return matches[0]
     })
     if(p.artifact!==undefined) {
-      const parent=get('dynamic_notifications',text(p.deliveryId,'deliveryId')),parentPayload=parent.payload
+      const parentPayload=parent.payload
       const index=selected.findIndex(file=>file.artifact.artifactId===p.artifact.artifactId),file=selected[index]
       if(!file)fail('DYNAMIC_TASK_DELIVERY_INVALID')
       const expectedAfter=index===0?parent.id:parent.id+':file:'+selected[index-1].artifact.artifactId
