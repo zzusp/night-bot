@@ -105,6 +105,12 @@ test('proactive recurring timer hands work to each authorized Router and creates
   if(src?.messageId==='proactive-exact'&&src.version===1&&!last){
    primary=input.conversationId
    assert.ok(requestText(body).join('\n').includes(original))
+   const prompt=body.messages.filter(row=>row.role==='system').map(row=>row.content).join('\n')
+   const scheduleTool=body.tools.find(row=>row.function.name==='platform_schedule_submit').function.description
+   for(const text of [prompt,scheduleTool]){
+    assert.match(text,/不传 stopWhen 或 report_every_occurrence/u)
+    assert.match(text,/主动跟进不支持按任务完成自动停止/u)
+   }
    return {tool:'platform_schedule_submit',args:{operationId:'route-exact-trigger',sourceId:src.sourceId,messageVersion:src.version,title:'主动跟进定时唤醒',prompt:original,every_seconds:1800,router_follow_up:'authorized'}}
   }
   if(ev.kind==='router.follow-up'){

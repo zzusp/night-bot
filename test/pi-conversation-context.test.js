@@ -115,8 +115,10 @@ test('real reply tool and quoted-source index use delivered ledger state after c
 })
 
 
-test('removed requester question cannot send even when the execution model proposes it; normal wait remains internal',{timeout:nativeTestTimeout(30000)},async t=>{
- const steps=new Map(),question='Please provide the exact page address.';let h,resultCalls=0,validationResult
+test('execution cannot send a requester question; a valid wait is stored as an internal round result',{timeout:nativeTestTimeout(30000)},async t=>{
+ const steps=new Map(),question='Please provide the exact page address.'
+ const internalResult={action:'wait',summary:'The fixture does not contain the exact address.',evidence:['The local input has no address.'],limitations:['The page was not checked.']}
+ let h,resultCalls=0,validationResult
  h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
   if(tools.includes('resident_router_settle')){
@@ -126,18 +128,29 @@ test('removed requester question cannot send even when the execution model propo
    return {text:'Settled.'}
   }
   if(tools.includes('task_result')){
-   const result={action:'wait',summary:'The fixture does not contain the exact address.',evidence:['The local input has no address.'],limitations:['The page was not checked.']}
-   if(resultCalls++===0)return {tool:'task_result',args:{decision:{...result,question,audience:'requester'}}}
-   if(resultCalls===2){validationResult=body.messages.findLast(message=>message.role==='tool');return {tool:'task_result',args:{decision:result}}}
+   if(resultCalls++===0)return {tool:'task_result',args:{decision:{...internalResult,question,audience:'requester'}}}
+   if(resultCalls===2){validationResult=body.messages.findLast(message=>message.role==='tool');return {tool:'task_result',args:{decision:internalResult}}}
    return {text:'No more work.'}
   }
   return {text:'Done.'}
  })
  await h.receive(channelMessage('ask'));await h.service.whenIdle()
- assert.ok(validationResult);assert.match(JSON.stringify(validationResult),/TASK_QUESTION_DISABLED|additional properties|question/)
- assert.equal((await h.query('task.get',{taskId:'requester-question'})).lastDecision.action,'wait')
- assert.equal(resultCalls,2);assert.equal(h.sent.length,0)
+ assert.ok(validationResult)
+ const rejection=JSON.stringify(validationResult.content)
+ assert.match(rejection,/decision\.question[^;]*unknown field/u)
+ assert.match(rejection,/decision\.audience[^;]*unknown field/u)
+ assert.equal(resultCalls,2)
+ const read=()=>h.query('task.get',{taskId:'requester-question'})
+ const task=await read()
+ // The round is finished, but its business result is still wait. The
+ // current Host stores ordinary results under completion, not lastDecision.
+ assert.equal(task.status,'completed');assert.equal(task.drained,true)
+ assert.equal(task.completion.summary,internalResult.summary)
+ assert.deepEqual(task.completion.result,internalResult)
+ assert.equal(task.humanRequests?.length??0,0);assert.equal(h.sent.length,0)
+ assert.equal((await h.query('notification.list')).some(row=>row.kind==='question'),false)
  await h.restart();await h.service.whenIdle()
+ assert.deepEqual((await read()).completion.result,internalResult)
  assert.equal(h.sent.length,0)
  assert.equal((await h.query('notification.list')).some(row=>row.kind==='question'),false)
 })

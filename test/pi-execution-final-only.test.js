@@ -25,6 +25,7 @@ for(const action of ['complete','detailed','scoped-recovery','end-to-end-recover
    const resultTool=body.tools.find(tool=>tool.function.name==='task_result').function
    if(investigation||recovery||unconfirmed){
     assert.match(resultTool.description,/an internal result, not a human-facing reply/u)
+    assert.match(resultTool.description,/Use action=complete when the requested outcome is achieved.*action=blocked/u)
     assert.match(JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role))),/an internal result, not a human-facing reply/u)
     const prompt=JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role)))
     assert.doesNotMatch(prompt,/默认 ELI5|禁止防御性内容/u)
@@ -62,15 +63,15 @@ for(const action of ['complete','detailed','scoped-recovery','end-to-end-recover
    if(investigation||recovery||unconfirmed){
     assert.match(prompt,/内部结果不走对外回复规则/u)
     const text=body.tools.find(tool=>tool.function.name==='resident_router_reply').function.parameters.properties.text
-    assert.match(text.description,/除非会改变结论或下一步，不列附带统计/u)
+    assert.match(text.description,/否则只留会改变结论或下一步的关键事实，不复述对方已给的依据、不列排查清单/u)
     assert.match(text.description,/把已核实的范围直接写在结论里/u)
-    assert.match(text.description,/未做的检查，只有原问题明确要求，或不提会让当前结论失真、影响对方下一步时才说/u)
+    assert.match(text.description,/未做的检查仅在被问到或会影响判断时说明/u)
     assert.match(prompt,/不要照搬内部摘要或 limitations 字段/u)
     assert.match(prompt,/不在末段罗列未测项/u)
     if(unconfirmed){
      assert.ok(prompt.includes(replyText),'the real Router receives the short answer example')
      assert.match(text.description,/确认不了就直接说哪一项没确认，答完就停/u)
-     assert.match(text.description,/不要为了自证先铺垫、找理由、列证据或逐项排除/u)
+     assert.match(text.description,/不为自证或免责加尾巴/u)
     }
     assert.ok(requestText(body).some(text=>text.includes(request)))
     assert.deepEqual(outcome.taskEvent.result.evidence,evidence)
@@ -79,7 +80,7 @@ for(const action of ['complete','detailed','scoped-recovery','end-to-end-recover
    assert.doesNotMatch(prompt,/Host 已确认：本会话的 source\.message/)
    if(multi){
     assert.match(prompt,/按原顺序逐项回答，每项先给结论/u)
-    assert.match(prompt,/必须说明的事实缺口、实际卡点或风险放进对应结论/u)
+    assert.match(prompt,/事实缺口、实际卡点或风险放进对应结论/u)
     assert.match(prompt,/确有下一步就说具体行动；原问题以外的未完成项不主动展开/u)
     assert.ok(requestText(body).some(text=>text.includes(request)),'the outcome model receives both original questions')
     assert.match(prompt,/沿原会话推进；没有新依据不重复唤醒/u)

@@ -186,6 +186,7 @@ for(const everyReport of [false,true])test('actual delivery: scoped evidence, un
     await tick()
     await wait(()=>{const at=h.residentStore.getPlatformSchedule(record.sessionId).lastOccurrenceAt;return at&&at>firstOccurrence},'quiet or short confirmation settles the second occurrence')
     assert.equal(sentUnchanged.length,1)
+    if(everyReport)await wait(()=>reports().length===2,'requested unchanged confirmation reaches the channel')
     assert.equal(reports().length,everyReport?2:1)
     assert.match(pages()[1].previousDeliveredReport.text,/尚未完成/)
     if(everyReport){

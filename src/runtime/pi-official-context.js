@@ -14,6 +14,12 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
  let runInstructionFiles=[],resources={agentsFiles:[],skills:[]},lastOutcome,lastPolicyFailure,resourceFailure,runPromptOptions
  const actor=()=>{const value=getActor();if(!value?.id||!value.piSession||value.session)throw error('PI_OFFICIAL_ACTOR_REQUIRED','An official AgentSession actor without a Session facade is required');return value}
  const assertActive=current=>current.lifecycle?.signal?.throwIfAborted()
+ // Use the same baseline at run start, on Router request refresh and for budget estimates.
+ const applicationSections=async current=>({
+  ...(await systemPrompt?.officialSections(current)??{}),
+  night_context_retention:CONTEXT_RETENTION_POLICY,
+  ...(hasTools()?{night_tool_parallelism:SAFE_TOOL_PARALLELISM_POLICY}:{}),
+ })
  const bindActor=()=>{const current=actor();assertActive(current);return measurePhase('memory-bind',()=>memory?.bindActor?.(current))}
  async function refreshResources({startRun=false}={}){
   const current=actor();assertActive(current)
@@ -56,11 +62,9 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
    const current=actor();lastOutcome=undefined;lastPolicyFailure=undefined;resourceFailure=undefined;assertActive(current)
    await measurePhase('memory-before-run',()=>memory?.beforeRun?.(current,ctx));assertActive(current)
    await refreshRunResources(current,true)
-   const sections=await measurePhase('system-prompt',()=>systemPrompt?.officialSections(current)??{});assertActive(current)
+   const sections=await measurePhase('system-prompt',()=>applicationSections(current));assertActive(current)
    for(const key of Object.keys(event.systemPromptOptions.sections))if(key.startsWith('night_'))delete event.systemPromptOptions.sections[key]
    Object.assign(event.systemPromptOptions.sections,sections)
-   event.systemPromptOptions.sections['night_context_retention']=CONTEXT_RETENTION_POLICY
-   if(hasTools())event.systemPromptOptions.sections.night_tool_parallelism=SAFE_TOOL_PARALLELISM_POLICY
    const policy=await measurePhase('memory-prompt',()=>memory?.prompt?.(current));assertActive(current)
    if(policy)event.systemPromptOptions.sections['night_memory_index']=policy
    runPromptOptions=event.systemPromptOptions
@@ -97,9 +101,8 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
     if(changed)return {messages}
     return
    }
-   const sections=await systemPrompt?.officialSections(current)??{},policy=await memory?.prompt?.(current);assertActive(current)
+   const sections=await applicationSections(current),policy=await memory?.prompt?.(current);assertActive(current)
    if(policy)sections.night_memory_index=policy
-   if(hasTools())sections.night_tool_parallelism=SAFE_TOOL_PARALLELISM_POLICY
    // Native overflow may summarize the custom input as well as older history.
    // Supply its already-admitted business facts only when absent; never redeliver it.
    const admitted=await current.admission.current(),visible=new Set(event.messages.filter(message=>message.role==='custom'&&message.customType==='night.business-input').map(message=>message.details?.packetId))
@@ -134,8 +137,7 @@ export function createNightOfficialContext({cwd,agentDir,getActor,systemPrompt,i
  // 首次请求尚无原生系统条目，先计入应用即将在 before_agent_start 注入的正文。
  const estimateInputPromptTokens=async()=>{
   const current=actor();await refreshResources();assertActive(current)
-  const sections=await systemPrompt?.officialSections(current)??{},policy=await memory?.prompt?.(current)
-  if(hasTools())sections.night_tool_parallelism=SAFE_TOOL_PARALLELISM_POLICY
+  const sections=await applicationSections(current),policy=await memory?.prompt?.(current)
   const nextRunFiles=await runInstructions?.(current)??[];assertActive(current)
   const contextFiles=resources.agentsFiles.filter(file=>!runInstructionFiles.includes(file)).concat(nextRunFiles)
   return estimateTokens({role:'system',sections,content:policy??'',toolsAdded:{contextFiles,skills:resources.skills}})
