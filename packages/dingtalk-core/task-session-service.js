@@ -967,7 +967,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }
     const internalIds=[source.sourceId,source.groupId,source.messageId,source.actorId,notificationId,replyInternalTaskId(selection?.taskId,source.text)]
     const text=finalReply?prepareConversationNotification({conversationId:source.groupId,text:args.text,replyToMessageId,replyToActorId,
-      recipientActorIds:recipients,atAll:args.atAll,signature:legacy.getAgentConfig().replySignature,internalIds}).text:args.text
+      recipientActorIds:recipients,atAll:args.atAll,artifactFiles,signature:legacy.getAgentConfig().replySignature,internalIds}).text:args.text
     assertConversationReply(text,internalIds)
     if(exec||args.milestoneBinding){
       assertNoConversationReplySecrets(args.text)
