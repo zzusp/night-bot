@@ -25,6 +25,9 @@ test('factory helper reads Pi defaults, accepts finite native settings and rejec
  const disabled=officialRetrySettings({enabled:false,maxRetries:0,provider:{maxRetries:0}});assert.equal(disabled.retry.enabled,false);assert.equal(disabled.retry.provider.maxRetries,0)
  assert.throws(()=>{disabled.retry.enabled=true},TypeError)
  for(const input of [{mode:'normal'},{mode:'always'},{retryableCodes:['SERVER']},{backoff:{jitterRatio:0}},{maxDelayMs:5}])assert.throws(()=>officialRetrySettings(input),{code:'PI_RETRY_SETTINGS_MIGRATION_REQUIRED'})
+ const sequence=[5000,10000,15000,30000,60000],configured=officialRetrySettings({delaysMs:sequence}).retry
+ sequence[0]=4;assert.deepEqual(configured.delaysMs,[5000,10000,15000,30000,60000]);assert.ok(Object.isFrozen(configured.delaysMs))
+ for(const delaysMs of [null,[],[0],[-1],[1.5],[2147483648],['5000'],Array(2)])assert.throws(()=>officialRetrySettings({delaysMs}),{code:'PI_OFFICIAL_RETRY_SETTINGS_INVALID'})
  for(const input of [null,[],{enabled:'true'},{maxRetries:-1},{maxRetries:Infinity},{baseDelayMs:0},{maxAgentDelayMs:2147483648},{provider:{maxRetries:-1}},{provider:{unknown:1}}])assert.throws(()=>officialRetrySettings(input),{code:'PI_OFFICIAL_RETRY_SETTINGS_INVALID'})
 })
 test('explicit helper disables both official agent retries and underlying SDK retries',async t=>{
@@ -37,6 +40,31 @@ test('official native retry settings use finite budget and capped exponential de
  assert.deepEqual(f.events.filter(event=>event.type==='auto_retry_start').map(event=>({attempt:event.attempt,delayMs:event.delayMs})),[{attempt:1,delayMs:1},{attempt:2,delayMs:2}])
  assert.equal(f.manager.getEntries().filter(entry=>entry.type==='context_edit'&&entry.replacement===null).length,2)
  assert.equal(retryDelayMs({baseDelayMs:4,maxAgentDelayMs:5},1),4);assert.equal(retryDelayMs({baseDelayMs:4,maxAgentDelayMs:5},2),5)
+})
+test('Pi waits the exact five configured delays and drains without replaying the completed tool',async t=>{
+ const delaysMs=[5000,10000,15000,30000,60000],waits=delaysMs.map(()=>Promise.withResolvers())
+ let effects=0
+ const tool={name:'record_once',label:'Record once',description:'One fixture effect',parameters:{type:'object',properties:{}},async execute(){effects++;return {content:[{type:'text',text:'recorded'}],details:{}}}}
+ const f=await fixture(t,officialRetrySettings({delaysMs,provider:{maxRetries:0}}).retry,call=>call===1?{toolCall:{id:'record-once',name:tool.name,arguments:{}}}:{error:'Request timed out.'},[tool])
+ f.session.subscribe(event=>{if(event.type==='auto_retry_start')waits[event.attempt-1]?.resolve(event)})
+ t.mock.timers.enable({apis:['setTimeout']})
+ const done=f.session.prompt('Record once and report the result')
+ try{
+  for(const [i,delay] of delaysMs.entries()){
+   const retry=await Promise.race([waits[i].promise,done.then(()=>null)])
+   assert.ok(retry,'Pi must schedule the next configured retry')
+   assert.deepEqual([retry.attempt,retry.maxAttempts,retry.delayMs],[i+1,delaysMs.length,delay])
+   t.mock.timers.tick(delay-1);await new Promise(resolve=>setImmediate(resolve))
+   assert.equal(f.calls,i+2);assert.equal(effects,1)
+   t.mock.timers.tick(1)
+  }
+  await done
+  assert.equal(f.calls,7);assert.equal(effects,1)
+  assert.equal(f.manager.getEntries().filter(e=>e.type==='context_edit'&&e.replacement===null).length,5)
+  assert.equal(f.manager.getEntries().filter(e=>e.type==='message'&&e.message.role==='toolResult').length,1)
+  const last=f.events.findLast(e=>e.type==='auto_retry_end')
+  assert.deepEqual([last.success,last.attempt],[false,5]);assert.equal(f.session.isRetrying,false)
+ }finally{await f.session.abort();t.mock.timers.reset();await done}
 })
 test('official classification rejects generic empty response and quota despite supporting transient failures',async t=>{
  for(const error of ['Model returned a completed response with no content','insufficient_quota 429','401 authentication failed']) {
