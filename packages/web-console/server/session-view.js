@@ -1056,13 +1056,10 @@ async function taskProjection({task, ...options}) {
       return identities.length === 1 && identities[0].version === 1 && identities[0].payload?.taskId === taskId && identities[0].payload?.sessionId === sessionId
     }})
 }
-async function routerProjection({conversationId, readRouter, readRotations, legacyOnly = false, ...options}) {
-  const router = await readRouter(), shared=router?.sharedSessionId===GLOBAL_ROUTER_SESSION
-  const selectSession=row=>legacyOnly
-    ?row?.sharedSessionId===GLOBAL_ROUTER_SESSION&&row.activeSessionId!==GLOBAL_ROUTER_SESSION?row.activeSessionId:null
-    :row?.sharedSessionId??row?.activeSessionId
-  const sessionId=selectSession(router),scopedGlobalRouter=shared&&!legacyOnly
-  const base = {conversationId, sessionId: sessionId ?? null, scope: legacyOnly?'legacy-committed-router-context':'current-router-session-context', ...(scopedGlobalRouter?{routingMode:'shared'}:{}), items: [], total: 0, nextOffset: null}
+async function routerProjection({conversationId, readRouter, readRotations, ...options}) {
+  const router = await readRouter(), sessionId = router?.sharedSessionId??router?.activeSessionId
+  const scopedGlobalRouter=router?.sharedSessionId===GLOBAL_ROUTER_SESSION
+  const base = {conversationId, sessionId: sessionId ?? null, scope: 'current-router-session-context', ...(scopedGlobalRouter?{routingMode:'shared'}:{}), items: [], total: 0, nextOffset: null}
   if (!router || !sessionId) return {...base, status: 'pending', reason: 'SESSION_NOT_STARTED'}
   if (router.id !== conversationId || !Number.isSafeInteger(router.generation) || router.generation < 1) fail('SESSION_IDENTITY_INVALID', 503)
   let value = await projection({...options, scopedGlobalRouter,revision: undefined, base: {...base, generation: router.generation, activeGeneration: router.generation}, identity: {sessionId, conversationId, generation: router.generation}, notStarted: true,
@@ -1081,7 +1078,7 @@ async function routerProjection({conversationId, readRouter, readRotations, lega
   }
   if (options.revision && value.status === 'ready' && options.revision !== value.revision) fail('SESSION_PAGE_STALE', 409)
   const current = await readRouter()
-  if (selectSession(current) !== sessionId || current?.generation !== router.generation || current?.phase !== router.phase) fail('SESSION_PAGE_STALE', 409)
+  if ((current?.sharedSessionId??current?.activeSessionId) !== sessionId || current?.generation !== router.generation || current?.phase !== router.phase) fail('SESSION_PAGE_STALE', 409)
   return value
 }
 async function finalRead(value, options) {

@@ -1687,17 +1687,3 @@ test('direct Web conversation summary requires login and exposes only exact chat
  assert.deepEqual(Object.keys(summary.body).sort(),['id','status','title','updatedAt'])
  assert.equal((await f.fetchApi(path+'?offset=100')).status,400)
 })
-
-test('legacy Router history is read-only, authenticated and constrained to the exact conversation',async t=>{
- const f=await fixture(t)
- const endpoint='/api/conversations/room-one/legacy-session'
- f.app.tasks.store={query:async()=>null}
- assert.equal((await f.fetchApi(endpoint)).status,401)
- await f.login()
- const old=await f.fetchApi(endpoint)
- assert.equal(old.status,200)
- assert.equal(old.body.scope,'legacy-committed-router-context')
- assert.equal(old.body.sessionId,null)
- assert.equal((await f.fetchApi('/api/conversations/not-observed/legacy-session')).status,404)
- assert.equal((await f.fetchApi(endpoint,{method:'POST',body:{text:'not a writable endpoint'}})).status,404)
-})

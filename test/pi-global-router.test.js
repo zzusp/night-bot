@@ -580,30 +580,6 @@ test('standalone self-check resumes the reviewed task without a reply channel', 
  assert.deepEqual(h.sent,[])
 })
 
-test('legacy Router history stays readable after shared adoption without mixing current history',{timeout:nativeTestTimeout(45000)},async t=>{
- const h=await residentRouterHost(t,body=>{
-   const input=requestEnvelope(body,'Router 请求：')
-   return input&&lastCall(body)!=='resident_router_settle'?settle(input):{text:'Settled'}
- })
- const old=channelMessage('old-ui-event',{text:'previously visible Router event flint-41'})
- await h.receive(old);await h.service.whenIdle()
- const id=h.host.ctx.channels.identity(old).sessionId,legacy=(await h.query('router.get',{conversationId:id})).activeSessionId
- const history=(legacyOnly=false)=>routerSessionView({legacyOnly,conversationId:id,readRouter:()=>h.query('router.get',{conversationId:id}),readRotations:()=>h.query('router.rotations',{conversationId:id}),persistence:h.host.ctx.sessionPersistence})
- assert.match(JSON.stringify((await history()).items),/flint-41/)
- await h.restart({restoreIdleRouters:true},{globalRouter:true})
- await h.receive({...old,messageId:'new-ui-event',text:'fresh Router event willow-42'})
- await h.service.whenIdle()
- assert.ok(await h.host.ctx.sessionPersistence.stat(legacy))
- const visible=await history()
- assert.match(JSON.stringify(visible.items),/willow-42/)
- assert.doesNotMatch(JSON.stringify(visible.items),/flint-41/)
- const prior=await history(true)
- assert.equal(prior.sessionId,legacy)
- assert.equal(prior.scope,'legacy-committed-router-context')
- assert.match(JSON.stringify(prior.items),/flint-41/)
- assert.doesNotMatch(JSON.stringify(prior.items),/willow-42/)
-})
-
 for(const shouldResume of [true,false])test('Host reports a standalone mismatch and Router '+(shouldResume?'can resume it':'can leave it stopped'),{timeout:nativeTestTimeout(40000)},async t=>{
  let turns=0,seen=0,originalSession
  const h=await residentRouterHost(t,async body=>{
@@ -655,4 +631,59 @@ test('the two-hour background clock wakes Router even when there are no tasks',{
  await import('./fixtures/resident-router-host.js').then(x=>x.eventually(()=>seen===1,'empty two-hour Router wake'))
  await h.service.whenIdle()
  assert.deepEqual(h.sent,[])
+})
+
+test('slow Work attachment preparation does not keep the shared Router from later input',{timeout:nativeTestTimeout(40000)},async t=>{
+ const readEntered=Promise.withResolvers(),releaseRead=Promise.withResolvers()
+ let accepted=false,laterHandled=false,ran=false
+ const h=await residentRouterHost(t,body=>{
+   const router=requestEnvelope(body,'Router 请求：'),last=lastCall(body)
+   if(router){
+     if(last==='resident_router_settle')return {text:'Settled'}
+     const event=router.events.find(row=>row.source?.messageId==='slow-work')
+     if(event&&!accepted){
+       accepted=true
+       return call('resident_task_plan',{operationId:'slow-work-plan',sourceId:event.sourceId,messageVersion:event.messageVersion,
+         tasks:[{taskId:'slow-work-task',title:'Read the file',objective:'Verify file',requirements:[],handoff:'Read the attached fixture file.'}],dependencies:[]})
+     }
+     if(router.events.some(row=>row.source?.messageId==='next-channel'))laterHandled=true
+     if(event)return call('resident_router_settle',{operationId:'settle-planned',eventIds:router.events.map(row=>row.id)})
+     return settle(router)
+   }
+   if(taskInput(body)){ran=true;return decision('File verified')}
+   return {text:'Idle'}
+ },{config:{globalRouter:true},channelIds:['resident-fixture','other'],readResource:async()=>{
+   readEntered.resolve();await releaseRead.promise;return {text:'Only synthetic fixture bytes',complete:true}
+ }})
+ const first=h.receive(channelMessage('slow-work',{resourceRefs:[{type:'file',resourceId:'slow-fixture',fileName:'fixture.txt'}]}))
+ void first.catch(()=>{})
+ try{
+   const {eventually}=await import('./fixtures/resident-router-host.js')
+   await Promise.race([readEntered.promise,new Promise((_,reject)=>AbortSignal.timeout(10000).addEventListener('abort',()=>reject(Error('Work attachment read did not start')),{once:true}))])
+   const latter=h.receive(channelMessage('next-channel',{channelId:'other'}));void latter.catch(()=>{})
+   await eventually(()=>laterHandled,'Router handles a later channel before the file resolves')
+   assert.equal(ran,false)
+   releaseRead.resolve()
+   await Promise.all([first,latter])
+   await h.service.whenIdle()
+   assert.equal((await h.query('task.get',{taskId:'slow-work-task'})).completion?.summary,'File verified')
+ }finally{releaseRead.resolve()}
+})
+
+test('a Host inspection read failure does not suppress the two-hour Router wake',{timeout:nativeTestTimeout(30000)},async t=>{
+ let awake=false,failInspection=false
+ const h=await residentRouterHost(t,body=>{
+   const input=requestEnvelope(body,'Router 请求：')
+   if(!input||lastCall(body)==='resident_router_settle')return {text:'Settled'}
+   if(input.events.some(event=>event.kind==='router.self-check'))awake=true
+   return settle(input)
+ },{config:{globalRouter:true},wrapStore:store=>({...store,query:args=>{
+   if(failInspection&&args.kind==='router.outcome-inspection')throw Error('Synthetic inspection failure')
+   return store.query(args)
+ }})})
+ await h.service.routerSelfCheck(Date.now()-2*60*60*1000-1000)
+ failInspection=true
+ await assert.rejects(h.service.recover(),/Synthetic inspection failure/)
+ await import('./fixtures/resident-router-host.js').then(x=>x.eventually(()=>awake,'independent scheduled Router wake'))
+ await h.service.whenIdle()
 })

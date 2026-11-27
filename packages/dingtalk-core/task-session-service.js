@@ -155,6 +155,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   const admissions = new Map(), admissionHolds = new Set(), admissionGroups = new Map(), targetCommands = new Map()
   const materializationFlights = new Map()
   const sourceProjections = new Set(), notificationSends = new Set(), notificationReadbacks = new Set()
+  const routerLiveDeliveries = new Map()
   const failures = new Map(), taskSlots = new Set(), messageRecoveryFlights = new Set()
   const pendingDialogue = task => task.dialogue?.some(item => !item.reply&&!item.replyError)
   const taskLimit = () => legacy.getAgentConfig().maxConcurrentTasks ?? config.maxConcurrentTasks ?? 5
@@ -1005,7 +1006,8 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
   }
   async function applyDirectTaskAction(args){
     if(args.kind==='materialize'){
-      for(const entry of args.tasks){const task=await requireTask(entry.taskId);taskCache.set(task.taskId,topicTaskView(task));await materializeSource(task.taskId,args.source)}
+      // The Work claim loads its own authorized source materials; the Router only publishes the plan.
+      for(const entry of args.tasks){const task=await requireTask(entry.taskId);taskCache.set(task.taskId,topicTaskView(task))}
       void hostScheduler(()=>schedulePending());return
     }
     return admitTask(args.taskId,async(oldTask,oldExecutions)=>{
@@ -1027,12 +1029,22 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       const originalLease=!task.drained&&task.leaseEpoch===receipt.result.task.leaseEpoch&&task.requirementRevision===receipt.result.task.requirementRevision&&task.controlRevision===receipt.result.task.controlRevision
       if(!(args.kind==='supplement'||args.kind==='resume'&&args.humanRequestId!==undefined)&&(!receipt.replayed||originalLease))await cancelLiveTask(task.taskId,oldTask,oldExecutions)
       if(!receipt.replayed)failures.delete(task.taskId)
-      await materializeSource(task.taskId,source)
-      const current=await requireTask(task.taskId)
-      if(args.kind==='supplement'&&taskSessions.liveBinding?.(task.taskId)){
-        const sources=(await Promise.all(current.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean)
-        const materials=await Promise.all(sources.map(source=>materializeSource(task.taskId,source)))
-        await taskSessions.supplement({task:await taskInputWithDependencies(current),sources,materials})
+      if(args.kind==='supplement'&&hostLiveBinding){
+        // The durable supplement is committed already. Live delivery is a
+        // tracked Host job; if it cannot steer, the pending wake survives.
+        const delivery=(routerLiveDeliveries.get(task.taskId)??Promise.resolve()).catch(()=>{}).then(()=>hostScheduler(async()=>{
+          const current=await requireTask(task.taskId),live=taskSessions.liveBinding?.(task.taskId)
+          if(closed||live?.leaseEpoch!==hostLiveBinding.leaseEpoch||current.requirementRevision!==hostLiveBinding.requirementRevision)return
+          const sources=(await Promise.all(current.sourceRefs.map(sourceId=>query('source.get',{sourceId})))).filter(Boolean)
+          const materials=await Promise.all(sources.map(source=>materializeSource(task.taskId,source)))
+          if(!closed)await taskSessions.supplement({task:await taskInputWithDependencies(current),sources,materials})
+        }))
+        routerLiveDeliveries.set(task.taskId,delivery)
+        sourceProjections.add(delivery)
+        void delivery.catch(error=>ctx.logger?.warn?.(error.code??'ROUTER_SUPPLEMENT_DELIVERY_FAILED')).finally(()=>{
+          sourceProjections.delete(delivery)
+          if(routerLiveDeliveries.get(task.taskId)===delivery)routerLiveDeliveries.delete(task.taskId)
+        })
       }
       void hostScheduler(()=>schedulePending());return receipt
     })
@@ -1830,8 +1842,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     if (closed) return { failures: [] }
     // Inspection must keep recording incidents while a previous recovery waits
     // on a busy Router. Its cadence guard is claimed before the first await.
+    // Periodic Router wake and Host mismatch inspection are independent:
+    // a failed inspection must not suppress a due background wake.
+    const periodicWake=!restoreIdleRouters?routerSelfCheck().catch(error=>ctx.logger?.warn?.(error.code??'ROUTER_SELF_CHECK_FAILED')):undefined
     await inspectTasks()
-    if(!restoreIdleRouters)await routerSelfCheck()
+    if(periodicWake)await periodicWake
     if (recovering) return recovering
     if(config.globalRouter!==true)ctx.get?.('reflection')?.scan()
     return recovering = (async () => {
