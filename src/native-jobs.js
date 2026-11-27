@@ -1,3 +1,4 @@
+import {createJobDeadlineQueue} from './runtime/job-deadline-queue.js'
 import {renderJobOutput} from './runtime/job-output.js'
 import {boundText} from './runtime/output-window.js'
 import {randomUUID} from 'node:crypto'
@@ -15,7 +16,7 @@ export default class NativeJobs extends Service {
  static Config=z.object(Object.fromEntries(Object.entries(defaults).map(([key,value])=>[key,z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(value)])))
  constructor(ctx,config={}){
   super(ctx,'jobs');this.config={...defaults,...config};for(const n of Object.values(this.config))if(!Number.isSafeInteger(n)||n<1)throw new TypeError('Invalid job registry limits')
-  this.host=ctx;this.records=new Map();this.counts=new Map();this.controllers=new Set();this.listeners=new Set();this.cleanups=new Map();this.closing=false;this.pending=new Set();this.admissions=new Set();this.admissionOwners=new WeakMap();this.drainingOwners=new WeakMap();this.unprovenStarts=new WeakMap()
+  this.host=ctx;this.records=new Map();this.counts=new Map();this.controllers=new Set();this.listeners=new Set();this.cleanups=new Map();this.closing=false;this.pending=new Set();this.admissions=new Set();this.admissionOwners=new WeakMap();this.drainingOwners=new WeakMap();this.unprovenStarts=new WeakMap();this.deadlineQueues=new Set()
   ctx.effect(()=>()=>this.disposeAll(),'native jobs teardown')
   ctx.on('workspace/session-activity',async({sessionId},next)=>{const rest=await next(),jobs=this.list(sessionId).filter(j=>j.owner===sessionId&&!terminal(j));return jobs.length?[{kind:'job',items:jobs.map(({id,label})=>({id,label}))},...rest]:rest})
   ctx.on('workspace/session-stop',({sessionId})=>{for(const job of this.list(sessionId))if(job.owner===sessionId&&!terminal(job))try{this.kill(job.id,sessionId,'session archived')}catch(error){this.warn(error)}})
@@ -60,6 +61,14 @@ export default class NativeJobs extends Service {
   return owner
  }
  start(spec){return startJob(this,spec)}
+ // For trusted in-process producers only; result delivery stays with the caller.
+ createDeadlineQueue(options){
+  if(this.closing)throw new Error('jobs registry is closing')
+  const queue=createJobDeadlineQueue(this,options)
+  const close=()=>queue.close().finally(()=>this.deadlineQueues.delete(close))
+  this.deadlineQueues.add(close)
+  return {...queue,close}
+ }
  startDurable(spec,exec){
   const owner=this.admit(spec),reservation={owner};this.pending.add(reservation)
   const id=spec.kind+'-'+randomUUID(),startedAt=Date.now()
@@ -124,7 +133,16 @@ export default class NativeJobs extends Service {
  remove(id,caller){const j=this.expect(id,caller);if(j.journalError||j.drainUncertain)throw j.journalError??new JobLedgerError('NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN');if(!terminal(j))throw new Error(`job ${id} is still ${j.status}`);this.drop(j)}
  drop(j){if(!this.records.delete(j.id))return;this.emit({type:'removed',job:this.view(j)},j.owner)}
  async disposeJobs(jobs,reason){for(const j of jobs)if(!terminal(j)&&!j.producerFinished){j.cause='teardown';try{j.cancel(reason);j.status='stopping';this.emit({type:'stopping',job:this.view(j)},j.owner)}catch(error){this.warn(error);void this.settle(j,{status:'failed',detail:`cancel threw during teardown; work may be orphaned: ${String(error)}`},'teardown',false)?.catch(error=>this.warn(error))}}await Promise.all(jobs.map(j=>j.settled));const uncertain=jobs.filter(j=>j.journalError||j.drainUncertain);if(uncertain.length)throw new AggregateError(uncertain.map(j=>j.journalError??new Error('NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN')),'Job drain proof is uncertain');for(const j of jobs)this.drop(j)}
- async disposeAll(){this.closing=true;await Promise.allSettled([...this.admissions]);await this.disposeJobs([...this.records.values()],'jobs service disposed');const cleanup=[...this.cleanups.values()];this.cleanups.clear();await Promise.all(cleanup.map(fn=>fn()))}
+ async disposeAll(){
+  this.closing=true
+  const queues=await Promise.allSettled([...this.deadlineQueues].map(close=>close()))
+  await Promise.allSettled([...this.admissions])
+  await this.disposeJobs([...this.records.values()],'jobs service disposed')
+  const cleanup=[...this.cleanups.values()];this.cleanups.clear()
+  await Promise.all(cleanup.map(fn=>fn()))
+  const failures=queues.filter(result=>result.status==='rejected').map(result=>result.reason)
+  if(failures.length)throw new AggregateError(failures,'Native job queue teardown failed')
+ }
 }
 
 function startJob(registry,spec,durable){

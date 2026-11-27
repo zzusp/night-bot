@@ -57,3 +57,30 @@ test('throwing teardown cancellation reports orphan uncertainty and never replay
   assert.throws(()=>early.jobs.remove(earlyId),error=>error.code==='NIGHT_JOB_PRODUCER_DRAIN_UNCERTAIN');assert.equal(earlyStarts,1)
  }finally{earlyDone.resolve({status:'killed'});await earlyDone.promise}
 })
+
+test('trusted NativeJobs deadline queue expires waiting jobs and drains cancelled reads without launching more',async t=>{
+ const ctx=await fixture(t),blocked=deferred(),timers=[],runs=[],results=[]
+ const queue=ctx.jobs.createDeadlineQueue({kind:'read',label:'read-only fixture',concurrency:1,timeoutMs:30,now:()=>100,
+  setTimer:fn=>{timers.push(fn);return fn},clearTimer(){}})
+ const submit=(id,deadlineAt)=>queue.enqueue(id,{deadlineAt,run:signal=>{runs.push({id,signal});return blocked.promise},
+  settle:result=>{results.push({id,...result})}})
+ assert.equal(submit('working',130),true)
+ assert.equal(submit('working',130),true)
+ assert.equal(submit('waiting',130),true)
+ assert.equal(submit('already-expired',100),true)
+ assert.deepEqual(runs.map(r=>r.id),['working'])
+ assert.equal(queue.has('working'),true)
+ timers[0]()
+ await new Promise(resolve=>setImmediate(resolve))
+ assert.ok(runs[0].signal.aborted)
+ assert.deepEqual(results,[{id:'already-expired',status:'timed-out'},{id:'working',status:'timed-out'}])
+ assert.equal(queue.has('working'),true,'producer exit, not timeout publication, releases its slot')
+ await ctx.jobs.disposeAll()
+ assert.equal(submit('late',130),false)
+ assert.deepEqual(ctx.jobs.list(),[])
+ assert.deepEqual(results.at(-1),{id:'waiting',status:'interrupted'})
+ blocked.resolve('late result')
+ await new Promise(resolve=>setImmediate(resolve))
+ assert.equal(results.length,3)
+ assert.equal(runs.length,1)
+})

@@ -371,3 +371,59 @@ test('an explicit task name in the question can override the quoted task',{timeo
  assert.deepEqual(record.result.lookup.result.snapshots.map(({taskId})=>taskId),[namedTask])
  assert.deepEqual(new Set(selection.candidates.map(({taskId})=>taskId)),new Set([quotedTask,namedTask]))
 })
+
+test('closing lookup service ignores a rejected submit but reports a late accepted result write failure',async t=>{
+ const {Context}=await import('@deepseek-ai/cordis')
+ const {default:NativeJobs}=await import('../src/native-jobs.js')
+ const {createRouterReadonlyLookups}=await import('../src/channels/router-readonly-lookup.js')
+ for(const accepted of [false,true]){
+  const ctx=new Context();ctx.logger={warn(){}};new NativeJobs(ctx)
+  t.after(()=>ctx.fiber.dispose())
+  const gate=Promise.withResolvers(),failure=Object.assign(new Error('fixture'),{code:accepted?'FIXTURE_LOOKUP_WRITE_FAILED':'ROUTER_LOOKUP_SOURCE_ALREADY_SUBMITTED'})
+  const work=createRouterReadonlyLookups({ctx,command:async(kind,args)=>{
+   if(kind==='router.lookup.submit'){await gate.promise;if(!accepted)throw failure;return}
+   assert.equal(kind,'router.lookup.complete');assert.equal(args.status,'interrupted')
+   throw failure
+  },query:async kind=>{
+   assert.equal(kind,'router.action')
+   return {result:{lookup:{id:'late-lookup',conversationId:'room',state:'pending',deadlineAt:new Date(Date.now()+30000).toISOString()}}}
+  },schedule:()=>assert.fail('closing cannot wake Router')})
+  const submitted=work.submit({conversationId:'room',operationId:'before-close'})
+  const closing=work.close()
+  const submitRejected=assert.rejects(submitted,error=>error===failure)
+  const drained=accepted?assert.rejects(closing,error=>error.message==='ROUTER_LOOKUP_DRAIN_FAILED'&&error.errors[0]===failure):closing
+  gate.resolve()
+  await Promise.all([submitRejected,drained])
+  assert.deepEqual(ctx.jobs.list(),[])
+ }
+})
+
+test('cancelling a live lookup writes its result and immediately wakes only the original Router',{timeout:nativeTestTimeout(30000)},async t=>{
+ const {createRouterReadonlyLookups}=await import('../src/channels/router-readonly-lookup.js')
+ const h=await residentRouterHost(t,body=>{
+  if(!requestTools(body).includes('resident_router_settle')||done(body))return {text:'Done'}
+  const packet=input(body)
+  return call('resident_router_settle',{operationId:'settle:'+packet.events[0].id,eventIds:packet.events.map(event=>event.id)})
+ })
+ const message=channelMessage('cancel-live-lookup'),conversationId=h.host.ctx.channels.identity(message).sessionId
+ await h.receive(message);await h.service.whenIdle()
+ const source=(await h.query('source.list')).find(s=>s.messageId===message.messageId)
+ const router=await h.query('router.get',{conversationId}),gate=Promise.withResolvers(),wakes=[]
+ const jobs=h.host.ctx.get('jobs')
+ const worker=createRouterReadonlyLookups({ctx:h.host.ctx,query:(kind,args)=>kind==='router.source-current'?gate.promise:h.query(kind,args),
+  command:(kind,args,id)=>h.store.command({kind,args,id}),schedule:id=>wakes.push(id)})
+ t.after(async()=>{gate.resolve({version:source.version,text:source.text});await worker.close()})
+ const receipt=await worker.submit({conversationId,generation:router.generation,sourceId:source.sourceId,messageVersion:source.version,operationId:'cancel-live'})
+ const [job]=jobs.list().filter(job=>job.kind==='router-readonly-lookup')
+ assert.equal(jobs.kill(job.id,undefined,'fixture live cancellation'),'requested')
+ const event=await eventually(async()=>(await h.query('router.inbox',{conversationId})).find(e=>e.lookupResult?.lookupId===receipt.lookupId),'cancelled lookup enters original inbox')
+ assert.equal(event.lookupResult.sourceId,source.sourceId)
+ assert.equal(event.lookupResult.messageVersion,source.version)
+ assert.equal(event.lookupResult.state,'timed-out')
+ await eventually(()=>wakes.length===1,'live cancellation wakes Router without waiting for polling')
+ assert.deepEqual(wakes,[conversationId])
+ gate.resolve({version:source.version,text:source.text})
+ await worker.close()
+ assert.equal((await h.query('router.inbox',{conversationId})).filter(e=>e.lookupResult?.lookupId===receipt.lookupId).length,1)
+ assert.equal(wakes.length,1)
+})
