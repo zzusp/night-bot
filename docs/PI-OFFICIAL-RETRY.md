@@ -36,3 +36,11 @@ Pi 按官方错误分类判断是否重试，不使用 Night 旧 failure-code �
 `prepareRequest` 与 `finishTurn` 是官方生命周期挂钩，不是自建重试器入口。未知副作用仍由应用收据与授权闸保护：收据不明时阻止后续 provider/tool admission，保留原 unknown 状态供对账，不把重新请求模型当作重放外部操作的授权。回归测试覆盖成功效果后模型失败重试只执行一次，以及 unknown 在官方重试和后续输入中继续封锁。
 
 模型 reasoning 未显式指定时，将 `thinkingLevel:undefined` 交给官方 `createAgentSession` 初始化与 clamp。显式用户或 profile 值须属于官方 `getSupportedThinkingLevels(model)` 返回的集合，不在应用中另写默认等级。
+
+## 排查模型请求超时或超限
+
+Bot 日志中的 `NIGHT_MODEL_REQUEST_FAILED` 是一条失败的模型请求记录，不代表任务已中断。用会话 ID 和时间对照任务的中断记录；同一会话在重试后成功时不会写入任务中断。每次逻辑请求生成一个 `requestId`，发出时随 `X-Night-Request-Id` 请求头传递。网关保留此头时可直接查；如果响应返回了可用的 `X-Request-Id` 或 `Request-Id`，也会记为 `upstreamRequestId`。支持 HTTP 观测的三个协议还会记录底层 HTTP 发起次数、可见响应状态和可识别的传输错误码。日志不复制请求、响应正文、URL 或鉴权信息。
+
+`elapsedMs` 是 Bot 侧这次逻辑请求的用时，不是网关排队或上游推理耗时。没有观测到 HTTP 响应时，不据此判断是哪一层超时；若只有旧版的 `Request timed out.`，又没有同一时段的网关记录，则根因仍未知。Bot 自己的流空闲超时也走 Pi 配置的有限重试；用户取消和关停不当作超时重试。
+
+发送前按最终 Pi 输入估算系统提示、工具定义和会话消息，给本次输出留出空间。估算超限时会明确报错，并且不会把这份输入发到网关。估算不是供应商的精确分词；网关仍可能返回 HTTP 400 超限，由 Pi 决定是否压缩后继续，不原样进行超时重试。
