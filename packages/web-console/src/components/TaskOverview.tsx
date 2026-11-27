@@ -4,7 +4,7 @@ import { dateTime } from '../hooks';
 import { taskDurationText } from '../task-duration';
 import { Badge } from './BoardPrimitives';
 import { Markdown, Status } from './Shared';
-import { WorkOrigin, workRoleLabels } from './WorkOrigin';
+import { workRoleLabels } from './WorkOrigin';
 
 const ObjectiveMarkdown = memo(Markdown);
 
@@ -24,7 +24,6 @@ export function TaskOverview({ task }: { task: Task }) {
         <div><dt>执行时长</dt><dd>{taskDurationText(task.durations?.execution, task.durations?.observedAt, 0)}</dd></div>
       </dl>
       <dl className="task-facts">
-        {task.origin !== undefined && <div><dt>来源对话</dt><dd>{task.origin ? <WorkOrigin origin={task.origin} /> : '未关联渠道'}</dd></div>}
         {task.work && <div><dt>协作角色</dt><dd>{workRoleLabels[task.work.role]}{task.work.reportsFinal ? ' · 汇报最终结果' : ''}</dd></div>}
         <div><dt>创建时间</dt><dd><time dateTime={task.createdAt}>{dateTime(task.createdAt)}</time></dd></div>
         <div><dt>最近更新</dt><dd><time dateTime={task.updatedAt}>{dateTime(task.updatedAt)}</time></dd></div>

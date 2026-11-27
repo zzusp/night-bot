@@ -24,7 +24,7 @@ for (const width of [1440, 1024, 390]) test(`内容内工具栏与面板切换 $
   const composer = page.locator('.board-composer textarea')
   await composer.fill('未发送草稿')
   await expect(page.locator('#activity-panel')).toHaveCount(0)
-  await openRouter(page,'chat:sample-plan');
+  await openRouter(page);
   const toggle = page.locator('.router-tools').getByRole('button',{name:/工作动态/})
   for (let i = 0; i < 4; i++) {
     const open = await toggle.getAttribute('aria-expanded') === 'true'

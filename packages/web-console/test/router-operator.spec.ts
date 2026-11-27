@@ -18,8 +18,8 @@ for(const width of [1440,390])test(`渠道路由只读保留历史，普通 Web 
   await expect(page.getByRole('button',{name:'重试发送',exact:true})).toHaveCount(0)
  }
  const panel=page.getByRole('region',{name:'路由记录'})
- await expect(panel).toContainText('请检查接口文档与实现的差异，并整理待确认事项。')
- await expect(panel).toContainText('resident_task_query')
+ await expect(panel).toContainText('产品渠道：压缩前的记录')
+ await expect(panel).toContainText('资料渠道：压缩后的记录')
  await expect(panel.locator('.composer-dock')).toHaveCount(0)
  expect(routerPosts).toBe(0)
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
@@ -32,6 +32,6 @@ for(const width of [1440,390])test(`渠道路由只读保留历史，普通 Web 
  await expect(page.locator('.message-user').last()).toContainText(text)
  expect(routerPosts).toBe(0)
  await page.goto(fixture.origin+'/#/channels/room-product');await openRouter(page)
- await expect(page.getByRole('region',{name:'路由记录'})).toContainText('resident_task_query')
+ await expect(page.getByRole('region',{name:'路由记录'})).toContainText('资料渠道：压缩后的记录')
  await expect(page.locator('.board-composer:visible')).toHaveCount(0)
 })

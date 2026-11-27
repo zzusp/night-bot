@@ -5,7 +5,7 @@ import {FIXTURE_TOKEN,startPreview} from './preview.mjs';
 for(const router of [false,true])test(`${router?'Router':'任务详情'}用真实 EventSource 接收快照，断线按游标补读`,async({page})=>{
  const taskId='task-research',conversationId='room-product';
  const sessionId=router?'fixture-router-'+conversationId:'fixture-pi-'+taskId;
- const endpoint=router?`/api/conversations/${conversationId}/session`:`/api/tasks/${taskId}/session`;
+ const endpoint=router?`/api/router/session`:`/api/tasks/${taskId}/session`;
  const rows=[{id:'first',text:'已提交的起始记录。'}];
  const away={id:'during-break',text:'断线时写入的记录。'};
  let liveText='', liveRevision=0, subscriptions=0, disconnections=0, drop=false;

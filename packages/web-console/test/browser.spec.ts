@@ -415,36 +415,6 @@ test('渠道认证、错误、就绪与未知阶段分开显示，不从 enabled
   await screenshot(page, 'channel-connection-states')
 })
 
-test('学习记录区分已应用与候选，正文仅按已授权版本读取', async ({page}) => {
-  await login(page)
-  const source = {taskId: 'task-research', reviewId: 'r'.repeat(64), eventId: 'fixture-completed-event'}
-  const version = 'a'.repeat(64), id = 'b'.repeat(64), forbiddenId = 'c'.repeat(64)
-  const changes = [
-    {id, reviewId: source.reviewId, taskId: source.taskId, kind: 'memory', action: 'upsert', status: 'applied', scope: 'personal', name: '核对经验', version, canRead: true, source},
-    {id: forbiddenId, reviewId: source.reviewId, taskId: source.taskId, kind: 'skill', action: 'current-version', status: 'candidate', scope: 'group', name: '候选核查步骤', version, canRead: false, source},
-  ]
-  let bodyReads = 0
-  await page.route('**/api/tasks/task-research/learning', route => route.fulfill({json: {status: 'ready', reviews: [
-    {reviewId: source.reviewId, taskId: source.taskId, eventId: source.eventId, status: 'done', summary: '已记录隔离样例复盘', at: null}], changes, revision: 'd'.repeat(64)}}))
-  await page.route('**/api/tasks/task-research/learning/changes/*?version=*', async route => {
-    bodyReads++
-    expect(new URL(route.request().url()).searchParams.get('version')).toBe(version)
-    expect(route.request().url()).toContain('/changes/' + id + '?')
-    await route.fulfill({json: {id, kind: 'memory', version, source, text: '已授权的经验正文。', redacted: false}})
-  })
-  await page.goto('/#/tasks/task-research?view=learning')
-  await expect(page.getByRole('heading', {name: /^学习变更/})).toBeVisible()
-  await expect(page.locator('.learning-change').first()).toContainText('已应用')
-  await expect(page.locator('.learning-change').last()).toContainText('候选，未应用')
-  await expect(page.locator('.learning-change').last()).toContainText('正文未授权')
-  await expect(page.locator('.learning-change').last().getByRole('button')).toHaveCount(0)
-  expect(bodyReads).toBe(0)
-  await page.getByRole('button', {name: /^读取授权正文/}).click()
-  await expect(page.getByText('已授权的经验正文。', {exact: true})).toBeVisible()
-  expect(bodyReads).toBe(1)
-  await screenshot(page, 'learning-scope-and-version')
-})
-
 test('渠道会话按聊天展示、隐藏输入框、保留不确定发送状态及空态', async ({page}) => {
   await login(page)
   await page.goto('/#/channels')

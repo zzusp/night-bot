@@ -23,7 +23,7 @@ export interface TaskDuration { milliseconds: number | null; activeSince: string
 export interface Task {
   taskId: string; title?: string; objective?: string; state: string; controlState?: string; archivedAt?: string;
   createdAt?: string; updatedAt?: string; result?: unknown; cancellationReason?: string;
-  origin?: WorkOrigin | null; work?: {role:WorkRole; reportsFinal:boolean};
+  work?: {role:WorkRole; reportsFinal:boolean};
   durations?: { total: TaskDuration; execution: TaskDuration; observedAt: string };
   session?: { sessionId?: string; role?: string; status?: string };
   timeline?: { task?: TimelineTrack; executions?: TimelineTrack[]; human?: TimelineTrack; version?: number }; blockers?: TaskBlocker[];

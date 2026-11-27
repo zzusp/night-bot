@@ -24,7 +24,7 @@ test('Router dispatch and settlement have a concise default with optional suppor
   ...pair('failed',action,request,'当前任务不可修改。',{isError:true,status:'error'}),
   ...pair('partial',action,request,plan,{truncated:true,textNextOffset:200}),
  ];
- await page.route('**/api/chat/sample-plan/session?*',route=>route.fulfill({json:{status:'ready',scope:'current-router-session-context',items,total:items.length,revision:'activity-polish',generation:1,live:{active:false,items:[]}}}));
+ await page.route('**/api/router/session?*',route=>route.fulfill({json:{status:'ready',scope:'global-router-transcript',items,total:items.length,revision:'activity-polish',generation:1,live:{active:false,items:[]}}}));
  await page.goto('/#/chat/sample-plan');
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
@@ -96,7 +96,7 @@ test('task query and reopen show the current outcome before historical details',
   ...pair('empty',query,{detail:'index'},{tasks:[],total:0}),
   {id:'answer',role:'assistant',kind:'router-reply',text:'任务状态已核对。'},
  ];
- await page.route('**/api/chat/sample-plan/session?*',route=>route.fulfill({json:{status:'ready',scope:'current-router-session-context',items,total:items.length,revision:'task-summary',generation:1,live:{active:false,items:[]}}}));
+ await page.route('**/api/router/session?*',route=>route.fulfill({json:{status:'ready',scope:'global-router-transcript',items,total:items.length,revision:'task-summary',generation:1,live:{active:false,items:[]}}}));
  await page.goto('/#/chat/sample-plan');
  await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
  await page.getByRole('button',{name:'连接工作空间',exact:true}).click();

@@ -1,3 +1,5 @@
+import {routerJournal} from './router-journal-fixture.mjs'
+import {GLOBAL_ROUTER_SESSION} from '../../../src/channels/router-identity.js'
 import {Context} from '@deepseek-ai/cordis'
 import NativeCredentials from '../../../src/native-credentials.js'
 import {createLaunchEnvironmentSnapshot} from '../../../src/native-environment.js'
@@ -151,6 +153,7 @@ export async function startPreview({port = 3080, empty = false, replyDelayMs = 5
     ]
     snapshots.set(sessionId,{header:{id:sessionId,conversationId,runtimeOwner:'conversation-router',generation:1},entries:rows.map(row=>({id:row.id})),context:{projection:{entries:rows.map(row=>({sourceEntry:{id:row.id,timestamp:at(4)},messages:[row.message]}))}}})
   }
+  if(sessionRecords)snapshots.set(GLOBAL_ROUTER_SESSION,routerJournal())
   const persistence = {async readNative(sessionId, options) {
     if (options?.requireComplete !== true) throw Error('fixture requires complete Pi context')
     if (sessionId === 'fixture-pi-task-schedule') throw Object.assign(Error('fixture commit pending'), {code: 'PI_SESSION_UNCOMMITTED_TAIL'})

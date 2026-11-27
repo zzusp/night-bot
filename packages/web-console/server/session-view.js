@@ -1,4 +1,5 @@
 import {GLOBAL_ROUTER_SCOPE,GLOBAL_ROUTER_SESSION} from '../../../src/channels/router-identity.js'
+import {buildSessionProjection} from '@earendil-works/pi-coding-agent'
 import {nativeTokenUsage} from './token-usage.js'
 import {observeMemoryLock} from '../../../src/memory/lock-observation.js'
 import {randomUUID} from 'node:crypto'
@@ -450,7 +451,8 @@ function compactionSummaryVisible(entry, entries, secrets) {
   return true
 }
 async function projectEntries(snapshot, identity, secrets, calls = new Map(), resultMessages = true, taskInputs = [], executionActivity = false, executionTiming, resourceCandidates, readRouterTasks) {
-  const {taskId, sessionId, conversationId, generation} = identity
+  const {taskId, sessionId} = identity
+  let packetScope
   const items = [], sources = new Set(), operatorReplies = new Set(), seenTaskInputs = new Set(), subagentCalls = new Map()
   const inputsById = new Map(taskInputs.map(row => [row.inputId, row]))
   const inputsBySource = new Map(taskInputs.map(row => [row.sourceId, row]))
@@ -502,7 +504,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
   }
   const sourceText = (entry, suffix, row) => {
     if (typeof row?.text !== 'string') return
-    const key = JSON.stringify([row.sourceId, row.version, row.text])
+    const key = JSON.stringify([identity.fullRouterHistory?entry.id:null, row.sourceId, row.version, row.text])
     if (sources.has(key)) return sourceRows.get(key)
     sources.add(key)
     const previousCount=items.length
@@ -515,6 +517,15 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
     if (++processed % 32 === 0) await yieldToIO()
     const entry = projected.sourceEntry
     if (!entry || typeof entry.id !== 'string') continue
+    if(identity.fullRouterHistory&&entry.type==='custom_message'&&entry.customType==='night.business-input'){
+      const source=entry.details?.source, message=projected.messages[0]
+      calls.clear()
+      packetScope=message&&['conversation-router','conversation-router-held-review'].includes(source?.kind)
+        &&typeof source.conversationId==='string'&&source.conversationId&&Number.isSafeInteger(source.generation)&&source.generation>0
+        &&isOriginalRouterPacket(entry,message)?{...identity,conversationId:source.conversationId,generation:source.generation}:undefined
+    }
+    if(identity.fullRouterHistory&&!packetScope&&entry.type!=='compaction')continue
+    const scope=packetScope??identity,{conversationId,generation}=scope
     for (const [index, message] of projected.messages.entries()) {
       if (message.role === 'assistant') {
         const firstRow = items.length
@@ -538,7 +549,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
           if (block.type !== 'toolCall' || typeof block.name !== 'string') continue
           const callId = opaque(entry.id, index, blockIndex)
           // 厂商 ID 可跨轮重用；未配对的重复 ID 不能猜测归属。
-          const selected = toolInput(block.name, block.arguments, identity)
+          const selected = toolInput(block.name, block.arguments, scope)
           const resultText = businessResultText(block.name, selected.text)
           if (typeof block.id === 'string') calls.set(block.id, calls.has(block.id) ? null : {id: callId, name: block.name, ...(executionActivity?{entryId:entry.id}:{}), ...(block.name==='resident_router_settle'?{publicInput:selected.text,settlementEvents:residentRouterSettleDetails(block.arguments,provedRouterEvents)}:{}), ...(resourceCandidates&&isResourceTool(block.name)?{resourceArgs:block.arguments}:{}), ...(block.name==='resident_operator_reply'&&typeof block.arguments?.eventId==='string'?{operatorEventKey:opaque('operator-reply',block.arguments.eventId)}:{}), ...(resultText ? {resultText} : {})})
           add(entry, 'call-' + index + '-' + blockIndex, 'tool', selected.text, {kind: 'tool-call', toolName: selected.toolName, ...(selected.redacted ? {redacted: true} : {}), ...(selected.detailState ? {detailState:selected.detailState}:{}), callId, status: 'result-unrecorded'}, message)
@@ -573,7 +584,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
         const expectedEdit = editReceipts?.get(call?.id)
         if (expectedEdit) editReceipts.delete(call.id)
         const editDiff = expectedEdit && committedEditDiff(message, entry, expectedEdit, secrets)
-        const selected = childId ? {toolName: 'subagent', text: '子代理已启动。', redacted: true, resourceContent: true} : toolOutput(call, message, identity, entry)
+        const selected = childId ? {toolName: 'subagent', text: '子代理已启动。', redacted: true, resourceContent: true} : toolOutput(call, message, scope, entry)
         const timing = typeof nativeId === 'string' && call?.entryId ? timingFields({durationMs:executionTiming?.tool(call.entryId,nativeId)}) : undefined
         add(entry, 'result-' + index, 'tool', editDiff || selected.text, {kind: 'tool-result', toolName: selected.toolName, ...(editDiff ? {editDiff:true} : {}), ...(selected.redacted ? {redacted: true} : {}), ...(selected.detailState ? {detailState:selected.detailState}:{}), ...(selected.resourceContent ? {resourceContent: true} : {}), ...(selected.failure ? {failure: selected.failure} : {}), ...(timing?{timing}:{}), callId, isError: message.isError === true, status: message.isError ? 'error' : childId ? 'accepted' : 'completed'}, message)
         if (resourceCandidates && call?.resourceArgs) {
@@ -654,7 +665,7 @@ async function projectEntries(snapshot, identity, secrets, calls = new Map(), re
             for (const [n,event] of input.events.entries()) {
               const label={
                 'router.self-check':'定时自检','router.self-check.completed':'自检结果已返回',
-                'task.peer.request':'执行会话请求协作成员','router.follow-up':'定时跟进',
+                'task.peer.request':'执行会话请求协作成员','router.follow-up':'定时跟进','task.inspection':'Host 任务巡检',
               }[event.kind]
               if(typeof label==='string')add(entry,'router-trigger-'+index+'-'+n,'user',label,{kind:'router-trigger'},message)
               const safe = safeRouterSettlementEvent(event)
@@ -796,7 +807,7 @@ async function projectLive(snapshot, identity, secrets, raw, calls, executionAct
   const phase=['waiting','thinking','text','tool'].includes(raw.phase)||executionActivity&&['preparing','compaction','retry'].includes(raw.phase)?raw.phase:undefined
   const phaseStartedAt=phase?isoTime(raw.phaseStartedAt):undefined
   return {active:true,revision:raw.revision,...phase?{phase}:{},...phaseStartedAt?{phaseStartedAt}:{},...notice?{notice}:{},...tools.length?{tools}:{},
-    items:(await projectEntries(combined,identity,secrets,new Map(calls),false)).filter(row=>liveEntryIds.has(row.source.entryId)).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
+    items:(await projectEntries(combined,{...identity,fullRouterHistory:false},secrets,new Map(calls),false)).filter(row=>liveEntryIds.has(row.source.entryId)).map(row=>({...row,transient:true,status:'running',text:row.text.slice(0,16000),textTotal:row.text.length,textNextOffset:null,...row.text.length>16000?{truncated:true}:{}}))}
 }
 
 // No public history is cached: only short-lived committed identity/pending calls.
@@ -893,6 +904,17 @@ async function projection({base, identity, persistence, validIdentity, notStarte
       return inScope&&entry.type==='message'&&['assistant','toolResult'].includes(entry.message?.role)
     })
     snapshot={...snapshot,context:{...snapshot.context,projection:{...snapshot.context.projection,entries}}}
+  }
+  // Pi's normal model projection truncates at compaction. Read the active
+  // committed branch with native context edits, restoring compaction markers.
+  if(identity.fullRouterHistory){
+    const compactions=new Map(snapshot.entries.filter(entry=>entry.type==='compaction').map(entry=>[entry.id,entry]))
+    const branch=buildSessionProjection(snapshot.entries.map(entry=>compactions.has(entry.id)?{...entry,type:'label'}:entry),snapshot.entries.at(-1)?.id??null)
+    const entries=branch.entries.map(row=>{
+      const entry=compactions.get(row.sourceEntry.id)
+      return entry?{sourceEntry:entry,messages:[{role:'compactionSummary',summary:entry.summary,tokensBefore:entry.tokensBefore,timestamp:entry.timestamp}]}:row
+    })
+    snapshot={...snapshot,context:{...snapshot.context,projection:{...branch,entries}}}
   }
   const revisionMaterial=scopedGlobalRouter?snapshot.context.projection.entries.map(row=>[row.sourceEntry.id,row.messages]):snapshot.journalDigest??snapshot.entries.at(-1)?.id
   const journalRevision = digest(JSON.stringify([sessionId,revisionMaterial,secretKey]))
@@ -1120,5 +1142,11 @@ async function readBody(project,options){
 }
 export const taskSessionView=options=>readPage(taskProjection,options)
 export const taskSessionMessageView=options=>readBody(taskProjection,options)
+const globalRouterProjection=options=>projection({...options,notStarted:true,
+  base:{sessionId:GLOBAL_ROUTER_SESSION,scope:'global-router-transcript',routingMode:'shared',items:[],total:0,nextOffset:null},
+  identity:{sessionId:GLOBAL_ROUTER_SESSION,conversationId:GLOBAL_ROUTER_SCOPE,generation:1,fullRouterHistory:true},
+  validIdentity:({header})=>header.runtimeOwner==='conversation-router'&&header.conversationId===GLOBAL_ROUTER_SCOPE&&header.generation===1})
+export const globalRouterSessionView=options=>readPage(globalRouterProjection,options)
+export const globalRouterSessionMessageView=options=>readBody(globalRouterProjection,options)
 export const routerSessionView=options=>readPage(routerProjection,options)
 export const routerSessionMessageView=options=>readBody(routerProjection,options)

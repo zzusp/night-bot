@@ -38,7 +38,7 @@ for (const router of [true,false]) test(`${router?'Router':'任务'}所有工具
   const {dto,actualGuidance}=await projected(router);
   expect(JSON.stringify(dto)).not.toContain('FIXTURE_PRIVATE_');
   expect(dto.items.filter(row=>row.resourceContent).map(row=>row.text)).toEqual([actualGuidance]);
-  const endpoint=router?'**/api/conversations/room-product/session?*':'**/api/tasks/task-research/session?*';
+  const endpoint=router?'**/api/router/session?*':'**/api/tasks/task-research/session?*';
   const live={...dto,items:[...dto.items,{role:'tool',kind:'tool-call',toolName:'fixture_running_tool',id:'ongoing',text:'{}',status:'running',detailState:'empty',transient:true}]};
   await page.route(endpoint,route=>route.fulfill({json:live}));
   await page.goto(router?'/#/channels/room-product':'/#/tasks/task-research');
@@ -141,7 +141,7 @@ test('Router结清优先显示获权任务名和消息摘录，缺少对应事�
   expect(JSON.stringify(forbidden)).not.toContain('FIXTURE_PRIVATE_OTHER_TITLE');
   expect(projected[1].events).toBeUndefined();
   expect(JSON.stringify(dto)).not.toContain('FIXTURE_PRIVATE_');
-  await page.route('**/api/conversations/room-product/session?*',route=>route.fulfill({json:dto}));
+  await page.route('**/api/router/session?*',route=>route.fulfill({json:dto}));
   await page.goto('/#/channels/room-product');
   await page.getByLabel('访问令牌',{exact:true}).fill(FIXTURE_TOKEN);
   await page.getByRole('button',{name:'连接工作空间',exact:true}).click();
