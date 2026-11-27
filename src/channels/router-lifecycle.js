@@ -33,7 +33,12 @@ function comparableRouterPacket(packet){
 export const sameRouterPacket=(left,right)=>isDeepStrictEqual(comparableRouterPacket(left),comparableRouterPacket(right))
 export function routerPacketViews(row,batch){
     const id=`router-input:${hash([row.id,batch.map(event=>event.id)])}`
-    const body={conversationId:row.id,generation:row.generation,events:batch.map(event=>({...operatorInput(event),...event.source?{source:withoutTiming(event.source)}:{}}))}
+    const body={conversationId:row.id,generation:row.generation,events:batch.map(event=>{
+      // The lookup receipt can make a source read-only after admission. Business
+      // tools enforce that flag from the live ledger; it is not input identity.
+      const {progressOnly,...input}=operatorInput(event)
+      return {...input,...event.source?{source:withoutTiming(event.source)}:{}}
+    })}
     const packet={id,source:{kind:'conversation-router',conversationId:row.id,generation:row.generation,eventIds:batch.map(event=>event.id),...(batch.every(event=>event.kind==='operator.message')?{webOnly:true}:{}),...traceSourcesMetadata(batch.filter(event=>event.kind==='source.message'&&event.source).map(event=>event.source)),...traceTaskEventsMetadata(batch)},content:[{type:'text',text:'Router 请求：'+JSON.stringify({...body,events:body.events.map(event=>event.source===undefined?event:{...event,source:conversationSource(event.source)})})}]}
     // Bind the compact view to every immutable ledger field, including fields
     // omitted from model text. Delivery progress alone may change during recovery.

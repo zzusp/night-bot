@@ -182,3 +182,98 @@ test('queued lookups time out independently and an unresponsive read does not ha
  await Promise.resolve()
  assert.equal(notifications.length,2)
 })
+
+test('Router resumes its original timed-out lookup batch without another message or repeated effects',{timeout:nativeTestTimeout(45000)},async t=>{
+ const taskId='timeout-retained-task',answer='The retained task is still paused.',operationId='lookup-before-router-timeout'
+ let h,source,lookupId,completedId,reads=0,timeouts=0,submits=0,replies=0
+ h=await residentRouterHost(t,async body=>{
+  if(system(body).includes('NIGHT_ROUTER_TASK_LOOKUP。')){reads++;return {text:JSON.stringify({summary:answer,limitations:[]})}}
+  if(!requestTools(body).includes('resident_router_settle')||done(body))return {text:'Done'}
+  const packet=input(body),event=packet.events.find(e=>e.source?.messageId==='timeout-question')
+  if(requestText(body).some(text=>text.includes('继续处理未完成的事项'))){
+   const prefix='Router 请求：'
+   const result=requestText(body).flatMap(text=>text.split('\n')).filter(line=>line.startsWith(prefix))
+    .flatMap(line=>JSON.parse(line.slice(prefix.length)).events).find(e=>e.kind==='router.lookup.completed')
+   assert.equal(result?.id,completedId);assert.equal(result.lookupResult.lookupId,lookupId)
+   if(!replies++)return call('resident_router_reply',{operationId:'reply-after-timeout',sourceId:source.sourceId,messageVersion:source.messageVersion,text:result.lookupResult.summary,replyPurpose:'task-update'})
+   return call('resident_router_settle',{operationId:'settle-after-timeout',eventIds:[source.id,completedId],noTaskDispositions:[{eventId:source.id,outcome:'async-query',lookupId,sourceQuote:source.source.text,reason:'Completed the already accepted lookup'}]})
+  }
+  if(event){
+   source=event
+   if(!submits++)return call('resident_task_lookup_async',{operationId,sourceId:source.sourceId,messageVersion:source.messageVersion,taskIds:[taskId]})
+   lookupId??=JSON.parse(body.messages.at(-1).content).lookupId
+   assert.ok(lookupId)
+   const result=await eventually(async()=> (await h.query('router.inbox',{conversationId,deliverable:true})).find(e=>e.lookupResult?.lookupId===lookupId),'lookup completes before Router timeout')
+   completedId=result.id
+   timeouts++;return {errorStatus:504,error:'fixture gateway timeout'}
+  }
+  return call('resident_router_settle',{operationId:'settle:'+packet.events[0].id,eventIds:packet.events.map(e=>e.id)})
+ },{hostOptions:{hostConfig:config=>{
+  config.providers.fixture.retry={enabled:true,maxRetries:1,baseDelayMs:1,provider:{maxRetries:0}}
+  return config
+ }}})
+ const conversationId=h.host.ctx.channels.identity(channelMessage('register-timeout')).sessionId
+ await h.receive(channelMessage('register-timeout'));await h.service.whenIdle()
+ await h.store.command({id:'seed-timeout-task',kind:'task.create',args:{taskId,groupId:conversationId,conversationId,ownerActorId:'alice',request:'Retained task'}})
+ await h.store.command({id:'pause-timeout-task',kind:'task.control',args:{taskId,control:'paused',expectedControlRevision:1}})
+ await h.service.recover();await h.service.whenIdle()
+ assert.deepEqual(await h.query('router.inbox',{conversationId,deliverable:true}),[])
+ const before=await h.query('task.get',{taskId}),executions=await h.query('execution.list')
+ await h.receive(channelMessage('timeout-question'))
+ const router=await eventually(async()=>{const row=await h.query('router.get',{conversationId});return row?.timeoutContinuation&&row},'Router defers its timed-out input')
+ const events=()=>h.query('router.batch-events',{conversationId,eventIds:[source.id,completedId]})
+ const waiting=await events()
+ assert.deepEqual(waiting.map(e=>e.state),['pending','pending']);assert.equal(waiting[0].progressOnly,true)
+ assert.equal(timeouts,2)
+ await h.service.whenIdle().catch(error=>{assert.equal(error.code,'ROUTER_BATCH_UNSETTLED')})
+ // Use the same recovery entry as the periodic service tick, without an inbound message.
+ const recovered=await h.service.recover()
+ assert.deepEqual((await events()).map(e=>e.state),['consumed','consumed'],JSON.stringify(recovered))
+ await h.service.whenIdle()
+ const after=await h.query('router.get',{conversationId})
+ const notices=(await h.query('notification.list')).filter(n=>n.payload?.sourceId===source.sourceId)
+ assert.equal(notices.length,1);assert.equal(notices[0].state,'delivered');assert.ok(notices[0].receipt)
+ assert.deepEqual(h.sent.map(e=>e.text),[answer]);assert.equal(reads,1)
+ assert.equal(h.results.filter(row=>row.name==='resident_task_lookup_async'&&!row.result.isError).length,1)
+ assert.equal(after.activeSessionId,router.activeSessionId);assert.equal(after.generation,router.generation);assert.equal(after.timeoutContinuation,undefined)
+ assert.deepEqual(await h.query('task.get',{taskId}),before);assert.deepEqual(await h.query('execution.list'),executions)
+ const {entries}=await h.host.ctx.sessionPersistence.readNative(after.activeSessionId,{requireComplete:true})
+ const {packetId,failedEntryId}=router.timeoutContinuation
+ assert.equal(entries.filter(e=>e.customType==='night.business-input'&&e.details?.packetId===packetId).length,1)
+ assert.equal(entries.filter(e=>e.customType==='night.router-resume-claim'&&e.details?.failedEntryId===failedEntryId).length,1)
+})
+
+test('a pasted answer about work in another conversation does not select a merely similar local task',{timeout:nativeTestTimeout(30000)},async t=>{
+ const foreignTask='foreign-roster-audit',localTask='local-gateway-audit',quotedAnswer='值班表核对因超时中断。还缺每个仓库的值班人。'
+ let question,result,lookupId,selected=0,summarized=0
+ const h=await residentRouterHost(t,body=>{
+  if(system(body).includes('NIGHT_ROUTER_TASK_LOOKUP_SELECT')){selected++;return {text:JSON.stringify({taskIds:[localTask]})}}
+  if(system(body).includes('NIGHT_ROUTER_TASK_LOOKUP。')){summarized++;return {text:JSON.stringify({summary:'网关日志检查仍在等待。',limitations:[]})}}
+  if(!requestTools(body).includes('resident_router_settle')||done(body))return {text:'Done'}
+  const packet=input(body),event=packet.events[0]
+  if(event.lookupResult){
+   if(!result){result=event.lookupResult;return call('resident_router_reply',{sourceId:result.sourceId,messageVersion:result.messageVersion,operationId:'answer-pasted-quote',text:result.summary,replyPurpose:'task-update'})}
+  }else if(event.source?.messageId==='copied-answer'){
+   if(!question){question=event;return call('resident_task_lookup_async',{operationId:'lookup-pasted-quote',sourceId:event.sourceId,messageVersion:event.messageVersion})}
+   lookupId=JSON.parse(body.messages.at(-1).content).lookupId
+   return call('resident_router_settle',{operationId:'settle-pasted-quote',eventIds:[event.id],noTaskDispositions:[{eventId:event.id,outcome:'async-query',lookupId,sourceQuote:event.source.text,reason:'Resolve the referenced task'}]})
+  }
+  return call('resident_router_settle',{operationId:'settle:'+event.id,eventIds:packet.events.map(e=>e.id)})
+ })
+ const foreign=channelMessage('foreign-notice',{conversationId:'other-room',text:quotedAnswer}),local=channelMessage('register-local')
+ const foreignId=h.host.ctx.channels.identity(foreign).sessionId,conversationId=h.host.ctx.channels.identity(local).sessionId
+ for(const [taskId,groupId,title] of [[foreignTask,foreignId,'值班表核对'],[localTask,conversationId,'排查网关请求超时']]){
+  await h.store.command({id:'seed:'+taskId,kind:'task.create',args:{taskId,groupId,conversationId:groupId,ownerActorId:'alice',title,request:title}})
+  await h.store.command({id:'pause:'+taskId,kind:'task.control',args:{taskId,control:'paused',expectedControlRevision:1}})
+ }
+ await h.receive(foreign);await h.receive(local);await h.service.whenIdle()
+ assert.equal(h.sent.length,0)
+ await h.receive(channelMessage('copied-answer',{text:`“${quotedAnswer}”这条消息对应的超时也是模型超时吗？`}))
+ await eventually(()=>h.sent.length===1,'the copied question receives a source-bound reply')
+ await h.service.whenIdle()
+ const lookup=await h.query('router.action',{conversationId,operationId:(await import('../src/channels/resident-router-business.js')).residentOperationId(conversationId,'lookup-pasted-quote')})
+ assert.equal(result.state,'completed');assert.equal(result.lookupId,lookupId)
+ assert.deepEqual(lookup.result.lookup.result.snapshots,[])
+ assert.match(h.sent[0].text,/任务名或链接/)
+ assert.equal(selected,0);assert.equal(summarized,0)
+})
