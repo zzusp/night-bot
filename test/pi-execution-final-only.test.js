@@ -5,23 +5,25 @@ import {memoryHost} from './fixtures/memory-host.js'
 import {apply as applyApplication,inject} from '../src/application.js'
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 
-for(const action of ['complete','detailed','blocked','wait','natural-stop','policy-refusal','silent'])test('execution final-only Router delivery: '+action,{timeout:nativeTestTimeout(30000)},async t=>{
+for(const action of ['complete','detailed','scoped-recovery','end-to-end-recovery','unconfirmed-dependency','blocked','wait','natural-stop','policy-refusal','silent'])test('execution final-only Router delivery: '+action,{timeout:nativeTestTimeout(30000)},async t=>{
  let h,planned=false,replied=false,source,executions=0
  const technical=action==='policy-refusal',privateError='400 litellm.ContentPolicyViolationError: fixture-private-provider-detail'
- const terminal=new Set(),inspections=new Set(),reports=['complete','detailed','blocked'].includes(action)||technical
+ const terminal=new Set(),inspections=new Set(),reports=['complete','detailed','scoped-recovery','end-to-end-recovery','unconfirmed-dependency','blocked'].includes(action)||technical
  const multi=action==='blocked',detailed=action==='detailed',investigation=['complete','detailed'].includes(action)
- const request=multi?'这份清单里的 6 份材料都齐了吗？为什么收件方还没确认？请不要改外部系统或发附件。':investigation?'这批任务是怎么中断的？'+(detailed?'把统计范围及两条样本的时间和依据列出来。':''):'请核对这份材料。不要改外部系统或发附件。'
- const summary=multi?'清单上的 6 份材料都已核对。':investigation?'发出中断提示的 9 次，都是最后一次模型请求超时。':'Verified synthetic outcome'
- const evidence=multi?['逐项回读清单，6 份材料均存在。']:investigation?['13:37 和 15:19 的最后一条模型请求日志都记录超时，未返回输出。','这批总共 27 次模型超时，其中 9 次发出中断提示。','已逐项排除排队、工具和投递。']:['Synthetic material checked']
- const limitations=multi?['没有收件方的确认记录，尚不能确定未确认的原因。','TASK_EFFECT_UNCERTAIN_NO_REPLAY']:investigation?['缺网关日志，无法定位超时发生在哪一段。','本次只读，未改代码、重启或重跑。']:[]
- const replyText=technical?'模型服务拒绝了这轮请求，核验尚未完成。':multi?'1. 6 份材料都齐了。\n2. 收件方没留确认记录，原因还不清楚。':investigation?(detailed?summary+evidence.slice(0,2).join(''):'这些任务都中断在最后一次模型请求超时。')+'下一步对照网关日志查超时发生在哪一段。':'这份测试材料已核对。'
+ const clusterOnly=action==='scoped-recovery',endToEnd=action==='end-to-end-recovery',recovery=clusterOnly||endToEnd
+ const unconfirmed=action==='unconfirmed-dependency'
+ const request=unconfirmed?'UAT 的 db/mongodb-example 还有业务依赖吗？谁维护？先不要缩容。':recovery?(clusterOnly?'UAT6 集群内服务恢复了吗？':'UAT6 外部网关和 Monte Carlo 端到端恢复了吗？'):multi?'这份清单里的 6 份材料都齐了吗？为什么收件方还没确认？请不要改外部系统或发附件。':investigation?'这批任务是怎么中断的？'+(detailed?'把统计范围及两条样本的时间和依据列出来。':''):'请核对这份材料。不要改外部系统或发附件。'
+ const summary=unconfirmed?'查过可见的应用配置和连接日志，业务依赖和维护人仍未确认。':recovery?'UAT6 集群内服务已恢复。':multi?'清单上的 6 份材料都已核对。':investigation?'发出中断提示的 9 次，都是最后一次模型请求超时。':'Verified synthetic outcome'
+ const evidence=unconfirmed?['检查过就绪节点的日志，短时间内新增连接均来自本机。','可见的应用配置没有直接引用。']:recovery?['集群内就绪和服务端点返回 200。','较早构建和推送成功，但当时要求 v1 的就绪探针收到了 v2 的响应。']:multi?['逐项回读清单，6 份材料均存在。']:investigation?['13:37 和 15:19 的最后一条模型请求日志都记录超时，未返回输出。','这批总共 27 次模型超时，其中 9 次发出中断提示。','已逐项排除排队、工具和投递。']:['Synthetic material checked']
+ const limitations=unconfirmed?['既有连接无法归类。','监控无样本，不代表零连接。','维护人未确认。']:recovery?['本次只确认了集群内服务恢复，外部网关和 Monte Carlo 端到端业务未在本次复测中验证。']:multi?['没有收件方的确认记录，尚不能确定未确认的原因。','TASK_EFFECT_UNCERTAIN_NO_REPLAY']:investigation?['缺网关日志，无法定位超时发生在哪一段。','本次只读，未改代码、重启或重跑。']:[]
+ const replyText=unconfirmed?'我去查了 UAT 的 `db/mongodb-example`，还不能确认没有业务依赖，维护人也没确认。':clusterOnly?'UAT6 集群内服务已恢复。':endToEnd?'UAT6 集群内已恢复；外部网关和 Monte Carlo 端到端还没确认。下一步从外部入口跑一遍 Monte Carlo。':technical?'模型服务拒绝了这轮请求，核验尚未完成。':multi?'1. 6 份材料都齐了。\n2. 收件方没留确认记录，原因还不清楚。':investigation?(detailed?summary+evidence.slice(0,2).join(''):'这些任务都中断在最后一次模型请求超时。')+'下一步对照网关日志查超时发生在哪一段。':'这份测试材料已核对。'
  h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
   if(requestText(body).some(text=>text.includes('NIGHT_BOT_TASK_REFLECTION')))return {text:'{"lessons":[]}'}
   if(tools.includes('task_result')){
    executions++
    const resultTool=body.tools.find(tool=>tool.function.name==='task_result').function
-   if(investigation){
+   if(investigation||recovery||unconfirmed){
     assert.match(resultTool.description,/an internal result, not a human-facing reply/u)
     assert.match(JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role))),/an internal result, not a human-facing reply/u)
     const prompt=JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role)))
@@ -33,7 +35,7 @@ for(const action of ['complete','detailed','blocked','wait','natural-stop','poli
    assert.equal(schema.question,undefined);assert.equal(schema.audience,undefined)
    if(action==='natural-stop')return {text:'Normal stop with no structured result'}
    if(action==='policy-refusal')return {error:privateError}
-   return {tool:'task_result',args:{decision:{action:action==='silent'?'blocked':detailed?'complete':action,summary,evidence,limitations}}}
+   return {tool:'task_result',args:{decision:{action:action==='silent'?'blocked':detailed||recovery||unconfirmed?'complete':action,summary,evidence,limitations}}}
   }
   if(!tools.includes('resident_router_settle'))return {text:'No work'}
   if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1)?.result.isError)return {text:'Settled'}
@@ -57,11 +59,19 @@ for(const action of ['complete','detailed','blocked','wait','natural-stop','poli
    assert.match(prompt,/未明确要求明细，只写结论和下一步/u)
    assert.match(prompt,/禁止防御性内容，不只是避开某些词/u)
    assert.doesNotMatch(prompt,/复杂问题把关键依据说透|有帮助的依据不要省/u)
-   if(investigation){
+   if(investigation||recovery||unconfirmed){
     assert.match(prompt,/内部结果不走对外回复规则/u)
     const text=body.tools.find(tool=>tool.function.name==='resident_router_reply').function.parameters.properties.text
     assert.match(text.description,/除非会改变结论或下一步，不列附带统计/u)
-    assert.match(text.description,/确有可查的事实缺口，写清下一步核对什么/u)
+    assert.match(text.description,/把已核实的范围直接写在结论里/u)
+    assert.match(text.description,/未做的检查，只有原问题明确要求，或不提会让当前结论失真、影响对方下一步时才说/u)
+    assert.match(prompt,/不要照搬内部摘要或 limitations 字段/u)
+    assert.match(prompt,/不在末段罗列未测项/u)
+    if(unconfirmed){
+     assert.ok(prompt.includes(replyText),'the real Router receives the short answer example')
+     assert.match(text.description,/确认不了就直接说哪一项没确认，答完就停/u)
+     assert.match(text.description,/不要为了自证先铺垫、找理由、列证据或逐项排除/u)
+    }
     assert.ok(requestText(body).some(text=>text.includes(request)))
     assert.deepEqual(outcome.taskEvent.result.evidence,evidence)
     assert.deepEqual(outcome.taskEvent.result.limitations,limitations)
@@ -90,6 +100,11 @@ for(const action of ['complete','detailed','blocked','wait','natural-stop','poli
  await h.receive(channelMessage('final-only',{text:request}));await h.service.whenIdle()
  assert.equal(executions,1);assert.equal(terminal.size,technical?0:1);assert.equal(h.sent.length,reports?1:0)
  if(reports)assert.equal(h.sent[0].text,replyText)
+ if(unconfirmed)assert.doesNotMatch(h.sent[0].text,/日志|监控|样本|缩容|下一步/u)
+ if(recovery){
+  assert.equal(h.sent[0].text.includes('Monte Carlo'),endToEnd)
+  assert.doesNotMatch(h.sent[0].text,/本次只确认|构建和推送/u)
+ }
  if(investigation){
   const [sent]=h.sent
   assert.equal(sent.text.includes('13:37'),detailed)
@@ -101,7 +116,7 @@ for(const action of ['complete','detailed','blocked','wait','natural-stop','poli
   const [event]=await h.query('router.batch-events',{conversationId:task.groupId,eventIds:[...technical?inspections:terminal]})
   assert.equal(event.state,'consumed')
   assert.equal(event.outcomeDisposition.kind,reports?'notification-frozen':'not-reported')
-  if(investigation){
+  if(investigation||recovery||unconfirmed){
    const notice=await h.query('notification.get',{notificationId:event.outcomeDisposition.notificationId})
    assert.equal(notice.state,'delivered');assert.equal(notice.payload.text,replyText);assert.ok(notice.receipt)
   }
