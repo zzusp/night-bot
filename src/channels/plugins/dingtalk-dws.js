@@ -84,7 +84,7 @@ export async function apply(ctx,config={},dependencies={}){
   const inBoundScope=context=>readyBound&&context?.channelId===channelId&&context.type===config.conversationType&&context.conversationId===config.binding.conversationId
   unregister=ctx.channels.registerTransport(channelId,{canSend:()=>readyBound&&!closed&&config.enabled&&config.writesAuthorized===true,
     privatePeer:input=>inBoundScope(input)&&input.type==='chat'&&isBoundPrivateAuthor(config.binding,input.senderId)?config.binding.peerId:undefined,
-    capabilities:{account:accountPolicy,privateSubscription:{scope:'explicit-peers',peerCount:privatePeers.length+(config.conversationType==='chat'?1:0)},conversationTypes:[config.conversationType],files:config.conversationType==='chat-room'?['chat-room']:[],quotedReplies:[config.conversationType],standaloneMarkdown:true},
+    capabilities:{account:accountPolicy,privateSubscription:{scope:'explicit-peers',peerCount:privatePeers.length+(config.conversationType==='chat'?1:0)},conversationTypes:[config.conversationType],files:[config.conversationType],quotedReplies:[config.conversationType],standaloneMarkdown:true},
     send:(envelope,notification)=>{requireSend();assertTarget(envelope.conversationId,envelope.type);return envelope.type==='chat'?adapter.sendDirectIntent({openDingTalkId:config.binding.peerId,text:envelope.text,textFormat:notification.payload.textFormat,idempotencyKey:notification.id,conversationId:envelope.conversationId,replyToMessageId:envelope.replyToMessageId,replyToSenderId:envelope.replyToParticipantId??envelope.senderId??config.binding.peerId}):notifications.send(typed(notification,envelope))},
     readback:async(envelope,notification)=>{
       assertTarget(envelope.conversationId,envelope.type)
@@ -99,7 +99,12 @@ export async function apply(ctx,config={},dependencies={}){
       if(status.result?.sendStatus!=='SUCCESS'||conversationId!==envelope.conversationId||!messageId)return undefined
       return {messageId,conversationId,identity:'send-receipt',mentionVerification:'unavailable',observedAt:new Date().toISOString()}
     },
-    sendFile:(envelope,notification,file)=>{assertTarget(envelope.conversationId,envelope.type);if(envelope.type==='chat')throw failure('DWS_DIRECT_FILE_UNSUPPORTED');return notifications.sendFile(typed(notification,envelope),file)},readbackFile:(envelope,notification)=>{assertTarget(envelope.conversationId,envelope.type);return notifications.readbackFile(typed(notification,envelope))},
+    sendFile:(envelope,notification,file)=>{
+      requireSend();assertTarget(envelope.conversationId,envelope.type)
+      if(envelope.type!=='chat')return notifications.sendFile(typed(notification,envelope),file)
+      return createDwsAdapter({enabled:true,writesAuthorized:config.writesAuthorized===true,profile:config.profile,runner:runnerFor(file.directory)})
+        .sendDirectFile({openDingTalkId:config.binding.peerId,fileName:file.fileName,idempotencyKey:notification.id})
+    },readbackFile:(envelope,notification)=>{assertTarget(envelope.conversationId,envelope.type);return notifications.readbackFile(typed(notification,envelope))},
     readMessage:async({conversationId,messageId})=>{assertTarget(conversationId);return normalize(await adapter.readMessage(conversationId,messageId),conversationId)},
     readResource:({conversationId,messageId,resource})=>{assertTarget(conversationId);return adapter.readMessageResource(conversationId,messageId,resource)},
     readMentioned:({conversationId,messageId,resource})=>{assertTarget(conversationId);return adapter.isMessageMentioned(conversationId,messageId,resource?.occurredAt)}})

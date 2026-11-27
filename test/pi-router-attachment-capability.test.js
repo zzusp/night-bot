@@ -35,6 +35,13 @@ test('Router respects file capabilities and preserves independently proven attac
   if(!names.includes('resident_router_settle'))return {text:'No work'}
   if(result(body,'resident_router_settle'))return {text:'Settled'}
   const packet=requestEnvelope(body,'Router 请求：'),event=packet.events.find(row=>row.source)
+  if(event?.source.messageId==='send-existing'){
+   if(result(body,'resident_router_reply'))return call('resident_router_settle',{operationId:'settle-resend',eventIds:packet.events.map(row=>row.id),
+    noTaskDispositions:[{eventId:event.id,outcome:'handled-inline',reason:'Delivered through Router outbox.',sourceQuote:event.source.text}]})
+   const task=await h.query('task.get',{taskId:'task-private'})
+   return call('resident_router_reply',{operationId:'send-existing',sourceId:event.sourceId,messageVersion:event.messageVersion,text:'原文件见附件。',replyPurpose:'direct-answer',
+    taskDelivery:{taskId:task.taskId,requirementRevision:task.requirementRevision,artifactIds:task.completion.result.artifactFiles.map(file=>file.artifact.artifactId)}})
+  }
   if(event&&!planned.has(event.source.messageId)){
    const id='task-'+event.source.messageId
    planned.set(event.source.messageId,{id,source:event.source})
@@ -105,4 +112,10 @@ test('Router respects file capabilities and preserves independently proven attac
  await h.restart();await h.service.whenIdle()
  assert.equal((await parts('old')).find(row=>row.payload.artifact).state,'failed')
  assert.deepEqual(attempts.map(row=>row.kind),['text','text','file','text'])
+ capabilities.files=['chat-room','chat']
+ const before=(await h.query('task.list')).length
+ const resend=await deliver(channelMessage('send-existing',{type:'chat',conversationId:'private-room',text:'请把原草稿文件发给我。'}),'delivered')
+ assert.equal(resend.find(row=>row.payload.artifact).payload.artifact.sha256,file.payload.artifact.sha256)
+ assert.equal((await h.query('task.list')).length,before)
+ assert.deepEqual(attempts.slice(-2).map(row=>[row.kind,row.envelope.type,row.envelope.conversationId]),[['text','chat','private-room'],['file','chat','private-room']])
 })

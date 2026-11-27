@@ -553,7 +553,7 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       ||task.archiveRestore?.reviewRequired||notification.archiveRestoreHold)fail('DYNAMIC_TASK_DELIVERY_STALE')
     if(task.archivedAt&&!allowArchived)fail('DYNAMIC_TASK_DELIVERY_ARCHIVED')
     const source=get('dynamic_sources',text(p.sourceId,'sourceId')),ref=record(p.sourceRef)
-    if(source.groupId!==task.groupId||p.conversationId!==task.groupId||!task.sourceRefs.includes(source.sourceId)
+    if(source.groupId!==task.groupId||p.conversationId!==task.groupId||!task.sourceRefs.includes(source.sourceId)&&source.actorId!==task.ownerActorId
       ||p.sourceVersion!==source.version||digest(ref)!==digest({messageId:source.messageId,messageVersion:source.version,actorId:source.actorId})
       ||source.authorizationRevoked||source.triageHold||source.archiveRestoreHold
       ||all('dynamic_sources',"WHERE json_extract(body,'$.groupId')=? AND json_extract(body,'$.messageId')=?",[source.groupId,source.messageId]).some(row=>row.version>source.version))fail('DYNAMIC_TASK_DELIVERY_SOURCE_INVALID')
