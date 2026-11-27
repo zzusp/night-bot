@@ -260,6 +260,118 @@ test('cold Router isolates a persisted zero-progress event and actually dispatch
  assert.equal(h.sent.length,0)
 })
 
+test('failed skill refresh in a held review does not poison the next Router input', {timeout:nativeTestTimeout(90000)},async t=>{
+ const oldId='held-with-skill-race',nextId='next-after-skill-refresh',ordinary=[]
+ const interval=120,request='每 2 分钟醒来检查各渠道有没有需要跟进的任务。'
+ let reviewReady=false,failResources=false,blockedReads=0,reviewRequests=0
+ t.mock.timers.enable({apis:['Date'],now:Date.now()})
+ const h=await residentRouterHost(t,body=>{
+  const tools=requestTools(body),toolResult=body.messages.at(-1)?.role==='tool'
+  const lastTool=toolResult?body.messages.findLast(row=>row.role==='assistant')?.tool_calls?.at(-1)?.function?.name:undefined
+  if(tools.length===1&&tools.includes('resident_review_held_source')){reviewRequests++;return {text:'No review decision'}}
+  if(tools.includes('platform_reply_submit')&&!tools.includes('resident_router_settle')){
+   if(!toolResult)return {tool:'platform_task_query',args:{state:'all'}}
+   if(lastTool==='platform_task_query'){
+    const page=h.results.findLast(row=>row.name===lastTool).result.value
+    return {tool:'platform_reply_submit',args:{recipientActorIds:[next.actorId],text:`本会话待跟进：${page.items.map(item=>item.title).join('、')}`}}
+   }
+   return {text:'End scheduled turn'}
+  }
+  if(!tools.includes('resident_router_settle')||(toolResult&&!['platform_schedule_submit','resident_router_reply'].includes(lastTool)))return {text:'End turn'}
+  const {events}=requestEnvelope(body,'Router 请求：')
+  const scheduled=events.find(event=>event.source?.messageId===nextId)
+  if(!toolResult){
+   ordinary.push(...events.map(event=>event.source?.messageId))
+   if(events.some(event=>event.source?.messageId===oldId))return {text:'Leave the original request unresolved'}
+   if(scheduled)return {tool:'platform_schedule_submit',args:{operationId:'periodic-follow-up',sourceId:scheduled.source.sourceId,messageVersion:scheduled.source.version,title:'本会话任务巡检',prompt:'查看本会话有哪些任务需要跟进，有结果就汇报。',every_seconds:interval}}
+  }else{
+   const receipt=h.results.findLast(row=>row.name===lastTool)?.result
+   if(receipt?.isError!==false)return {text:'The operation has not been accepted'}
+   if(lastTool==='platform_schedule_submit'){
+    if(receipt.value.status!=='scheduled')return {text:'The schedule has not been accepted'}
+    return {tool:'resident_router_reply',args:{operationId:'confirm-periodic-follow-up',sourceId:scheduled.source.sourceId,messageVersion:scheduled.source.version,replyPurpose:'direct-answer',text:'已安排每 2 分钟检查本会话的任务；这条排期不能检查其它会话。'}}
+   }
+  }
+  return {tool:'resident_router_settle',args:{operationId:'settle-'+events[0].id,eventIds:events.map(event=>event.id),noTaskDispositions:events.map(event=>({eventId:event.id,outcome:event===scheduled?'handled-inline':'context-only',sourceQuote:event.source.text,reason:event===scheduled?'已创建本会话的周期巡检':'Fixture has no further external work'}))}}
+ },{wrapStore:store=>({...store,query:q=>!reviewReady&&q.kind==='router.held-review.next'?Promise.resolve(null):store.query(q)})})
+ await h.receive(channelMessage(oldId));await assert.rejects(h.service.whenIdle(),{code:'ROUTER_BATCH_UNSETTLED'})
+ const original=(await h.query('source.list')).find(s=>s.messageId===oldId),conversationId=original.groupId,eventId=original.routeReceipt.eventId
+ await h.receive(channelMessage('independent-before-skill-refresh'));await h.service.whenIdle()
+ const before=await h.query('router.get',{conversationId})
+ const [held]=await h.query('router.batch-events',{conversationId,eventIds:[eventId]});assert.ok(held.deliveryHold)
+ const reflection=h.host.ctx.reflection,load=reflection.officialResources.bind(reflection)
+ reflection.officialResources=async(skills,options)=>{
+  if(failResources&&options.scope.id===before.activeSessionId){blockedReads++;throw Object.assign(new Error('Fixture skill snapshot changed'),{code:'PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED'})}
+  return load(skills,options)
+ }
+ reviewReady=true;failResources=true
+ await assert.rejects(h.service.recover(),{code:'PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED'})
+ assert.ok(blockedReads>=3);assert.equal(reviewRequests,0)
+ const aborted=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})
+ assert.ok(aborted.entries.some(e=>e.message?.stopReason==='aborted'&&e.message.errorMessage==='Fixture skill snapshot changed'))
+ await h.receive(channelMessage(nextId,{text:request}));await assert.rejects(h.service.whenIdle(),{code:'PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED'})
+ const next=(await h.query('source.list')).find(s=>s.messageId===nextId),schedule=h.host.ctx.schedule
+ assert.equal((await h.query('router.batch-events',{conversationId,eventIds:[next.routeReceipt.eventId]}))[0].state,'pending')
+ assert.deepEqual(ordinary,[oldId,'independent-before-skill-refresh'])
+ assert.deepEqual(await schedule.catalog(),[])
+ // 固定退避时钟，不靠加长等待或发第二次消息推进原待办。
+ await assert.rejects(h.service.recover(),{code:'PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED'})
+ const retry=(await h.query('router.get',{conversationId})).recoveryRetry,reads=blockedReads
+ assert.equal(retry.attempts,1);assert.ok(Date.parse(retry.nextAttemptAt)>Date.now())
+ await h.service.recover();assert.equal(blockedReads,reads,'the same ordinary batch is not retried during backoff')
+ failResources=false;t.mock.timers.setTime(Date.parse(retry.nextAttemptAt)+1)
+ await h.service.recover();await h.service.whenIdle()
+ assert.deepEqual(ordinary,[oldId,'independent-before-skill-refresh',nextId])
+ const [result]=await h.query('router.batch-events',{conversationId,eventIds:[next.routeReceipt.eventId]})
+ assert.equal(result.state,'consumed',JSON.stringify(h.results.slice(-5)))
+ assert.equal((await h.query('router.get',{conversationId})).activeSessionId,before.activeSessionId)
+ const final=await h.host.ctx.sessionPersistence.readNative(before.activeSessionId,{requireComplete:true})
+ assert.equal(final.entries.filter(e=>e.customType==='night.business-input'&&e.details.source.eventIds?.includes(result.id)).length,1)
+ assert.equal((await h.query('router.batch-events',{conversationId,eventIds:[eventId]}))[0].state,'pending')
+ assert.equal(reviewRequests,0)
+ await eventually(()=>h.sent.length===1,'schedule confirmation in the original conversation')
+ assert.match(h.sent[0].text,/每 2 分钟检查本会话的任务/u)
+ const submissions=h.results.filter(row=>row.name==='platform_schedule_submit')
+ assert.equal(submissions.length,1);assert.equal(submissions[0].sessionId,before.activeSessionId)
+ assert.equal(submissions[0].result.isError,false)
+ const receipt=submissions[0].result.value
+ assert.equal(receipt.status,'scheduled');assert.equal(receipt.every_seconds,interval)
+ const bindings=h.residentStore.listPlatformSchedules(conversationId),records=await schedule.catalog()
+ assert.equal(bindings.length,1);assert.equal(records.length,1)
+ const [binding]=bindings,[record]=records
+ assert.deepEqual([binding.sourceId,binding.messageId,binding.messageVersion,binding.everySeconds],[next.sourceId,nextId,next.version,interval])
+ assert.deepEqual([record.id,record.sessionId,record.kind,record.everySeconds,record.status],[receipt.scheduleId,binding.sessionId,'every',interval,'active'])
+
+ const otherId='source-in-other-room'
+ await h.receive(channelMessage(otherId,{conversationId:'other-room'}));await h.service.whenIdle()
+ const other=(await h.query('source.list')).find(s=>s.messageId===otherId)
+ assert.notEqual(other.groupId,conversationId)
+ for(const [source,taskId,title] of [[next,'local-follow-up','本群待办'],[other,'other-follow-up','另一个群的待办']]){
+  await h.store.command({id:'seed-'+taskId,kind:'task.create',args:{taskId,groupId:source.groupId,ownerActorId:source.actorId,sourceRefs:[source.sourceId],request:title}})
+  await h.store.command({id:'pause-'+taskId,kind:'task.control',args:{taskId,control:'paused',expectedControlRevision:1}})
+ }
+ assert.equal((await h.query('task.list',{groupId:other.groupId}))[0].taskId,'other-follow-up')
+ assert.deepEqual(h.residentStore.listPlatformSchedules(other.groupId),[])
+ const firstDue=Date.parse(record.scheduledAt)
+ assert.equal(firstDue-Date.now(),interval*1000)
+ for(const index of [0,1]){
+  const due=firstDue+index*interval*1000,occurrenceAt=new Date(due).toISOString()
+  // 快进到到期前，随后由原生定时器回调触发，不手动投递排期输入。
+  t.mock.timers.setTime(due-1);schedule.start();await schedule.runtime.running
+  assert.equal(h.sent.length,index+1)
+  assert.equal(h.residentStore.getPlatformSchedule(binding.sessionId).lastOccurrenceAt,index?record.scheduledAt:undefined)
+  t.mock.timers.setTime(due)
+  await eventually(()=>h.residentStore.getPlatformSchedule(binding.sessionId).lastOccurrenceAt===occurrenceAt,'periodic follow-up '+index)
+  await eventually(()=>h.sent.length===index+2,'isolated report '+index)
+  const queries=h.results.filter(row=>row.name==='platform_task_query'&&row.sessionId===binding.sessionId)
+  assert.equal(queries.length,index+1);assert.equal(queries[index].result.isError,false)
+  assert.equal(queries[index].result.value.asOf,occurrenceAt)
+  assert.deepEqual(queries[index].result.value.items.map(item=>item.taskId),['local-follow-up'])
+  assert.equal(h.sent[index+1].text,'本会话待跟进：本群待办')
+ }
+ assert.equal((await schedule.catalog())[0].status,'active')
+})
+
 for(const decision of ['continue','processed','defer','progress','late'])test(`recovered Router actively reviews a held source: ${decision}`,{timeout:nativeTestTimeout(90000)},async t=>{
  const cold=decision==='processed'||decision==='progress',late=decision==='late'
  const ordinary=[],reviews=[];let attempts=0,notificationId,reviewTried=false,reviewReady=!cold,visible=!late

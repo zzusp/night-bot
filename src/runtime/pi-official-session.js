@@ -83,7 +83,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
    async deliver(packetId,options){
     if(typeof admission.deliver!=='function')throw new TypeError('Durable business delivery capability required')
     const result=await admission.deliver(session,packetId,{...options,beforeDeliver:async packet=>{
-     if(background&&session.isIdle&&!failure&&!durability.failure)await bridge.recoverTurnEndResources()
+     if(background&&session.isIdle&&!failure&&!durability.failure)await bridge.recoverInputResources()
      await background?.beforeInput(packet)
      if(!session.isStreaming)tools.beginTurn()
      // Ordinary packets refresh at actual before_agent_start; slash skills need

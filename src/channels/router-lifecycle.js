@@ -612,14 +612,14 @@ export function openRouterLifecycle({ctx,store,root,models,setupBusiness,settle,
         if(restoreIdleRouters&&row?.phase==='active'&&!inbox.length&&!await nextHeldReview(id,new Set())){idle.push(row);continue}
         const inspection=inbox.some(event=>event.kind==='task.inspection')
         const key=hash([row?.generation,inbox.map(event=>event.id)]),retry=row?.recoveryRetry
-        if(inspection&&row?.phase==='active'&&retry?.key===key&&Date.parse(retry.nextAttemptAt)>Date.now()){
+        if(row?.phase==='active'&&retry?.key===key&&Date.parse(retry.nextAttemptAt)>Date.now()){
           failures.push({conversationId:id,code:retry.exhausted?'ROUTER_RECOVERY_EXHAUSTED':'ROUTER_RECOVERY_BACKOFF'});continue
         }
         const recovering=schedule(id,restoreIdleRouters).catch(async error=>{
           failures.push({conversationId:id,code:error.recoveryReason??error.code??error.message})
           if(error.code!=='ROUTER_BATCH_UNSETTLED')fatal.push(error)
-          // Same recovery snapshot is idempotent; later failures need a new receipt.
-          if(row&&inspection)await command('router.recovery-attempt',{conversationId:id,generation:row.generation,key},'router.recovery-attempt:'+hash([id,row.generation,key,retry??null]))
+          // 技能仍在变化时，原批次也沿用现有恢复退避，不在每次巡检重读。
+          if(row&&(inspection||error.code==='PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED'))await command('router.recovery-attempt',{conversationId:id,generation:row.generation,key},'router.recovery-attempt:'+hash([id,row.generation,key,retry??null]))
         })
         work.push(recovering)
       }
