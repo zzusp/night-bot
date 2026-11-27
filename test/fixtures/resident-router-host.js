@@ -57,6 +57,9 @@ export async function residentRouterHost(t, decide, options = {}) {
     ctx.on('tools/result',(execution,result)=>results.push({name:execution.name,sessionId:execution.agent?.id,result}))
     ctx.channels.registerTransport('resident-fixture', {
       capabilities:options.transportCapabilities,
+      ...(options.sendFile?{sendFile:options.sendFile}:{}),
+      ...(options.readbackFile?{readbackFile:options.readbackFile}:{}),
+      ...(options.canSend?{canSend:options.canSend}:{}),
       async send(envelope) {
         sent.push(structuredClone(envelope))
         return options.send ? options.send(envelope) : {messageId:'visible-'+sent.length}

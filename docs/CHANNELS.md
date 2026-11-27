@@ -261,7 +261,7 @@ capabilities, multi-account isolation and DWS source evidence are specified in
 
 Windows 默认 `dingtalk_account_mode:"system"`，使用当前 OS 用户受 DPAPI/HKCU 保护的已有登录态，不复制凭据，也不声称不同 profile 或 channelId 具备独立账号。Linux/macOS 默认 private 配置/keychain 文件，也可显式选择 system；Windows 显式 private 请求拒绝。Night Bot 管理的私有账号、工作文件、缓存、绑定与补拉水位按 channelId 在安装内分区，system 凭据仍归 DWS/OS 所有；账号共享影响见 [插件接口](CHANNEL-PLUGINS.md)。没有内置账号、群、actor 或凭据。
 
-私聊实例使用 `dingtalk_conversation_type:"chat"` 与一个 `dingtalk_user_id` 或 `dingtalk_user_name`，真实解析后绑定对端、原生 conversation 和当前账号 actor；`directChats`、`directPeers`、`assistantActorId` 为内部派生值，不是公开配置。群聊与私聊均复用 bridge 的订阅、暂停/恢复和有界历史补读，恢复沿该渠道持久水位、身份校验和去重推进，不重新初始化起点丢弃停用消息。私聊支持文字和原生引用回复，不支持私聊文件交付；实现不代表真实订阅、补拉或交付已验收。
+私聊实例使用 `dingtalk_conversation_type:"chat"` 与一个 `dingtalk_user_id` 或 `dingtalk_user_name`，真实解析后绑定对端、原生 conversation 和当前账号 actor；`directChats`、`directPeers`、`assistantActorId` 为内部派生值，不是公开配置。群聊与私聊均复用 bridge 的订阅、暂停/恢复和有界历史补读，恢复沿该渠道持久水位、身份校验和去重推进，不重新初始化起点丢弃停用消息。私聊支持文字和原生引用回复，不支持私聊文件交付。选中的附件仍保留在原任务产物中；正文说明当前会话不支持发送附件，文件单独记录为未发送，不改投其他会话。已经发出的旧正文不会重发，曾经取得发送许可的文件仍按原回执核对。实现不代表真实订阅、补拉或交付已验收。
 
 插件保留带署源的历史、资源、mention、文件与 receipt/readback 适配能力，typed 入站保留真实发送人及原引用。额外 operator 私聊须显式开启 `dingtalk_operator_notifications` 并提供非空 `dingtalk_operator_peers`，且单独核对账号、对端及授权；不要因业务私聊实例已配置就启用 operator 范围。
 

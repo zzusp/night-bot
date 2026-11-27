@@ -48,6 +48,25 @@ export const finalConversationNotificationRouting=(messages,decision)=>conversat
 export const groupNotificationRouting=(messages,decision,options)=>conversationNotificationRouting(messages,notificationAudience(decision),options)
 export const finalNotificationRouting=(messages,decision)=>groupNotificationRouting(messages,decision,{quote:false})
 
+export const attachmentCapabilityBlocked = 'CHANNEL_FILE_DELIVERY_UNSUPPORTED'
+export function withoutAttachmentPromise(text) {
+  const retained = text.split('\n').map(line => line
+    .replace(/(?:具体|详细|详情|文件|草稿|报告|结果|请|详)?(?:参见|请见|查阅|查看|见)(?:下方|以下)?附件(?:中|里)?/gu, '')
+    .replace(/(?:我已|已|已将|另行|随后|将会|将|会)?(?:附上|附送|附有|发送)(?:了)?(?:以下|下方)?附件/gu, '')
+    .replace(/(?:please\s+)?(?:see|check|find)\s+(?:the\s+)?(?:attached\s+(?:file|document|draft|report)|attachment)|\b(?:file|document|draft|report)\s+(?:is\s+)?attached\b/giu, '')
+    .replace(/[，,；;：:\s]+(?=[。.!！?？]?$)/u, ''))
+    .filter(line => line === '' || /[\p{L}\p{N}]/u.test(line)).join('\n').trim()
+  return [retained, '文件已保留，当前会话不支持发送附件。'].filter(Boolean).join('\n\n')
+}
+export function blockUnsupportedAttachment(notification, at) {
+  if(notification.state !== 'prepared' || notification.ack || notification.receipt || notification.sendPermit || notification.dispatchToken || notification.sendStartedAt || (notification.sendAttemptCount ?? 0) > 0) return false
+  notification.state = 'failed'
+  notification.deliveryError = { phase:'send', origin:'host-capability', code:attachmentCapabilityBlocked, message:'当前会话不支持发送附件', knownNotSent:true, retryable:false }
+  notification.nextAttemptAt = null
+  notification.updatedAt = at
+  return true
+}
+
 /** Route is selected and validated against trusted context by the caller. */
 export function prepareConversationNotification({conversationId,text,replyToMessageId,replyToActorId,sourceText,
   recipientActorIds=[],atAll,artifactFiles=[],signature,includeSignature=true,internalIds=[]}) {

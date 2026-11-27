@@ -18,7 +18,7 @@ import { taskNotificationRecovery } from './notification-delivery.js'
 import { isNativeFilePrecondition } from './dynamic-filesystem-scope.js'
 import { taskExecutionContext } from './execution-context.js'
 import { stableTaskResourceIdentity } from './task-message-projections.js'
-import { groupNotificationParts, notificationAudience } from './group-notification.js'
+import { blockUnsupportedAttachment, groupNotificationParts, notificationAudience } from './group-notification.js'
 import { fixedTopicIds, fixedUnitRequestId, platformScheduleOutboundId } from './fixed-topics.js'
 import { stableId } from './topic-model.js'
 import { createExecutionResourceCatalog } from './execution-resource-catalog.js'
@@ -1913,6 +1913,11 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       const notification = { id, notificationId: id, ...body, payloadDigest: digest(body), state: 'prepared', createdAt: stamp, updatedAt: stamp }
       if(notification.payload.taskDelivery!==undefined)assertTaskDelivery(notification,{allowArchived:false})
       const notifications = groupNotificationParts(notification, a.payload.artifactFiles)
+      if(a.attachmentDeliveryUnsupported===true){
+        if(notifications.length===1)fail('DYNAMIC_ARGUMENT_INVALID','attachmentDeliveryUnsupported')
+        notification.attachmentDeliveryUnsupported=true
+        for(const child of notifications.slice(1))blockUnsupportedAttachment(child,stamp)
+      }
       if(notification.payload.taskDelivery!==undefined) {
         // 子件与父件同事务产生；先发布父件供身份核对，任一子件失败会整体回滚。
         put('dynamic_notifications',notification)
@@ -1920,6 +1925,12 @@ export async function openDynamicTaskStore({ dbPath, instanceId, initialize = fa
       }
       for (const part of notifications) put('dynamic_notifications', part)
       return changed({ notification, notifications })
+    }
+    if (kind === 'notification.blockUnsupportedAttachment') {
+      const notification=get('dynamic_notifications',text(a.notificationId,'notificationId')),p=notification.payload
+      if((p.artifact||p.artifactFiles?.length&&!notification.attachmentDeliveryUnsupported)
+        &&blockUnsupportedAttachment(notification,stamp))put('dynamic_notifications',notification)
+      return changed({notification})
     }
     if (kind === 'notification.rejectBeforeSend') {
       const notification = get('dynamic_notifications', a.notificationId), error = notification.deliveryError
