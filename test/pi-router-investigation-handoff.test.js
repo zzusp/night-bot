@@ -17,9 +17,9 @@ test('explicit read-only investigation reaches real execution without a pre-Rout
     }
     if(names.includes('resident_router_settle')){
       const allText=requestText(body).join('\n')
-      assert.match(allText,/prepared与delivered只说明投递进度/)
-      assert.match(allText,/未明确交办先询问/)
-      assert.match(allText,/不自动扩展为修改代码/);systemChecked=true
+      assert.match(allText,/不把接纳、安排、执行、完成、验收和送达混为一谈/)
+      assert.match(allText,/不明确时只问缺的对象、范围或输入/)
+      assert.match(allText,/获准的只读部分，不扩成修改、部署或发布/);systemChecked=true
       const input=requestEnvelope(body,'Router 请求：'),event=input.events.find(event=>event.source)
       if(body.messages.at(-1)?.role==='tool'&&h.results.at(-1)?.name==='resident_router_settle'&&!h.results.at(-1)?.result.isError)return {text:'Settled with actual action receipt'}
       if(event){

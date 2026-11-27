@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
 import {join} from 'node:path'
+import {piJournalFilename} from '../src/runtime/pi-journal.js'
 import {backupTask,validateTaskArchive} from '../src/tasks/archive.js'
 import {ledgerDigest,validateTaskLedger} from '../src/tasks/ledger-archive.js'
 import {residentRouterHost,channelMessage,requestEnvelope,requestTools,requestText,eventually} from './fixtures/resident-router-host.js'
@@ -24,14 +25,14 @@ test('attachment preflight never replaces a claimed send or an existing receipt'
 })
 
 const reportedPath='work/report.md', importName='合成资料归档'
-async function attachmentFixture(t,files=['chat-room']){
+async function attachmentFixture(t,files=['chat-room'],holdCompletion=false){
  let h,phase='open'
  const setPhase=value=>{phase=value}
  t.after(()=>{if(phase!=='verified')t.diagnostic('Last attachment test phase: '+phase)})
  const planned=new Map(),replied=new Set(),receipts=new Map(),attempts=[]
  let acceptedImport, crossChannelRead
  const capabilities={conversationTypes:['chat','chat-room'],files,standaloneMarkdown:true}
- let holdOldFile=true
+ let holdOldFile=true, failResumeId
  h=await residentRouterHost(t,async body=>{
   const names=requestTools(body)
   if(names.includes('task_result')){
@@ -63,12 +64,12 @@ async function attachmentFixture(t,files=['chat-room']){
    return call('resident_router_shared_import',{sourceId:event.sourceId,messageVersion:event.messageVersion,sourceQuote:event.source.text,
      taskId:task.taskId,requirementRevision:task.requirementRevision+Number(event.source.messageId==='import-stale'),path:event.source.messageId==='import-unreported'?'work/../materials/source.md':reportedPath,name:importName})
   }
-  if(['send-existing','send-reported','send-other-room'].includes(event?.source.messageId)){
+  if(['send-existing','send-reported','send-other-room','send-other-author'].includes(event?.source.messageId)){
    const fromReported=event.source.messageId!=='send-existing'
    if(result(body,'resident_router_reply'))return call('resident_router_settle',{operationId:'settle-'+event.source.messageId,eventIds:packet.events.map(row=>row.id),
-    noTaskDispositions:[{eventId:event.id,outcome:event.source.messageId==='send-other-room'?'context-only':'handled-inline',reason:'Request checked through Router.',sourceQuote:event.source.text}]})
+    noTaskDispositions:[{eventId:event.id,outcome:event.source.messageId.startsWith('send-other-')?'context-only':'handled-inline',reason:'Request checked through Router.',sourceQuote:event.source.text}]})
    const task=await h.query('task.get',{taskId:fromReported?'task-reported':'task-private'})
-   return call('resident_router_reply',{operationId:event.source.messageId,sourceId:event.sourceId,messageVersion:event.messageVersion,text:'原文件见附件。',replyPurpose:'direct-answer',
+   return call('resident_router_reply',{operationId:event.source.messageId,sourceId:event.sourceId,messageVersion:event.messageVersion,...fromReported?{completionEventId:'irrelevant-historical-event'}:{},text:'原文件见附件。',replyPurpose:'direct-answer',
     taskDelivery:{taskId:task.taskId,requirementRevision:task.requirementRevision,...(fromReported?{reportedFiles:[{path:reportedPath,caption:'原草稿'}]}:{artifactIds:task.completion.result.artifactFiles.map(file=>file.artifact.artifactId)})}})
   }
   if(event&&!planned.has(event.source.messageId)){
@@ -77,6 +78,7 @@ async function attachmentFixture(t,files=['chat-room']){
    return call('resident_task_plan',{operationId:id,sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:id,title:id,objective:'创建一次合成测试草稿',requirements:[],handoff:'在 work/report.md 保留合成测试草稿'+(id==='task-reported'?'，仅记录原件':id==='task-lookup'?'，跨渠道读取合成资料':'')}],dependencies:[]})
   }
   const done=packet.events.find(row=>row.kind==='task.completed')
+  if(done?.taskId==='task-reported'&&holdCompletion)return {text:'Leave this completed event pending for cold recovery.'}
   if(done&&!replied.has(done.taskId)){
    replied.add(done.taskId)
    const {source}=[...planned.values()].find(row=>row.id===done.taskId)
@@ -86,6 +88,17 @@ async function attachmentFixture(t,files=['chat-room']){
   }
   return call('resident_router_settle',{operationId:'settle-'+packet.events.map(row=>row.id).join(','),eventIds:packet.events.map(row=>row.id)})
  },{
+  wrapStore:store=>{
+   if(failResumeId){
+    const agents=h.host.ctx.agents,resume=agents.resume.bind(agents),oldId=failResumeId
+    failResumeId=undefined
+    agents.resume=(...inputs)=>{
+     if(inputs[0]?.resumeSessionId===oldId)throw Object.assign(Error('Fixture skill authorization changed'),{code:'PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED'})
+     return resume(...inputs)
+    }
+   }
+   return store
+  },
   strictModelDecisions:true,transportCapabilities:capabilities,channelIds:['resident-fixture','other-fixture'],
   canSend:row=>!(holdOldFile&&row.payload.artifact&&row.payload.sourceRef.messageId==='old'),
   async send(envelope){
@@ -112,7 +125,7 @@ async function attachmentFixture(t,files=['chat-room']){
   await h.service.whenIdle()
   return parts(message.messageId)
  }
- return {h,attempts,capabilities,parts,deliver,setPhase,releaseFile:()=>{holdOldFile=false},
+ return {h,attempts,capabilities,parts,deliver,setPhase,recoverFromSkillChange:async oldId=>{holdCompletion=false;failResumeId=oldId;await h.restart()},releaseFile:()=>{holdOldFile=false},
   get acceptedImport(){return acceptedImport},get crossChannelRead(){return crossChannelRead}}
 }
 
@@ -159,12 +172,25 @@ test('Router respects file capabilities and preserves independently proven attac
 })
 
 test('Router sends, imports and seals an original reported by a completed task',{timeout:nativeTestTimeout(65000)},async t=>{
- const fixture=await attachmentFixture(t,['chat-room','chat'])
- const {h,attempts,parts,deliver,setPhase}=fixture
+ const fixture=await attachmentFixture(t,['chat-room','chat'],true)
+ const {h,attempts,parts,deliver,setPhase,recoverFromSkillChange}=fixture
  async function receive(message){setPhase(message.messageId);await h.receive(message);await h.service.whenIdle()}
- await receive(channelMessage('reported',{type:'chat',conversationId:'private-room',text:'留一份草稿，暂时不用发。'}))
+ setPhase('leave completion pending')
+ await h.receive(channelMessage('reported',{type:'chat',conversationId:'private-room',text:'留一份草稿，暂时不用发。'}))
+ await assert.rejects(h.service.whenIdle(),{code:'ROUTER_BATCH_UNSETTLED'})
  const original=await h.query('task.get',{taskId:'task-reported'})
  assert.deepEqual(original.completion.result.artifacts,[reportedPath]);assert.equal(original.completion.result.artifactFiles,undefined)
+ const old=await h.query('router.get',{conversationId:original.groupId})
+ const oldFile=join(h.host.ctx.runtimePaths.state,'sessions',piJournalFilename(old.activeSessionId))
+ const beforeRotation=await readFile(oldFile)
+ assert.ok((await h.query('router.inbox',{conversationId:original.groupId})).some(event=>event.kind==='task.completed'))
+ setPhase('recover old skill owner')
+ await recoverFromSkillChange(old.activeSessionId)
+ await h.service.whenIdle()
+ const rotation=(await h.query('router.rotations',{conversationId:original.groupId})).find(row=>row.oldSessionId===old.activeSessionId)
+ assert.equal(rotation?.state,'published');assert.equal(rotation.recovery.reason,'PI_OFFICIAL_SKILL_AUTHORIZATION_CHANGED')
+ assert.ok(rotation.recovery.unknownTaskIds.includes(original.taskId))
+ assert.deepEqual(await readFile(oldFile),beforeRotation)
  const file=(await deliver(channelMessage('send-reported',{type:'chat',conversationId:'private-room',text:'把刚才留的原稿发我。'}),'delivered')).find(row=>row.payload.artifact)
  const sha256=file.payload.artifact.sha256
  assert.deepEqual(attempts.map(row=>[row.kind,row.envelope.type,row.envelope.conversationId]),[['text','chat','private-room'],['file','chat','private-room']])
@@ -178,9 +204,9 @@ test('Router sends, imports and seals an original reported by a completed task',
  const sentBeforeRepeat=attempts.length
  await receive(channelMessage('send-reported',{type:'chat',conversationId:'private-room',text:'把刚才留的原稿发我。'}))
  assert.equal(attempts.length,sentBeforeRepeat)
- for(const id of ['send-other-room','import-other-room','import-stale','import-unreported']){
+ for(const id of ['send-other-room','send-other-author','import-other-room','import-stale','import-unreported']){
   const wrongRoom=id.endsWith('other-room')
-  await receive(channelMessage(id,{type:'chat',conversationId:wrongRoom?'unrelated-room':'private-room',text:'测试无效的原文件请求。'}))
+  await receive(channelMessage(id,{type:'chat',conversationId:wrongRoom?'unrelated-room':'private-room',...id==='send-other-author'?{senderId:'other-authenticated-actor'}:{},text:'测试无效的原文件请求。'}))
   const tool=id.startsWith('send')?'resident_router_reply':'resident_router_shared_import'
   assert.match(JSON.stringify(h.results.findLast(row=>row.name===tool)?.result),/TASK_DELIVERY_SOURCE_STALE|SHARED_REPORTED_FILE_UNAVAILABLE/)
   assert.deepEqual(await parts(id),[])

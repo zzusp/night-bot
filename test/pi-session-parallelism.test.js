@@ -34,7 +34,7 @@ test('conversation projection stages overlap with exact source/version links, de
 test('actual Router read tools overlap through Pi and Host leases; writer barrier and capacity remain enforced', {timeout:10000},async t=>{
  const entered=Promise.withResolvers(),release=Promise.withResolvers();t.after(()=>release.resolve());let active=0,peak=0,reads=0,writes=0
  const f=await officialToolsFixture(t,async({ctx,owner})=>{
-  owner.admission={current:async()=>undefined}
+  owner.admission={current:()=>undefined}
   const query=async kind=>{
    if(kind==='router.get')return {generation:1,phase:'active'}
    if(['router.reply-history','router.source-history'].includes(kind)){
@@ -50,7 +50,9 @@ test('actual Router read tools overlap through Pi and Host leases; writer barrie
  const calls=[{id:'r1',name:'resident_reply_query',args:{sourceId:'one'}},{id:'r2',name:'resident_source_query'},
   {id:'w',name:'resident_dependency_evaluate',args:{operationId:'eval',dependencyId:'d',completionEventId:'c',prerequisiteRequirementRevision:1,requirementRevision:1,controlRevision:1,arrangementRevision:1,decision:'wait',evidence:[]}},
   {id:'r3',name:'resident_reply_query',args:{sourceId:'two'}}]
- const work=f.run(calls);await entered.promise;assert.equal(active,2);assert.equal(writes,0);assert.equal(reads,2);release.resolve();await work
+ const work=f.run(calls)
+ await Promise.race([entered.promise,work.then(()=>assert.fail('Router tools stopped before both reads entered: '+JSON.stringify(f.results.map(result=>result.result?.content))))])
+ assert.equal(active,2);assert.equal(writes,0);assert.equal(reads,2);release.resolve();await work
  assert.equal(peak,2);assert.equal(writes,1);assert.equal(reads,3);assert.ok(f.results.every(r=>!r.isError))
 })
 
