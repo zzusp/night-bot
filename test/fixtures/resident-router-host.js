@@ -46,7 +46,7 @@ export async function residentRouterHost(t, decide, options = {}) {
     ...options.config}
   async function open() {
     const ctx = f.host.ctx, residentStore = await openResidentStore(ctx.storageDomain)
-    const rawStore = await openDynamicTaskStore({...config,initialize:config.initialize})
+    const rawStore = await openDynamicTaskStore({...config,initialize:config.initialize,privateFileRecipient:source=>ctx.channels.privateFileRecipient(source)})
     const store = options.wrapStore ? options.wrapStore(rawStore) : rawStore
     const service = await openTaskSessionService({ctx,config,store,residentStore,
       readResource:options.readResource,
@@ -57,6 +57,7 @@ export async function residentRouterHost(t, decide, options = {}) {
     ctx.on('tools/result',(execution,result)=>results.push({name:execution.name,sessionId:execution.agent?.id,result}))
     for(const channelId of options.channelIds??['resident-fixture'])ctx.channels.registerTransport(channelId, {
       capabilities:options.transportCapabilities,
+      ...(options.privatePeer?{privatePeer:options.privatePeer}:{}),
       ...(options.sendFile?{sendFile:options.sendFile}:{}),
       ...(options.readbackFile?{readbackFile:options.readbackFile}:{}),
       ...(options.canSend?{canSend:options.canSend}:{}),

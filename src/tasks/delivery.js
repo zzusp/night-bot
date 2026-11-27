@@ -15,10 +15,19 @@ export async function freezeSingleTaskFiles({selected=[],reported=[],task,direct
 }
 
 /** Bind a new, same-conversation action to a file reported by a completed task. */
-export function reportedWorkFile(task,source,requirementRevision,path){
+function reportedWorkFileInScope(task,source,requirementRevision,path){
   return typeof path==='string'&&path.startsWith('work/')&&!path.includes('\\')
-    &&path.slice(5).split('/').every(part=>part&&part!=='.'&&part!=='..')&&task?.groupId===source.groupId&&task.ownerActorId===source.actorId
+    &&path.slice(5).split('/').every(part=>part&&part!=='.'&&part!=='..')&&task?.groupId===source.groupId
     &&task.status==='completed'&&task.control==='active'&&task.drained&&!task.archivedAt&&!task.archiveRestoreHold&&!task.archiveRestore?.reviewRequired
     &&task.requirementRevision===requirementRevision&&task.completion?.requirementRevision===requirementRevision
     &&task.completion.result?.artifacts?.includes(path)===true
+}
+
+export function reportedWorkFile(task,source,requirementRevision,path){
+  return task?.ownerActorId===source.actorId&&reportedWorkFileInScope(task,source,requirementRevision,path)
+}
+
+export function reportedDeliveryFile(task,source,requirementRevision,path,privateRecipientActorId){
+  return (task?.ownerActorId===source.actorId||privateRecipientActorId!==undefined&&task?.ownerActorId===privateRecipientActorId)
+    &&reportedWorkFileInScope(task,source,requirementRevision,path)
 }

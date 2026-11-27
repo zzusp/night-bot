@@ -140,7 +140,7 @@ Router 的业务工具按实际职责区分：
 
 ## Router 最终文件交付
 
-`resident_router_reply` 的可选 `taskDelivery` 绑定 `taskId` 和 `requirementRevision`。Router 先用 `resident_task_query` 核对当前完成结果，选择 1–20 个不同文件：已冻结的文件按 `artifactIds` 选择；原作者后来在同一会话要求发送、且原件只登记未冻结时，按 `reportedFiles: [{path, caption}]` 选择已报告的 `work/` 路径。本轮完成事件交付时用 `artifactIds` 和对应的 `completionEventId`；后续回发用本次请求来源，不绑定旧完成事件。对 `reportedFiles`，Host 忽略历史调用中多余的 `completionEventId`，拒绝 `outcomeEventId` 和混用两种文件选择。Host 核对同会话原作者、当前来源和任务版本，从原任务工作区校验并冻结字节，按本次来源版本去重，不修改原结论、不重开任务。源已撤权/过期、任务不再完成或恢复仍 held 时拒绝；未进入发送的错误不算平台拒绝。
+`resident_router_reply` 的可选 `taskDelivery` 绑定 `taskId` 和 `requirementRevision`。Router 先用 `resident_task_query` 核对当前完成结果，选择 1–20 个不同文件：已冻结的文件按 `artifactIds` 选择；后来在原会话明确要求发送、且原件只登记未冻结时，按 `reportedFiles: [{path, caption}]` 选择已报告的 `work/` 路径。本轮完成事件交付时用 `artifactIds` 和对应的 `completionEventId`；后续回发用本次请求来源，不绑定旧完成事件。对 `reportedFiles`，Host 忽略历史调用中多余的 `completionEventId`，拒绝 `outcomeEventId` 和混用两种文件选择。Host 核对同会话原作者、当前来源和任务版本。绑定私聊可由另一已认证参与方发起，但可信渠道必须确认原任务作者就是唯一实际收件人；受众由 Host 冻结，准备及授予发送许可时重核，不引用另一方的消息，不接受模型声明替代这个绑定。此例外不用于群聊、入库、完成事件附件或改投。从原任务工作区校验并冻结字节，按本次来源版本去重，不修改原结论、不重开任务。源已撤权/过期、任务不再完成或恢复仍 held 时拒绝；未进入发送的错误不算平台拒绝。
 
 最终说明与平台到期回复复用现有通知格式，保留原文件名和 caption。`taskDelivery` 只会给父说明绑定引用；文件子通知不继承引用，不宣称文件消息自身具备原生 quote/@ 能力。任务交付写入属于该 task 的 `status` 父通知及文件子通知，先确认最终说明送达，再依原顺序发送文件；冻结、`accepted` 或 Router settle 均不表示送达，unknown 先回读，不自动重发。归档包含该任务自己的父子通知，不带整群上下文；已归档任务只能继续已有合法未送达通知，不能重新创建交付，档案恢复仍保持 hold。原生引用和结构化提及是不同字段；引用可能由平台隐式通知原作者。
 

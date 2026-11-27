@@ -45,9 +45,12 @@ export function validateTaskLedger(snapshot){
   }
   if([...sourceIds].some(id=>!tables.sources.some(row=>row.id===id)))fail('TASK_ARCHIVE_SOURCE_MISSING')
   for(const {body} of deliveries){
-    const {sourceId,sourceVersion,sourceRef,conversationId,taskDelivery}=body.payload
+    const {sourceId,sourceVersion,sourceRef,conversationId,taskDelivery,recipientActorIds,atAll,privateFileRecipientActorId}=body.payload
     const source=tables.sources.find(row=>row.id===sourceId).body
-    if(body.kind!=='status'||conversationId!==task.groupId||source.groupId!==task.groupId||source.actorId!==task.ownerActorId
+    // Sealed records describe a past delivery. Restore still holds side effects and requires live authorization.
+    const sealedOwnerRecipient=source.channel==='im'&&!atAll&&typeof task.ownerActorId==='string'
+            &&privateFileRecipientActorId===task.ownerActorId&&recipientActorIds?.length===1&&recipientActorIds[0]===task.ownerActorId
+    if(body.kind!=='status'||conversationId!==task.groupId||source.groupId!==task.groupId||source.actorId!==task.ownerActorId&&!sealedOwnerRecipient
       ||source.version!==sourceVersion||sourceRef?.messageId!==source.messageId||sourceRef?.messageVersion!==source.version||sourceRef?.actorId!==source.actorId
       ||taskDelivery.taskId!==taskId||taskDelivery.requirementRevision!==body.requirementRevision)fail('TASK_ARCHIVE_ROW_SCOPE_INVALID')
   }

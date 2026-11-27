@@ -94,7 +94,7 @@ export function groupNotificationParts(notification, artifactFiles = []) {
     parts.push({ id, notificationId: id, kind: notification.kind, taskId: file.artifact.taskId ?? null,
       requirementRevision: file.artifact.requirementRevision ?? notification.requirementRevision,
       state: 'prepared', createdAt: notification.createdAt, updatedAt: notification.updatedAt,
-      payload: { ...Object.fromEntries(['conversationId', 'replyTopicId', 'topicRefs', 'taskIds', 'coveredEventIds', 'taskDelivery'].filter(key => p[key] !== undefined).map(key => [key, p[key]])), ...audience.recipientActorIds!==undefined?{recipientActorIds:audience.recipientActorIds}:{}, ...(p.atAll?{atAll:true}:{}), replyKind: 'substantive',
+      payload: { ...Object.fromEntries(['conversationId', 'replyTopicId', 'topicRefs', 'taskIds', 'coveredEventIds', 'taskDelivery', 'privateFileRecipientActorId'].filter(key => p[key] !== undefined).map(key => [key, p[key]])), ...audience.recipientActorIds!==undefined?{recipientActorIds:audience.recipientActorIds}:{}, ...(p.atAll?{atAll:true}:{}), replyKind: 'substantive',
         deliveryId: notification.id, afterNotificationId: parts.at(-1).id,
         text: `${file.artifact.fileName}：${file.caption}`, artifact: file.artifact, ...(p.fact !== undefined ? { fact: p.fact } : {}),
         ...(p.sourceRef ? { sourceRef: p.sourceRef, sourceId: p.sourceId, sourceVersion: p.sourceVersion } : {}) } })
