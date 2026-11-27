@@ -14,7 +14,7 @@ export function safeSettingsError(error){
  if(typeof code==='string'&&/^NIGHT_BOT_ROLE_MODEL_INVALID:(triage|router|task)$/.test(code))return 'NIGHT_BOT_ROLE_MODEL_INVALID'
  return typeof code==='string'&&/^(?:SETTINGS_|CHANNEL_|DINGTALK_|PERMISSION_|NIGHT_BOT_|NIGHT_DATA_|NIGHT_LOCK_|NIGHT_PATH_)[A-Z_]+$/.test(code)?code:'SETTINGS_OPERATION_FAILED'
 }
-function localRequest(request){
+export function localRequest(request){
  if(!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(request.socket?.remoteAddress)||request.headers.origin!==undefined)return false
  try{
   const host=request.headers.host

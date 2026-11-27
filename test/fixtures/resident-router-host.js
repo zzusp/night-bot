@@ -55,7 +55,7 @@ export async function residentRouterHost(t, decide, options = {}) {
         readback:async()=>{throw Error('Channel replies must use registered transport')}}})
     opened = {service,store,residentStore}
     ctx.on('tools/result',(execution,result)=>results.push({name:execution.name,sessionId:execution.agent?.id,result}))
-    ctx.channels.registerTransport('resident-fixture', {
+    for(const channelId of options.channelIds??['resident-fixture'])ctx.channels.registerTransport(channelId, {
       capabilities:options.transportCapabilities,
       ...(options.sendFile?{sendFile:options.sendFile}:{}),
       ...(options.readbackFile?{readbackFile:options.readbackFile}:{}),

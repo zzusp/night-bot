@@ -51,7 +51,8 @@ import {assertConversationReply,assertNoConversationReplySecrets,replyInternalTa
 import { taskExecutionContext } from './execution-context.js'
 import { assertTaskContextSemantics } from './task-input-contract.js'
 import { projectTaskTimeline, readTaskLifecycle } from './task-execution-timeline.js'
-import { createTaskArtifactFiles } from './task-artifact-files.js'
+import { createTaskArtifactFiles,readTaskWorkFile } from './task-artifact-files.js'
+import { MAX_SHARED_FILE_BYTES,openSharedResources,parseSharedDirective } from '../../src/shared-resources/store.js'
 import { withTaskFileNotifications } from './task-final-delivery.js'
 export { taskExecutionContext } from './execution-context.js'
 
@@ -112,6 +113,21 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     throw error
   }
   const deliveryFiles = createTaskArtifactFiles({ root: join(root, 'delivery-files'),getTaskDirectories:async taskId=>taskDirectories(root,taskId,{task:await requireTask(taskId)}) })
+  const sharedPath=ctx.get('runtimePaths')?.state
+  const shared=sharedPath&&dirname(resolve(config.dbPath))===resolve(sharedPath)
+    ?openSharedResources({dbPath:join(sharedPath,'shared-resources.sqlite'),instanceId:config.instanceId}):undefined
+  const forwardedPrefix='shared-resource-forward:'
+  async function checkSharedSend(notification,artifact){
+    const requestId=artifact?.platformSource?.requestId
+    if(!requestId?.startsWith(forwardedPrefix))return
+    const scope=artifact.platformSource
+    try{
+      if(!shared||scope.groupId!==notification.payload.conversationId)fail('SHARED_FORBIDDEN')
+      const principal=shared.authorizeForward(requestId,{conversationId:scope.groupId,sourceId:scope.sourceId,version:scope.messageVersion,sha256:artifact.sha256})
+      await sharedCurrentSource(scope.sourceId,scope.groupId,principal,scope.messageVersion)
+      shared.authorizeForward(requestId,{conversationId:scope.groupId,sourceId:scope.sourceId,version:scope.messageVersion,sha256:artifact.sha256})
+    }catch{cancelNotificationBeforeSend()}
+  }
   function scheduleNotificationCancelled(notification){
     if(!['platform-reply','fixed-topic-reply'].includes(notification.kind))return false
     const id=notification.payload.deliveryId??notification.id
@@ -127,8 +143,9 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       &&!source.authorizationRevoked&&!source.triageHold&&!source.archiveRestoreHold?source.text:undefined
     const outgoing={...notification,replySourceText}
     if(scheduleNotificationCancelled(notification))cancelNotificationBeforeSend()
+    for(const file of p.artifactFiles??[])await checkSharedSend(notification,file.artifact)
     return ctx.get('channels').deliveryEnvelope(outgoing)?ctx.get('channels').transportCall('send',outgoing):originalNotifications.send(outgoing)
-  },readback:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readback',notification):originalNotifications.readback(notification),sendFile:(notification,file)=>{if(scheduleNotificationCancelled(notification))cancelNotificationBeforeSend();return ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('sendFile',notification,file):originalNotifications.sendFile?.(notification,file)},readbackFile:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readbackFile',notification):originalNotifications.readbackFile?.(notification)}
+  },readback:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readback',notification):originalNotifications.readback(notification),sendFile:async(notification,file)=>{if(scheduleNotificationCancelled(notification))cancelNotificationBeforeSend();await checkSharedSend(notification,notification.payload.artifact);return ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('sendFile',notification,file):originalNotifications.sendFile?.(notification,file)},readbackFile:notification=>ctx.get('channels').deliveryEnvelope(notification)?ctx.get('channels').transportCall('readbackFile',notification):originalNotifications.readbackFile?.(notification)}
   notifications = withTaskFileNotifications(notifications, deliveryFiles)
   const inflightTasks = new Map(), inflightExecutions = new Map(), inflightGroups = new Map(), inflightNotifications = new Map()
   let nativeDws, residentRouter, readonlyLookups
@@ -391,6 +408,92 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     return !!task && !task.archivedAt && !task.recovering && !task.drained && task.status === 'active' && task.control === 'active' && task.sessionId === binding.sessionId
       && task.leaseEpoch === binding.leaseEpoch && task.requirementRevision === binding.requirementRevision && task.controlRevision === binding.controlRevision
       && ((task.contextRevision ?? 0) === (binding.contextRevision ?? 0)||allowLiveSupplements&&(()=>{let revision=binding.contextRevision??0;for(const row of task.liveSupplements??[])if(row.leaseEpoch===binding.leaseEpoch&&row.requirementRevision===binding.requirementRevision&&row.controlRevision===binding.controlRevision&&row.fromContextRevision===revision)revision=row.contextRevision;return revision===(task.contextRevision??0)})())
+  }
+  async function sharedCurrentSource(sourceId,conversationId,actorId,version){
+    const source=await query('source.get',{sourceId})
+    const channelSource=['im','chat','chat-room'].includes(source?.channel)
+    const webSource=source?.channel==='web'&&actorId===config.webActorId&&conversationId.startsWith('task:')
+    if(!source||source.groupId!==conversationId||source.actorId!==actorId||
+      (version!==undefined&&source.version!==version)||!channelSource&&!webSource||
+      source.retracted||source.authorizationRevoked||source.triageHold||source.archiveRestoreHold||
+      !await query('router.source-latest',{conversationId,sourceId,messageVersion:source.version}))fail('SHARED_SOURCE_STALE')
+    return source
+  }
+  function sharedAttribution(source,task){return {sourceId:source.sourceId,version:source.version,taskId:task.taskId}}
+  async function taskSharedResource(binding,args,signal){
+    if(!shared||!await currentTask(binding))fail('SHARED_UNAVAILABLE')
+    const task=await requireTask(binding.taskId)
+    if(!task.ownerActorId||!task.sourceRefs?.length)fail('SHARED_FORBIDDEN')
+    // sourceRefs also contains related historical material, and is not ordered
+    // by authority. Prefer the actual current input or recorded handoff;
+    // ambiguous legacy tasks cannot use an arbitrary related source as consent.
+    const handoff=task.metadata?.routerHandoffs?.findLast(item=>item.requirementRevision===task.requirementRevision&&item.contextRevision===(task.contextRevision??0))
+    const origin=task.currentInput?.sourceId?task.currentInput:handoff
+    const sourceId=origin?.sourceId??task.metadata?.authorizationSourceId??(task.sourceRefs.length===1?task.sourceRefs[0]:undefined)
+    if(!task.sourceRefs.includes(sourceId))fail('SHARED_FORBIDDEN')
+    const source=await sharedCurrentSource(sourceId,task.groupId??'task:'+task.taskId,task.ownerActorId,origin?.messageVersion)
+    const principal={actorId:source.actorId,conversationId:task.groupId??'local-task'},attribution=sharedAttribution(source,task)
+    const guard=async()=>{
+      signal.throwIfAborted()
+      if(!await currentTask(binding))fail('SHARED_SOURCE_STALE')
+      await sharedCurrentSource(source.sourceId,source.groupId,source.actorId,source.version)
+      signal.throwIfAborted()
+    }
+    if(['index','search','read'].includes(args.action)){
+      const {byteOffset,byteLength,...request}=args
+      if((byteOffset!==undefined||byteLength!==undefined)&&(args.action!=='read'||!Number.isSafeInteger(byteOffset)||
+        byteOffset<0||byteOffset>0&&request.version===undefined||!Number.isSafeInteger(byteLength??8192)||(byteLength??8192)<1||(byteLength??8192)>16384))fail('SHARED_INVALID')
+      await guard()
+      const {result,bytes}=shared.execute(principal,request,{source:attribution})
+      if(byteOffset===undefined)return bytes?{...result,originalFile:true}:result
+      if(!bytes||byteOffset>bytes.length)fail('SHARED_INVALID')
+      const slice=bytes.subarray(byteOffset,byteOffset+(byteLength??8192)),next=byteOffset+slice.length
+      return {...result,byteOffset,byteLength:slice.length,contentBase64:slice.toString('base64'),nextByteOffset:next<bytes.length?next:null}
+    }
+    // A named resource's explicit update grant permits maintenance from a
+    // normal user task; it cannot create another resource or change its audience.
+    const maintaining=args.action==='maintain'
+    let directive
+    if(maintaining){
+      await guard()
+      const current=shared.metadataForUpdate(principal,args.id,args.expectedVersion)
+      if(current.kind!=='file')fail('SHARED_INVALID')
+      directive={action:'update',id:current.id,expectedVersion:current.version,name:current.name,kind:current.kind,
+        ...(current.topic?{topic:current.topic}:{}),keywords:current.keywords,indexPath:current.indexPath??[],path:args.path,fileName:current.fileName,
+        ...(args.knowledge?{knowledge:args.knowledge}:{})}
+    }else{
+      directive=parseSharedDirective(source.text)
+      if(args.action!=='apply'||!directive)fail('SHARED_EXPLICIT_DIRECTIVE_REQUIRED')
+    }
+    const {path,...request}=directive
+    if(path!==undefined&&!['publish','update'].includes(request.action))fail('SHARED_INVALID')
+    let bytes
+    if(path!==undefined){
+      let file
+      try{file=await readTaskWorkFile(await taskWorkspace(root,task.taskId,task),path,MAX_SHARED_FILE_BYTES)}
+      catch(error){
+        if(error?.code==='ENOENT')fail('SHARED_FILE_NOT_FOUND')
+        if(String(error?.code).startsWith('TASK_ARTIFACT_'))fail('SHARED_FILE_INVALID')
+        throw error
+      }
+      if(!maintaining&&request.fileName!==undefined&&request.fileName!==file.fileName)fail('SHARED_INVALID')
+      request.fileName??=file.fileName
+      bytes=file.bytes
+    }
+    await guard()
+    const operation=(request.action==='forward'?forwardedPrefix:'shared-resource:')+hash([source.groupId,source.sourceId,source.version,...maintaining?[request.id]:[]])
+    if(request.action!=='forward')return shared.execute(principal,request,{source:attribution,operation,bytes}).result
+    const channels=ctx.get('channels'),group=channels.groupContext(source.groupId),transport=channels.transports.get(group?.channelId)
+    if(!group||typeof transport?.sendFile!=='function'||typeof transport.readbackFile!=='function'
+      ||transport.capabilities?.files&&!transport.capabilities.files.includes(group.type))fail('SHARED_FORWARD_UNAVAILABLE')
+    channels.assertGroupTarget(source.groupId)
+    const forwarded=shared.execute(principal,request,{source:attribution,operation})
+    const platformSource={requestId:operation,sessionId:task.sessionId,groupId:source.groupId,messageId:source.messageId,messageVersion:source.version,sourceId:source.sourceId}
+    const artifact=await deliveryFiles.register({platformSource,role:'shared-resource',fileName:forwarded.result.fileName,bytes:forwarded.bytes})
+    await guard()
+    shared.authorizeForward(operation,{conversationId:source.groupId,sourceId:source.sourceId,version:source.version,sha256:artifact.sha256})
+    const {notification}=await prepareDirectReply({source,kind:'platform-reply',outboundId:operation,text:'共享文件见附件。',artifactFiles:[{artifact,caption:'共享文件'}]})
+    return {...forwarded.result,status:notification.state==='delivered'?'delivered':'queued'}
   }
   const taskSessions = suppliedTaskSessions ?? createSingleTaskSessions({ ctx, isCurrent: currentTask, isOwnerCurrent:binding=>currentTask(binding,{allowLiveSupplements:true}),
     readEffectScope:async(binding,stored)=>readTaskEffectScope(ctx,await query('task.get',{taskId:binding.taskId}),stored),
@@ -1242,6 +1345,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
               `human-review:${taskId}:${humanReview.requestId}:${binding.leaseEpoch}`)).result
           },
           notifyMilestone:ordinaryRound?(args,version,signal)=>notifyTaskMilestone(version,args,signal):undefined,
+          sharedResources:ordinaryRound&&shared?(args,version,signal)=>taskSharedResource(version,args,signal):undefined,
           submit: async (decision,submittedBinding,exec) => {
             if(ordinaryRound&&currentTaskMilestone(task)&&decision.action==='complete'){
               const m=await query('task.milestone',{taskId})
@@ -1960,6 +2064,21 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     }finally{hold.release()}
   }
   const api = {
+    sharedOperator(args,{bytes,requestId}){
+      if(closed||!shared)fail('SHARED_UNAVAILABLE')
+      if(typeof requestId!=='string'||! /^[a-zA-Z0-9-]{1,100}$/u.test(requestId))fail('SHARED_INVALID')
+      const identity={operator:true,actorId:config.webActorId,conversationId:'local-operator'}
+      if(args.action==='subjects'){
+        if(bytes||Object.keys(args).length!==1)fail('SHARED_INVALID')
+        const channels=ctx.get('channels')
+        return {result:{localTask:{conversationId:'local-task',actorId:config.webActorId},conversations:residentStore.listGroups().flatMap(({groupId})=>{
+          const group=channels.groupContext(groupId)
+          return group?[{conversationId:groupId,channelId:group.channelId,name:group.conversationName??group.conversationId,
+            actors:Object.keys(group.participants??{}).map(actorId=>({actorId,...group.participantNames?.[actorId]?{name:group.participantNames[actorId]}:{}}))}]:[]
+        })}}
+      }
+      return shared.execute(identity,args,{bytes,source:{kind:'local-operator',requestId},...['audit','index','search','read'].includes(args.action)?{}:{operation:'operator:'+requestId}})
+    },
     withChannelTargetSwitch,
     async sendRouterOperatorMessage({conversationId,requestId,text}){
       if(closed)fail('TASK_SESSION_CLOSED')
@@ -2192,6 +2311,7 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
       await attempt(()=>observeClose(closeTrace, 'service.observer-page.close', () => observerGroupPage.close(), counts))
       // 完整文件封存由离线 backup 显式执行；普通停机只等待已提交投影。
       if(archives)await attempt(()=>archives.idle())
+      await attempt(()=>shared?.close())
       if (!suppliedStore) await attempt(()=>observeClose(closeTrace, 'service.store.close', () => store.close(), counts))
       if(errors.length)throw new AggregateError(errors,'Task service shutdown failed')
     })()},
