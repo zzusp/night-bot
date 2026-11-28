@@ -365,8 +365,12 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
           ||snap.status!==task.status||snap.leaseEpoch!==(task.leaseEpoch??0)))fail('DYNAMIC_TASK_REVISION_STALE')
         const sources=(task.sourceRefs??[]).map(id=>read('sources',id,true))
         const isStandalone=a.conversationId===STANDALONE_SELF_CHECK_SCOPE
-        if(!sources.length||sources.some(source=>!source||(isStandalone?source.channel!=='web':source.groupId!==a.conversationId)
-          ||source.actorId!==task.ownerActorId||!latest(source)||source.retracted||source.authorizationRevoked
+        // Channel references can contain supporting material from other members.
+        // Only the task's bound origin can authorize the continuation.
+        const origin=sources.find(source=>source?.sourceId===outcomeOriginId(task))
+        if(!origin||origin.actorId!==task.ownerActorId||sources.some(source=>!source
+          ||(isStandalone?source.channel!=='web'||source.actorId!==task.ownerActorId:source.groupId!==a.conversationId)
+          ||!latest(source)||source.retracted||source.authorizationRevoked
           ||source.triageHold||source.archiveRestoreHold))fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
         const pendingWakes=db.prepare("SELECT body FROM dynamic_wakes WHERE json_extract(body,'$.taskId')=?").all(task.taskId).map(row=>JSON.parse(row.body))
         if(a.kind!=='resume'||!selfCheckIdleCandidate(task)||!dependenciesReady(task)||blockers(task.taskId).operations.length

@@ -879,8 +879,14 @@ test('peer queue is durable, idempotent and refuses other work groups',async t=>
  assert.equal((await query('router.inbox',{conversationId})).filter(x=>x.kind.startsWith('task.peer')).length,0)
 })
 
-test('two-hour self-check reviews newly idle work, skips unmet dependencies, and only admits a fresh continuation once',async t=>{
- const f=await fixture(t,{channel:'im'});await f.plan()
+for(const revoked of [null,'origin','support'])test('self-check resumes multi-author tasks only with valid sources: '+(revoked??'valid'),async t=>{
+ const f=await fixture(t,{channel:'im'})
+ const support={sourceId:'source-bob',groupId:f.conversationId,messageId:'supporting-note',actorId:'bob',version:1,channel:'im',text:'Here is the current input for verification'}
+ await f.command('source.record-direct',{source:support,conversation:{conversationId:f.conversationId}})
+ await f.plan({tasks:[
+   {taskId:'a',request:'Verify A',ownerActorId:'alice',groupId:f.conversationId,sourceRefs:[support.sourceId],metadata:{authorizationSourceId:f.sourceId}},
+   {taskId:'b',request:'Produce B after verification',ownerActorId:'alice',groupId:f.conversationId},
+ ]})
  async function idleA(){
   const claim=(await f.command('task.claim',{taskId:'a'})).result
   await f.command('task.wait',{binding:claim.binding,action:'blocked',summary:'Fixture data unavailable',evidence:[],limitations:[]})
@@ -905,6 +911,14 @@ test('two-hour self-check reviews newly idle work, skips unmet dependencies, and
     operationId:'resume:'+at,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}
  }
  const args=await review(now+7200000)
+ if(revoked){
+  const source=revoked==='support'?support:{groupId:f.conversationId,messageId:'user-order',actorId:'alice',channel:'im'}
+  await f.command('source.record-direct',{source:{...source,sourceId:'retracted-v2',version:2,text:'[消息已撤回]',retracted:true}})
+  const before=await f.query('wake.list',{taskId:'a'})
+  await assert.rejects(f.command('router.self-check.continue',args),/CONTINUATION_SCOPE/)
+  assert.deepEqual(await f.query('wake.list',{taskId:'a'}),before)
+  return
+ }
  await assert.rejects(f.command('router.self-check.continue',{...args,kind:'cancel'}),/NOT_QUIESCENT/)
  const result=(await f.command('router.self-check.continue',args)).result.task
  assert.equal(result.objective,task.objective)
