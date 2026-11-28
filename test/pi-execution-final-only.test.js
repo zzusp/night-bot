@@ -57,6 +57,7 @@ for(const action of ['complete','detailed','scoped-recovery','end-to-end-recover
    const prompt=body.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
    assert.match(prompt,/默认 ELI5：先直接回答对方问的事/u)
    assert.match(prompt,/模型末尾写出结果不算发给用户/u)
+   assert.match(prompt,/不用为了省字生造的词或生硬的缩写/u)
    assert.match(prompt,/未明确要求明细，只写结论和下一步/u)
    assert.match(prompt,/禁止防御性内容，不只是避开某些词/u)
    assert.doesNotMatch(prompt,/复杂问题把关键依据说透|有帮助的依据不要省/u)
@@ -64,6 +65,7 @@ for(const action of ['complete','detailed','scoped-recovery','end-to-end-recover
     assert.match(prompt,/内部结果不走对外回复规则/u)
     const text=body.tools.find(tool=>tool.function.name==='resident_router_reply').function.parameters.properties.text
     assert.match(text.description,/否则只留会改变结论或下一步的关键事实，不复述对方已给的依据、不列排查清单/u)
+    assert.match(text.description,/不用为了省字生造的词或生硬的缩写/u)
     assert.match(text.description,/把已核实的范围直接写在结论里/u)
     assert.match(text.description,/未做的检查仅在被问到或会影响判断时说明/u)
     assert.match(prompt,/不要照搬内部摘要或 limitations 字段/u)
