@@ -546,7 +546,7 @@ test('two-hour self-check reviews standalone tasks without adding a channel or s
  assert.deepEqual(h.sent,[])
 })
 
-test('standalone self-check resumes the reviewed task without a reply channel', {timeout:nativeTestTimeout(45000)}, async t=>{
+test('standalone self-check cannot reopen a conclusively completed task', {timeout:nativeTestTimeout(45000)}, async t=>{
  let task,checked=0,attempted=false
  const h=await residentRouterHost(t,body=>{
    if(requestText(body).join('\n').includes('NIGHT_ROUTER_SELF_CHECK_REVIEW')){
@@ -575,11 +575,11 @@ test('standalone self-check resumes the reviewed task without a reply channel', 
  await import('./fixtures/resident-router-host.js').then(x=>x.eventually(()=>checked===1&&attempted,'standalone review and action'))
  await h.service.whenIdle()
  const action=h.results.find(row=>row.name==='resident_task_action')
- assert.ok(action?.result&&!action.result.isError,JSON.stringify(action))
+ assert.ok(action?.result?.isError,JSON.stringify(action))
  const reopened=await h.query('task.get',{taskId:created.taskId})
  assert.equal(reopened.status,'completed')
- assert.notEqual(reopened.completion.commandId,task.completion.commandId)
- assert.equal(reopened.requirementRevision,task.requirementRevision+1)
+ assert.equal(reopened.completion.commandId,task.completion.commandId)
+ assert.equal(reopened.requirementRevision,task.requirementRevision)
  assert.equal(reopened.objective,task.objective)
  assert.equal(reopened.groupId??null,null)
  assert.equal(reopened.conversationId??null,null)
@@ -692,4 +692,98 @@ test('a Host inspection read failure does not suppress the two-hour Router wake'
  await assert.rejects(h.service.recover(),/Synthetic inspection failure/)
  await import('./fixtures/resident-router-host.js').then(x=>x.eventually(()=>awake,'independent scheduled Router wake'))
  await h.service.whenIdle()
+})
+
+test('two-hour self-check sends a missed final result to its original channel once', {timeout:nativeTestTimeout(45000)}, async t=>{
+ let original,firstOutcome,catchUp,submitted=false
+ const h=await residentRouterHost(t, body=>{
+  const router=requestEnvelope(body,'Router 请求：'),last=lastCall(body)
+  if(!router)return taskInput(body)?decision('The fixture was verified.'):{text:'Idle'}
+  if(last==='resident_router_settle')return {text:'Settled'}
+  const source=router.events.find(row=>row.source)
+  if(source&&!original){
+   original=source
+   return call('resident_task_plan',{operationId:'catch-up-plan',sourceId:source.sourceId,messageVersion:source.messageVersion,dependencies:[],
+    tasks:[{taskId:'catch-up-task',title:'Verify fixture',objective:'Verify fixture',requirements:[],handoff:'Verify the fixture and report the result.'}]})
+  }
+  if(source)return call('resident_router_settle',{operationId:'catch-up-source',eventIds:[source.id]})
+  const outcome=router.events.find(row=>row.kind==='task.completed')
+  if(outcome&&!firstOutcome)firstOutcome=outcome
+  if(outcome&&outcome.id!==firstOutcome.id&&!submitted){
+   catchUp=outcome;submitted=true
+   return call('resident_router_reply',{operationId:'catch-up-reply',sourceId:original.sourceId,messageVersion:original.messageVersion,
+    text:'样例验证通过。',outcomeEventId:outcome.taskEventId,replyPurpose:'task-update'})
+  }
+  return settle(router)
+ },{config:{globalRouter:true}})
+ await h.receive(channelMessage('missed-result'))
+ await h.service.whenIdle()
+ assert.ok(firstOutcome)
+ assert.equal(h.sent.length,0)
+ const now=Date.now()
+ await h.service.routerSelfCheck(now)
+ const clock=await h.query('router.self-check.clock')
+ await h.service.routerSelfCheck(clock.nextAt)
+ await h.service.whenIdle()
+ assert.equal(catchUp?.taskEventId,firstOutcome.taskEventId)
+ assert.equal(h.sent.length,1)
+ assert.match(JSON.stringify(h.sent[0]),/样例验证通过/)
+ await h.service.routerSelfCheck(clock.nextAt+7200000)
+ await h.service.whenIdle()
+ assert.equal(h.sent.length,1)
+})
+
+test('scheduled self-check wakes the original idle execution without changing its goal', {timeout:nativeTestTimeout(45000)}, async t=>{
+ let taskId,workTurns=0,resumeAsked=false
+ const sessions=new Set()
+ const h=await residentRouterHost(t, async body=>{
+  if(requestText(body).join('\n').includes('NIGHT_ROUTER_SELF_CHECK_REVIEW'))
+   return {text:'{"summary":"The alternative fixture is now available; verify it in the same task.","limitations":[]}'}
+  const router=requestEnvelope(body,'Router 请求：'),last=lastCall(body)
+  if(router){
+   if(last==='resident_router_settle')return {text:'Settled'}
+   const row=router.events[0]
+   if(row.kind==='router.self-check'&&!last&&row.selfCheck.taskIds.includes(taskId))
+    return call('resident_self_check_review',{eventId:row.id,taskIds:[taskId]})
+   if(row.kind==='router.self-check.completed'&&!last&&!resumeAsked){
+    resumeAsked=true
+    const [snap]=row.lookupResult.snapshots
+    return call('resident_task_action',{operationId:'single-audit-wake',kind:'resume',taskId,
+      expectedRequirementRevision:snap.requirementRevision,expectedControlRevision:snap.controlRevision})
+   }
+   return settle(router)
+  }
+  const input=taskInput(body)
+  if(!input||last==='task_result')return {text:'Idle'}
+  sessions.add(input.task.sessionId)
+  return ++workTurns===1?call('task_result',{decision:{action:'blocked',summary:'Primary fixture unavailable.',evidence:[],limitations:[]}})
+   :decision('Verified alternative fixture.')
+ },{config:{globalRouter:true},wrapStore(store){
+  return Object.create(store,{command:{value(action){
+   // Keep the first result in the historical idle representation. Current
+   // ordinary Work rounds already close automatically, even when blocked.
+   if(action.kind==='task.complete'&&workTurns===1){
+    const {binding,result}=action.args
+    return store.command({id:'first-idle-result',kind:'task.wait',args:{binding,...result,resultSource:'pi-task-result'}})
+   }
+   return store.command(action)
+  }}})
+ }})
+ const created=await h.service.createTask({requestId:'idle-goal-review',objective:'Verify a fixture'})
+ taskId=created.taskId
+ await h.service.whenIdle()
+ const initial=await h.query('task.get',{taskId})
+ assert.equal(initial.status,'active')
+ assert.equal(workTurns,1)
+ await h.service.routerSelfCheck(Date.now())
+ const clock=await h.query('router.self-check.clock')
+ await h.service.routerSelfCheck(clock.nextAt)
+ await import('./fixtures/resident-router-host.js').then(x=>x.eventually(()=>workTurns===2,'scheduled wake of existing Work'))
+ await h.service.whenIdle()
+ const done=await h.query('task.get',{taskId})
+ assert.equal(done.status,'completed')
+ assert.equal(done.objective,initial.objective)
+ assert.equal(done.controlRevision,initial.controlRevision)
+ assert.equal(sessions.size,1)
+ assert.deepEqual(h.sent,[])
 })

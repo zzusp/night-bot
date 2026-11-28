@@ -72,6 +72,9 @@ export function createRouterReadonlyLookups({ctx,query,command,models,schedule,t
    })
     signal.throwIfAborted()
    tasks.push({...version(task),title:task.title,status:task.status,control:task.control,observedAt:new Date().toISOString(),
+    ...(lookup.selfCheckEventId?{objective:task.objective?.slice(0,512),drained:task.drained,recovering:task.recovering,
+     dependenciesReady:task.dependenciesReady,milestoneDeliveryPending:task.milestoneDeliveryPending===true,
+     pendingQuestion:task.humanRequests?.some(row=>row.status==='waiting-reply')===true}:{}),
     decision:task.lastDecision?{action:task.lastDecision.action,summary:task.lastDecision.summary?.slice(0,512)}:null,
     result:task.completion?.summary?.slice(0,512)??null,progress:{coverage:progress.coverage,activities:progress.activities.map(row=>({at:row.at,kind:row.kind,textPreview:row.textPreview,verification:row.verification,truncated:row.truncated}))}})
   }

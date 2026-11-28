@@ -878,3 +878,60 @@ test('peer queue is durable, idempotent and refuses other work groups',async t=>
  assert.deepEqual(view.map(x=>x.taskId),['b'])
  assert.equal((await query('router.inbox',{conversationId})).filter(x=>x.kind.startsWith('task.peer')).length,0)
 })
+
+test('two-hour self-check reviews newly idle work, skips unmet dependencies, and only admits a fresh continuation once',async t=>{
+ const f=await fixture(t,{channel:'im'});await f.plan()
+ async function idleA(){
+  const claim=(await f.command('task.claim',{taskId:'a'})).result
+  await f.command('task.wait',{binding:claim.binding,action:'blocked',summary:'Fixture data unavailable',evidence:[],limitations:[]})
+  await f.command('wake.ack',{binding:claim.binding,wakeIds:claim.wakeIds})
+  await f.command('task.drained',{binding:claim.binding})
+  return f.query('task.get',{taskId:'a'})
+ }
+ let task=await idleA()
+ const now=Date.now()
+ await f.command('router.self-check.tick',{now})
+ async function review(at){
+  await f.command('router.self-check.tick',{now:at})
+  const review=(await f.query('router.inbox',{conversationId:f.conversationId})).findLast(row=>row.kind==='router.self-check')
+  assert.deepEqual(review.selfCheck.taskIds,['a'])
+  const submitted=(await f.command('router.lookup.submit',{conversationId:f.conversationId,generation:f.generation,
+    selfCheckEventId:review.id,taskIds:['a'],operationId:'review:'+at})).result.lookup
+  const snapshots=[{taskId:'a',status:task.status,requirementRevision:task.requirementRevision,controlRevision:task.controlRevision,
+    leaseEpoch:task.leaseEpoch??0,runSequence:task.runSequence??0,contextRevision:task.contextRevision??0}]
+  const done=(await f.command('router.lookup.complete',{conversationId:f.conversationId,lookupId:submitted.id,status:'completed',
+    summary:'A concrete next step is available',limitations:[],snapshots})).result.event
+  return {conversationId:f.conversationId,generation:f.generation,eventId:done.id,taskId:'a',kind:'resume',
+    operationId:'resume:'+at,expectedRequirementRevision:task.requirementRevision,expectedControlRevision:task.controlRevision}
+ }
+ const args=await review(now+7200000)
+ await assert.rejects(f.command('router.self-check.continue',{...args,kind:'cancel'}),/NOT_QUIESCENT/)
+ const result=(await f.command('router.self-check.continue',args)).result.task
+ assert.equal(result.objective,task.objective)
+ assert.equal(result.sessionId,task.sessionId)
+ assert.equal(result.controlRevision,task.controlRevision)
+ await assert.rejects(f.command('router.self-check.continue',{...args,operationId:'already-enqueued'}),/NOT_QUIESCENT/)
+ task=await idleA()
+ await assert.rejects(f.command('router.self-check.continue',{...args,operationId:'old-audit'}),/REVISION_STALE/)
+ const again=await review(now+14400000)
+ await assert.rejects(f.command('router.self-check.continue',again),/ALREADY_RESUMED/)
+ assert.equal((await f.query('task.get',{taskId:'a'})).status,'active')
+ assert.equal((await f.query('task.get',{taskId:'b'})).dependenciesReady,false)
+})
+
+test('self-check queues one catch-up for a real completion that was not reported',async t=>{
+ const f=await fixture(t,{channel:'im'});await f.plan()
+ const {event}=await f.complete()
+ const row=(await f.query('router.inbox',{conversationId:f.conversationId})).find(x=>x.taskEventId===event.id)
+ assert.ok(row)
+ await f.command('router.settle',{conversationId:f.conversationId,generation:f.generation,operationId:'original-outcome',eventIds:[row.id]})
+ const now=Date.now()
+ await f.command('router.self-check.tick',{now})
+ await f.command('router.self-check.tick',{now:now+7200000})
+ const retry=(await f.query('router.inbox',{conversationId:f.conversationId})).find(x=>x.eventId==='self-check-outcome:'+event.id)
+ assert.equal(retry?.taskEventId,event.id)
+ await f.command('router.settle',{conversationId:f.conversationId,generation:f.generation,operationId:'catch-up-outcome',eventIds:[retry.id]})
+ await f.command('router.self-check.tick',{now:now+14400000})
+ assert.ok(!(await f.query('router.inbox',{conversationId:f.conversationId})).some(x=>x.taskEventId===event.id))
+ assert.equal((await f.query('task.get',{taskId:'a'})).completion.commandId,event.commandId)
+})
