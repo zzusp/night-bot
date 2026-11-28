@@ -327,7 +327,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     } })
     const preset = await ctx.agentPresets.resolve('night-bot')
     if (preset.broken) throw new Error('NIGHT_BOT_PRESET_BROKEN:' + JSON.stringify(preset.broken))
-    await ctx.reflection.maintenance.start()
+    await ctx.reflection.maintenance.start({routerManaged:!!config.resident?.taskSessions})
     if (!deferScheduledDelivery) ctx.schedule.start()
     return { ctx, close }
   } catch (error) {

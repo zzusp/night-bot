@@ -458,7 +458,7 @@ export default class Reflection extends Service {
     const allowed=(await this.catalog(agent)).find(row=>row.name===candidate.name&&row.locator.scope.id===candidate.locator.scope.id);if(!allowed)return
     const {scope,key}=allowed.locator,state=await this.state(scope),value=state.skills[key]
     const content=this.renderSkill(scope,key,value)
-    if(!resourceOnly)await this.host.memory.recordUsage(scope,'loadCount')
+    if(!resourceOnly)await this.host.memory.recordUsage(scope,'loadCount',undefined,undefined,key)
     return {...allowed,content}
   }
   async whenIdle(){while(this.jobs.size)await Promise.allSettled([...this.jobs])}

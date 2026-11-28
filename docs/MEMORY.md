@@ -152,7 +152,7 @@ No automatic external notification is sent on a background error.
 - 凭据与不必要的敏感原文不保存，不复制整段聊天、文档或身份信息。
 - 一次性要求不升级为长期偏好，一次批准不升级为持续授权。明确的长期要求保留完整条件与主体范围。
 
-这些是模型的语义筛选责任；Host 仍验证来源、同意、秘密、版本和路径，合法 evidenceIds 或 evidenceBacked 并不证明内容真实。候选不能由维护自动晋升。安装操作者可按[事件与周期维护](SELF-EVOLUTION.md#事件与周期维护)启用清理、合并、拆分、更新；保留原始来源、主体、长期指令作用域和安全 previous，不把维护推理变成新授权。
+这些是模型的语义筛选责任；Host 仍验证来源、同意、秘密、版本和路径，合法 evidenceIds 或 evidenceBacked 并不证明内容真实。候选不能由维护自动晋升。正式 Bot 的[两小时自检](SELF-EVOLUTION.md#事件与周期维护)在后台清理、合并、拆分或更新受管条目；保留原始来源、主体、长期指令作用域和安全 previous，不把维护推理变成新授权。
 
 ## 渠道长期偏好
 
