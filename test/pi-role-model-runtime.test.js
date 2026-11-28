@@ -57,24 +57,30 @@ test('explicit model-default resets a resumed Pi session instead of retaining hi
  assert.deepEqual(handle.agent.piSession.sessionManager.getEntries().filter(entry=>entry.type==='message').slice(0,before.length),before)
 })
 
-test('omitted permission mode is real full access; explicit ask remains authoritative',{timeout:nativeTestTimeout(30000)},async t=>{
+for(const mode of [undefined,'ask','auto','full'])test('Host uses full access without approval for legacy mode '+mode,{timeout:nativeTestTimeout(30000)},async t=>{
  let target,called=false
- const f=await memoryHost(t,()=>!called?(called=true,{tool:'write',args:{path:target,content:'isolated full default'}}):{text:'Done'},{hostConfig:{permissionMode:undefined}})
+ const f=await memoryHost(t,()=>!called?(called=true,{tool:'write',args:{path:target,content:'direct external write'}}):{text:'Done'},{hostConfig:{permissionMode:mode}})
  assert.equal(f.host.ctx.get('toolPermissions').mode,'full')
- assert.equal(f.host.ctx.get('toolPermissions').view().protection.status,'unconfined')
+ assert.equal(f.host.ctx.get('approval'),undefined)
  await mkdir(join(f.root,'external'));target=join(f.root,'external','business.txt')
- const handle=await f.agent('full-default-write');t.after(()=>handle.dispose());await f.say(handle.agent,'Write the synthetic fixture file outside its workspace')
- assert.equal(await readFile(target,'utf8'),'isolated full default')
- assert.equal(f.host.ctx.get('toolPermissions').view().requests.length,0)
- await handle.dispose();await f.close();f.config.permissionMode='ask';await f.boot();assert.equal(f.host.ctx.get('toolPermissions').mode,'ask')
+ const handle=await f.agent('full-default-write');t.after(()=>handle.dispose())
+ const shell=f.host.ctx.tools.schemas(handle.agent).find(tool=>tool.name===(process.platform==='win32'?'pwsh':'bash'))
+ for(const key of ['sandbox_permissions','permission_scope','justification'])assert.equal(Object.hasOwn(shell.parameters.properties,key),false)
+ await f.say(handle.agent,'Write the synthetic fixture file outside its workspace')
+ assert.equal(await readFile(target,'utf8'),'direct external write')
+ assert.equal(f.requests.length,2,'one tool-producing response and one terminal response, no approval model')
+ const audit=(await f.host.ctx.sessionPersistence.readNative(handle.agent.id,{requireComplete:true})).audit
+ assert.ok(audit.every(row=>row.domain!=='approval'))
 })
 
-test('initialization saves full by default and preserves an explicit restricted choice',async t=>{
+test('initialization omits permission mode and rejects the removed option',async t=>{
  const {mkdtemp,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{execFile}=await import('node:child_process'),{promisify}=await import('node:util'),{fileURLToPath}=await import('node:url')
  const root=await mkdtemp(join(tmpdir(),'night-default-init-'));t.after(()=>rm(root,{recursive:true,force:true}))
- for(const mode of [undefined,'ask','auto']){
-  const install=join(root,mode??'default')
-  await promisify(execFile)(process.execPath,[fileURLToPath(new URL('../bin/night-bot-init.js',import.meta.url)),'--actor','fixture-owner','--root',install,...mode?['--permission-mode',mode]:[]])
-  assert.equal(JSON.parse(await readFile(join(install,'data','config','config.json'),'utf8')).permissionMode,mode??'full')
- }
+ const install=join(root,'default')
+ const init=fileURLToPath(new URL('../bin/night-bot-init.js',import.meta.url))
+ await promisify(execFile)(process.execPath,[init,'--actor','fixture-owner','--root',install])
+ const config=join(install,'data','config','config.json')
+ assert.equal(Object.hasOwn(JSON.parse(await readFile(config,'utf8')),'permissionMode'),false)
+ await assert.rejects(promisify(execFile)(process.execPath,[init,'--actor','fixture-owner','--root',join(root,'retired'),'--permission-mode','ask']))
+ await assert.rejects(promisify(execFile)(process.execPath,[fileURLToPath(new URL('../bin/night-bot-config.js',import.meta.url)),config,'permissions','--permission-mode','auto']))
 })

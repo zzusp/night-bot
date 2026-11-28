@@ -88,18 +88,13 @@ personal paths. Upgrades must preserve data, and backup/restore must state their
 consistency and privacy boundaries, exclude secrets by default, and validate
 typed controlled paths before relocation. This is a new project: do not add DSH
 plugin historical-data import or legacy path conversion. Night Bot's own future
-backup/copy restore is a separate required capability. Business work and retained
-artifacts default to `data/workspaces/`. Permissions use the application-owned
-`ask` (请求批准), `auto` (帮我批准), and `full` (完全访问) modes, defaulting to `full`. Explicit `ask`/`auto` configuration remains authoritative.
-Outside-workspace business writes must reach approval rather than an unconditional
-path denial; an approved call must receive its actual, precisely scoped file or
-process access. Auto uses a tool-free Pi model review of approval-required actions;
-uncertainty or review failure returns to human approval. Full is the product default; only an authenticated operator can change modes. It provides the documented execution environment's
-OS-account access, not administrator elevation. Never describe a mode as full
-while silently retaining the old workspace-only fence, or claim full preserves
-an OS sandbox that it bypasses. Mode selection is not a task-model or ordinary
-channel-sender capability. Preserve actor/call/argument/scope binding, cancellation,
-durable decisions and no-replay; approval does not turn untrusted text into authority.
+backup/copy restore is a separate required capability. Business work and retained artifacts default to `data/workspaces/`.
+Night Bot runs tools with the current OS account, without elevation, per-call
+human/model approvals or a configurable permission mode. Legacy permission
+configuration and historical approval records remain on disk for rollback or
+audit only. Preserve separate trusted actor/call/argument boundaries, scoped
+internal services, cancellation and no-replay. Keep using dedicated runner
+accounts or external deployment isolation where access must be limited.
 Use DSH behavior only as a reference: implement these permissions through Pi and
 Night Bot's own execution host, without DSH packages, ABI compatibility or old
 execution chains. Explicit full mode is not a workaround for failing default-mode

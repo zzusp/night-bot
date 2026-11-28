@@ -80,12 +80,12 @@ $common = @(
   '--tmpfs', '/tmp:rw,nosuid,nodev,size=64m,mode=1777',
   '--mount', 'type=volume,source=night-bot-data,target=/opt/night-bot/data'
 )
-docker run --rm --network none --name night-bot-check @common -e NIGHT_BOT_PERMISSION_MODE=full night-bot:sg12 --check
+docker run --rm --network none --name night-bot-check @common night-bot:sg12 --check
 ```
 
 只用本实例专属命名卷，不复用其他实例的 SQLite、Pi journal、技能或账号。镜像内 `data` 及空的 `data/temp` 为 UID/GID `1000:1000`、权限 `0700`，确保工具版本自检时 `TMPDIR` 已存在；Docker 初始化新卷，入口只接受同 UID 的真实目录，不替外部共享目录 chown/chmod。不要用 `--user root` 或 `volume-nocopy` 绕过所有权约束。
 
-`--check` 不初始化或保存配置、不创建 data 子目录、不向卷写入编译或工具缓存、不登录、不连接模型/渠道或发送消息。它只读核查卷与 `data/temp` 均为同 UID、规范路径下的真实目录，且 `data/temp` 权限精确为 `0700` 并可读写进入；缺失或不安全即失败，不自动 mkdir/chmod/chown。仅该自检分支在首个 Node 进程前设置 `NODE_DISABLE_COMPILE_CACHE=1`，检查 Node/pnpm 版本；`ask`/`auto` 另检查 bwrap 版本并跑一次临时 namespace 探针，显式 `full` 不跑该探针。默认自检不调用可选 DWS CLI；镜像内 DWS 的固定发行资产及摘要在构建时核验，不将其 CLI 版本探测作为核心启动前置。正常 `run` 的缓存、HOME 与插件环境导入不受该自检设置影响。有效档位先取显式非空 `NIGHT_BOT_PERMISSION_MODE`，否则读取已有配置，缺省为 `full`。Docker 的卷初始化不属于入口检查。`NIGHT_DOCKER_PREFLIGHT_OK` 只证明对应档位的这些前置，`full` 自检成功不证明受限档可用；失败不继续登录或启动业务，也不删除 unknown/WAL/历史来重试。
+`--check` 不初始化或保存配置、不创建 data 子目录、不向卷写入编译或工具缓存、不登录、不连接模型/渠道或发送消息。它只读核查卷与 `data/temp` 均为同 UID、规范路径下的真实目录，且 `data/temp` 权限精确为 `0700` 并可读写进入；缺失或不安全即失败，不自动 mkdir/chmod/chown。仅该自检分支在首个 Node 进程前设置 `NODE_DISABLE_COMPILE_CACHE=1`，检查 Node/pnpm 版本。默认自检不调用可选 DWS CLI；镜像内 DWS 的固定发行资产及摘要在构建时核验，不将其 CLI 版本探测作为核心启动前置。正常 `run` 的缓存、HOME 与插件环境导入不受该自检设置影响。Docker 的卷初始化不属于入口检查。`NIGHT_DOCKER_PREFLIGHT_OK` 只证明这些前置；失败不继续登录或启动业务，也不删除 unknown/WAL/历史来重试。
 
 ### 内置工具与基础无头访问
 
@@ -127,7 +127,6 @@ OPENAI_API_KEY=REPLACE_LOCALLY
 | --- | --- | --- |
 | `TZ` | 可选，默认 `Asia/Shanghai` | 覆盖容器进程的本地时区，例如 `Etc/UTC`；不改写应用配置 |
 | `NIGHT_BOT_ACTOR_ID` | 新卷首次启动必填 | 本安装操作者的稳定标识；已有卷不据此改 actor 或 instanceId |
-| `NIGHT_BOT_PERMISSION_MODE` | 可选，建议明确填写 | `full` / `ask` / `auto`；新实例缺省 `full`，已有实例未传时保留配置；受限档可用性单独验证 |
 | `NIGHT_BOT_MODEL_PROVIDER`、`NIGHT_BOT_MODEL` | 按自己的模型服务填写 | 首次选型或显式更新已保存模型，不应直接沿用示例模型 |
 | `NIGHT_BOT_MODEL_KEY_ENV` | 使用环境密钥时填写 | 密钥变量的名称，例如 `OPENAI_API_KEY`；相应变量的值另外注入 |
 | `OPENAI_API_KEY` 或所引用的其他密钥变量 | 模型认证需要 | 只在运行时提供，不写入镜像层或 build 参数 |
@@ -146,15 +145,9 @@ OPENAI_API_KEY=REPLACE_LOCALLY
 
 首次启动会保存 actor、模型和可选 Web/钉钉配置。已有卷每次启动仍会重新导入显式填写的这些参数，因此长期保留的 env 值可能覆盖后来通过 Web/CLI 保存的配置。首次配置完成后，应移除不再需要强制覆盖的参数，并保留所引用的密钥变量；角色 ENV 则始终是运行期覆盖。编辑 env 文件后必须正常停机并重建容器，`docker restart` 不会重新读取宿主 env 文件。
 
-### 权限环境映射与容器层级
+### 工具访问与容器边界
 
-`NIGHT_BOT_PERMISSION_MODE` 是容器配置入口，唯一取值为 `ask`（请求批准）、`auto`（帮我批准）、`full`（完全访问）。新实例缺省为 `full`。首次运行时入口将选定值作为显式 `--permission-mode` 交给 init；已有实例仅在提供非空该环境参数时，执行 `night-bot-config CONFIG permissions --permission-mode VALUE --check` 再保存同一命令，持久化到顶层 `permissionMode`。未提供时保留已有配置，旧配置缺该键时按 `full`。Host 和通用 CLI 不静默读取此环境变量代替函数参数；`--check` 只校验，不保存选择。
-
-- `ask`/`auto` 均按现有 seccomp/bwrap 受限路线运行。范围外业务写应进入审批，获批调用须获得与 actor、call、参数及范围绑定的实际精确访问；不能一概路径拒绝，也不能自动扩大范围。`ask` 将待审批动作交给人；`auto` 由无工具 Pi 模型评审，判断不确定或评审失败转人工批准。受限档失败不自动切 `full`。
-- `full` 只能由有权操作者显式选择，任务模型和普通渠道发送者不能切档。它使用容器内当前 OS 账号（本镜像 UID/GID `1000:1000`）的访问能力，不提升为 root 或管理员；仍受父容器只读根、专属卷/tmpfs、cap-drop、no-new-privileges 与固定 seccomp 约束。
-- `full` 下应用不再承诺 workspace 围栏，也不承诺隔离同账号可读的 Host 私有文件（如卷内凭据、原始记忆、其他任务历史）；不能将父容器边界称为仍保留应用 bwrap 隔离。任务档案元数据等仍由 Host 管理，但该业务归属不是 `full` 下的 OS 隐私保证。默认业务工作和保留产物仍在 `data/workspaces/`。
-
-只为确有需求且理解上述访问范围的安装选择 `full`，不新增宿主挂载或更改已审策略。各档分别验证；`full` 成功不能抵替 `ask`/`auto` 隔离验收，也不能据旧受限结果宣称本版三档已验收。
+Night Bot 按启动进程的操作系统账号权限直接执行，不提权，也不提供 Bot 工作区或进程隔离。不再提供配置档位、人工审批或自动审批。旧安装里的 `permissionMode` 保留在原文件中供回退，但当前版本不读取该值；旧审批不会恢复或自动重放。操作系统、容器、渠道认证、工具调用绑定和业务授权边界仍有效。
 
 Docker daemon 管理者可读取容器环境，env 文件与 daemon 权限均属于秘密边界。不要采集完整 `docker inspect`、`env` 或进程环境。HOME、DWS 配置/keychain、cache/temp 为镜像内部固定接线，用户无需另传 `DWS_*`，也不支持把这些目录改到受控 data 外。
 

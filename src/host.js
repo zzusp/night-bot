@@ -2,7 +2,6 @@ import {hostFeedback} from './feedback/service.js'
 import {createOperatorSettings} from './settings/operator.js'
 import {resolveRoleModels,roleModelSelection,legacyRoleModelSelection,materializeRoleModelSelection} from './role-models.js'
 import {taskModelSelection} from '../packages/dingtalk-core/task-model-config.js'
-import {savePermissionConfiguration} from './settings/configuration.js'
 import {openToolPermissions} from './tool-permissions.js'
 import {configFileOf,updateConfig,validateConfig} from './config.js'
 import {assertPiTaskBackendConfiguration} from './runtime/pi-task-backend.js'
@@ -63,8 +62,8 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     await attempt(()=>ctx.get('errorFeedback')?.close())
     await attempt(()=>ctx.get('application')?.close?.())
     await attempt(()=>ctx.get('officialAgentFactory')?.close())
-    // Session teardown may still validate its exact cwd or cancel a pending
-    // approval. Keep that dependency alive until every owner has joined.
+    // Session teardown may still validate its exact cwd. Keep tool access
+    // alive until every owner has joined.
     await attempt(()=>permissionService?.close())
     // Cordis 仅记录 effect 清理错误；须显式等待原 Job/进程 join 的真实结果。
     await attempt(()=>ctx.get('jobs')?.disposeAll())
@@ -261,10 +260,10 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
       { name: new URL('./native-state.js', import.meta.url).href, config: { root: join(root, 'storage'), model: config.model,modelConfigurationFile } },
       { name: new URL('./native-spill.js', import.meta.url).href, config: { root: paths.spills } }, { name: new URL('./native-jobs.js', import.meta.url).href }, { name: new URL('./native-tool-jobs.js', import.meta.url).href }, { name: new URL('./process/index.js', import.meta.url).href }, { name: new URL('./native-sandbox.js', import.meta.url).href },
       { name: new URL('./native-policy.js', import.meta.url).href, config: { mode: 'workspace-write', workspaceRoot: workspace } },
-      { name: new URL('./native-' + shell + '-sandbox.js', import.meta.url).href, config: { cwd: workspace } }, { name: new URL('./native-approval.js', import.meta.url).href, config: { policy: 'ask' } },
+      { name: new URL('./native-' + shell + '-sandbox.js', import.meta.url).href, config: { cwd: workspace } },
       { name: new URL('./native-permission-presets.js', import.meta.url).href, config: { defaultPreset: 'workspace-write', presets: {
-        'read-only': { sandbox: 'read-only', approval: 'ask' },
-        'workspace-write': { sandbox: 'workspace-write', approval: 'ask' },
+        'read-only': { sandbox: 'read-only', approval: 'never' },
+        'workspace-write': { sandbox: 'workspace-write', approval: 'never' },
         'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' },
       } } },
       { name: new URL('./pi-authority.js', import.meta.url).href },
@@ -298,7 +297,7 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     ctx.provide('channelLifecycle',channelLifecycle)
     await channelLifecycle.initialize(config)
     if (!ctx.get('nativePiProvider')) throw new Error('NIGHT_BOT_NATIVE_PROVIDER_UNAVAILABLE')
-    for (const service of ['agents','credentials','officialAgentFactory','nativeModelRoutes','sessionCatalog','piAuthority','sessionPersistence','authorization','fs','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','sessionController','schedule','memory','sandboxPolicy','web','nativeHttpFetch','nativeToolTimeout','spillStore','approval','permissionPresets'])
+    for (const service of ['agents','credentials','officialAgentFactory','nativeModelRoutes','sessionCatalog','piAuthority','sessionPersistence','authorization','fs','workingDirectory','attachments','skills','workspaceRegistry','systemPrompt','sessionController','schedule','memory','sandboxPolicy','web','nativeHttpFetch','nativeToolTimeout','spillStore','permissionPresets'])
       if (!ctx.get(service)) throw new Error('NIGHT_BOT_REQUIRED_SERVICE_UNAVAILABLE:'+service)
     if (!ctx.get('tools')) throw new Error('NIGHT_BOT_TOOL_RUNTIME_UNAVAILABLE')
     if (!ctx.get('jobs')) throw new Error('NIGHT_BOT_JOB_RUNTIME_UNAVAILABLE')
@@ -306,11 +305,9 @@ export async function createHost(config, { extraPlugins = [], environmentOptions
     if (!ctx.get('subprocess')) throw new Error('NIGHT_BOT_SUBPROCESS_UNAVAILABLE')
     // Full process output is recovery evidence, not disposable launcher temp.
     if(paths.mode==='portable')ctx.subprocess.internals={...ctx.subprocess.internals,spillDir:paths.processSpills}
-    permissionService=await openToolPermissions({ctx,mode:config.permissionMode??'full',
-      saveMode:async value=>{const file=configFileOf(config)??(paths.mode==='portable'?join(paths.config,'config.json'):undefined);if(!file)throw failure('NIGHT_BOT_PERMISSION_CONFIG_UNAVAILABLE');await savePermissionConfiguration(file,{mode:value});config.permissionMode=value},
-      resolveModel:(actor,{signal})=>ctx.nativePiProvider.official.resolve({...ctx.agentDefaultModel.currentSelection(),signal},{credentials:actor.ctx.get('credentials')})})
+    permissionService=openToolPermissions({ctx})
     ctx.provide('toolPermissions',permissionService)
-    ctx.effect(()=>()=>permissionService.close(),'Host tool permission requests drain')
+    ctx.effect(()=>()=>permissionService.close(),'Host tool access teardown')
     await installProcessPrivacy(ctx,privacy)
     await ctx.plugin({ inject: ['agentPresets'], async *apply(child) {
       for(const id of ['night-bot','night-bot-task'])yield await child.agentPresets.register({ id, plugins: [{ name: 'cordis:group', group: true,

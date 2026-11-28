@@ -22,7 +22,6 @@ node bin/night-bot-settings.js CONFIG show --live
 node bin/night-bot-settings.js CONFIG plugins --live
 node bin/night-bot-settings.js CONFIG appearance --name 'My Bot' --icon leaf --live
 node bin/night-bot-settings.js CONFIG secret --kind github --action replace --confirm --live
-node bin/night-bot-settings.js CONFIG permissions-set --mode full --live
 node bin/night-bot-settings.js CONFIG channel-list --live
 node bin/night-bot-settings.js CONFIG dingtalk-get --channel-id work-room --live
 node bin/night-bot-settings.js CONFIG channel-save --json-file custom-channel.json --live
@@ -38,7 +37,7 @@ node bin/night-bot-settings.js CONFIG channel-remove --channel-id work-room --ex
 
 钉钉新增 JSON 与 Web 一致：`channelId`、`conversationType`（`chat`/`chat-room`）、`targetKind`（`id`/`name`）、`target`、可选 `name`、`writesAuthorized`。编辑另需 `expectedVersion`。切换目标时不允许同时授予写权限，仍需真实账户/目标绑定，保留旧渠道的补拉和任务边界。
 
-新 CLI 也提供 `model`（`--provider --model --api --base-url --key-env`）、`role`（`--role --provider --model --reasoning-effort`）、`web`（`--enabled --host --port --public-origin --channel-id --sender-id --operator-name`）、`permissions-show`、`permission-respond --id REQUEST --decision allow|reject|revoke`。`permission-respond` 只作用于仍有效、绑定原调用的审批；离线不能重放批准。
+新 CLI 也提供 `model`（`--provider --model --api --base-url --key-env`）、`role`（`--role --provider --model --reasoning-effort`）、`web`（`--enabled --host --port --public-origin --channel-id --sender-id --operator-name`）。
 
 ## 同一路由的 API、密钥和多个模型
 
@@ -72,7 +71,7 @@ node bin/night-bot-settings.js CONFIG model-entry --action remove --provider PRO
 
 配置含 resident 时，删除或更改模型 ID 前须先保存明确的任务执行角色选择（或已有有效 task 环境覆盖）。这是为了避免旧任务默认配置入口在两个独立存储之间继续选回已移除模型；仅实时读取旧默认值不足以消除竞态。新增模型、修改显示名不需要这一步。网页会说明该限制；CLI 可先执行 `role --role task --provider PROVIDER --model KEPT_MODEL --reasoning-effort model-default --live`。
 
-`--check` 支持外观、全局/角色模型、凭据、Web、自定义渠道及权限模式。它校验保存候选值，不承诺运行时一定可激活。钉钉绑定/切换、启停、删除及审批回应不支持 `--check`，会直接拒绝而不执行。
+`--check` 支持外观、全局/角色模型、凭据、Web、及自定义渠道。它校验保存候选值，不承诺运行时一定可激活。钉钉绑定/切换、启停、删除及审批回应不支持 `--check`，会直接拒绝而不执行。
 
 ## 入口审计
 
@@ -85,7 +84,6 @@ node bin/night-bot-settings.js CONFIG model-entry --action remove --provider PRO
 | Router/执行模型 | `/api/settings/role-model` | `night-bot-config role-model` / `night-bot-settings role` | `saveRoleModelConfiguration` 和相同 Pi 能力校验 |
 | 模型/GitHub Key | `/api/settings/secrets/*` | `night-bot-settings secret` | `operator.saveSecret`，确认、路由版本锁、环境只读、NativeCredentials |
 | OAuth/任意引用 | 无对应 Web 表单 | `night-bot-auth` | Pi authentication/NativeCredentials；不是独立秘密存储 |
-| 权限模式 | `/api/permissions` | `night-bot-settings permissions-set --live` / `night-bot-config permissions` | 在线 `toolPermissions.setMode`；持久化均为 `savePermissionConfiguration`；离线仅改变下次启动配置 |
 | 自定义渠道 | `/api/settings/channels` | `night-bot-settings channel-save` | `operator.saveChannel`；在线共用 Host lifecycle；停机只创建新实例 |
 | 钉钉新增/编辑 | `/api/channels/dingtalk` | `night-bot-settings dingtalk-add/dingtalk-edit --live` | 同一个 Host `channelConfiguration`，真实绑定和依赖检查 |
 | 渠道启停/删除 | 渠道服务/Web 删除 | `night-bot-settings channel-enable/channel-remove --live` | 同一个 Host `channelConfiguration`，版本锁、排空、依赖和回滚 |

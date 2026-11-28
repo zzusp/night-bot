@@ -38,7 +38,6 @@
       },
       "data": {
         "NIGHT_BOT_ACTOR_ID": "night-bot-operator",
-        "NIGHT_BOT_PERMISSION_MODE": "full",
         "NIGHT_BOT_WEB_ENABLED": "true",
         "NIGHT_BOT_WEB_HOST": "0.0.0.0",
         "NIGHT_BOT_WEB_PORT": "3080",

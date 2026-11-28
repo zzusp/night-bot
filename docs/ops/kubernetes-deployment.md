@@ -54,7 +54,6 @@ $pod.securityContext.fsGroup = 1000
 $pod.securityContext.fsGroupChangePolicy = 'OnRootMismatch'
 $c = $pod.containers[0]
 foreach ($key in @('envFrom', 'ports', 'startupProbe', 'readinessProbe')) { $c.Remove($key) }
-$c.env = @(@{ name = 'NIGHT_BOT_PERMISSION_MODE'; value = 'full' })
 $c.args = @('--check')
 $job = @{ apiVersion = 'batch/v1'; kind = 'Job'; metadata = @{ name = 'night-bot-preflight'; namespace = $ns }; spec = @{ backoffLimit = 0; template = @{ metadata = @{ labels = @{ 'app.kubernetes.io/name' = 'night-bot-preflight' } }; spec = $pod } } }
 $preflight = @{ apiVersion = 'v1'; kind = 'List'; items = @($m.items[0], $job) }

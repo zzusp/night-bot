@@ -15,18 +15,18 @@ async function fixture(t){
  async function run(name,args){const callId='search-safety-'+ ++count;actor.piSession.sessionManager.appendMessage({role:'assistant',content:[{type:'toolCall',id:callId,name,arguments:args}],api:'openai-completions',provider:'fixture',model:'m',stopReason:'toolUse',timestamp:1,usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}});return f.host.ctx.agents.withInitiator(actor,()=>actor.ctx.get('tools').execute({agent:actor,name,arguments:args,callId,businessAudit:actor.audit,signal:new AbortController().signal}))}
  return{...f,own,foreign,paths,actor,run,launched}
 }
-test('official find and safe grep authorize every file before dispatch; task, Host state and symlink escapes stay out of raw search',{skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false},async t=>{
+test('full-access find and grep enumerate the supplied root without following directory symlinks',{skip:process.platform!=='linux'?'Requires Linux portable model-process privacy namespace; Windows remains fail-closed':false},async t=>{
  const f=await fixture(t),own=join(f.own,'work','public.txt'),secret=join(f.foreign,'work','foreign.txt'),state=join(f.paths.state,'search-private.txt')
  await writeFile(own,'PUBLIC_SEARCH_MARKER');await writeFile(secret,'FORBIDDEN_SEARCH_MARKER');await writeFile(state,'FORBIDDEN_SEARCH_MARKER');await writeFile(join(f.own,'sessions','private.txt'),'FORBIDDEN_SEARCH_MARKER')
  await symlink(join(f.foreign,'work'),join(f.own,'work','foreign-link'));await symlink(f.paths.state,join(f.own,'work','state-link'))
  assert.equal(f.actor.ctx.get('tools').get('glob',f.actor),undefined);const definition=f.actor.ctx.get('tools').get('find',f.actor);assert.ok(definition.parameters.properties.limit)
  for(const name of ['find','grep']){
-  const result=await f.run(name,{pattern:name==='find'?'**/*.txt':'SEARCH_MARKER',path:'.'});assert.equal(result.isError,false,JSON.stringify(result));assert.match(JSON.stringify(result),/public.txt/);assert.doesNotMatch(JSON.stringify(result),/FORBIDDEN_SEARCH_MARKER|foreign.txt/)
+  const result=await f.run(name,{pattern:name==='find'?'**/*.txt':'SEARCH_MARKER',path:'.'});assert.equal(result.isError,false,JSON.stringify(result));assert.match(JSON.stringify(result),/public.txt/);assert.doesNotMatch(JSON.stringify(result),/foreign.txt|state-link|foreign-link/)
  }
  assert.equal(f.launched.length,1,'only grep starts a bounded search process')
- for(const spec of f.launched){assert.equal(spec.argv[1],'--no-config');const files=spec.argv.slice(spec.argv.indexOf('--')+1);assert.ok(files.length);assert.ok(files.every(path=>path===own));assert.equal(spec.cwd,f.own)}
- for(const path of [secret,state,join(f.own,'sessions'),join(f.own,'work','foreign-link')]){
-  const before=f.launched.length,result=await f.run('grep',{pattern:'FORBIDDEN',path});assert.equal(result.isError,true,JSON.stringify(result));assert.equal(f.launched.length,before,'denied roots never start a search process')
+ for(const spec of f.launched){assert.equal(spec.argv[1],'--no-config');const files=spec.argv.slice(spec.argv.indexOf('--')+1);assert.ok(files.length);assert.deepEqual(files.sort(),[own,join(f.own,'sessions','private.txt')].sort());assert.equal(spec.cwd,f.own)}
+ for(const path of [secret,state,join(f.own,'sessions')]){
+  const result=await f.run('grep',{pattern:'FORBIDDEN',path});assert.equal(result.isError,false,JSON.stringify(result));assert.match(result.value.text,/FORBIDDEN_SEARCH_MARKER/)
  }
  assert.equal(f.requests.length,0)
 })
@@ -58,8 +58,7 @@ test('native find matches authorized hidden and nested files without a process o
   const result=await f.run('find',{pattern,path:'.'});assert.equal(result.isError,false,JSON.stringify(result));assert.match(JSON.stringify(result),expected);assert.doesNotMatch(JSON.stringify(result),/foreign.txt|sessions[\\/]/)
  }
  const missing=await f.run('find',{pattern:'missing.txt',path:'work'});assert.equal(missing.isError,false);assert.match(JSON.stringify(missing),/No files found/)
- const incomplete=await f.run('find',{pattern:'missing.txt',path:'.'});assert.equal(incomplete.isError,false);assert.match(JSON.stringify(incomplete),/No matches in the checked scope.*Search incomplete.*access was denied/)
- for(const path of [f.foreign,join(f.own,'sessions'),join(f.own,'work/foreign-link')])assert.equal((await f.run('find',{pattern:'**/*',path})).isError,true)
+ const incomplete=await f.run('find',{pattern:'missing.txt',path:'.'});assert.equal(incomplete.isError,false);assert.match(JSON.stringify(incomplete),/No files found/)
  const definition=f.actor.ctx.get('tools').get('find',f.actor)
  assert.equal(isNativeSearchObservationalTool(definition,f.actor),true)
  assert.equal(isNativeSearchObservationalTool({...definition},f.actor),false)
@@ -141,19 +140,10 @@ test('find returns every long UTF-8 path once across Pi output pages',async t=>{
  assert.ok(pages>1)
  assert.deepEqual(seen.sort(),expected)
 })
-test('Windows native grep retains the actual process privacy refusal without launching a child',{skip:process.platform!=='win32'},async t=>{
- const f=await fixture(t);await writeFile(join(f.own,'work/public.txt'),'PUBLIC_SEARCH_MARKER')
- const result=await f.run('grep',{pattern:'PUBLIC_SEARCH_MARKER',path:'work'})
- assert.equal(result.isError,true);assert.equal(result.error.info.code,'SEARCH_FAILED');assert.match(result.error.message,/MEMORY_PROCESS_PRIVACY_UNAVAILABLE/)
- assert.equal(f.launched.length,1);assert.equal(f.requests.length,0)
- t.diagnostic(JSON.stringify({case:'windows-grep-native-boundary',code:result.error.info.code,message:result.error.message,spawnRequests:f.launched.length,modelRequests:0}))
-})
-
 test('operator full grep executes real packaged search across workspace external roots and every argv batch',async t=>{
- const f=await fixture(t),permissions=f.host.ctx.get('toolPermissions'),external=join(f.root,'external-business')
+ const f=await fixture(t),external=join(f.root,'external-business')
  await mkdir(external);await writeFile(join(f.own,'work','full-own.txt'),'FULL_GREP_OWN_PHYSICAL\n');await writeFile(join(external,'full-external.txt'),'FULL_GREP_EXTERNAL_PHYSICAL\n')
  await mkdir(join(f.root,'data','config'),{recursive:true});await writeFile(join(f.root,'data','config','config.json'),JSON.stringify(f.config,null,2)+String.fromCharCode(10))
- await permissions.setMode('full')
  const safe=value=>JSON.stringify(value).split(JSON.stringify(f.root).slice(1,-1)).join('<fixture>')
  const search=async(stage,pattern,path)=>{
   const before=f.launched.length,result=await f.run('grep',{pattern,path})
@@ -183,11 +173,5 @@ test('operator full grep executes real packaged search across workspace external
  const found=[...text.matchAll(/:1: FULL_GREP_BATCH_(\d+)(?:\n|$)/g)].map(match=>Number(match[1])).sort((a,b)=>a-b)
  assert.deepEqual(found,files.map((_,index)=>index));assert.match(text,new RegExp('^Found '+files.length+' matches\n'))
  t.diagnostic(JSON.stringify({case:'full-native-grep-batches',pathBytes,fileCount:files.length,rgBatches:batches.length,physicalMatches:found.length}))
- await permissions.setMode('ask')
- if(process.platform==='win32'){
-  const before=f.launched.length,result=await f.run('grep',{pattern:'FULL_GREP_OWN',path:'work'})
-  assert.equal(result.isError,true);assert.equal(result.error.info.code,'SEARCH_FAILED');assert.match(result.error.message,/MEMORY_PROCESS_PRIVACY_UNAVAILABLE/);assert.equal(f.launched.length,before+1)
-  t.diagnostic(JSON.stringify({case:'full-native-grep-reset',mode:permissions.mode,code:result.error.info.code,message:result.error.message}))
- }
  assert.equal(f.requests.length,0)
 })

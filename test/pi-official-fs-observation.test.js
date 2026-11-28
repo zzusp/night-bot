@@ -48,7 +48,6 @@ test('foreign same-id and unbound official observation actors fail closed instea
 test('actual Host file writes capture the immediate prior skill even before the watcher settles',async t=>{
  const h=await fixture(t),paths=h.host.ctx.runtimePaths,file=join(paths.skills,'latest-check.md')
  await writeFile(join(paths.config,'config.json'),JSON.stringify(h.config))
- await h.host.ctx.get('toolPermissions').setMode('full')
  await h.host.ctx.memory.installedPrevious.watcher.close()
  const content=value=>'---\nname: latest-check\ndescription: Local test resource\n---\n'+value+'\n'
  for(const value of ['FIRST','SECOND','THIRD']){

@@ -13,14 +13,13 @@ import {createOperatorSettings} from './operator.js'
 import {createSettingsCommands,settingsSaveResult,settingsActions,validateSettingsCommand} from './commands.js'
 import {saveModelConfiguration} from './model-configuration.js'
 import {saveWebConfiguration} from './web-configuration.js'
-import {savePermissionConfiguration} from './configuration.js'
 import {readSettingsOperatorToken} from './auth.js'
 import {SETTINGS_OPERATOR_ROUTE,safeSettingsError} from './http.js'
 
 export const settingsCliUsage=`Usage: night-bot-settings CONFIG ACTION [options] [--live] [--check]
 Actions: show, plugins, appearance, model, provider, model-list, model-entry, role, secret, web, work-log, channel-list,
   channel-save, channel-enable, channel-remove, channel-ingress, channel-recover-paused, dingtalk-get, dingtalk-add,
-  dingtalk-edit, permissions-show, permissions-set, permission-respond.
+  dingtalk-edit.
 Use --json-file FILE for non-secret payloads. Appearance: --name NAME --icon moon|star|robot|leaf.
 Work log: --enabled true|false --time HH:mm --timezone local|IANA (normal restart required).
 Secret: --kind model|github --action replace|clear --confirm (hidden prompt or one stdin line).
@@ -47,10 +46,10 @@ const optionsByAction={
  'channel-list':[],'channel-save':[],'channel-enable':['channel-id','enabled','expected-version'],'channel-remove':['channel-id','expected-version'],
  'channel-ingress':['channel-id','paused','expected-version'],
  'channel-recover-paused':['channel-id','paused-at','expected-version'],
- 'dingtalk-get':['channel-id'],'dingtalk-add':[],'dingtalk-edit':[],'permissions-show':[],'permissions-set':['mode'],'permission-respond':['id','decision'],
+ 'dingtalk-get':['channel-id'],'dingtalk-add':[],'dingtalk-edit':[],
 }
 const mapping={'reasoning-efforts':'reasoningEfforts','base-url':'baseURL','key-env':'apiKeyEnv','reasoning-effort':'reasoningEffort','expected-version':'expectedVersion','public-origin':'publicOrigin','channel-id':'channelId','paused-at':'pausedAt','sender-id':'senderId','operator-name':'operatorName'}
-const readOnly=new Set(['show','plugins','model-list','channel-list','dingtalk-get','permissions-show'])
+const readOnly=new Set(['show','plugins','model-list','channel-list','dingtalk-get'])
 const noFile=new Set([...readOnly,'secret'])
 async function jsonFile(path){
  if((await stat(path)).size>32768)throw failure('SETTINGS_REQUEST_TOO_LARGE')
@@ -109,8 +108,7 @@ async function localCommands(config,file,{checkOnly,writing,environment}){
    const {dingtalkEditable}=await import('../channels/plugins/dingtalk-config.js'),row=(await channels.read()).find(row=>row.channelId===id&&row.type==='dingtalk-dws')
    if(!row)throw failure('DINGTALK_CHANNEL_NOT_FOUND');return dingtalkEditable(row)
   }}
-  const permissions={view:()=>({mode:config.permissionMode??'full',requests:[]}),setMode:async mode=>settingsSaveResult(await savePermissionConfiguration(file,{mode,checkOnly}))}
-  return {dispatch:createSettingsCommands({settings,channels,permissions,configuration:{model:async body=>settingsSaveResult(await saveModelConfiguration(file,body)),web:async body=>settingsSaveResult(await saveWebConfiguration(file,body)),permissions:async body=>settingsSaveResult(await savePermissionConfiguration(file,body))}}),close:async()=>{try{await ctx.fiber.dispose()}finally{await release?.()}}}
+  return {dispatch:createSettingsCommands({settings,channels,configuration:{model:async body=>settingsSaveResult(await saveModelConfiguration(file,body)),web:async body=>settingsSaveResult(await saveWebConfiguration(file,body))}}),close:async()=>{try{await ctx.fiber.dispose()}finally{await release?.()}}}
  }catch(error){try{await ctx.fiber.dispose()}finally{await release?.()}throw error}
 }
 export async function runSettingsCli(argv,{environment=process.env,write=value=>console.log(value),interaction,signal}={}){
@@ -131,7 +129,7 @@ export async function runSettingsCli(argv,{environment=process.env,write=value=>
  let local,ownedInteraction
  try{
   const live=values.live===true
-  if(!live&&['channel-enable','channel-remove','channel-ingress','channel-recover-paused','dingtalk-add','dingtalk-edit','permission-respond'].includes(action))throw failure('SETTINGS_RESIDENT_REQUIRED')
+  if(!live&&['channel-enable','channel-remove','channel-ingress','channel-recover-paused','dingtalk-add','dingtalk-edit'].includes(action))throw failure('SETTINGS_RESIDENT_REQUIRED')
   if(!live)local=await localCommands(config,file,{checkOnly:input.checkOnly,writing:!readOnly.has(action),environment})
   const dispatch=value=>live?requestLiveSettings(config,file,value,{signal}):local.dispatch(value)
   if(['appearance','provider','model','model-entry','role','secret','web','work-log','channel-save'].includes(action)&&body.expectedVersion===undefined)body.expectedVersion=(await dispatch({action:action==='channel-save'?'plugins':action==='model-entry'?'model-list':'show'})).version

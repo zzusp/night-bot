@@ -229,42 +229,6 @@ html, body, #root { width: 100%; min-width: 0; }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
 @media (forced-colors: active) { .primary-nav>a[aria-current] { border: 2px solid Highlight; }.thinking-dots i,.workspace-dot,.connection i { background: CanvasText; } }
 
-.permission-dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid var(--board-border); border-radius: var(--board-radius-card); background: var(--board-surface); color: var(--board-text); }
-.permission-dialog::backdrop { background: rgb(0 0 0 / 35%); }
-.permission-dialog-heading { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--board-gap); padding: 20px 24px; border-bottom: 1px solid var(--board-border); background: var(--board-surface); }
-.permission-dialog-heading h2 { font-size: 18px; font-weight: 500; }
-.permission-dialog-heading p { margin-top: 4px; color: var(--board-muted); font-size: 11px; }
-.permission-dialog-body { min-height: 280px; padding: 24px; }
-.permission-section + .permission-section { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--board-border); }
-.permission-section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-.permission-section-heading h3 { font-size: 14px; font-weight: 500; }
-.permission-section-heading h4 { margin: 0; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
-.permission-help { margin-top: 12px; color: var(--board-muted); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
-.permission-protection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px; margin-top: 12px; border: 1px solid var(--board-border); border-radius: var(--board-radius-control); background: var(--board-panel); font-size: 11px; }
-.permission-protection p { flex-basis: 100%; line-height: 1.8; overflow-wrap: anywhere; }
-.permission-modes { min-width: 0; margin: 20px 0 0; padding: 0; border: 0; }
-.permission-modes legend { margin-bottom: 10px; font-size: 12px; }
-.permission-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.permission-choice { display: flex; align-items: flex-start; gap: 9px; padding: 14px 12px; border: 1px solid var(--board-border); border-radius: var(--board-radius-control); cursor: pointer; }
-.permission-choice.selected { border-color: var(--board-primary); background: var(--board-primary-soft); }
-.permission-choice input { flex-shrink: 0; width: 16px; height: 16px; margin: 3px 0 0; accent-color: var(--board-primary); }
-.permission-choice strong { display: block; font-size: 13px; font-weight: 500; }
-.permission-choice span span { display: block; margin-top: 6px; color: var(--board-muted); font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
-.permission-modes:disabled .permission-choice { cursor: default; }
-.permission-warning { margin-top: 12px; padding: 12px; border: 1px solid var(--board-warning); border-radius: var(--board-radius-control); color: var(--board-warning); background: var(--board-warning-soft); font-size: 12px; line-height: 1.8; }
-.permission-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-.permission-requests { display: flex; flex-direction: column; gap: var(--board-gap); margin-top: var(--board-gap); }
-.permission-request { min-width: 0; padding: 18px; border: 1px solid var(--board-border); border-radius: var(--board-radius-control); }
-.permission-summary { margin-top: 12px; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; white-space: pre-wrap; }
-.permission-request dl { margin: 16px 0 0; font-size: 11px; }
-.permission-request dt { margin-top: 10px; color: var(--board-muted); }
-.permission-request dd { margin: 4px 0 0; overflow-wrap: anywhere; }
-.permission-request pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.permission-request code, .permission-request pre { font-family: var(--board-mono); font-size: 11px; }
-.permission-request a { color: var(--board-info); text-decoration: underline; display: inline-flex; align-items: center; min-height: var(--board-control-height); }
-.permission-feedback { margin-bottom: 16px; color: var(--board-info); font-size: 12px; line-height: 1.8; }
-@media (max-width: 520px) { .permission-dialog-heading { padding: 16px; }.permission-dialog-body { padding: 16px; }.permission-choices { grid-template-columns: 1fr; }.permission-request { padding: 14px; } }
-
 .channel-create-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid var(--board-border); border-radius: var(--board-radius-card); background: var(--board-surface); color: var(--board-text); }
 .channel-create-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
 .channel-create-dialog::backdrop { background: rgb(0 0 0 / 35%); }
@@ -702,8 +666,8 @@ html, body, #root { width: 100%; min-width: 0; }
 .read-error-copy p { margin:0; }
 .read-error-copy .read-error-reason { margin-top:4px; }
 .read-error-copy > .board-button { min-height:28px; padding:3px 8px; margin:8px 0 -3px -8px; font-size:12px; color:var(--board-text); }
-.permission-dialog .read-error-summary,.channel-create-dialog .read-error-summary,.message-process-popover .read-error-summary { position:relative; inset:auto; width:380px; max-width:100%; margin:0 0 16px auto; z-index:auto; }
-@media(max-width:520px) { .read-error-summary { left:16px; right:16px; bottom:16px; width:auto; max-width:none; } .conversation-workspace .read-error-summary { bottom:104px; } .permission-dialog .read-error-summary,.channel-create-dialog .read-error-summary,.message-process-popover .read-error-summary { left:auto; right:auto; bottom:auto; max-width:100%; } }
+.channel-create-dialog .read-error-summary,.message-process-popover .read-error-summary { position:relative; inset:auto; width:380px; max-width:100%; margin:0 0 16px auto; z-index:auto; }
+@media(max-width:520px) { .read-error-summary { left:16px; right:16px; bottom:16px; width:auto; max-width:none; } .conversation-workspace .read-error-summary { bottom:104px; } .channel-create-dialog .read-error-summary,.message-process-popover .read-error-summary { left:auto; right:auto; bottom:auto; max-width:100%; } }
 
 /* Action receipts follow BoardUI Notification; never push the channel cards down. */
 .action-notification { position:fixed; z-index:50; right:24px; top:76px; display:flex; align-items:flex-start; gap:12px; width:360px; max-width:calc(100vw - 32px); box-sizing:border-box; padding:16px 44px 16px 16px; border:1px solid var(--board-border); border-radius:16px; background:var(--board-surface); color:var(--board-muted); box-shadow:0 8px 24px rgb(0 0 0 / 10%),0 2px 6px rgb(0 0 0 / 4%); font-size:12px; line-height:1.6; animation:action-notification-enter 160ms ease-out; }

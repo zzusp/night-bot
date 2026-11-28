@@ -41,26 +41,9 @@ JS
 if [ -e "$config" ]; then
   [ -f "$config" ] || fail NIGHT_DOCKER_CONFIGURATION_INVALID
 fi
-# 仅容器边界读取环境参数；Host 授权始终来自显式保存的配置。
-permission_mode=${NIGHT_BOT_PERMISSION_MODE:-}
-if [ -z "$permission_mode" ]; then
-  if [ -f "$config" ]; then
-    permission_mode=$(node --input-type=module -e 'import {loadConfig} from "./src/config.js";console.log((await loadConfig(process.argv[1])).permissionMode??"full")' "$config")
-  else
-    permission_mode=full
-  fi
-fi
-case "$permission_mode" in ask|auto|full) ;; *) fail NIGHT_BOT_PERMISSION_MODE_INVALID ;; esac
-# full 是产品默认无隔离档；显式受限档探针失败绝不自动退 full。
-if [ "$permission_mode" != full ]; then
-  if ! bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent -- true; then
-    fail NIGHT_DOCKER_BWRAP_UNAVAILABLE
-  fi
-fi
 if [ "$action" = --check ]; then
   node --version
   pnpm --version
-  if [ "$permission_mode" != full ]; then bwrap --version; fi
   printf '%s\n' NIGHT_DOCKER_PREFLIGHT_OK
   exit 0
 fi
@@ -78,7 +61,7 @@ if [ -e "$config" ]; then
   configure=update
 else
   [ -n "${NIGHT_BOT_ACTOR_ID:-}" ] || fail NIGHT_DOCKER_ACTOR_REQUIRED
-  set -- --actor "$NIGHT_BOT_ACTOR_ID" --root "$root" --permission-mode "$permission_mode"
+  set -- --actor "$NIGHT_BOT_ACTOR_ID" --root "$root"
   configure=initialize
 fi
 # 环境导入只发生在容器边界，现有 CLI 只接收显式 argv。
@@ -92,10 +75,6 @@ if [ "$configure" = initialize ]; then
 elif [ "$#" -gt 2 ]; then
   node "$root/bin/night-bot-config.js" "$@" --check
   node "$root/bin/night-bot-config.js" "$@"
-fi
-if [ "$configure" = update ] && [ -n "${NIGHT_BOT_PERMISSION_MODE:-}" ]; then
-  node "$root/bin/night-bot-config.js" "$config" permissions --permission-mode "$permission_mode" --check
-  node "$root/bin/night-bot-config.js" "$config" permissions --permission-mode "$permission_mode"
 fi
 # Web 的容器发布仍使用通用 CLI，认证和同源检查归插件。
 if node --input-type=module -e 'process.exit(Object.entries(process.env).some(([key,value])=>key.startsWith("NIGHT_BOT_WEB_")&&value)?0:1)'; then

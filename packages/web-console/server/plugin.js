@@ -21,7 +21,7 @@ import {resolve, join, relative, isAbsolute, sep} from 'node:path'
 import {accessCredential, browserSessions, controlledDirectory, digest, fail, jsonBody, requireLocalRequest, webListenOptions} from './security.js'
 import {openWebLedger} from './ledger.js'
 import {admitWebChatAttachments, parseWebChatAttachments, saveParsedWebChatAttachments, WEB_CHAT_BODY_BYTES} from './chat-attachments.js'
-import {configuredChannels, conversationMessages, conversations, recentConversations, permissionsView, taskDialogueView, taskView, taskSummaryView} from './views.js'
+import {configuredChannels, conversationMessages, conversations, recentConversations, taskDialogueView, taskView, taskSummaryView} from './views.js'
 import {visibleText,taskSessionView,taskSessionMessageView,routerSessionView,routerSessionMessageView,globalRouterSessionView,globalRouterSessionMessageView} from './session-view.js'
 import {createSessionEvents} from './session-events.js'
 
@@ -98,7 +98,7 @@ async function staticResponse(pathname, request, response, dist) {
 }
 
 // 仅作为可选适配器：不导入核心实现，不扩展领域 schema，也不引入模型调用或任务调度。
-export async function createWebConsole({channels, paths, config, getApplication, getAttachments = () => undefined, getAgents = () => undefined, getRedactionSecrets = () => [], getFeedback = () => undefined, getSchedule = () => undefined, getSessionPersistence = () => undefined, getNativeModelRoutes = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getPermissions = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, getDeploymentInventory = () => undefined, dist = defaultDist, listen = true}) {
+export async function createWebConsole({channels, paths, config, getApplication, getAttachments = () => undefined, getAgents = () => undefined, getRedactionSecrets = () => [], getFeedback = () => undefined, getSchedule = () => undefined, getSessionPersistence = () => undefined, getNativeModelRoutes = () => undefined, getReflection = () => undefined, getMemory = () => undefined, getChannelConfiguration = () => undefined, getOperatorSettings = () => undefined, getDeploymentInventory = () => undefined, dist = defaultDist, listen = true}) {
   const channelId = identifier(config.channelId ?? 'web-console')
   const senderId = identifier(config.senderId)
   const operatorName = (typeof config.operatorName === 'string' ? config.operatorName.trim().slice(0, 256).trim() : '') || '本机操作者'
@@ -122,8 +122,6 @@ export async function createWebConsole({channels, paths, config, getApplication,
   let origin, stopped = false, closePromise, startPromise
   const sessionView = session => ({authenticated: true, csrfToken: session.csrfToken, operator: {name: operatorName}, channelId})
   const application = () => {const value = getApplication(); if (!value) fail('BOT_NOT_READY', 503); return value}
-  const permissions = () => {const value = getPermissions(); if (!value) fail('PERMISSIONS_UNAVAILABLE', 503); return value}
-  const permissionView = value => permissionsView(value, [credential.token])
   const channelView = async (app = application()) => {
     const configuration = getChannelConfiguration()
     return configuredChannels(app, channels, configuration ? await configuration.read() : undefined)
@@ -301,18 +299,6 @@ export async function createWebConsole({channels, paths, config, getApplication,
         if(['JSON_REQUIRED','REQUEST_TOO_LARGE','JSON_INVALID','REQUEST_INVALID','NOT_FOUND'].includes(error.code))throw error
         fail('SETTINGS_SAVE_UNAVAILABLE',503)
       }
-    }
-    if (request.method === 'GET' && path === '/api/permissions') return send(response, 200, permissionView(permissions().view()))
-    if (request.method === 'PUT' && path === '/api/permissions') {
-      const body = await jsonBody(request, ['mode'], 1024)
-      if (!['ask', 'auto', 'full'].includes(body.mode)) fail('PERMISSION_MODE_INVALID')
-      return send(response, 200, permissionView(await permissions().setMode(body.mode)))
-    }
-    const permissionRequest = /^\/api\/permissions\/requests\/([A-Za-z0-9-]{1,128})$/.exec(path)
-    if (request.method === 'POST' && permissionRequest) {
-      const body = await jsonBody(request, ['decision'], 1024)
-      if (!['allow', 'reject', 'revoke'].includes(body.decision)) fail('PERMISSION_DECISION_INVALID')
-      return send(response, 200, permissionView(await permissions().respond(permissionRequest[1], body.decision)))
     }
     if (request.method === 'GET' && path === '/api/channels') return send(response, 200, await channelView())
     const channelIngress=/^\/api\/channels\/([^/]+)\/ingress$/.exec(path),ingressQuery=path==='/api/channels/ingress'&&request.method==='POST'
@@ -799,7 +785,7 @@ export async function apply(ctx, config) {
       if (typeof credentials?.redactionValues !== 'function') throw new Error('Credentials unavailable')
       return [...await credentials.redactionValues(), ...launchEnvironmentOf(ctx).redactionValues()]
     },
-    getAgents: () => ctx.get('agents'), getSchedule: () => ctx.get('schedule'), getSessionPersistence: () => ctx.sessionPersistence, getNativeModelRoutes: () => ctx.get('nativeModelRoutes'), getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getPermissions: () => ctx.get('toolPermissions'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), getFeedback: () => ctx.get('errorFeedback'), getDeploymentInventory:()=>ctx.get('deploymentInventory')?.read(), listen: false})
+    getAgents: () => ctx.get('agents'), getSchedule: () => ctx.get('schedule'), getSessionPersistence: () => ctx.sessionPersistence, getNativeModelRoutes: () => ctx.get('nativeModelRoutes'), getReflection: () => ctx.get('reflection'), getMemory: () => ctx.get('memory'), getChannelConfiguration: () => ctx.get('channelConfiguration'), getOperatorSettings: () => ctx.get('operatorSettings'), getFeedback: () => ctx.get('errorFeedback'), getDeploymentInventory:()=>ctx.get('deploymentInventory')?.read(), listen: false})
   const stop = () => stopping ??= prepared.then(web => web.close(), () => undefined)
   ctx.effect(() => stop, 'optional Web console shutdown')
   ctx.on('night/stopping', stop)

@@ -110,26 +110,9 @@ PATCH 成功回 `{ok:true,changed,restartRequired,liveApplied,channel,detail}`�
 
 重复 ID 返回 409 `DINGTALK_CHANNEL_EXISTS`，输入错误返回 400，均保留草稿且不覆盖已有配置。账号校验在配置写入前完成：未登录、无当前账号或当前账号歧义分别返回 409 `DINGTALK_AUTH_REQUIRED` / `DINGTALK_CURRENT_PROFILE_NOT_FOUND` / `DINGTALK_CURRENT_PROFILE_AMBIGUOUS`，不触发 Web 登录失效；命令不可用或查询失败返回相应 503，响应异常返回相应 502，均明确拒绝并保留草稿。500、断线或不完整成功响应按写结果未知处理，页面只读按原渠道标识核对；GET 同 ID 存在不能证明本次账号/目标已写入，缺席也不解锁重发。不要自动重发 POST、自动换 ID 或通过删除锁处理未知结果。认证换代清除表单并使旧异步回执失效；聊天草稿容器不因此重建。新增与编辑可保存外发授权配置，不实现热加载、删除/启停或真实厂商代发按钮。编辑 500、断网或不完整成功回执同样按未知锁定，只读 GET 比较准确字段与版本；仅新版本与提交字段逐项一致可确认当前保存配置一致，版本未变或字段不符继续只读，不判定原提交未发生，不重发 PATCH。
 
-## 安装权限与单次审批
+## 安装权限
 
-配置仅使用顶层 `permissionMode`，取值 `ask` / `auto` / `full`，缺省为 `full`；示例配置显式写 `"permissionMode": "full"`。初始化可传 `--permission-mode ask|auto|full`，通用配置 CLI 使用同名参数。它不是旧组件预设名，也不读取 Host 环境变量来代替模式或单次授权。
-
-在安装根先检查，再保存同一组参数：
-
-```powershell
-node bin/night-bot-config.js data/config/config.json permissions --permission-mode ask --check
-node bin/night-bot-config.js data/config/config.json permissions --permission-mode ask
-```
-
-CLI 保存后按原运行手册正常重启才应用配置，不在运行期间手工改文件冒充热切换。已配置的 `ask` 或 `auto` 不会因为沙箱不可用退回 `full`。`full` 按当前系统账号真实访问，不提权，进程不再隔离，同账号可访问的凭据与 Host 私有文件不能宣称受进程隔离保护。`ask` / `auto` 保留私有区、任务元数据等独立边界；批准命令只授予准确动作的受控范围，不把外部目标批准解释为撤销全部隔离。Windows 受限命令仍取决于真实后端，不因配置存在而成为已验收能力。
-
-Web「权限与审批」使用 `GET /api/permissions` 读取当前 Host `mode`、`options`、`protection` 和 `requests`。`protection` 是 Host 实际报告的 `status/backend/description`：`not-attested` 不能推为已隔离，`unavailable` 明确不可用，`full` 的 `unconfined/direct` 明确进程不隔离；页面不启动探针或由模式猜测后端。可选档位和保护说明不替代各平台真实执行验收。
-
-`PUT /api/permissions` 的正文为 `{mode}`，持久保存成功后切换当前 Host；`POST /api/permissions/requests/:id` 的正文包含 `decision`（`allow` / `reject` / `revoke`）。两者仅允许已认证安装操作者，沿同源 cookie、Host/Origin 与 CSRF 校验，返回与 GET 相同的完整视图；普通任务或群消息不能调用这些入口改变权限。Web 保存不要求另一次 CLI 重启，不能将 CLI 的 `restartRequired` 混作 Web 响应。 权限面板绑定当前认证会话；CSRF 只读同步到新会话时重建该面板，清除旧审批详情、未提交选择与反馈，使旧在途响应失效，不改变原聊天草稿容器。
-
-审批只展示 Host 生成的 `display.summary/target/cwd/command/parametersDigest` 及声明的身份、状态和时间字段；审批必要的业务目标、cwd 与命令使用专用路径保留投影，以便操作者核对准确业务路径，同时仍隐藏 token、JSON 敏感字段、raw args/env 和未知字段。普通会话的路径默认隐藏规则不变，前端不解析原始命令。请求绑定 actor、task/conversation、call、参数摘要、cwd 和范围；模式变更、撤销或过期不允许借旧请求执行。每项 `revocable` 由 Host 计算，仅同一 live exec、同一权限 epoch、未取消且尚未消费效果的授权可撤销；前端只有收到 `true` 才提供撤销操作。`revoke` 先同步撤销私有 grant，再持久记为 `cancelled`，不回滚已发生效果；模式保存也取消旧未消费授权。已消费、调用结束、过期或冷恢复旧项不可撤销，409 后不重试原决定；其它失败先 GET 核当前状态，页面不会自动重发 PUT/POST。
-
-`auto` 使用当前配置的通用模型，经 Pi 作一次无工具审查，只处理 Host 判定需要批准的动作；无法确定或模型失败转人工，不复用或安装 DSH reviewer。已保存模式可冷恢复；原 pending 请求恢复为 cancelled，不重建等待、不重放动作。页面显示批准结果不证明工具完成，后端隔离、外部路径真实效果和恢复防重仍须按[唯一验收目标](../acceptance/resident-conversation-routing/goal.md)的对应版本核验，旧 Chat/learning 结果不追认为新权限通过。
+Night Bot 按启动进程的操作系统账号权限直接执行，不提权，也不提供 Bot 工作区或进程隔离。不再提供配置档位、人工审批或自动审批。旧安装里的 `permissionMode` 保留在原文件中供回退，但当前版本不读取该值；旧审批不会恢复或自动重放。操作系统、容器、渠道认证、工具调用绑定和业务授权边界仍有效。
 
 ## 私有设置
 

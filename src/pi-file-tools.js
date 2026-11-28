@@ -62,7 +62,7 @@ export function createPiFileTools({ctx,actor,sourceConfig={},services={},imageBu
   if(kind==='read'||kind==='read_window')for(const key of ['offset','limit'])parameters.properties[key]={...parameters.properties[key],type:'integer',minimum:1,...key==='limit'?{maximum:config.windowMaxLines}:{}}
   if(kind==='read_image')parameters.properties={path:parameters.properties.path}
   if(kind==='edit')parameters.properties.edits={...parameters.properties.edits,minItems:1,maxItems:config.maxEditCount}
-  if(kind==='edit'||kind==='write')Object.assign(parameters.properties,{sandbox_permissions:{type:'string',enum:[...ESCALATION_TARGETS]},justification:{type:'string',minLength:1}})
+  if(approval&&(kind==='edit'||kind==='write'))Object.assign(parameters.properties,{sandbox_permissions:{type:'string',enum:[...ESCALATION_TARGETS]},justification:{type:'string',minLength:1}})
   return deepFreeze(parameters)
  }
  function launch(kind,parameters,callId,input,signal,body){

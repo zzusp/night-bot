@@ -31,7 +31,7 @@ async function readBody(request){
 }
 /** A CLI-only transport on the existing resident listener. No Web plugin, browser
  * cookies, CORS grant, shell invocation or second Host is involved. */
-export function createSettingsHttp({auth,getSettings,getChannels,getPermissions}){
+export function createSettingsHttp({auth,getSettings,getChannels}){
  return async(request,response)=>{
   if((request.url??'').split('?')[0]!==SETTINGS_OPERATOR_ROUTE)return false
   if(request.url!==SETTINGS_OPERATOR_ROUTE||request.method!=='POST'){send(response,404,{error:'SETTINGS_ROUTE_INVALID'});return true}
@@ -43,10 +43,9 @@ export function createSettingsHttp({auth,getSettings,getChannels,getPermissions}
    if(auth.containsSecret(input))throw failure('SETTINGS_OPERATOR_SECRET_IN_REQUEST')
    const settings=getSettings()
    if(!settings)throw failure('SETTINGS_UNAVAILABLE')
-   const dispatch=createSettingsCommands({settings,channels:getChannels(),permissions:getPermissions(),configuration:{
+   const dispatch=createSettingsCommands({settings,channels:getChannels(),configuration:{
     model:({checkOnly,...body})=>settings.saveProviderModel(body,{checkOnly}),
     web:({checkOnly,...body})=>settings.saveWeb(body,{checkOnly}),
-    permissions:body=>settings.checkPermission(body),
    }})
    send(response,200,auth.redact(await dispatch(input)))
   }catch(error){

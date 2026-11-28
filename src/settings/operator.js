@@ -4,7 +4,6 @@ import {updateConfig} from '../config.js'
 import {MODEL_ROLES, ROLE_MODEL_ENV_NAMES, resolveRoleModels, legacyRoleModelSelection, roleModelCatalog, materializeRoleModelSelection} from '../role-models.js'
 import {configVersion, saveProviderConfiguration, modelCatalogView, saveModelCatalogEntry, saveModelConfiguration, saveRoleModelConfiguration,validateModelEndpoint as endpoint} from './model-configuration.js'
 import {saveWebConfiguration} from './web-configuration.js'
-import {savePermissionConfiguration} from './configuration.js'
 import {piAuthentication} from '../pi-provider-auth.js'
 import {discoverChannelPlugins} from '../channels/loader.js'
 import {failure} from '../runtime/files.js'
@@ -111,10 +110,6 @@ export function createOperatorSettings({file,paths,running,getCredentials,run=fn
    if(!body||typeof body.expectedVersion!=='string')throw failure('SETTINGS_INPUT_INVALID')
    const result=await saveWebConfiguration(file,{...body,checkOnly})
    return {ok:true,changed:result.changed,checkOnly,version:result.version,restartRequired:result.restartRequired,liveApplied:false}
-  }),
-  checkPermission:body=>run(async()=>{
-   const result=await savePermissionConfiguration(file,{...body,checkOnly:true})
-   return {ok:true,changed:result.changed,checkOnly:true,version:result.version,restartRequired:result.restartRequired,liveApplied:false}
   }),
   saveModel:(body,{checkOnly=false}={})=>run(async()=>{
    if(!body||!text(body.model)||!['openai-completions','openai-responses','anthropic-messages'].includes(body.api))throw failure('SETTINGS_INPUT_INVALID')
