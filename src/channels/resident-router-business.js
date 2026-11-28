@@ -10,7 +10,7 @@ import {routerTaskSummary,routerTaskReceipt} from './router-task-view.js'
 import {MAX_ROUTER_HANDOFF_LENGTH,normalizeRouterHandoff} from './router-handoff.js'
 import {routerMemoryReconciliation} from './router-memory-reconciliation.js'
 import {routerMemoryParameters,hash as memoryHash} from '../memory/format.js'
-import {businessBlockerEvidenceRule,channelReplyWritingPrompt,routerReplyOutcomeRule,routerReplyFormatRule,publicReplyContentRule,defensiveReplyRule,attachmentReplyRule,communicationGuidanceReadTool} from './message-safety.js'
+import {businessBlockerEvidenceRule,channelReplyWritingPrompt,routerReplyOutcomeRule,routerReplyFormatRule,publicReplyContentRule,defensiveReplyRule,routerOutcomeReplyRule,attachmentReplyRule,communicationGuidanceReadTool} from './message-safety.js'
 import {followUpSettlementArgs} from './router-model-input.js'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
@@ -18,7 +18,7 @@ import {peerRoles} from '../tasks/peer-work.js'
 import {scopeOf} from '../native-scope.js'
 
 const fail=code=>{throw Object.assign(new Error(code),{code})}
-const replyText={type:'string',minLength:1,maxLength:8000,description:`接收者直接看到的正文。先给所问结论。${publicReplyContentRule}\n${defensiveReplyRule}`}
+const replyText={type:'string',minLength:1,maxLength:8000,description:`接收者直接看到的正文。先给所问结论。${publicReplyContentRule}\n${defensiveReplyRule}\n${routerOutcomeReplyRule}`}
 const requiresHandoff=value=>value===undefined?fail('ROUTER_HANDOFF_REQUIRED'):normalizeRouterHandoff(value)
 const output={schema:{type:'object'},render:(_args,value)=>[{type:'text',text:JSON.stringify(value)}]}
 export const residentOperationId=(conversationId,key)=>'router-operation:'+createHash('sha256').update(JSON.stringify([conversationId,key])).digest('hex')
@@ -160,6 +160,7 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
     const taskOutcomeReplies=outcomes.map(({outcome,original})=>({operationId:outcome.eventId,outcomeEventId:outcome.eventId,sourceId:original.sourceId,messageVersion:original.version}))
     const taskOutcomeQuestions=outcomes.map(({outcome,original})=>({outcomeEventId:outcome.eventId,sourceId:original.sourceId,messageVersion:original.version,text:original.text}))
     return currentContextPolicy+'\n'+JSON.stringify({...context,...taskOutcomeReplies.length?{taskOutcomeReplies,taskOutcomeQuestions}:{}})
+      +(taskOutcomeReplies.length?'\n'+routerOutcomeReplyRule:'')
   }})
   const string={type:'string'},integer={type:'integer',minimum:1},strings={type:'array',items:string}
   const identity={operationId:string,sourceId:string,messageVersion:integer}

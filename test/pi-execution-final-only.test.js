@@ -15,7 +15,7 @@ for(const action of ['complete','detailed','scoped-recovery','end-to-end-recover
  const request=unconfirmed?'UAT 的 db/mongodb-example 还有业务依赖吗？谁维护？先不要缩容。':recovery?(clusterOnly?'UAT6 集群内服务恢复了吗？':'UAT6 外部网关和 Monte Carlo 端到端恢复了吗？'):multi?'这份清单里的 6 份材料都齐了吗？为什么收件方还没确认？请不要改外部系统或发附件。':investigation?'这批任务是怎么中断的？'+(detailed?'把统计范围及两条样本的时间和依据列出来。':''):'请核对这份材料。不要改外部系统或发附件。'
  const summary=unconfirmed?'查过可见的应用配置和连接日志，业务依赖和维护人仍未确认。':recovery?'UAT6 集群内服务已恢复。':multi?'清单上的 6 份材料都已核对。':investigation?'发出中断提示的 9 次，都是最后一次模型请求超时。':'Verified synthetic outcome'
  const evidence=unconfirmed?['检查过就绪节点的日志，短时间内新增连接均来自本机。','可见的应用配置没有直接引用。']:recovery?['集群内就绪和服务端点返回 200。','较早构建和推送成功，但当时要求 v1 的就绪探针收到了 v2 的响应。']:multi?['逐项回读清单，6 份材料均存在。']:investigation?['13:37 和 15:19 的最后一条模型请求日志都记录超时，未返回输出。','这批总共 27 次模型超时，其中 9 次发出中断提示。','已逐项排除排队、工具和投递。']:['Synthetic material checked']
- const limitations=unconfirmed?['既有连接无法归类。','监控无样本，不代表零连接。','维护人未确认。']:recovery?['本次只确认了集群内服务恢复，外部网关和 Monte Carlo 端到端业务未在本次复测中验证。']:multi?['没有收件方的确认记录，尚不能确定未确认的原因。','TASK_EFFECT_UNCERTAIN_NO_REPLAY']:investigation?['缺网关日志，无法定位超时发生在哪一段。','本次只读，未改代码、重启或重跑。']:[]
+ const limitations=unconfirmed?['既有连接无法归类。','监控无样本，不代表零连接。','维护人未确认。']:recovery?['本次只确认了集群内服务恢复，外部网关和 Monte Carlo 端到端业务未在本次复测中验证。']:multi?['没有收件方的确认记录，尚不能确定未确认的原因。','TASK_EFFECT_UNCERTAIN_NO_REPLAY']:investigation?['缺网关日志，无法定位超时发生在哪一段。','目前无法证明同因或存在统一的固定超时阈值。','本次只读，未改代码、重启或重跑。']:[]
  const replyText=unconfirmed?'我去查了 UAT 的 `db/mongodb-example`，还不能确认没有业务依赖，维护人也没确认。':clusterOnly?'UAT6 集群内服务已恢复。':endToEnd?'UAT6 集群内已恢复；外部网关和 Monte Carlo 端到端还没确认。下一步从外部入口跑一遍 Monte Carlo。':technical?'模型服务拒绝了这轮请求，核验尚未完成。':multi?'1. 6 份材料都齐了。\n2. 收件方没留确认记录，原因还不清楚。':investigation?(detailed?summary+evidence.slice(0,2).join(''):'这些任务都中断在最后一次模型请求超时。')+'下一步对照网关日志查超时发生在哪一段。':'这份测试材料已核对。'
  h=await residentRouterHost(t,body=>{
   const tools=requestTools(body)
@@ -95,6 +95,11 @@ for(const action of ['complete','detailed','scoped-recovery','end-to-end-recover
    const {taskOutcomeReplies,taskOutcomeQuestions}=JSON.parse(context)
    const reply=taskOutcomeReplies?.[0]
    if(reply){
+    const closeoutGuide=requestText(body).find(text=>text.includes(context))?.split(context)[1]
+    assert.match(closeoutGuide??'',/按上面的原问题从头写，不以内部摘要为底稿/u)
+    assert.match(closeoutGuide,/每个判断说一次/u)
+    const textField=body.tools.find(tool=>tool.function.name==='resident_router_reply').function.parameters.properties.text
+    assert.match(textField.description,/原问题没问的指标、阈值和排除项/u)
     assert.deepEqual(reply,{operationId:outcome.taskEventId,sourceId:source.sourceId,messageVersion:source.version,outcomeEventId:outcome.taskEventId})
     assert.deepEqual(taskOutcomeQuestions,[{outcomeEventId:reply.outcomeEventId,sourceId:reply.sourceId,messageVersion:reply.messageVersion,text:request}])
     return {tool:'resident_router_reply',args:{...reply,replyPurpose:'task-update',text:replyText}}
