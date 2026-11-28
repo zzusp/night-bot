@@ -36,6 +36,26 @@ export function currentOutcomeBinding(task,event,conversationId){
 }
 const bounded=(values,max=8)=>({items:(Array.isArray(values)?values:[]).slice(0,max),truncated:Array.isArray(values)&&values.length>max})
 const clip=(value,max=2048)=>typeof value==='string'?value.slice(0,max):''
+// The reply anchor remains stable. Its wording scope follows the exact inputs
+// that were handed to the Work for this revision, not the rewritten handoff.
+export async function outcomeReplyScope(query,conversationId,task,event,original){
+ const seen=new Set([original.sourceId]),refs=[]
+ for(const row of (task.metadata?.routerHandoffs??[]).toReversed()){
+  if(row.requirementRevision!==event.requirementRevision||row.contextRevision>(event.contextRevision??task.contextRevision??0)
+    ||seen.has(row.sourceId)||!task.sourceRefs.includes(row.sourceId))continue
+  seen.add(row.sourceId);refs.push(row)
+ }
+ const updates=[]
+ for(const ref of refs.reverse()){
+  const source=await query('router.source-current',{conversationId,sourceId:ref.sourceId})
+  if(source?.sourceId!==ref.sourceId||source.conversationId!==conversationId||source.version!==ref.messageVersion
+    ||source.retracted||source.authorizationRevoked||source.triageHold||source.archiveRestoreHold||typeof source.text!=='string')continue
+  updates.push({sourceId:source.sourceId,messageVersion:source.version,text:source.text})
+ }
+ return {outcomeEventId:event.id,sourceId:original.sourceId,messageVersion:original.version,text:original.text,
+  ...updates.length?{updates}:{}}
+}
+
 export function completionResultView(result){
  const value=result??{},evidence=bounded(value.evidence),limitations=bounded(value.limitations)
  const refs=evidence.items.map(item=>typeof item==='string'?clip(item,300):Object.fromEntries(['ref','path','id','summary'].filter(k=>typeof item?.[k]==='string').map(k=>[k,clip(item[k],300)])))

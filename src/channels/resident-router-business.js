@@ -5,7 +5,7 @@ import {unresolvedRouterCalls} from '../runtime/pi-router-recovery-view.js'
 import {mapIndependentReads} from '../runtime/parallel-read.js'
 import {instructionInputParameters,STANDING_TOPIC} from '../memory/standing-instructions.js'
 import {conversationContext,currentContextPolicy} from './conversation-context.js'
-import {routerTaskContext,completionReplyId,blockedReplyId,currentOutcomeBinding,isOutcomeChannelSource,outcomeOriginId} from './router-task-context.js'
+import {routerTaskContext,completionReplyId,blockedReplyId,currentOutcomeBinding,isOutcomeChannelSource,outcomeOriginId,outcomeReplyScope} from './router-task-context.js'
 import {routerTaskSummary,routerTaskReceipt} from './router-task-view.js'
 import {MAX_ROUTER_HANDOFF_LENGTH,normalizeRouterHandoff} from './router-handoff.js'
 import {routerMemoryReconciliation} from './router-memory-reconciliation.js'
@@ -80,7 +80,7 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
     const original=await query('source.get',{sourceId})
     if(!isOutcomeChannelSource(original,conversationId)||original.actorId!==task.ownerActorId||original.retracted||original.authorizationRevoked||original.triageHold||original.archiveRestoreHold
       ||!await query('router.source-latest',{conversationId,sourceId,messageVersion:original.version}))return
-    return {outcome,original}
+    return {outcome,original,task,event:event.taskEvent}
   }
   // A result reply has its own durable identity, not the identity of an earlier reply to this source.
   const boundTextOutcome=async(args,actor,{recoverMissing=false}={})=>{
@@ -158,7 +158,7 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
     const targets=await mapIndependentReads(events.filter(pendingOutcome),concurrency,textOutcomeTarget)
     const outcomes=targets.filter(Boolean)
     const taskOutcomeReplies=outcomes.map(({outcome,original})=>({operationId:outcome.eventId,outcomeEventId:outcome.eventId,sourceId:original.sourceId,messageVersion:original.version}))
-    const taskOutcomeQuestions=outcomes.map(({outcome,original})=>({outcomeEventId:outcome.eventId,sourceId:original.sourceId,messageVersion:original.version,text:original.text}))
+    const taskOutcomeQuestions=await mapIndependentReads(outcomes,concurrency,({task,event,original})=>outcomeReplyScope(query,conversationId,task,event,original))
     return currentContextPolicy+'\n'+JSON.stringify({...context,...taskOutcomeReplies.length?{taskOutcomeReplies,taskOutcomeQuestions}:{}})
       +(taskOutcomeReplies.length?'\n'+routerOutcomeReplyRule:'')
   }})
