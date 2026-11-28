@@ -8,7 +8,7 @@
 
 ## 权限选择与受限验收
 
-顶层配置使用 `permissionMode`，默认 `full`（显式 `ask` / `auto` 保持不变）；初始化可传 `--permission-mode ask|auto|full`。离线修改先运行 `node bin/night-bot-config.js data/config/config.json permissions --permission-mode ask --check`，检查后再去掉 `--check` 保存，并按 `restartRequired` 正常重启。认证 Web 可在线保存，但必须回读 Host 的实际模式。具体操作见[权限与审批](web-console-local.md#安装权限与单次审批)。
+顶层配置使用 `permissionMode`，默认 `full`（显式 `ask` / `auto` 保持不变）；初始化可传 `--permission-mode ask|auto|full`。离线修改先运行 `node bin/night-bot-config.js data/config/config.json permissions --permission-mode ask --check`，检查后再去掉 `--check` 保存，并按 `restartRequired` 正常重启。认证 Host API 可在线保存，但必须回读 Host 的实际模式。具体操作见[权限与审批](web-console-local.md#安装权限与单次审批)。
 
 `ask` 将外部业务写入或更宽命令范围交人工逐次批准；`auto` 由当前 Pi 模型无工具审查，失败或不确定转人工，两者继续保留私有区与精确 scope 隔离。`full` 为缺省模式，也可由安装操作者选择，以当前 OS 账号直接访问，不提权，不承诺工作区或同账号 Host 私有文件隔离；容器/OS 原有限制仍有效。full 不是 bwrap 不可用时的回退，也不能抵扣本页受限执行验收。保存配置本身不证明外部目标操作成功或后端已可用，新权限真实结果以[当前目标](../acceptance/resident-conversation-routing/goal.md)为准。
 

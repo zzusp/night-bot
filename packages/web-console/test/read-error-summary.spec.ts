@@ -56,12 +56,6 @@ test('hidden settings read errors yield ownership; draft and operation error sur
  await page.getByRole('tab',{name:'助手外观',exact:true}).click();await expect(page.getByLabel('显示名称',{exact:true})).toHaveValue('保留模拟草稿');await expect(page.getByRole('tabpanel').getByRole('alert')).toContainText('无法确认操作结果');
  await page.screenshot({path:test.info().outputPath('settings-operation-preserved.png')});
 });
-test('permission dialog has its own read-recovery region',async({page})=>{
- await login(page,'/channels');await page.route('**/api/permissions',fail);await page.getByRole('button',{name:'权限与审批',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'权限与审批',exact:true});await expect(dialog.getByRole('alert',{name:'读取状态汇总'})).toHaveCount(1);
- await expect(page.locator('main [role=alert]')).toHaveCount(0);await page.screenshot({path:test.info().outputPath('permission-dialog.png')});
- await dialog.getByRole('button',{name:'关闭权限与审批'}).click();await expect(summary(page)).toHaveCount(0);
-});
 test('evolution and feedback first-read errors do not become fake empty or start a write',async({page})=>{
  await page.route('**/api/evolution?*',fail);await login(page,'/evolution');await expect(summary(page)).toHaveCount(1);
  await expect(page.getByRole('heading',{name:'自进化记录暂不可读'})).toHaveCount(0);await expect(page.getByRole('heading',{name:'暂无自进化记录'})).toHaveCount(0);

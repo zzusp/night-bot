@@ -88,16 +88,8 @@ for (const width of [1440, 390]) test(`表单与弹窗保留安全边界、错�
   await page.screenshot({path: test.info().outputPath(`channel-form-${width}.png`)});
   await dialog.getByRole('button', {name: '关闭添加渠道'}).click();
   await expect(add).toBeFocused();
-  await page.route('**/api/permissions', route => route.fulfill({json: {mode: 'full', options: [{value: 'full', label: '完全访问', description: '使用当前系统账号权限'}], requests: [], protection: {status: 'unconfined', backend: 'direct', description: '进程未隔离'}}}));
-  await page.getByRole('button', {name: '权限与审批', exact: true}).click();
-  const permissions = page.getByRole('dialog', {name: '权限与审批', exact: true});
-  await expect(permissions).toContainText('不会取得管理员权限');
-  await expect(permissions).toContainText('切换模式会使旧待批请求和未消费授权失效');
-  await expect(permissions).not.toContainText('当前模式来自 Host');
-  await layout(page, permissions);
-  await page.screenshot({path: test.info().outputPath(`permissions-${width}.png`)});
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', {name: '权限与审批', exact: true})).toBeFocused();
+  await expect(page.getByRole('button', {name: '权限与审批', exact: true})).toHaveCount(0);
+  await expect(page.getByRole('button', {name: '设置', exact: true})).toBeVisible();
 });
 
 test('设置卡不为已删除说明和空反馈留白，角色保存确认保持可取消', async ({page}) => {

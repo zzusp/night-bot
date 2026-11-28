@@ -19,6 +19,5 @@ export function readErrorLabel(source?: string) {
  if (source.startsWith('/feedback')) return '反馈诊断';
  if (source.startsWith('/schedules')) return '定时任务';
  if (source.startsWith('/overview')) return '工作动态';
- if (source.startsWith('/permissions')) return '权限与审批';
  return '读取内容';
 }

@@ -127,17 +127,6 @@ export type Evolution = EvolutionReady | { status: 'unavailable'; reason?: strin
 // Give that bounded browser wait room beyond the ordinary 20-second API budget.
 export const EVOLUTION_SNAPSHOT_TIMEOUT_MS = 120_000;
 
-export type PermissionMode = 'ask' | 'auto' | 'full';
-export interface PermissionRequest {
-  id: string; actorId: string; taskId: string | null; conversationId: string | null; callId: string; toolName: string;
-  status: 'pending' | 'allowed-once' | 'rejected' | 'cancelled'; createdAt: string; decidedAt?: string; revocable: boolean;
-  display: { summary: string; target: string | null; cwd: string; command: string | null; parametersDigest: string };
-}
-export interface PermissionsView {
-  mode: PermissionMode; options: { value: PermissionMode; label: string; description: string }[]; requests: PermissionRequest[];
-  protection: { status: 'unconfined' | 'not-attested' | 'unavailable'; backend: 'direct' | null; description: string };
-}
-
 export class ApiError extends Error {
   constructor(public status: number, public code: string) { super(code); }
 }

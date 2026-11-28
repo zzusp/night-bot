@@ -9,7 +9,6 @@ import ChatPage, { createDrafts, type Drafts } from './ChatPage';
 import { TaskDetail, TaskList } from './TasksPage';
 import {createTaskInputDrafts} from './task-input-drafts';
 import ChannelsPage from './ChannelsPage';
-import PermissionsPanel from './components/PermissionsPanel';
 import EvolutionPage from './EvolutionPage';
 import {SettingsModal} from './components/SettingsModal';
 import RouterPage from './RouterPage';
@@ -75,11 +74,11 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
   const [logoutError, setLogoutError] = useState<unknown>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [historyOffset, setHistoryOffset] = useState(0);
-  const [permissionIdentity, resetPermissionIdentity] = useState(() => ({ csrfToken: session.csrfToken, epoch: 0 }));
+  const [sessionIdentity, resetSessionIdentity] = useState(() => ({ csrfToken: session.csrfToken, epoch: 0 }));
   const [taskInputDrafts, replaceTaskInputDrafts] = useState(createTaskInputDrafts);
-  // 重挂权限、渠道表单与自进化快照，清除旧任务输入作用域；聊天草稿保留。
-  if (permissionIdentity.csrfToken !== session.csrfToken) {
-    resetPermissionIdentity({ csrfToken: session.csrfToken, epoch: permissionIdentity.epoch + 1 });
+  // 重挂渠道表单与自进化快照，清除旧任务输入作用域；聊天草稿保留。
+  if (sessionIdentity.csrfToken !== session.csrfToken) {
+    resetSessionIdentity({ csrfToken: session.csrfToken, epoch: sessionIdentity.epoch + 1 });
     replaceTaskInputDrafts(createTaskInputDrafts());
   }
   const olderChats = useResource<Page<RecentConversation>>(historyOffset ? `/recent-conversations?offset=${historyOffset}&limit=20` : null);
@@ -114,20 +113,20 @@ function Workspace({ session, onLogout, drafts }: { session: Session; onLogout: 
     </div></>;
   const locationHeader = <><IconButton label="打开导航" className="mobile-menu" onClick={() => drawer.current?.showModal()}><RiMenuLine size={20} /></IconButton><div className="header-location"><span>工作空间</span><span className="breadcrumb-slash">/</span><h1 ref={titleRef} tabIndex={-1}>{title}</h1></div></>;
   const globalTools = <div className="topbar-actions"><span className={`connection ${overview.error ? 'offline' : ''}`} role="status"><i />{overview.error ? '概览暂不可读' : overview.data ? '已连接' : '连接中'}</span><span className="toolbar-divider" />
-        <PermissionsPanel key={permissionIdentity.epoch} /><IconButton label="刷新概览" onClick={refresh}><RiRefreshLine size={18} /></IconButton><IconButton label="设置" aria-haspopup="dialog" onClick={event=>{event.currentTarget.focus({preventScroll:true});setSettingsOpen(true)}}><RiSettings3Line size={18}/></IconButton><IconButton label={theme === 'light' ? '切换深色外观' : '切换浅色外观'} onClick={toggleTheme}>{theme === 'light' ? <RiMoonLine size={18} /> : <RiSunLine size={18} />}</IconButton></div>;
+        <IconButton label="刷新概览" onClick={refresh}><RiRefreshLine size={18} /></IconButton><IconButton label="设置" aria-haspopup="dialog" onClick={event=>{event.currentTarget.focus({preventScroll:true});setSettingsOpen(true)}}><RiSettings3Line size={18}/></IconButton><IconButton label={theme === 'light' ? '切换深色外观' : '切换浅色外观'} onClick={toggleTheme}>{theme === 'light' ? <RiMoonLine size={18} /> : <RiSunLine size={18} />}</IconButton></div>;
   const workspaceHeader = <header className="topbar workspace-topbar">{locationHeader}{globalTools}</header>;
 
   return <AssistantBrandContext.Provider value={brand}><div className="app-shell"><a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>跳转到主内容</a><aside className="sidebar desktop-sidebar" inert={settingsOpen} aria-hidden={settingsOpen||undefined}>{sidebar()}</aside>
     <dialog ref={drawer} className="nav-dialog" aria-label="导航" aria-hidden={settingsOpen||undefined}><div className="sidebar">{sidebar(true)}</div></dialog>
     <div className="main-frame" inert={settingsOpen} aria-hidden={settingsOpen||undefined}>{workspaceHeader}
       {!!logoutError && <Notice error={logoutError} />}
-      <ReadErrorScope key={`${route.pathname}:${permissionIdentity.epoch}`}><div className={`workspace-body${isConversation ? ' conversation-workspace' : ''}`}>{currentChats.error && <Notice read error={currentChats.error} source="/recent-conversations" onRetry={currentChats.refresh}/>}<main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : section === 'router' && !id ? 'router-workspace-panel' : ''}`}><ReadErrorOutlet/><div className={isConversation ? 'conversation-content' : 'page-content-slot'}><PageBoundary resetKey={route.pathname}>
-        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} drafts={taskInputDrafts} /> : <TaskList route={route} /> : section === 'router' && !id ? <RouterPage key={permissionIdentity.epoch} overview={overview} /> : section === 'schedules' && !id ? <SchedulesPage key={permissionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={permissionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={permissionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={permissionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
+      <ReadErrorScope key={`${route.pathname}:${sessionIdentity.epoch}`}><div className={`workspace-body${isConversation ? ' conversation-workspace' : ''}`}>{currentChats.error && <Notice read error={currentChats.error} source="/recent-conversations" onRetry={currentChats.refresh}/>}<main id="main-content" tabIndex={-1} className={`main-panel ${isConversation ? 'chat-panel' : section === 'tasks' && id ? 'task-workspace-panel' : section === 'router' && !id ? 'router-workspace-panel' : ''}`}><ReadErrorOutlet/><div className={isConversation ? 'conversation-content' : 'page-content-slot'}><PageBoundary resetKey={route.pathname}>
+        {section === 'chat' ? <ChatPage id={id} drafts={drafts} onAccepted={refresh} /> : section === 'tasks' ? id ? <TaskDetail key={id} id={id} drafts={taskInputDrafts} /> : <TaskList route={route} /> : section === 'router' && !id ? <RouterPage key={sessionIdentity.epoch} overview={overview} /> : section === 'schedules' && !id ? <SchedulesPage key={sessionIdentity.epoch} route={route} /> : section === 'channels' ? <ChannelsPage key={sessionIdentity.epoch} id={id} /> : section === 'feedback' && !id ? <FeedbackPage key={sessionIdentity.epoch}/> : section === 'evolution' && !id ? <EvolutionPage key={sessionIdentity.epoch} route={route} /> : <EmptyState title="页面不存在" action={<a href="#/chat">返回对话</a>} />}
       </PageBoundary></div></main>
 
       </div></ReadErrorScope>
     </div>
-    {settingsOpen&&<SettingsModal key={permissionIdentity.epoch} onClose={closeSettings}/>}
+    {settingsOpen&&<SettingsModal key={sessionIdentity.epoch} onClose={closeSettings}/>}
   </div></AssistantBrandContext.Provider>;
 }
 
