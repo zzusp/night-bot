@@ -3,7 +3,7 @@ import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import {tmpdir} from 'node:os'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {readFile,writeFile,mkdtemp,rm,stat} from 'node:fs/promises'
+import {readFile,writeFile,mkdir,mkdtemp,rm,stat} from 'node:fs/promises'
 import {createHost} from '../src/host.js'
 import {backupData,restoreData} from '../src/runtime/backup.js'
 import {join} from 'node:path'
@@ -33,6 +33,45 @@ function cleanupContext(t){
 async function serviceFor(f,initialize=true){const ctx=f.host.ctx,config={...f.config.model,workspaceDir:ctx.runtimePaths.workspaces,dbPath:join(ctx.runtimePaths.state,'tasks.sqlite'),instanceId:'single-test',ownerActorId:'owner',webActorId:'owner',agentPreset:'night-bot',reasoningMode:'inherit'},residentStore=await openResidentStore(ctx.storageDomain),store=await openDynamicTaskStore({...config,initialize});const service=await openTaskSessionService({ctx,config,store,residentStore,legacy:{getAgentConfig:()=>({...config,agentNames:[]}),getGroup:id=>residentStore.getGroup(id)},notifications:{send:async()=>{throw Error('no external notifications')},readback:async()=>{throw Error('no external notifications')}}});return {service,store,async close(){await closeAll([()=>service.close(),()=>store.close(),()=>residentStore.close()])}}}
 const result={tool:'task_result',args:{decision:{action:'complete',summary:'Read back local result',evidence:['local file evidence'],limitations:[]}}}
 const taskSystemPrompt=body=>body.messages.filter(message=>['system','developer'].includes(message.role)).map(message=>message.content).join('\n')
+
+test('authorized Work edits the original installed Skill and a fresh Work loads that version',{timeout:nativeTestTimeout(45000)},async t=>{
+ t=cleanupContext(t)
+ let h,file,step=0,verified=false,editing=true
+ t.after(()=>h?.close())
+ const before='Use the old intake queue.',after='Use the current intake queue after checking the active route.'
+ const header='---\nname: fixture-intake\ndescription: Intake queue procedure\n---\n'
+ const f=await memoryHost(t,body=>{
+  if(!requestTools(body).includes('task_result'))return {text:'{"lessons":[]}'}
+  const last=JSON.stringify(body.messages.findLast(message=>message.role==='tool')??null)
+  if(step++===0)return {tool:'skill',args:{name:'fixture-intake'}}
+  if(editing&&step===2){assert.ok(last.includes(before),last);return {tool:'read',args:{path:file}}}
+  if(editing&&step===3){assert.ok(last.includes(before),last);return {tool:'edit',args:{path:file,edits:[{oldText:before,newText:after}]}}}
+  if(editing&&step===4)return {tool:'read',args:{path:file}}
+  assert.ok(last.includes(after),last);verified=true;return result
+ })
+ const directory=join(f.host.ctx.runtimePaths.skills,'fixture-intake')
+ await mkdir(directory,{recursive:true});file=join(directory,'SKILL.md');await writeFile(file,header+before+'\n')
+ h=await serviceFor(f)
+ const edit=await h.service.createTask({requestId:'edit-installed-skill',objective:`Update the intake queue procedure in the installed Skill at ${file}; read it back.`})
+ const permissions=f.host.ctx.toolPermissions
+ const pending=await eventually(()=>permissions.view().requests.find(row=>row.status==='pending'),'exact installed Skill edit approval')
+ assert.equal(pending.toolName,'edit');assert.equal(pending.actorId,edit.session.sessionId);assert.equal(pending.display.target,file)
+ assert.equal(await readFile(file,'utf8'),header+before+'\n','no write before operator approval')
+ await permissions.respond(pending.id,'allow')
+ await h.service.whenIdle()
+ const edited=await h.store.query({kind:'task.get',taskId:edit.taskId})
+ assert.equal(edited.status,'completed');assert.equal(verified,true)
+ assert.equal(await readFile(file,'utf8'),header+after+'\n')
+ const journal=await f.host.ctx.sessionPersistence.readNative(edited.sessionId,{requireComplete:true})
+ assert.deepEqual(journal.audit.filter(row=>row.domain==='task'&&row.kind==='effect-intent').map(row=>row.payload.name),['edit'])
+ assert.equal(journal.audit.filter(row=>row.domain==='task'&&row.kind==='effect-result').length,1)
+ await h.close();await f.close();await f.boot();h=await serviceFor(f,false)
+ editing=false;step=0;verified=false
+ const consumer=await h.service.createTask({requestId:'load-updated-installed-skill',objective:'Read the currently installed intake queue procedure.'})
+ await h.service.whenIdle()
+ assert.equal((await h.store.query({kind:'task.get',taskId:consumer.taskId})).status,'completed')
+ assert.equal(verified,true,'the separate Work read the persisted Skill through the actual loader')
+})
 test('one task preserves its effect through a held missing result and explicit cold continuation, then completes and reflects',{timeout:nativeTestTimeout(20000)},async t=>{
   t=cleanupContext(t)
   let phase='write',readBack=false,reviews=0,h

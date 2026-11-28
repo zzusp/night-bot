@@ -1,0 +1,11 @@
+case_id,case,round_1,evidence
+memory-original,正式全局 Router 根据核实结果原位修订旧记忆,PASS,基线缺工具；修后原 ID 与来源保留且仅增加一次版本
+memory-boundaries,跨会话、撤权、过时版本及未知写入不误写或重放,PASS,Router 组合回归与持久回执
+installed-original,安装 Skill 原文件编辑、写后读回和冷启动加载,PASS,1 项真实 Work 回归；同一路径和名称；各一次编辑意图和结果
+learned-original,learned Skill 仍由原受管工具更新,PASS,Router 组合回归
+live-update,真模型同时原位更新旧记忆和安装 Skill 并回复,PASS,隔离 Host；记忆版本 1 到 2；一次文件批准和一次模拟结单送达
+already-correct,真模型保留已正确内容且不重复编辑,PASS,实际 keep 回执；记忆版本和 Skill 字节不变
+permission-denied,拒绝安装 Skill 编辑后保持原件并说明失败,PASS,真模型实际收到 edit 拒绝；独立回读原件未变
+file-boundaries,文件版本、私有路径、链接及撤权继续生效,PASS,26 项文件回归通过
+source-guards,源码与依赖检查,PASS,pnpm check 及 git diff --check
+uat-actual,UAT 部署后核对持久结果和 Bot 实际回复,NOT_RUN,只读确认第 136 代；尚未授权本目标的发布与现场实测

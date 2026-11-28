@@ -19,7 +19,7 @@ function settle(input,key){return {tool:'resident_router_settle',args:{eventIds:
 
 // Scripted semantic choices exercise the real channel -> Pi Router -> task ->
 // completion -> memory path. They do not claim a live model always picks them.
-test('task verification reconciles an existing memory without a repeated memory command or internal key from the user',{timeout:nativeTestTimeout(180000)},async t=>{
+test('the global Router reconciles an existing memory after task verification without a repeated command or internal key',{timeout:nativeTestTimeout(180000)},async t=>{
  const steps=new Map(),completionSteps=new Map(),continued=new Set(),outcomes=new Map(),reads=new Map(),sources=new Map(),taskSessions=new Map(),completionCalls=new Map(),taskHandoffs=new Map()
  let h
  h=await residentRouterHost(t,async body=>{
@@ -59,7 +59,10 @@ test('task verification reconciles an existing memory without a repeated memory 
     }
     const step=completionSteps.get(completion.id)??0
     completionSteps.set(completion.id,step+1)
-    if(step===0)return {tool:'resident_memory_review',args:{taskId:completion.taskId,completionEventId:completion.taskEventId??completion.eventId,topic:'projects',key:item.key}}
+    if(step===0){
+     assert.ok(tools.includes('resident_memory_review')&&tools.includes('resident_memory_reconcile'),'the production Router must expose completion-based memory maintenance')
+     return {tool:'resident_memory_review',args:{taskId:completion.taskId,completionEventId:completion.taskEventId??completion.eventId,topic:'projects',key:item.key}}
+    }
     if(step===1){
      const reviewed=result(body);assert.equal(reviewed.ok,true,JSON.stringify(reviewed));const read=reviewed.memory;reads.set(item.key,read)
      assert.equal(read.entries[0].key,item.key)
@@ -88,7 +91,7 @@ test('task verification reconciles an existing memory without a repeated memory 
    return {tool:'task_result',args:{decision:{action:'complete',summary:item.summary,evidence:['Read-only verification: '+item.summary],limitations:item.decision==='update'?['Expansion is not established as the root cause']:[]}}}
   }
   return {text:JSON.stringify({lessons:[]})}
- })
+ },{config:{globalRouter:true}})
  for(const item of cases){
   await h.receive(channelMessage(item.key+'-initial',{text:'记住这条现场线索，并继续核验。'+item.initial}));await h.service.whenIdle()
   const initial=await h.query('task.get',{taskId:'verify-'+item.key})
@@ -132,7 +135,11 @@ test('completion memory tools reject missing, stale, foreign and revoked event a
  let admission,currentTask,currentSource,inbox,sourceVersions,reads=0,writes=0,stale=false
  const reset=()=>{admission={messages:[{source:{kind:'conversation-router',conversationId:'room',generation:2,eventIds:['inbox-1']}}]};currentTask=structuredClone(task);currentSource=structuredClone(source);inbox=[structuredClone(event)];sourceVersions=[currentSource];stale=false}
  const memory={read:async()=>{reads++;return {entries:[]}},index:async()=>{reads++;return {topics:[]}},reconcileCompletion:async(_actor,_proof,_args,validate)=>{await validate();writes++;return {ok:true}}}
- const tools=routerMemoryReconciliation({get:()=>memory},binding,{current:async()=>{if(stale)throw Object.assign(Error('stale'),{code:'ROUTER_GENERATION_STALE'})},query:async(kind)=>kind==='router.inbox'?inbox:kind==='task.get'?currentTask:kind==='source.get'?currentSource:kind==='source.list'?sourceVersions:kind==='router.source-links'?[]:null})
+ const tools=routerMemoryReconciliation({get:()=>memory},binding,{
+  current:async()=>{if(stale)throw Object.assign(Error('stale'),{code:'ROUTER_GENERATION_STALE'})},
+  currentEvents:async actor=>{const packet=(await actor.admission.current()).messages[0]?.source;return packet?.conversationId===binding.conversationId&&packet.generation===binding.generation?inbox.filter(row=>packet.eventIds.includes(row.id)):[]},
+  query:async kind=>kind==='task.get'?currentTask:kind==='source.get'?currentSource:kind==='source.list'?sourceVersions:kind==='router.source-links'?[]:null,
+ })
  const read=tools.find(t=>t.name==='resident_memory_review'),write=tools.find(t=>t.name==='resident_memory_reconcile')
  const args={taskId:task.taskId,completionEventId:proof.id,topic:'projects',key:'original',expectedRevision:1,decision:'delete',reason:'verified contradiction'}
  for(const alter of [
