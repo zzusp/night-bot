@@ -85,6 +85,8 @@ test('real Pi Work peers fix and verify directly; only final outcome reaches the
     if(done&&!answered.has(done.id)){
       answered.add(done.id)
       assert.equal(done.taskId,'work-verify')
+      const status=requestText(body).flatMap(text=>text.split('\n')).find(line=>line.startsWith('{"asOf":')&&line.includes('"taskOutcomeQuestions"'))
+      assert.deepEqual(JSON.parse(status).taskOutcomeQuestions,[{outcomeEventId:done.taskEventId,sourceId:[...origin][0],messageVersion:1,text:msg.text}])
       return call('resident_router_reply',{operationId:'final-verified',sourceId:[...origin][0],messageVersion:1,text:'验证通过。',outcomeEventId:done.taskEventId,replyPurpose:'task-update'})
     }
     return event?call('resident_router_settle',{operationId:'settle-create',eventIds:input.events.map(event=>event.id)}):settle(input)
@@ -108,7 +110,7 @@ test('real Pi Work peers fix and verify directly; only final outcome reaches the
   if(messages.some(row=>row.messageId==='ready-v2')){seen.push('verifier reads repaired candidate');return decision('Verified candidate v2')}
   if(messages.some(row=>row.messageId==='ready-v1')){seen.push('verifier reads original candidate');return peerSend('work-dev','fix-first','failed first check; correct fixture')}
   return peerSend('work-dev','verification-ready','Ready to verify.')
- },{config:{globalRouter:true,maxConcurrentTasks:1}})
+ },{config:{globalRouter:true,maxConcurrentTasks:1},transportCapabilities:{quotedReplies:['chat-room'],standaloneMarkdown:true}})
  const origin=new Set()
  const msg=channelMessage('dev-review',{text:'实现样例并由独立会话审查'})
  const accepted=await h.receive(msg)
@@ -120,7 +122,7 @@ test('real Pi Work peers fix and verify directly; only final outcome reaches the
  assert.notEqual(dev.sessionId,verify.sessionId)
  assert.equal(verify.completion?.summary,'Verified candidate v2',JSON.stringify({seen,results:h.results.slice(-18)}))
  assert.ok(seen.includes('verifier reads original candidate')&&seen.includes('developer reads verification feedback')&&seen.includes('verifier reads repaired candidate'))
- assert.deepEqual(h.sent.map(row=>[row.channelId,row.text]),[['resident-fixture','验证通过。']])
+ assert.deepEqual(h.sent.map(row=>[row.channelId,row.text,row.replyToMessageId,row.replyToParticipantId]),[['resident-fixture','验证通过。',msg.messageId,msg.senderId]])
  assert.ok(!h.results.filter(row=>row.name.startsWith('task_peer_')).some(item=>item.sessionId===GLOBAL_ROUTER_SESSION))
 })
 

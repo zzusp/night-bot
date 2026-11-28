@@ -1091,11 +1091,11 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
         requestedRecipients=boundTask.groupId===source.groupId&&Object.hasOwn(context.participants,boundTask.ownerActorId)?[boundTask.ownerActorId]:[]
       }
     }
-    // 直接答复优先引用；主动进展和附件仍沿用原来的格式选择。
+    // 已绑定原提问的文字结论和直接答复优先引用；主动进展和附件保持原格式。
     const canQuote=kind!=='platform-reply'&&source.channel==='im'&&!args.atAll
       &&(requestedRecipients===undefined||requestedRecipients.includes(source.actorId))
-    const preferDirectQuote=!previous&&!!exec&&!selection&&!args.artifactFiles?.length&&args.replyPurpose!=='task-update'
-      &&canQuote&&supportsQuote
+    const preferDirectQuote=!previous&&!!exec&&!selection&&!args.artifactFiles?.length
+      &&(args.replyPurpose!=='task-update'||args.preferOutcomeQuote===true)&&canQuote&&supportsQuote
     const targetedReply=finalReply||!!boundTaskId&&context?.type==='chat-room'||preferDirectQuote
     const messages=residentStore.getGroup(source.groupId)?.messages??[]
     const textReply=!!exec&&!selection&&!args.artifactFiles?.length

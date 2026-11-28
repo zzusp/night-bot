@@ -90,17 +90,27 @@ for(const action of ['complete','detailed','scoped-recovery','end-to-end-recover
     assert.deepEqual(outcome.taskEvent.result.limitations,limitations)
    }
    const context=requestText(body).flatMap(text=>text.split('\n')).find(line=>line.startsWith('{"asOf":')&&line.includes('"sourceTaskLinks"'))
-   const reply=JSON.parse(context).taskOutcomeReplies?.[0]
+   const {taskOutcomeReplies,taskOutcomeQuestions}=JSON.parse(context)
+   const reply=taskOutcomeReplies?.[0]
    if(reply){
     assert.deepEqual(reply,{operationId:outcome.taskEventId,sourceId:source.sourceId,messageVersion:source.version,outcomeEventId:outcome.taskEventId})
-    return {tool:'resident_router_reply',args:{...reply,text:replyText}}
+    assert.deepEqual(taskOutcomeQuestions,[{outcomeEventId:reply.outcomeEventId,sourceId:reply.sourceId,messageVersion:reply.messageVersion,text:request}])
+    return {tool:'resident_router_reply',args:{...reply,replyPurpose:'task-update',text:replyText}}
    }
   }
   return {tool:'resident_router_settle',args:{operationId:'settle:'+input.events.map(event=>event.id).join(','),eventIds:input.events.map(event=>event.id)}}
- },{config:{inspectionIntervalMs:0}})
+ },{config:{inspectionIntervalMs:0},transportCapabilities:{quotedReplies:['chat-room'],standaloneMarkdown:true}})
  await h.receive(channelMessage('final-only',{text:request}));await h.service.whenIdle()
  assert.equal(executions,1);assert.equal(terminal.size,technical?0:1);assert.equal(h.sent.length,reports?1:0)
- if(reports)assert.equal(h.sent[0].text,replyText)
+ if(reports){
+  assert.equal(h.sent[0].text,replyText)
+  assert.equal(h.sent[0].replyToMessageId,'final-only')
+  assert.equal(h.sent[0].replyToParticipantId,'alice')
+  assert.deepEqual(h.sent[0].recipientIds,['alice'])
+  const [notice]=await h.query('notification.list')
+  assert.equal(notice.state,'delivered');assert.equal(notice.payload.replyToMessageId,'final-only')
+  assert.equal(notice.payload.textFormat,undefined,'不能以独立 Markdown 发送绑定原提问的结论')
+ }
  if(unconfirmed)assert.doesNotMatch(h.sent[0].text,/日志|监控|样本|缩容|下一步/u)
  if(recovery){
   assert.equal(h.sent[0].text.includes('Monte Carlo'),endToEnd)

@@ -40,7 +40,7 @@ async function runHandoff(t,baseline){
    const done=input.events.find(e=>e.kind==='task.completed'&&e.taskEvent.requirementRevision>1)
    if(done)completionRequests++
    if(settled(h,body))return {text:'Settled'}
-   if(event?.source.messageId==='start'&&!planned){planned=true;return call('resident_task_plan',{operationId:'start',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'original',title:'Read-only verification',objective:'Check synthetic evidence',requirements:['Read only; do not modify or deploy']}],dependencies:[]})}
+   if(event?.source.messageId==='start'&&!planned){planned=true;return call('resident_task_plan',{operationId:'start',sourceId:event.sourceId,messageVersion:event.messageVersion,tasks:[{taskId:'original',title:'Read-only verification',objective:'Check synthetic evidence',requirements:['Read only; do not modify or deploy'],...baseline?{}:{handoff:'Verify the synthetic evidence without modifying or deploying anything.'}}],dependencies:[]})}
    if(event?.source.messageId==='continue'){
     source=event.source
     const handoff=ctx?.taskHandoffs?.find(row=>row.task.taskId==='original')
@@ -51,7 +51,7 @@ async function runHandoff(t,baseline){
      reopenTask=handoff?.task??JSON.parse(body.messages.at(-1).content).task
      if(handoff){assert.equal(handoff.requiresFullRead,false);assert.match(handoff.task.requirements.join(' '),/Read only/)}
      followToAction=followRequests
-     return call('resident_task_action',{operationId:'continue-original',kind:'reopen',sameGoal:true,taskId:reopenTask.taskId,sourceId:event.sourceId,messageVersion:event.messageVersion,expectedRequirementRevision:reopenTask.requirementRevision,expectedControlRevision:reopenTask.controlRevision})
+     return call('resident_task_action',{operationId:'continue-original',kind:'reopen',sameGoal:true,taskId:reopenTask.taskId,sourceId:event.sourceId,messageVersion:event.messageVersion,expectedRequirementRevision:reopenTask.requirementRevision,expectedControlRevision:reopenTask.controlRevision,...baseline?{}:{handoff:'Continue the same synthetic verification without modifying or deploying anything.'}})
     }
    }
    if(done){
@@ -143,7 +143,7 @@ if(!archivedOnly)for(const change of ['source-version','task-revision','duplicat
   if(!names.includes('resident_router_settle'))return {text:'No work'}
   const input=requestEnvelope(body,'Router 请求：')
   if(settled(h,body))return {text:'Settled'}
-  if(!planned){planned=true;completionSource=input.events[0].source;return call('resident_task_plan',{operationId:'plan',sourceId:completionSource.sourceId,messageVersion:completionSource.version,tasks:[{taskId:'review-task',title:'Synthetic check',objective:'Read only',requirements:[]}],dependencies:[]})}
+  if(!planned){planned=true;completionSource=input.events[0].source;return call('resident_task_plan',{operationId:'plan',sourceId:completionSource.sourceId,messageVersion:completionSource.version,tasks:[{taskId:'review-task',title:'Synthetic check',objective:'Read only',requirements:[],handoff:'Verify the synthetic evidence without changing it.'}],dependencies:[]})}
   const done=input.events.find(e=>e.kind==='task.completed')
   if(done&&!attempted){attempted=true;return call('resident_router_reply',{operationId:'reply',sourceId:completionSource.sourceId,messageVersion:completionSource.version,completionEventId:done.taskEventId,text:'The fixture check is complete.',replyPurpose:'task-update'})}
   if(done&&change==='duplicate-id'&&!duplicateAttempt){duplicateAttempt=true;return call('resident_router_reply',{operationId:'changed-id',sourceId:completionSource.sourceId,messageVersion:completionSource.version,text:'Changed duplicate must not send.',replyPurpose:'task-update'})}
