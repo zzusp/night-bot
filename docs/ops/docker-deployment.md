@@ -61,7 +61,7 @@ bind-remount 的可变位只为 `{1,4,8,1024,2048,2097152}`，保留 bwrap 从 m
 
 固定 slim 基础镜像实测未安装 `ca-certificates`，两个构建 stage 先从该 Node 24.13.0 的内置 Mozilla 公共根生成临时 PEM，仅以 APT 的 `Acquire::https::CAInfo` 引导同一官方 `deb.debian.org` 源的 HTTPS 更新和安装；显式保留 `Verify-Peer=true`，不修改原 `Signed-By` 或 Debian 签名规则。安装 Debian `ca-certificates` 后删除临时 PEM，后续使用系统 CA，不保留替代信任配置。首次 HTTP 503 构建失败不是 sandbox 失败；修复是否通过以新的实际 build 终态为准。
 
-先核对真实工作树，不把 HEAD 当作未提交源码唯一标识。开发验收可从工作树构建；正式发布必须基于已合并、已通过检查的源码和匹配锁文件。本规程不授权部署、真实发送或触发 CI。
+先核对真实工作树，不把 HEAD 当作未提交源码唯一标识。开发验收可从工作树构建；正式发布必须基于已合并、已通过检查的源码和匹配锁文件。本规程不授权部署、真实发送或触发 CI。变更结单正文时，用测试数据从指定实例的认证聊天入口发起，按该次完成事件回读实际送达的正文和状态；镜像或隔离试跑不能代替指定实例的验收。
 
 若默认源的网络路径不可用，可显式传入 Debian 官方镜像列表中的 HTTPS 地址，例如 `docker build --build-arg DEBIAN_ARCHIVE_URL=https://mirrors.tuna.tsinghua.edu.cn/debian --build-arg DEBIAN_SECURITY_URL=https://mirrors.tuna.tsinghua.edu.cn/debian-security --tag night-bot:sg12 .`。两个 stage 使用相同参数，保留原 suites、components、Signed-By、InRelease 与包摘要校验；不自动切换源，不接受带凭据、query 或 fragment 的地址。参数是公开构建配置，禁止放代理密钥。网络 HTTP 200 仅证明可达，实际 APT 验签与镜像构建仍须完成。
 

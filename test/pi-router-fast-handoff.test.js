@@ -61,7 +61,12 @@ async function runHandoff(t,baseline){
     if(!completion&&completionStep===1){completionStep=2;return call('resident_reply_query',{sourceId:source.sourceId})}
     if(completionStep<3){
      completionToReply=completionRequests;completionStep=3
-     if(completion){assert.equal(completion.status,'current');assert.deepEqual(completion.result.limitations,['No live system accessed']);assert.equal(completion.sources.find(row=>row.sourceId===source.sourceId).completionReply.replies.length,0)}
+     if(completion){
+      assert.equal(completion.status,'current');assert.deepEqual(completion.result.limitations,['No live system accessed']);assert.equal(completion.sources.find(row=>row.sourceId===source.sourceId).completionReply.replies.length,0)
+      const scope=ctx.taskOutcomeQuestions.find(row=>row.outcomeEventId===done.taskEventId)
+      assert.equal(scope.text,'Please do the synthetic read-only verification. Do not modify or deploy.')
+      assert.deepEqual(scope.updates,[{sourceId:source.sourceId,messageVersion:source.version,text:source.text}],'the reply scope carries the exact admitted follow-up even though quote/dedup still use the original')
+     }
      return call('resident_router_reply',{operationId:'completion-result',sourceId:source.sourceId,messageVersion:source.version,...completion?{completionEventId:done.taskEventId}:{},replyPurpose:'task-update',text:'Synthetic verification is complete. The evidence checked out; no live system was accessed.'})
     }
    }
