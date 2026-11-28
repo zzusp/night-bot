@@ -25,10 +25,16 @@ for(const action of ['complete','detailed','scoped-recovery','end-to-end-recover
    const resultTool=body.tools.find(tool=>tool.function.name==='task_result').function
    if(investigation||recovery||unconfirmed){
     assert.match(resultTool.description,/an internal result, not a human-facing reply/u)
+    assert.match(resultTool.parameters.properties.decision.properties.evidence.description,/the observed outcome of any check actually run/u)
     assert.match(resultTool.description,/Use action=complete when the requested outcome is achieved.*action=blocked/u)
     assert.match(JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role))),/an internal result, not a human-facing reply/u)
     const prompt=JSON.stringify(body.messages.filter(row=>['system','developer'].includes(row.role)))
     assert.doesNotMatch(prompt,/默认 ELI5|禁止防御性内容|禁用词句包括/u)
+    assert.match(prompt,/先查交办指向的方案、PR 或变更记录/u)
+    assert.match(prompt,/先读同一环境和对象能取得的最新状态与执行回执/u)
+    assert.match(prompt,/what observable result would satisfy the request/u)
+    assert.match(prompt,/smallest set of checks that proves the current completion conditions/u)
+    assert.match(prompt,/collect its terminal result before closing the round/u)
     assert.match(prompt,/交给 Router 的内部 task_result 不适用/u)
     assert.ok(tools.includes('communication_guidance_read'))
    }
@@ -60,6 +66,14 @@ for(const action of ['complete','detailed','scoped-recovery','end-to-end-recover
    assert.match(prompt,/不用为了省字生造的词或生硬的缩写/u)
    assert.match(prompt,/未明确要求明细，只写结论和下一步/u)
    assert.match(prompt,/禁止防御性内容，不只是避开某些词/u)
+   assert.match(prompt,/先查交办指向的方案、PR 或变更记录/u)
+   assert.match(prompt,/已办完的不再列待办，已有人在处理的不再建议重复操作/u)
+   assert.match(prompt,/用可观察的结果说明怎样算完成，不另设交付物或验收门槛/u)
+   assert.match(prompt,/已核实的对象、最小可执行动作和验收方法/u)
+   assert.match(prompt,/已启动的必要验证等 Work 带回终态再作结单/u)
+   assert.match(prompt,/群聊短答默认不超过五行，只放结论和下一步/u)
+   assert.match(prompt,/不为缩短消息自动创建或发布 Issue/u)
+   assert.match(prompt,/只读就说源码或方案证明的结论，不例行附上未跑的/u)
    assert.doesNotMatch(prompt,/复杂问题把关键依据说透|有帮助的依据不要省/u)
    if(investigation||recovery||unconfirmed){
     assert.match(prompt,/内部结果不走对外回复规则/u)
