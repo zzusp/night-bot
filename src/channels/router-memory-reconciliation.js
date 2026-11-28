@@ -2,13 +2,11 @@ import {isDeepStrictEqual} from 'node:util'
 const fail=code=>{throw Object.assign(new Error(code),{code})}
 /** Completion is Host evidence, never a fresh human instruction. Only this
  * Router-bound port may maintain existing memories from that evidence. */
-export function routerMemoryReconciliation(agentCtx,binding,{query,current}){
-  const {conversationId,generation}=binding,string={type:'string',minLength:1},identity={taskId:string,completionEventId:string}
+export function routerMemoryReconciliation(agentCtx,binding,{query,current,currentEvents}){
+  const {conversationId}=binding,string={type:'string',minLength:1},identity={taskId:string,completionEventId:string}
   async function completion(args,exec){
     await current(exec)
-    const admission=await exec.agent.admission.current()
-    const ids=new Set((admission?.messages??[]).filter(p=>p.source?.kind==='conversation-router'&&p.source.conversationId===conversationId&&p.source.generation===generation).flatMap(p=>p.source.eventIds))
-    const event=(await query('router.inbox',{conversationId})).find(e=>ids.has(e.id)&&e.kind==='task.completed'&&e.taskId===args.taskId&&e.taskEventId===args.completionEventId)
+    const event=(await currentEvents(exec.agent)).find(e=>e.kind==='task.completed'&&e.taskId===args.taskId&&e.taskEventId===args.completionEventId)
     const task=await query('task.get',{taskId:args.taskId}),proof=event?.taskEvent
     if(!event||!proof||proof.kind!=='task.completed'||!task||task.groupId!==conversationId||task.status!=='completed'||task.archiveRestoreHold||task.control!=='active'||!task.completion||proof.requirementRevision!==task.requirementRevision||proof.controlRevision!==task.controlRevision||task.completion.requirementRevision!==task.requirementRevision||task.completion.controlRevision!==task.controlRevision)fail('MEMORY_COMPLETION_STALE')
     // Reopen can complete again without changing requirements. Bind the event

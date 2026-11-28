@@ -278,7 +278,7 @@ docker exec night-bot tail -n 80 /opt/night-bot/data/logs/service.log
 
 如必须使用 Linux bind mount，先由操作者为**新的专属空目录**准备 UID/GID `1000:1000`、data 与 temp 的 `0700` 权限，再将其绑定到相同容器路径；入口不会代为 chown。不要对既有目录或其他实例递归 chown。Windows 文件系统 bind mount 的 Linux uid/mode 语义不能按命名卷结果外推，本规程本地验证优先使用 Linux 命名卷。
 
-`.dockerignore` 为源码白名单；Dockerfile 不 `COPY . .`。私有 Skill 正文、脚本、参考和素材按既有装载合同放安装 data，不进入镜像/Git。不要复制宿主账号、整个旧安装、worktree 或 node_modules；升级镜像不覆盖卷内技能。
+`.dockerignore` 为源码白名单；Dockerfile 不 `COPY . .`。私有 Skill 正文、脚本、参考和素材按既有装载合同放安装 data，不进入镜像/Git。不要复制宿主账号、整个旧安装、worktree 或 node_modules；升级镜像不覆盖卷内技能。用户授权的安装 Skill 更正沿现有权限模式编辑卷内原文件，无需改挂载、启用额外写权限或重新安装；用独立会话实际加载新版确认。
 
 镜像另行白名单发布代码内置的 `skills/work-log-writing/` 与 `skills/skill-creator/`，默认发现，无需追加 `skillDirs`；同名私有/自定义技能仍优先。内置资源随镜像更新，不复制进 data，也不纳入私有技能学习快照。skill-creator 离线校验/打包使用镜像内的 Python 3 与 PyYAML；查看结果使用 `--static`，不启动上游会清理端口占用进程的服务器。Claude CLI 及其认证不随镜像安装，触发率测量不是默认能力；任务仍只有一个执行会话。
 
