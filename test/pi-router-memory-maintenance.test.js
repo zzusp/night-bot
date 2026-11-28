@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {channelMessage,eventually,requestEnvelope,requestText,residentRouterHost} from './fixtures/resident-router-host.js'
 import {memoryScope} from '../src/memory/scope.js'
+import {hash} from '../src/memory/format.js'
 import {recordUsage} from '../src/memory/evolution.js'
 import {atomicWrite} from '../src/runtime/files.js'
 
@@ -30,8 +31,7 @@ test('two-hour Router wake curates shared memory and learned skills once, withou
    planCalls++
    const {items}=input(body),id=key=>items.find(row=>row.key===key).id
    return reply({actions:[
-    {kind:'memory',operation:'update',sources:[id('original')],evidence:[id('original'),id('duplicate')],reason:'明确生效条件',outputs:[{topic:'experience',key:'original',text:'只用于已核验的 CSV 表头；不适用于 XLSX。'}]},
-    {kind:'memory',operation:'delete',sources:[id('duplicate')],evidence:[id('original'),id('duplicate')],reason:'内容重复且没有独有条件',outputs:[]},
+    {kind:'memory',operation:'merge',sources:[id('original'),id('duplicate')],evidence:[id('original'),id('duplicate')],reason:'明确生效条件',outputs:[{topic:'experience',key:'original',text:'只用于已核验的 CSV 表头；不适用于 XLSX。'}]},
     {kind:'skill',operation:'delete',sources:[id('redundant')],evidence:[id('redundant'),id('rare-but-valid')],reason:'与已保留的可用 Skill 完全重复',outputs:[]},
    ],deferred:[]})
   }
@@ -44,7 +44,15 @@ test('two-hour Router wake curates shared memory and learned skills once, withou
  for(const [topic,key,text]of [['experience','original','只用于已核验的 CSV 表头。'],['experience','duplicate','只用于已核验的 CSV 表头。'],['preferences','keep-preference','关键场景仍要确认版本。']])
   await store.remember(scope,{topic,key,text,source:{sessionId:'fixture',messageId:key}})
  const initial=await reflection.state(scope)
- for(const key of ['rare-but-valid','redundant'])initial.skills[key]={active:true,steps:['核查 CSV 表头'],reason:'已核验证据',applicability:'CSV 检查',revision:1,updatedAt:new Date().toISOString(),supports:[{taskId:'fixture',memoryKey:'original'}]}
+ for(const key of ['rare-but-valid','redundant','absorbed-only'])initial.skills[key]={active:true,steps:['核查 CSV 表头'],reason:'已核验证据',applicability:'CSV 检查',revision:1,updatedAt:new Date().toISOString(),supports:[{taskId:'fixture',memoryKey:'original'}]}
+ const skillBody='已独立核查的 Skill 正文'
+ initial.skills['absorbed-only'].body=skillBody
+ initial.skills['absorbed-only'].supports=[{taskId:'old-task',memoryKey:'duplicate'}]
+ initial.skills['absorbed-only'].memoryKeys=['duplicate']
+ initial.skills['rare-but-valid'].supports.push({taskId:'fixture',memoryKey:'duplicate'})
+ initial.skills['rare-but-valid'].memoryKeys=['original','duplicate']
+ const historical=hash('historical')
+ initial.reviews[historical]={memoryKeyVersion:1,status:'done',eventId:'historical',taskId:'old-task',lessons:[{memoryKey:'duplicate'}],destinations:[{memory:{topic:'experience',key:'duplicate'}}]}
  await atomicWrite(join(m.directory,'state.json'),JSON.stringify(initial))
  await recordUsage(store,scope,'loadCount',{skillKey:'rare-but-valid'})
  const installed=join(h.host.ctx.runtimePaths.skills,'manual','SKILL.md')
@@ -64,7 +72,17 @@ test('two-hour Router wake curates shared memory and learned skills once, withou
  assert.equal(planCalls,1)
  assert.deepEqual((await store.read(scope,{topic:'experience'})).entries.map(row=>row.text),['只用于已核验的 CSV 表头；不适用于 XLSX。'])
  assert.equal((await store.read(scope,{topic:'preferences'})).entries[0].key,'keep-preference')
- assert.deepEqual(Object.keys((await reflection.state(scope)).skills),['rare-but-valid'])
+ const evolved=await reflection.state(scope)
+ assert.deepEqual(Object.keys(evolved.skills).sort(),['absorbed-only','rare-but-valid'])
+ assert.deepEqual(evolved.skills['absorbed-only'].supports,[{taskId:'old-task',memoryKey:'original'}])
+ assert.deepEqual(evolved.skills['absorbed-only'].memoryKeys,['original'])
+ assert.equal(evolved.skills['absorbed-only'].body,skillBody)
+ assert.equal(evolved.skills['absorbed-only'].revision,1)
+ assert.deepEqual(evolved.skills['rare-but-valid'].supports,[{taskId:'fixture',memoryKey:'original'}])
+ assert.deepEqual(evolved.skills['rare-but-valid'].memoryKeys,['original'])
+ assert.equal(evolved.reviews[historical].lessons[0].memoryKey,'original')
+ assert.equal(evolved.reviews[historical].destinations[0].memory.key,'original')
+ assert.notEqual(evolved.reviews[historical].forgotten,true)
  assert.equal(await readFile(installed,'utf8'),'INSTALLER_MANAGED')
  assert.equal((await m.state()).lastSelfCheckAt,nextAt)
  await h.restart();await h.host.ctx.reflection.whenIdle()
@@ -94,4 +112,29 @@ test('a restart after the self-check clock commits but before the cleaner starts
  await h.host.ctx.reflection.whenIdle()
  assert.equal(indexCalls,1)
  assert.equal((await h.host.ctx.reflection.maintenance.state()).lastSelfCheckAt,nextAt)
+})
+
+test('scheduled curation defers an ambiguous split of experience still used by a Skill',{timeout:30000},async t=>{
+ const h=await residentRouterHost(t,body=>{
+  const text=requestText(body).join('\n')
+  if(text.includes('NIGHT_BOT_MEMORY_MAINTENANCE_INDEX'))return reply({groups:[[input(body).items.find(row=>row.key==='combined').id]],deferred:[]})
+  if(text.includes('NIGHT_BOT_MEMORY_MAINTENANCE_PLAN')){
+   const id=input(body).items[0].id
+   return reply({actions:[{kind:'memory',operation:'split',sources:[id],evidence:[id],reason:'有两个不同适用场景',outputs:[{topic:'experience',key:'csv',text:'核对 CSV。'},{topic:'experience',key:'xlsx',text:'核对 XLSX。'}]}],deferred:[]})
+  }
+  const envelope=requestEnvelope(body,'Router 请求：')
+  return envelope&&body.messages.at(-1)?.role!=='tool'?{tool:'resident_router_settle',args:{operationId:'split-'+envelope.events[0].id,eventIds:envelope.events.map(row=>row.id)}}:{text:'完成'}
+ },{config:{globalRouter:true}})
+ const r=h.host.ctx.reflection,m=r.maintenance,store=h.host.ctx.memory.store
+ await store.remember(scope,{topic:'experience',key:'combined',text:'核对 CSV 和 XLSX。',source:{sessionId:'fixture',messageId:'source'}})
+ const initial=await r.state(scope)
+ initial.skills['file-check']={active:true,steps:['核对文件'],reason:'已有证据',applicability:'文件核对',revision:1,supports:[{taskId:'fixture',memoryKey:'combined'}],memoryKeys:['combined']}
+ await atomicWrite(join(m.directory,'state.json'),JSON.stringify(initial))
+ await h.service.routerSelfCheck(Date.now()-2*60*60*1000)
+ await h.service.routerSelfCheck((await h.query('router.self-check.clock')).nextAt)
+ await r.whenIdle()
+ assert.equal(m.status().status,'deferred')
+ assert.equal(m.status().deferredCount,1)
+ assert.deepEqual((await store.read(scope,{topic:'experience'})).entries.map(row=>row.key),['combined'])
+ assert.deepEqual((await r.state(scope)).skills,initial.skills)
 })
