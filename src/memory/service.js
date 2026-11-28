@@ -187,7 +187,7 @@ export default class NativeMemory extends Service {
     }
     return {...result,...includeSources?{includeSources:true}:{},...Array.isArray(result.entries)?{entries:result.entries.map(project)}:{},...result.entry?{entry:project(result.entry)}:{}}
   }
-  async recordUsage(scope,counter,provenance,entries){try{await recordUsage(this.store,scope,counter,{provenance,entries})}catch{this.memoryTrackingError='EVOLUTION_USAGE_RECORD_FAILED';this.host.logger.warn('EVOLUTION_USAGE_RECORD_FAILED')}}
+  async recordUsage(scope,counter,provenance,entries,skillKey){try{await recordUsage(this.store,scope,counter,{provenance,entries,skillKey})}catch{this.memoryTrackingError='EVOLUTION_USAGE_RECORD_FAILED';this.host.logger.warn('EVOLUTION_USAGE_RECORD_FAILED')}}
   async inspectEvolution(binding,options){if(this.host.agents.currentInitiator())throw failure('EVOLUTION_HOST_REQUIRED');await this.bindingReady;const reflection=this.host.get('reflection');if(!reflection)throw failure('EVOLUTION_UNAVAILABLE');return inspectEvolution(this,reflection,binding,options)}
   async inspectEvolutionItem(binding,options){if(this.host.agents.currentInitiator())throw failure('EVOLUTION_HOST_REQUIRED');await this.bindingReady;const reflection=this.host.get('reflection');if(!reflection)throw failure('EVOLUTION_UNAVAILABLE');return inspectEvolutionItem(this,reflection,binding,options)}
   provenance({agent,message,task}={}){const channels=this.host.get('channels'),context=task?.groupId?channels?.groupContext(task.groupId):agent?channels?.groupContext(agent.id):undefined;return memoryProvenance({channel:context,task,message})??(agent?this.contexts.get(agent)?.provenance:null)??null}

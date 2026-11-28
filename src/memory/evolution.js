@@ -14,10 +14,14 @@ export async function readUsage(store, scope) {
   const value = JSON.parse(raw)
   if (value.version !== 1 || !timestamp(value.trackingSince) || counters.some(key => !Number.isSafeInteger(value[key]) || value[key] < 0)) throw failure('EVOLUTION_USAGE_INVALID')
   if(value.entries!==undefined){if(!timestamp(value.entryTrackingSince)||!value.entries||typeof value.entries!=='object'||Array.isArray(value.entries))throw failure('EVOLUTION_USAGE_INVALID');for(const [key,row]of Object.entries(value.entries))if(!/^[a-f0-9]{64}$/.test(key)||!row||['readCount','searchCount'].some(counter=>!Number.isSafeInteger(row[counter])||row[counter]<0)||row.lastAccess&&!timestamp(row.lastAccess.at))throw failure('EVOLUTION_USAGE_INVALID')}
+  if(value.skillEntries!==undefined){
+    if(!timestamp(value.skillEntryTrackingSince)||!value.skillEntries||typeof value.skillEntries!=='object'||Array.isArray(value.skillEntries))throw failure('EVOLUTION_USAGE_INVALID')
+    for(const [key,row]of Object.entries(value.skillEntries))if(!/^[a-f0-9]{64}$/.test(key)||!row||!Number.isSafeInteger(row.loadCount)||row.loadCount<1||!timestamp(row.lastUsedAt))throw failure('EVOLUTION_USAGE_INVALID')
+  }
   return value
 }
 // Aggregate only: never retain names, queries, memory bodies or actor identifiers.
-export async function recordUsage(store, scope, counter, {provenance,entries} = {}) {
+export async function recordUsage(store, scope, counter, {provenance,entries,skillKey} = {}) {
   if (!counters.includes(counter)) throw failure('EVOLUTION_USAGE_INVALID')
   const path = join(store.directory(scope), 'usage.json')
   await withLock(path + '.lock', async () => {
@@ -27,6 +31,12 @@ export async function recordUsage(store, scope, counter, {provenance,entries} = 
     value[counter]++
     if (counter!=='loadCount') value.lastMemoryAccess={counter,at:now,provenance:provenance??null}
     if(Array.isArray(entries)){value.entryTrackingSince??=now;value.entries??={};for(const entry of entries){if(typeof entry.id!=='string')continue;const key=hash(entry.id),current=value.entries[key]??{readCount:0,searchCount:0};if(current[counter]>=Number.MAX_SAFE_INTEGER)throw failure('EVOLUTION_USAGE_INVALID');current[counter]=(current[counter]??0)+1;current.lastAccess={counter,at:now,provenance:provenance??null};value.entries[key]=current}}
+    if(counter==='loadCount'&&typeof skillKey==='string'){
+      value.skillEntryTrackingSince??=now;value.skillEntries??={}
+      const key=hash(skillKey),count=value.skillEntries[key]?.loadCount??0
+      if(count>=Number.MAX_SAFE_INTEGER)throw failure('EVOLUTION_USAGE_INVALID')
+      value.skillEntries[key]={loadCount:count+1,lastUsedAt:now}
+    }
     value[counter === 'loadCount' ? 'skillLastUsedAt' : 'memoryLastUsedAt'] = now
     await atomicWrite(path, JSON.stringify(value) + '\n')
   })

@@ -310,9 +310,9 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
     if(kind==='router.self-check.tick'){
       if(!Number.isSafeInteger(a.now)||a.now<0)fail('ROUTER_SELF_CHECK_CLOCK')
       const prior=read('router_upgrade_audit',ROUTER_SELF_CHECK_CLOCK,true)
-      if(prior&&a.now<prior.nextAt)return changed({nextAt:prior.nextAt,conversations:[]})
+      if(prior&&a.now<prior.nextAt)return changed({nextAt:prior.nextAt,conversations:[],lastOccurrenceAt:prior.lastOccurrenceAt})
       const nextAt=a.now+ROUTER_SELF_CHECK_INTERVAL
-      write('router_upgrade_audit',{id:ROUTER_SELF_CHECK_CLOCK,nextAt})
+      write('router_upgrade_audit',{id:ROUTER_SELF_CHECK_CLOCK,nextAt,...prior?{lastOccurrenceAt:a.now}:{}})
       if(!prior)return changed({nextAt,conversations:[]})
       const scoped=new Map()
       const since=new Date(prior.nextAt-ROUTER_SELF_CHECK_INTERVAL).toISOString()
@@ -331,7 +331,7 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
           {kind:'router.self-check',selfCheck:{occurrenceAt:new Date(a.now).toISOString(),taskIds:[]}})
         scoped.set(STANDALONE_SELF_CHECK_SCOPE,[])
       }
-      return changed({nextAt,conversations:[...scoped.keys()]})
+      return changed({nextAt,lastOccurrenceAt:a.now,conversations:[...scoped.keys()]})
     }
 
     if(kind==='router.self-check.continue'){

@@ -1286,9 +1286,10 @@ export async function openTaskSessionService({ ctx, config, legacy, residentStor
     return selfCheckFlight??=(async()=>{
       const prev=await query('router.self-check.clock')
       if(closed)return
-      if(prev?.nextAt>now){nextSelfCheckAt=prev.nextAt;return}
+      if(prev?.nextAt>now){nextSelfCheckAt=prev.nextAt;reflection?.maintenance?.scheduleSelfCheck(prev.lastOccurrenceAt,nextSelfCheckAt);return}
       const result=(await command('router.self-check.tick',{now},'router-self-check:'+String(prev?.nextAt??now))).result
       nextSelfCheckAt=result.nextAt??now+ROUTER_SELF_CHECK_INTERVAL
+      reflection?.maintenance?.scheduleSelfCheck(result.lastOccurrenceAt,nextSelfCheckAt)
       for(const id of result.conversations)void kickGroup(id).catch(()=>{})
     })().finally(()=>{selfCheckFlight=undefined})
   }
