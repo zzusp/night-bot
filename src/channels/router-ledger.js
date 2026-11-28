@@ -1,7 +1,7 @@
 import {GLOBAL_ROUTER_SESSION} from './router-identity.js'
-import {ROUTER_SELF_CHECK_INTERVAL,ROUTER_SELF_CHECK_CLOCK,selfCheckTaskScope,STANDALONE_SELF_CHECK_SCOPE} from './router-self-check.js'
+import {ROUTER_SELF_CHECK_INTERVAL,ROUTER_SELF_CHECK_CLOCK,selfCheckIdleCandidate,selfCheckTaskScope,STANDALONE_SELF_CHECK_SCOPE} from './router-self-check.js'
 import {collaborationKey,peerRoles,peerAvailable} from '../tasks/peer-work.js'
-import {bindTaskMilestone} from '../tasks/milestone-notification.js'
+import {bindTaskMilestone,taskMilestonePending} from '../tasks/milestone-notification.js'
 import {triageHandoff,routerTriageConclusion} from './triage-conclusion.js'
 import {inspectionIsCurrent,taskWaitIdentity,MIN_WAIT_RECHECK_MS} from '../tasks/inspection.js'
 import {checkArrangementRange,queryArrangementHistory} from './router-arrangement-history.js'
@@ -318,13 +318,22 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
       const since=new Date(prior.nextAt-ROUTER_SELF_CHECK_INTERVAL).toISOString()
       for(const task of rows('tasks')){
         const scope=selfCheckTaskScope(task)
-        if(!scope||task.archivedAt||task.archiveRestoreHold||task.archiveRestore?.reviewRequired||!(task.status==='active'||task.status==='completed'&&(task.completion?.at??'')>=since))continue
+        if(!scope||task.archivedAt||task.archiveRestoreHold||task.archiveRestore?.reviewRequired||!(selfCheckIdleCandidate(task,a.now)&&dependenciesReady(task)&&!taskMilestonePending(task,id=>read('notifications',id,true))||task.status==='completed'&&(task.completion?.at??'')>=since))continue
         if(!scoped.has(scope))scoped.set(scope,[])
         scoped.get(scope).push(task.taskId)
       }
       for(const [id,taskIds]of scoped){
         for(let start=0;start<taskIds.length;start+=24)enqueue(id,'self-check:'+hash([prior.nextAt,start]),
           {kind:'router.self-check',selfCheck:{occurrenceAt:new Date(a.now).toISOString(),taskIds:taskIds.slice(start,start+24)}})
+      }
+      // Retry a genuinely missed completion through the normal outcome path, once.
+      // Frozen notices already belong to the delivery worker, even if not yet delivered.
+      for(const {body} of db.prepare(`SELECT body FROM dynamic_router_inbox WHERE ${outcomeCandidates}
+        AND json_extract(body,'$.state')='consumed' AND json_extract(body,'$.kind')='task.completed'`).all()){
+        const row=JSON.parse(body),event=row.taskEventId&&readEvent(row.taskEventId)
+        if(!event||row.eventId!==event.id||row.sharedHold||row.deliveryHold||outcomeDisposition(row,event).kind!=='not-reported')continue
+        const retry=enqueue(row.conversationId,'self-check-outcome:'+event.id,{kind:'task.completed',taskId:row.taskId,taskEventId:event.id,trackOutcome:true})
+        if(retry.state==='pending'&&!scoped.has(row.conversationId))scoped.set(row.conversationId,[])
       }
       if(!scoped.size){
         enqueue(STANDALONE_SELF_CHECK_SCOPE,'self-check:'+hash([prior.nextAt,0]),
@@ -341,11 +350,11 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
         const lookup=event?.lookupResult?.lookupId&&read('router_actions',event.lookupResult.lookupId,true)?.result?.lookup
         const snap=lookup?.result?.snapshots?.find(item=>item.taskId===a.taskId)
         const incident=event?.kind==='task.inspection'&&event.taskEventId?readEvent(event.taskEventId):null
-        if(a.conversationId!==STANDALONE_SELF_CHECK_SCOPE||selfCheckTaskScope(task)!==a.conversationId||task.archivedAt
+        if(selfCheckTaskScope(task)!==a.conversationId||!task||task.archivedAt
           ||task.archiveRestoreHold||task.archiveRestore?.reviewRequired||event?.conversationId!==a.conversationId
           ||event.state!=='pending'||event.sharedHold||event.deliveryHold)fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
         if(incident){
-          if(incident.taskId!==task.taskId||incident.sessionId!==task.sessionId||incident.inspectionKey!==task.inspection?.key
+          if(a.conversationId!==STANDALONE_SELF_CHECK_SCOPE||incident.taskId!==task.taskId||incident.sessionId!==task.sessionId||incident.inspectionKey!==task.inspection?.key
             ||!inspectionIsCurrent(task)||!task.inspection?.pending||a.kind!=='resume')fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
         }else if(event.kind!=='router.self-check.completed'||lookup?.state!=='completed'||lookup.conversationId!==a.conversationId
           ||lookup.selfCheckEventId!==event.selfCheck?.requestEventId||!event.selfCheck?.taskIds.includes(a.taskId)
@@ -355,15 +364,29 @@ export function createRouterLedger({db, get, put, all, reduce, wake, saveTask, b
           ||snap.contextRevision!==(task.contextRevision??0)||snap.runSequence!==(task.runSequence??0)
           ||snap.status!==task.status||snap.leaseEpoch!==(task.leaseEpoch??0)))fail('DYNAMIC_TASK_REVISION_STALE')
         const sources=(task.sourceRefs??[]).map(id=>read('sources',id,true))
-        if(!sources.length||sources.some(source=>!source||source.channel!=='web'||source.actorId!==task.ownerActorId||!latest(source)
-          ||source.retracted||source.authorizationRevoked||source.triageHold||source.archiveRestoreHold))fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
-        if(!task.drained||task.recovering||task.control==='cancelled'||blockers(task.taskId).operations.length
-          ||task.humanRequests?.some(row=>row.status==='waiting-reply')
-          ||task.dialogue?.some(row=>!row.reply&&!row.replyError))fail('ROUTER_TASK_RESUME_NOT_QUIESCENT')
+        const isStandalone=a.conversationId===STANDALONE_SELF_CHECK_SCOPE
+        // Channel references can contain supporting material from other members.
+        // Only the task's bound origin can authorize the continuation.
+        const origin=sources.find(source=>source?.sourceId===outcomeOriginId(task))
+        if(!origin||origin.actorId!==task.ownerActorId||sources.some(source=>!source
+          ||(isStandalone?source.channel!=='web'||source.actorId!==task.ownerActorId:source.groupId!==a.conversationId)
+          ||!latest(source)||source.retracted||source.authorizationRevoked
+          ||source.triageHold||source.archiveRestoreHold))fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+        const pendingWakes=db.prepare("SELECT body FROM dynamic_wakes WHERE json_extract(body,'$.taskId')=?").all(task.taskId).map(row=>JSON.parse(row.body))
+        if(a.kind!=='resume'||!selfCheckIdleCandidate(task)||!dependenciesReady(task)||blockers(task.taskId).operations.length
+          ||!incident&&pendingWakes.some(wake=>wake.state!=='acked'||((task.lastDecision?.at??'')<=wake.createdAt
+            &&wake.kind==='task.peer.park-permit'&&wake.payload?.senderLease===task.leaseEpoch))
+          ||taskMilestonePending(task,id=>read('notifications',id,true)))fail('ROUTER_TASK_RESUME_NOT_QUIESCENT')
+        const resumeKey=hash([task.requirementRevision,task.contextRevision??0])
+        if(!incident&&task.selfCheckResumeKey===resumeKey)fail('ROUTER_SELF_CHECK_ALREADY_RESUMED')
         const args={taskId:task.taskId,expectedRequirementRevision:a.expectedRequirementRevision,expectedControlRevision:a.expectedControlRevision,operationId:a.operationId}
-        if(a.kind==='reopen'&&task.status==='completed')return reduce('task.reopen',{...args,sameGoal:true},commandId)
-        if(a.kind==='resume'&&task.status==='active')return reduce('task.control',{...args,control:'active'},commandId,incident?{routerScheduling:true}:undefined)
-        fail('ROUTER_SELF_CHECK_CONTINUATION_SCOPE')
+        if(incident)return reduce('task.control',{...args,control:'active'},commandId,{routerScheduling:true})
+        // Resume the same authorized goal, without rewriting control revisions or
+        // invalidating accepted dependency evidence.
+        const {result:{wakeId}}=reduce('task.wake',{taskId:task.taskId,kind:'router.self-check.resume'},commandId)
+        task.selfCheckResumeKey=resumeKey
+        saveTask(task)
+        return changed({task,wakeId})
       })
     }
     if(kind==='router.lookup.submit'){
