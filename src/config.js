@@ -16,8 +16,8 @@ export async function loadConfig(path) {
 
 export function validateConfig(config,path) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('NIGHT_BOT_CONFIG_INVALID')
+  // Legacy permissionMode is retained on disk for rollback but no longer used.
   assertPiTaskBackendConfiguration(config)
-  if(config.permissionMode!==undefined&&!['ask','auto','full'].includes(config.permissionMode))throw failure('NIGHT_BOT_PERMISSION_MODE_INVALID')
   const paths=runtimePaths(config,path)
   if(paths.mode==='portable')Object.assign(config,{installRoot:paths.installRoot,dataDir:paths.data,stateDir:paths.state,workspaceDir:paths.workspaces})
   for (const key of ['stateDir','workspaceDir']) {

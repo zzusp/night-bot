@@ -52,18 +52,9 @@ node bin/night-bot-settings.js data/config/config.json secret --kind model --pro
 
 不要把密钥直接写在参数、JSON 示例、URL、聊天或 Git 中。共享同一凭据引用的路由可能同时受更换影响，应先核对设置返回的共享关系。OAuth 和命名凭据引用见[完整配置与认证说明](https://github.com/zzusp/night-bot/blob/main/docs/ops/shared-settings.md)。
 
-## 权限配置
+## 工具访问
 
-新安装默认 `full`。它意味着按当前 OS 账号直接访问，**不提供工作区或进程隔离**。显式 `ask` / `auto` 保持有效，不会因默认值变化而自动升级。
-
-停机时修改下次启动的模式：
-
-```sh
-node bin/night-bot-config.js data/config/config.json permissions --permission-mode ask --check
-node bin/night-bot-config.js data/config/config.json permissions --permission-mode ask
-```
-
-认证 Web 操作者可在线保存模式，并回读 Host 当前状态。普通渠道成员、任务和模型不能自行切换安装权限。完整行为与未验边界见[权限与安全](./security)。
+Night Bot 按启动进程的操作系统账号权限直接执行，不提权，也不提供 Bot 工作区或进程隔离。不再提供配置档位、人工审批或自动审批。旧安装里的 `permissionMode` 保留在原文件中供回退，但当前版本不读取该值；旧审批不会恢复或自动重放。操作系统、容器、渠道认证、工具调用绑定和业务授权边界仍有效。
 
 ## 扩展入口
 

@@ -34,7 +34,7 @@ export async function createNightOfficialSession({ctx,store,resolved,agentDir,re
  for(const key of ['isLive','isTurnOpen','approvalPolicy','append']){if(typeof sourceAudit[key]!=='function')throw new TypeError('Business audit requires '+key);methods[key]=(...args)=>Reflect.apply(sourceAudit[key],sourceAudit,args)}
  const audit=Object.freeze({...methods,flush:async()=>{if(failure)throw failure;try{await sourceAudit.flush()}catch(cause){throw fence(cause)}}})
  actor.audit=audit
- const unbindApproval=bindApprovalAudit(actor,audit)
+ const unbindApproval=ctx.get('approval')?bindApprovalAudit(actor,audit):()=>{}
  let session,imageBudget,toolBatchGuard,liveOutput,background
  try {
   // Initial permission selection in application setup must see its exact

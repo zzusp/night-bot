@@ -7,13 +7,11 @@ import {resolvePiProfiles} from '../src/pi-provider-catalog.js'
 import {runtimePaths,prepareRuntimePaths,packageRoot} from '../src/runtime/paths.js'
 const args=process.argv.slice(2),options={}
 try{
-  if(args.length%2)throw new Error('Usage: night-bot-init --actor YOUR_ID [--root INSTALL_ROOT] [--provider NAME] [--model NAME] [--key-env ENV_NAME] [--base-url URL] [--api API] [--permission-mode ask|auto|full]')
-  for(let i=0;i<args.length;i+=2){if(!['--actor','--root','--provider','--model','--key-env','--base-url','--api','--permission-mode'].includes(args[i])||!args[i+1]||options[args[i]])throw new Error('NIGHT_INIT_OPTIONS_INVALID');options[args[i]]=args[i+1]}
+  if(args.length%2)throw new Error('Usage: night-bot-init --actor YOUR_ID [--root INSTALL_ROOT] [--provider NAME] [--model NAME] [--key-env ENV_NAME] [--base-url URL] [--api API]')
+  for(let i=0;i<args.length;i+=2){if(!['--actor','--root','--provider','--model','--key-env','--base-url','--api'].includes(args[i])||!args[i+1]||options[args[i]])throw new Error('NIGHT_INIT_OPTIONS_INVALID');options[args[i]]=args[i+1]}
   if(!options['--actor']||options['--actor'].length>256)throw new Error('NIGHT_INIT_ACTOR_REQUIRED')
   const root=resolve(options['--root']??packageRoot),config=JSON.parse(await readFile(new URL('../config.example.json',import.meta.url),'utf8'))
   const provider=options['--provider']??config.model.provider,model=options['--model']??config.model.model
-  config.permissionMode=options['--permission-mode']??'full'
-  if(!['ask','auto','full'].includes(config.permissionMode))throw new Error('NIGHT_BOT_PERMISSION_MODE_INVALID')
   config.installRoot='../..';config.model={provider,model};config.providers={[provider]:{apiKeyEnv:options['--key-env']??'OPENAI_API_KEY'}}
   const profile=config.providers[provider]
   if(options['--base-url']){const url=new URL(options['--base-url']);if(!['http:','https:'].includes(url.protocol))throw new Error('NIGHT_INIT_BASE_URL_INVALID');profile.baseURL=options['--base-url']}

@@ -72,7 +72,7 @@ test('actual headless role CLI validates zero-write check, saves each role, clea
  let value=await f.read();for(const role of MODEL_ROLES)assert.deepEqual(value.roleModels[role],{provider:'fixture',model:'reasoner',reasoningEffort:'low'})
  await cliJson(f.file,'role-model','--role','router','--reasoning-effort','model-default');assert.deepEqual((await f.read()).roleModels.router,{provider:'fixture',model:'reasoner'})
  await cliJson(f.file,'role-model','--role','router','--model','plain');assert.deepEqual((await f.read()).roleModels.router,{provider:'fixture',model:'plain'})
- value=await f.read();const shown=await cliJson(f.file,'show');assert.deepEqual(shown.roleModels,value.roleModels);assert.doesNotMatch(JSON.stringify(shown),/SECRET_MUST_NOT_BE_SHOWN|ambient-value/);assert.equal(shown.permissionMode,'full')
+ value=await f.read();const shown=await cliJson(f.file,'show');assert.deepEqual(shown.roleModels,value.roleModels);assert.doesNotMatch(JSON.stringify(shown),/SECRET_MUST_NOT_BE_SHOWN|ambient-value/);assert.equal(Object.hasOwn(shown,'permissionMode'),false)
  assert.equal((await cliJson(f.file,'role-model','--role','router','--model','plain')).changed,false)
  assert.deepEqual((await loadConfig(f.file)).roleModels,value.roleModels)
 })

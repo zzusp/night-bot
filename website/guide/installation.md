@@ -20,7 +20,7 @@ pnpm install --frozen-lockfile
 pnpm init:assistant --actor YOUR_OWN_ID --provider openai --model YOUR_MODEL --key-env OPENAI_API_KEY
 ```
 
-默认权限是 `full`，其风险见[权限与安全](./security)。需要显式选择其他模式时，在初始化命令中增加 `--permission-mode ask` 或 `--permission-mode auto`。这些配置会被尊重，但受限执行尚未完成交付验收；后端不可用时拒绝执行，不自动退回 `full`。
+Night Bot 按启动进程的操作系统账号权限直接执行，不提权，也不提供 Bot 工作区或进程隔离。不再提供配置档位、人工审批或自动审批。旧安装里的 `permissionMode` 保留在原文件中供回退，但当前版本不读取该值；旧审批不会恢复或自动重放。操作系统、容器、渠道认证、工具调用绑定和业务授权边界仍有效。
 
 自定义模型路由可在初始化时追加 `--base-url` 与 `--api`。协议和模型 ID 必须匹配你的服务，不能把配置校验通过当作真实调用通过。完整字段见[统一配置说明](https://github.com/zzusp/night-bot/blob/main/docs/ops/shared-settings.md)。
 

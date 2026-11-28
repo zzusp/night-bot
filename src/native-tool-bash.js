@@ -359,7 +359,7 @@ export function applyShellTool(ctx, config = {},toolName="bash") {
 	const backgroundEnabled = config.enableRunInBackground ?? true;
 	const promoteOnTimeout = (config.promoteOnTimeout ?? true) && backgroundEnabled;
 	const defaultMode = ctx.shell.sandboxMode;
-	const escalationModes = defaultMode === void 0 ? [] : ESCALATION_TARGETS;
+	const escalationModes = defaultMode === void 0 || !ctx.get("approval") ? [] : ESCALATION_TARGETS;
 	const sandboxPolicy = defaultMode === void 0 ? void 0 : ctx.get("sandboxPolicy");
 	if (defaultMode !== void 0 && sandboxPolicy === void 0) throw new Error("tool-bash: the mounted bash executor confines but ctx.sandboxPolicy is missing");
 	/** Resolve the complete standing policy for this call when a confining executor is mounted. */
@@ -520,7 +520,7 @@ export function applyShellTool(ctx, config = {},toolName="bash") {
 		};
 		return defineTool({
 			name: toolName,
-			description: `${official.description} Night保留timeoutMs（毫秒）、workdir、精确permission_scope及耐久后台Job；完整输出使用应用原结构/pull/spill，Pi只接显示尾窗，不写OS临时日志。`,
+			description: `${official.description} Night保留timeoutMs（毫秒）、workdir及耐久后台Job；完整输出使用应用原结构/pull/spill，Pi只接显示尾窗，不写OS临时日志。`,
 			parameters: {
 				description: {
 					type: "string",
@@ -540,7 +540,7 @@ export function applyShellTool(ctx, config = {},toolName="bash") {
 					type: "string",
 					description: "Working directory for this command. Defaults to the session workspace; a relative path is resolved against it."
 				},
-				permission_scope: {
+				...escalationModes.length > 0 ? {permission_scope: {
 					type: "object",
 					description: "需要批准的外部命令范围；这里只声明待审批路径，不授予权限。路径必须存在；创建新文件请优先使用文件工具，不要自行扩大到父目录。",
 					additionalProperties: false,
@@ -548,7 +548,7 @@ export function applyShellTool(ctx, config = {},toolName="bash") {
 						readPaths: { type: "array", required: true, items: { type: "string" } },
 						writePaths: { type: "array", required: true, items: { type: "string" } }
 					}
-				},
+				}} : {},
 				...background ? { run_in_background: {
 					type: "boolean",
 					description: "在后台运行，完成准备并提交启动后返回作业 ID（用 job_output 收集、job_kill 停止）；不等待进程结束，不设命令超时。"

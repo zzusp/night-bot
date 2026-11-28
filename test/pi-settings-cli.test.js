@@ -74,11 +74,10 @@ test('headless appearance and credentials use the Web facade, CAS and redaction'
 test('all supported --check settings and metadata reads are zero-write including credentials',async t=>{
  const f=await fixture(t),payload=join(f.root,'channel.json');await writeFile(payload,JSON.stringify({type:'fixture-custom',channelId:'draft-channel',enabled:true,config:{room:'room',credential:'FIXTURE_REF'}}))
  const before=await inventory(f.root)
- await f.cli(['show']);await f.cli(['plugins']);await f.cli(['channel-list']);await f.cli(['permissions-show'])
+ await f.cli(['show']);await f.cli(['plugins']);await f.cli(['channel-list'])
  await f.cli(['appearance','--name','Dry run','--icon','leaf','--check'])
  await f.cli(['secret','--kind','github','--action','replace','--confirm','--check'],{interaction:{prompt:async()=>'FIXTURE_DRY_SECRET'}})
  await f.cli(['channel-save','--json-file',payload,'--check'])
- await f.cli(['permissions-set','--mode','ask','--check'])
  await f.cli(['web','--enabled','false','--sender-id','operator','--check'])
  assert.deepEqual(await inventory(f.root),before)
 })
@@ -93,7 +92,7 @@ test('offline writes respect Host lock, custom creation never imports adapters, 
  // Do not send display-only editable property through the strict transport.
  await writeFile(payload,JSON.stringify({type:current.type,channelId:current.channelId,enabled:current.enabled,config:{room:'different'}}))
  await assert.rejects(f.cli(['channel-save','--json-file',payload]),{code:'SETTINGS_RESIDENT_REQUIRED'})
- for(const action of ['channel-remove','channel-enable','channel-ingress','channel-recover-paused','dingtalk-add','dingtalk-edit','permission-respond'])await assert.rejects(f.cli([action]),{code:'SETTINGS_RESIDENT_REQUIRED'})
+ for(const action of ['channel-remove','channel-enable','channel-ingress','channel-recover-paused','dingtalk-add','dingtalk-edit'])await assert.rejects(f.cli([action]),{code:'SETTINGS_RESIDENT_REQUIRED'})
 })
 
 test('channel-ingress CLI requires live operator auth, typed pause, CAS and confirmation without leaking config',async t=>{
@@ -156,19 +155,17 @@ test('CLI-only HTTP rejects browser origins, hostile hosts, body injection and r
  await assert.rejects(requestLiveSettings(live,f.file,{action:'channel-remove',body:{channelId:'room',expectedVersion:version}}),{code:'CHANNEL_DELETE_CONFIRMATION_REQUIRED'})
  await requestLiveSettings(live,f.file,{action:'channel-remove',body:{channelId:'room',expectedVersion:version,confirm:true}})
  assert.deepEqual(calls,[['room',{expectedVersion:version}]])
- const before=await readFile(f.file,'utf8');assert.equal((await requestLiveSettings(live,f.file,{action:'permissions-set',body:{mode:'ask'},checkOnly:true})).checkOnly,true);assert.equal(await readFile(f.file,'utf8'),before)
 })
 
-test('dispatcher cannot check or substitute live channel/permission lifecycle actions',async()=>{
- const calls=[],dispatch=createSettingsCommands({settings:{},channels:{editDingtalk:async(id,body)=>{calls.push({id,body});return {changed:true,detail:{channelId:id}}}},permissions:{respond:async(...args)=>{calls.push(args);return {ok:true}}}})
+test('dispatcher cannot check or substitute live channel actions or dispatch removed approvals',async()=>{
+ const calls=[],dispatch=createSettingsCommands({settings:{},channels:{editDingtalk:async(id,body)=>{calls.push({id,body});return {changed:true,detail:{channelId:id}}}}})
  const body={channelId:'room',expectedVersion:'1'.repeat(64),name:'Name',prompt:'Prompt',conversationType:'chat-room',targetKind:'id',target:'target'}
  await dispatch({action:'dingtalk-edit',body});assert.deepEqual(calls[0],{id:'room',body:Object.fromEntries(Object.entries(body).filter(([key])=>key!=='channelId'))})
  await assert.rejects(dispatch({action:'dingtalk-edit',body,checkOnly:true}),{code:'SETTINGS_CHECK_UNSUPPORTED'})
- await assert.rejects(dispatch({action:'permission-respond',body:{id:'request',decision:'allow',actor:'forged'}}),{code:'SETTINGS_COMMAND_INVALID'})
- await dispatch({action:'permission-respond',body:{id:'request',decision:'allow'}});assert.deepEqual(calls[1],['request','allow'])
+ await assert.rejects(dispatch({action:'permission-respond',body:{id:'request',decision:'allow'}}),{code:'SETTINGS_COMMAND_INVALID'})
 })
 
-test('real resident without Web exposes identical settings and permission services without model calls',async t=>{
+test('real resident without Web exposes identical settings without model calls',async t=>{
  const {memoryHost}=await import('./fixtures/memory-host.js'),f=await memoryHost(t),paths=f.host.ctx.runtimePaths,file=join(paths.config,'config.json'),reserve=createServer()
  await new Promise(resolve=>reserve.listen(0,'127.0.0.1',resolve));const port=reserve.address().port;await new Promise(resolve=>reserve.close(resolve))
  const config={...f.config,resident:{host:'127.0.0.1',port,taskSessions:{initialize:true,instanceId:'headless-settings',ownerActorId:'owner',webActorId:'operator',ingressEpoch:new Date().toISOString()}}}
@@ -177,7 +174,7 @@ test('real resident without Web exposes identical settings and permission servic
  assert.equal(f.host.ctx.get('channels').plugins.has('web-console'),false)
  const view=await cli(['show']);await cli(['appearance','--name','Headless bot','--icon','leaf','--expected-version',view.version])
  assert.equal((await f.host.ctx.operatorSettings.view()).appearance.name,'Headless bot')
- await cli(['permissions-set','--mode','full']);assert.equal(f.host.ctx.toolPermissions.view().mode,'full');assert.equal(JSON.parse(await readFile(file,'utf8')).permissionMode,'full')
+ for(const action of ['permissions-set','permissions-show','permission-respond'])await assert.rejects(cli([action]),{code:'SETTINGS_COMMAND_INVALID'})
  const channels=await cli(['channel-list']);assert.deepEqual(channels,{channels:[]})
  const show=await cli(['show']);await cli(['model','--provider','fixture','--model','m','--expected-version',show.version,'--check'])
  assert.equal(f.requests.length,0)

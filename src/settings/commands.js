@@ -15,7 +15,6 @@ const spec={
  'channel-recover-paused':['channelId','pausedAt','expectedVersion','confirm'],
  'dingtalk-get':['channelId'],'dingtalk-add':['channelId','conversationType','targetKind','target','name','prompt','writesAuthorized'],
  'dingtalk-edit':['channelId','expectedVersion','name','prompt','conversationType','targetKind','target','writesAuthorized'],
- 'permissions-show':[],'permissions-set':['mode'],'permission-respond':['id','decision'],
 }
 export const settingsActions=Object.freeze(Object.keys(spec))
 export function validateSettingsCommand(input){
@@ -29,11 +28,11 @@ const channelId=value=>{if(typeof value!=='string'||value!==value.trim()||!value
 const version=value=>{if(typeof value!=='string'||!/^[a-f0-9]{64}$/.test(value))throw failure('SETTINGS_COMMAND_INVALID');return value}
 /** Transport-independent dispatcher. Runtime-sensitive actions only invoke the
  * existing Host ports, preserving admission, actor binding, drain and CAS. */
-export function createSettingsCommands({settings,channels,permissions,configuration={}}){
+export function createSettingsCommands({settings,channels,configuration={}}){
  return async input=>{
   const {action,body,checkOnly}=validateSettingsCommand(input),options={checkOnly}
-  const channel=()=>channels??unavailable(),permission=()=>permissions??unavailable()
-  if(checkOnly&&!['appearance','provider','model','model-entry','role','secret','web','work-log','channel-save','permissions-set','channel-recover-paused'].includes(action))throw failure('SETTINGS_CHECK_UNSUPPORTED')
+  const channel=()=>channels??unavailable()
+  if(checkOnly&&!['appearance','provider','model','model-entry','role','secret','web','work-log','channel-save','channel-recover-paused'].includes(action))throw failure('SETTINGS_CHECK_UNSUPPORTED')
   if(action==='show')return settings.view()
   if(action==='provider'){version(body.expectedVersion);return settings.saveProvider(body,options)}
   if(action==='model-list')return settings.modelCatalog()
@@ -69,9 +68,6 @@ export function createSettingsCommands({settings,channels,permissions,configurat
   if(action==='dingtalk-get')return channel().getDingtalk(channelId(body.channelId))
   if(action==='dingtalk-add'){const value=await channel().addDingtalk(body);return {changed:value.changed,restartRequired:value.restartRequired,liveApplied:value.liveApplied}}
   if(action==='dingtalk-edit'){const {channelId:id,...value}=body;const result=await channel().editDingtalk(channelId(id),value);return {changed:result.changed,restartRequired:result.restartRequired,liveApplied:result.liveApplied,detail:result.detail}}
-  if(action==='permissions-show')return permission().view()
-  if(action==='permissions-set'){if(!['ask','auto','full'].includes(body.mode))throw failure('PERMISSION_MODE_INVALID');return checkOnly?(configuration.permissions??unavailable)({mode:body.mode,checkOnly}):permission().setMode(body.mode)}
-  if(action==='permission-respond'){if(typeof body.id!=='string'||!/^[A-Za-z0-9-]{1,128}$/.test(body.id)||!['allow','reject','revoke'].includes(body.decision))throw failure('PERMISSION_DECISION_INVALID');return permission().respond(body.id,body.decision)}
   throw failure('SETTINGS_COMMAND_INVALID')
  }
 }

@@ -53,26 +53,9 @@ pnpm init:assistant --actor YOUR_LOCAL_ACTOR --provider openai --model YOUR_MODE
 
 Codex 使用 `openai-codex` provider 与固定 Pi SDK 实际支持的模型；模型名从官方 catalog 选择。当前代理环境下的本机验收使用该 profile 的 `transport: "sse"`。应用与 SDK 的 undici 均固定在 8.12.3，并显式使用 CONNECT，避免 SDK 导入后覆盖代理 dispatcher。
 
-## 工具权限模式
+## 工具权限
 
-配置使用顶层 `permissionMode`，默认 `full`（显式 `ask` / `auto` 保持不变）；初始化支持 `--permission-mode ask|auto|full`。
-
-本次实施与验收范围为 `full`；`ask` / `auto` 合同保留，但受限执行尚未完成，本次不交付。此范围调整不改变默认 `full`（显式 `ask` / `auto` 保持不变），也不自动修改实际实例配置。
-
-以下示例仅用于可信安装操作者明确选择 `full`；离线更改先检查，再保存并正常重启：
-
-```powershell
-node bin/night-bot-config.js data/config/config.json permissions --permission-mode full --check
-node bin/night-bot-config.js data/config/config.json permissions --permission-mode full
-```
-
-`ask` 请求人工单次批准外部业务操作；`auto` 使用当前配置 Pi 模型作无工具审查，不确定或失败转人工。批准后的文件/进程必须实际限制到该调用的准确范围，不能以配置存在、Job/ConPTY 原语通过或单次 ACL 探针成功宣称 Windows 默认受限链已可用；生产 owned Profile、秘密/跨任务隔离和完整回收的未验项仍见本页限制与[当前目标](../acceptance/resident-conversation-routing/goal.md)。缺少受限后端时失败关闭，不自动升级。
-
-`full` 仅供可信安装操作者显式选择，按当前运行环境 OS 账号直接访问，不取得管理员权限，不承诺工作区或同账号 Host 私有文件仍被 OS 隔离。Host API 的身份、业务授权、审计、取消与 no-replay 继续保留；full 的实际执行与受限模式分别验收，不能互相抵扣。认证 Web 的在线选择与单次审批见[Web 权限入口](web-console-local.md#安装权限与单次审批)，保存后以 Host 回读为准。
-
-Windows `full` 已分阶段实跑外部文件写入、配置持久化与冷启动、任务 actor 不能改档、旧批准不重放、前后台 PowerShell、超时转后台后的单次执行与增量输出，以及准备期取消/超时不产生外部写入。本轮补齐 `grep` 授权投影后，真实工作区/外部目录命中、正常无匹配、82 文件分两批完整检索及切回非 `full` 后保留拒绝均通过，同一候选的前台 PowerShell 关联复验通过。各批绑定的源码及结果见[唯一验收入口](../acceptance/resident-conversation-routing/goal.md)；未重跑无关场景，不宣称全部工具、运行中子进程取消或三平台全量通过。
-
-Pi 的 Project Trust 仅控制项目配置、扩展、技能等项目资源的加载信任，不限制代码执行后的 OS 访问；它不是 OS 沙箱，也不表示 Night Bot 已新增该信任入口。
+Night Bot 按启动进程的操作系统账号权限直接执行，不提权，也不提供 Bot 工作区或进程隔离。不再提供配置档位、人工审批或自动审批。旧安装里的 `permissionMode` 保留在原文件中供回退，但当前版本不读取该值；旧审批不会恢复或自动重放。操作系统、容器、渠道认证、工具调用绑定和业务授权边界仍有效。
 
 ## 内置技能
 
