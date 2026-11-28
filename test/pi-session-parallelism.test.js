@@ -65,7 +65,10 @@ test('Router context reuses the admitted event list and indexed source checks wi
   owner.admission={current:async()=>({messages:[{source:{kind:'conversation-router',conversationId:'room',generation:1,eventIds:['event']}}]})}
   registerResidentRouterTools(scoped.ctx,{conversationId:'room',generation:1,sessionId:owner.id},{query:async(kind,args)=>{
    counts.set(kind,(counts.get(kind)??0)+1)
-   if(kind==='router.inbox')return [{id:'event',sourceId:'source',messageVersion:2}]
+   if(kind==='router.batch-events'){
+    assert.deepEqual(args,{conversationId:'room',eventIds:['event']})
+    return [{id:'event',state:'pending',sourceId:'source',messageVersion:2}]
+   }
    if(kind==='source.get')return {sourceId:'source',groupId:'room',version:2,text:'Current source'}
    if(kind==='router.source-latest')return true
    if(kind==='router.source-links')return [{conversationId:'room',sourceId:'source',messageVersion:2,taskId:'task',relation:'original'}]
@@ -77,5 +80,5 @@ test('Router context reuses the admitted event list and indexed source checks wi
   },responsibilityFor:()=>''})
  })
  const text=await context.officialText({actor:f.owner})
- assert.match(text,/sourceTaskLinks/);assert.equal(counts.get('router.inbox'),1);assert.equal(counts.get('source.list'),undefined);assert.equal(counts.get('router.source-latest'),1)
+ assert.match(text,/sourceTaskLinks/);assert.equal(counts.get('router.batch-events'),1);assert.equal(counts.get('router.inbox'),undefined);assert.equal(counts.get('source.list'),undefined);assert.equal(counts.get('router.source-latest'),1)
 })
