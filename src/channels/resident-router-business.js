@@ -10,7 +10,7 @@ import {routerTaskSummary,routerTaskReceipt} from './router-task-view.js'
 import {MAX_ROUTER_HANDOFF_LENGTH,normalizeRouterHandoff} from './router-handoff.js'
 import {routerMemoryReconciliation} from './router-memory-reconciliation.js'
 import {routerMemoryParameters,hash as memoryHash} from '../memory/format.js'
-import {businessBlockerEvidenceRule,channelReplyWritingPrompt,routerReplyOutcomeRule,routerReplyFormatRule,publicReplyContentRule,defensiveReplyRule,routerOutcomeReplyRule,attachmentReplyRule,communicationGuidanceReadTool} from './message-safety.js'
+import {businessBlockerEvidenceRule,technicalEvidenceRule,channelReplyWritingPrompt,routerReplyOutcomeRule,routerReplyFormatRule,publicReplyContentRule,defensiveReplyRule,routerOutcomeReplyRule,attachmentReplyRule,communicationGuidanceReadTool} from './message-safety.js'
 import {followUpSettlementArgs} from './router-model-input.js'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
@@ -450,8 +450,10 @@ export function registerResidentRouterTools(agentCtx,binding,{query,command,resp
   agentCtx.get('systemPrompt').section({name:'resident-router-periodic-progress',order:153,text:[scheduleModes,'修改/删除先用 platform_schedule_list 查本会话的准确 scheduleId，再调用 update/delete。明确某时或多久后一次用 at；明确每隔一段时间持续检查用 every_seconds，不靠单次提醒续命。带截止条件的只读回报，只用真实的任务 ID；等待、暂停、失败不等于完成。范围不清且影响安排时只问缺哪项。只有工具回执包含周期或结束条件，才分别确认已安排。'].join('\n')})
   agentCtx.get('systemPrompt').section({name:'resident-router-request-handoff',order:154,text:[
     businessBlockerEvidenceRule,
+    technicalEvidenceRule,
+    '代码或环境需要查证时，把原方案、提交、目标分支和相关材料交给 Work。对照当前交办的完成条件核对结果；已启动的必要验证等 Work 带回终态再作结单，不把排查中间态当结论，也不阻塞 Router 处理其他请求。证据不足且有获准动作时，按当前仍有效的交办约束沿原任务补查。证据够了就回复结果和下一步。',
     '涉及是否获准继续时，先分清引用里的真人原话与 Bot 转述。若旧任务记录声称有额外门槛而现有材料只找到 Bot 的说法，必要时回查原始交办或适用规则；确认是自己加的，就不要在回复、派发或后续汇报中继承。只读查询只提供快照；没有原始依据时只说明旧记录的说法未经核实。',
-    '派发或转达用户新要求时，用 handoff 简单、忠实地转述目标、对象、明确限制和完成条件，保留会影响执行的事实、时间范围、链接及相关附件。消除指代，无关背景不带上，不贴原消息或引用正文，也不加自己的判断、推测、原因、步骤、建议或新限制。来源 ID 和附件由 Host 关联；Router 的规划字段和调度理由不是执行指令。只唤醒旧任务时不要伪造新转述。',
+    '先看谁在交办、要解决什么、怎样算完成。派发或转达新要求时，handoff 写清目标、对象、明确限制和完成条件，保留会影响执行的事实、时间范围、来源链接和相关附件。用可观察的结果说明怎样算完成，不另设交付物或验收门槛。消除指代，不贴原消息和引用全文，不添加自己的推测、步骤或限制。来源 ID 和附件由 Host 关联；Router 的规划字段和调度理由不是执行指令。只唤醒旧任务时不要伪造新转述。',
     '旧 triageConclusion、needsHandling 和冻结首答只是当时的线索，不等于授权、建任务或送达。与当前原文、引用或职责不符时，以当前消息为准；不要重做旧分诊或重复确认。',
     '职责内明确交办的排查直接建或续任务，不问是否要接；有足够信息就让接到任务的执行会话先做获准的只读部分，不扩成修改、部署或发布。仅 @、提及人名或旧分诊不是交办；结合职责和已有任务判断受话对象。确实只让他人处理、也非助手既有任务后续，才用 not-assigned。不明确时只问缺的对象、范围或输入。',
     '问「哪些任务能推进」也是只读查询，不启动原任务。有确定 taskId 才传；同一消息另有新交办，先安排新增工作，再带 alongsideWork=true 查进度。',

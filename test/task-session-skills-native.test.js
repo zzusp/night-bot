@@ -1,6 +1,7 @@
 import {nativeTestTimeout} from './fixtures/native-lifecycle.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {getCurrentSystemPrompt} from '@earendil-works/pi-ai'
 import {writeFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {taskEvidenceFixture,call,decision,names,skillDoc,latestInput} from './fixtures/runtime-task-evidence.js'
@@ -26,6 +27,9 @@ test('a missing skill is a correctable read without an unknown external effect',
 test('task dialogue keeps business effects denied while allowing the original evidence reader',{timeout:nativeTestTimeout(20000)},async t=>{
  let step=0,lateEffects=0;const f=await taskEvidenceFixture(t,request=>{
   if(!latestInput(request).dialogue)throw Error('Fixture provider stopped before the evidence question')
+  const prompt=getCurrentSystemPrompt(request.messages)
+  assert.match(prompt,/本轮仅只读回答当前任务对话/u)
+  assert.match(prompt,/先查交办指向的方案、PR 或变更记录/u)
   if(step++===0){const actor=f.h.ctx.agents.get(latestInput(request).task.sessionId),late=name=>({name,description:'Late fixture business tool',parameters:{type:'object',properties:{}},output:{schema:{type:'object'},render:()=>[]},execute(){lateEffects++;return {}}});f.h.ctx.get('tools').register(late('late_global_business'));actor.ctx.get('tools').register(late('late_scoped_business'));return [call('write',{path:'work/forbidden.txt',content:'forbidden'}),call('late_global_business',{}),call('late_scoped_business',{}),call('read',{path:join(f.skillRoot,names[0],'SKILL.md')})]}
   return [decision('wait','Read the original guide; did not perform a write',{evidence:['BODY_ONLY_personal-alpha']})]
  })
